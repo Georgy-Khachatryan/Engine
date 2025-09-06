@@ -15,6 +15,14 @@ s32 main() {
 	static_assert(sizeof(s64) == 8);
 	static_assert(sizeof(u64) == 8);
 
+#if 1
+	for (u32 i = 0; i < 2; i += 1) {
+		DebugAssert(false, "Assert from %s", __FUNCTION__);
+		DebugAssertOnce(false, "AssertOnce from %s", __FUNCTION__);
+		DebugAssertAlways("AssertAlways from %s", __FUNCTION__);
+	}
+#endif
+
 	defer{ printf("Deferred\n"); };
 	printf("Regular\n");
 }
