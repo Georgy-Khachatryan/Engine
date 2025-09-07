@@ -2,7 +2,7 @@
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   
   <ImportGroup Label="PropertySheets">
-    <Import Project="../Props/ProjectConfiguration.props" />
+    <Import Project="Props/ProjectConfiguration.props" />
   </ImportGroup>
   
   <PropertyGroup Label="Globals">
@@ -17,25 +17,31 @@
   </PropertyGroup>
   
   <ImportGroup Label="PropertySheets">
-    <Import Project="../Props/ToolsetConfiguration.props" />
+    <Import Project="Props/ToolsetConfiguration.props" />
   </ImportGroup>
   
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   
   <ImportGroup Label="PropertySheets">
-    <Import Project="../Props/BuildConfiguration.props" />
+    <Import Project="Props/BuildConfiguration.props" />
+  </ImportGroup>
+  
+  <ImportGroup Label="PropertySheets">
+    <Import Project="Props/ImGui.props" />
   </ImportGroup>
   
   <ItemGroup>
-    <ClCompile Include="../Basic/Assert.cpp" />
-    <ClCompile Include="../Basic/SystemWin32.cpp" />
-    <ClCompile Include="../Basic/StackAllocator.cpp" />
-    <ClCompile Include="Main.cpp" />
+    <ClCompile Include="Basic/Assert.cpp" />
+    <ClCompile Include="Basic/SystemWin32.cpp" />
+    <ClCompile Include="Basic/StackAllocator.cpp" />
+    <ClCompile Include="Engine/Main.cpp" />
+    <ClCompile Include="Engine/SystemWindowWin32.cpp" />
   </ItemGroup>
   
   <ItemGroup>
-    <ClInclude Include="../Basic/Basic.h" />
-    <ClInclude Include="../Basic/BasicMemory.h" />
+    <ClInclude Include="Basic/Basic.h" />
+    <ClInclude Include="Basic/BasicMemory.h" />
+    <ClInclude Include="Engine/SystemWindow.h" />
   </ItemGroup>
   
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
