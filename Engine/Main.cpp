@@ -11,17 +11,8 @@ s32 main() {
 	auto alloc = CreateStackAllocator(256 * 1024, 64 * 1024);
 	defer{ ReleaseStackAllocator(alloc); };
 	
-
+	
 	ImGui_ImplWin32_EnableDpiAwareness();
-	
-	auto* graphics_context = CreateGraphicsContext(&alloc);
-	defer{ ReleaseGraphicsContext(graphics_context); };
-	
-	auto* window = SystemCreateWindow(&alloc, L"Engine");
-	defer{ SystemReleaseWindow(window); };
-	
-	auto* swap_chain = CreateWindowSwapChain(&alloc, graphics_context, window->hwnd);
-	defer{ ReleaseWindowSwapChain(swap_chain); };
 	
 	ImGui::CreateContext();
 	defer{ ImGui::DestroyContext(); };
@@ -30,10 +21,19 @@ s32 main() {
 	io.ConfigFlags  |= ImGuiConfigFlags_DockingEnable;
 	io.BackendFlags |= ImGuiBackendFlags_RendererHasTextures | ImGuiBackendFlags_RendererHasVtxOffset;
 	
-	ImGui::StyleColorsDark();
+	auto* window = SystemCreateWindow(&alloc, L"Engine");
+	defer{ SystemReleaseWindow(window); };
 	
 	ImGui_ImplWin32_Init(window->hwnd);
 	defer{ ImGui_ImplWin32_Shutdown(); };
+	
+	auto* graphics_context = CreateGraphicsContext(&alloc);
+	defer{ ReleaseGraphicsContext(graphics_context); };
+	
+	auto* swap_chain = CreateWindowSwapChain(&alloc, graphics_context, window->hwnd);
+	defer{ ReleaseWindowSwapChain(swap_chain, graphics_context); };
+	
+	ImGui::StyleColorsDark();
 	
 	while (window->should_close == false) {
 		SystemPollWindowEvents(window);
@@ -44,7 +44,9 @@ s32 main() {
 		ImGui_ImplWin32_NewFrame();
 		ImGui::NewFrame();
 		
-		if (ImGui::IsKeyChordPressed(ImGuiKey_ModAlt | ImGuiKey_F4)) {
+		ImGui::ShowDemoWindow(nullptr);
+		
+		if (ImGui::IsKeyChordPressed(ImGuiMod_Alt | ImGuiKey_F4)) {
 			window->should_close = true;
 		}
 		

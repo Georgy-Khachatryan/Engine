@@ -5,7 +5,7 @@ compile_const u32 number_of_frames_in_flight = 2;
 compile_const u32 number_of_back_buffers     = 3;
 
 union NativeDevice {
-	struct ID3D12Device* d3d12 = nullptr;
+	struct ID3D12Device4* d3d12 = nullptr;
 };
 
 union NativeCommandQueue {
@@ -33,7 +33,7 @@ GraphicsContext* CreateGraphicsContext(StackAllocator* alloc);
 void ReleaseGraphicsContext(GraphicsContext* context);
 
 WindowSwapChain* CreateWindowSwapChain(StackAllocator* alloc, GraphicsContext* context, void* hwnd);
-void ReleaseWindowSwapChain(WindowSwapChain* swap_chain);
+void ReleaseWindowSwapChain(WindowSwapChain* swap_chain, GraphicsContext* context);
 void ResizeWindowSwapChain(WindowSwapChain* swap_chain, GraphicsContext* context, u32 width, u32 height);
 void WindowSwapChainBeginFrame(WindowSwapChain* swap_chain, GraphicsContext* context);
 void WindowSwapChainEndFrame(WindowSwapChain* swap_chain, GraphicsContext* context);
