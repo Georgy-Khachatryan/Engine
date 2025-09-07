@@ -32,16 +32,18 @@
   
   <ItemGroup>
     <ClCompile Include="Basic/Assert.cpp" />
-    <ClCompile Include="Basic/SystemWin32.cpp" />
     <ClCompile Include="Basic/StackAllocator.cpp" />
+    <ClCompile Include="Basic/SystemWin32.cpp" />
     <ClCompile Include="Engine/Main.cpp" />
     <ClCompile Include="Engine/SystemWindowWin32.cpp" />
+    <ClCompile Include="GraphicsApi/GraphicsApiD3D12.cpp" />
   </ItemGroup>
   
   <ItemGroup>
     <ClInclude Include="Basic/Basic.h" />
     <ClInclude Include="Basic/BasicMemory.h" />
     <ClInclude Include="Engine/SystemWindow.h" />
+    <ClInclude Include="GraphicsApi/GraphicsApi.h" />
   </ItemGroup>
   
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

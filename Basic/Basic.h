@@ -76,3 +76,6 @@ template<typename Lambda>
 inline DeferredLambda<Lambda> operator+ (DeferredLambdaToken, Lambda&& lambda) { return DeferredLambda<Lambda>(static_cast<Lambda&&>(lambda)); }
 
 #define defer auto CREATE_UNIQUE_NAME(deferred_lambda_) = DeferredLambdaToken{} + [&]()
+
+
+struct StackAllocator;

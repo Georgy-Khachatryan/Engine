@@ -19,6 +19,10 @@ static LRESULT WINAPI WindowProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM 
 	case WM_CLOSE: {
 		window->should_close = true;
 		break;
+	} case WM_SIZE: {
+		window->width  = (u32)LOWORD(lparam);
+		window->height = (u32)HIWORD(lparam);
+		break;
 	} default: {
 		return DefWindowProcW(hwnd, message, wparam, lparam);
 	}
@@ -60,10 +64,12 @@ SystemWindow* SystemCreateWindow(StackAllocator* alloc, const wchar_t* window_na
 	);
 	DebugAssert(hwnd != nullptr, "Failed to create a window.");
 	
-	auto* window = (SystemWindow*)alloc->Allocate(sizeof(SystemWindow));
+	auto* window = NewFromAlloc(alloc, SystemWindow);
 	SetWindowLongPtrW(hwnd, GWLP_USERDATA, (LONG_PTR)window);
 	
-	window->hwnd         = hwnd;
+	window->hwnd   = hwnd;
+	window->width  = 0;
+	window->height = 0;
 	window->should_close = false;
 	
 	ShowWindow(hwnd, SW_SHOW);

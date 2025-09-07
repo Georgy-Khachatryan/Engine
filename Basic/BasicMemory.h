@@ -20,3 +20,7 @@ void ReleaseStackAllocator(StackAllocator& alloc);
 
 #define TempAllocationScopeNamed(name, alloc) u64 name = (alloc)->total_allocated_size; defer{ (alloc)->DeallocateToSize(name); }
 #define TempAllocationScope(alloc) TempAllocationScopeNamed(CREATE_UNIQUE_NAME(temp_allocated_size_), alloc)
+
+inline void* operator new(u64 size, StackAllocator* alloc, u64 alignment) noexcept { return alloc->Allocate(size, alignment); }
+#define NewFromAlloc(alloc, type) new (alloc, alignof(type)) type
+

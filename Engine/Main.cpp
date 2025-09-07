@@ -1,6 +1,7 @@
 #include "Basic/Basic.h"
 #include "Basic/BasicMemory.h"
 #include "SystemWindow.h"
+#include "GraphicsApi/GraphicsApi.h"
 
 #include <SDK/imgui/imgui.h>
 #include <SDK/imgui/backends/imgui_impl_win32.h>
@@ -13,8 +14,14 @@ s32 main() {
 
 	ImGui_ImplWin32_EnableDpiAwareness();
 	
+	auto* graphics_context = CreateGraphicsContext(&alloc);
+	defer{ ReleaseGraphicsContext(graphics_context); };
+	
 	auto* window = SystemCreateWindow(&alloc, L"Engine");
 	defer{ SystemReleaseWindow(window); };
+	
+	auto* swap_chain = CreateWindowSwapChain(&alloc, graphics_context, window->hwnd);
+	defer{ ReleaseWindowSwapChain(swap_chain); };
 	
 	ImGui::CreateContext();
 	defer{ ImGui::DestroyContext(); };
@@ -31,6 +38,9 @@ s32 main() {
 	while (window->should_close == false) {
 		SystemPollWindowEvents(window);
 		
+		ResizeWindowSwapChain(swap_chain, graphics_context, window->width, window->height);
+		
+		WindowSwapChainBeginFrame(swap_chain, graphics_context);
 		ImGui_ImplWin32_NewFrame();
 		ImGui::NewFrame();
 		
@@ -39,6 +49,8 @@ s32 main() {
 		}
 		
 		ImGui::Render();
+		
+		WindowSwapChainEndFrame(swap_chain, graphics_context);
 	}
 	
 	return 0;

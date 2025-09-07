@@ -13,10 +13,6 @@
         %(PreprocessorDefinitions)
       </PreprocessorDefinitions>
     </ClCompile>
-    
-    <Link>
-      <AdditionalDependencies>DXGI.lib;%(AdditionalDependencies)</AdditionalDependencies>
-    </Link>
   </ItemDefinitionGroup>
   
   <ItemGroup>
