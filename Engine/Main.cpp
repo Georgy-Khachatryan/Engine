@@ -8,7 +8,7 @@
 
 
 s32 main() {
-	auto alloc = CreateStackAllocator(256 * 1024, 64 * 1024);
+	auto alloc = CreateStackAllocator(64 * 1024 * 1024, 512 * 1024);
 	defer{ ReleaseStackAllocator(alloc); };
 	
 	
@@ -17,9 +17,12 @@ s32 main() {
 	ImGui::CreateContext();
 	defer{ ImGui::DestroyContext(); };
 	
+	ImFontConfig font_config = {};
+	font_config.GlyphOffset.y = -1.f;
+	
 	auto& io = ImGui::GetIO();
-	io.ConfigFlags  |= ImGuiConfigFlags_DockingEnable;
-	io.BackendFlags |= ImGuiBackendFlags_RendererHasTextures | ImGuiBackendFlags_RendererHasVtxOffset;
+	io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+	io.Fonts->AddFontFromFileTTF("./Assets/OpenSans-Regular.ttf", 18.f, &font_config);
 	
 	auto* window = SystemCreateWindow(&alloc, L"Engine");
 	defer{ SystemReleaseWindow(window); };
