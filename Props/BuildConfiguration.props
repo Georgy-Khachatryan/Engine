@@ -16,7 +16,10 @@
       <LanguageStandard>stdcpp17</LanguageStandard>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <SDLCheck>true</SDLCheck>
+      <SupportJustMyCode>false</SupportJustMyCode>
       <WarningLevel>Level3</WarningLevel>
+      
+      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
       
       <AdditionalIncludeDirectories>
         $(SolutionDir);
@@ -31,13 +34,12 @@
     
     <Link>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <LinkIncremental>true</LinkIncremental>
       <SubSystem>Console</SubSystem>
     </Link>
   </ItemDefinitionGroup>
   
   <!-- Debug settings. -->
-  <ItemDefinitionGroup Condition="'$(Configuration)'!='Debug'">
+  <ItemDefinitionGroup Condition="'$(Configuration)'=='Debug'">
     <ClCompile>
       <PreprocessorDefinitions>
         _DEBUG;
@@ -45,6 +47,10 @@
       </PreprocessorDefinitions>
     </ClCompile>
   </ItemDefinitionGroup>
+  
+  <PropertyGroup Condition="'$(Configuration)'=='Debug'">
+    <LinkIncremental>true</LinkIncremental>
+  </PropertyGroup>
   
   <!-- Non debug settings. -->
   <ItemDefinitionGroup Condition="'$(Configuration)'!='Debug'">
@@ -63,6 +69,10 @@
       <OptimizeReferences>true</OptimizeReferences>
     </Link>
   </ItemDefinitionGroup>
+  
+  <PropertyGroup Condition="'$(Configuration)'!='Debug'">
+    <LinkIncremental>false</LinkIncremental>
+  </PropertyGroup>
   
   <ItemDefinitionGroup Condition="'$(Configuration)'=='Debug'">
     <ClCompile>

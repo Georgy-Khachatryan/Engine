@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?> 
+<AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
+	
+	<Type Name="ArrayView&lt;*&gt;">
+		<DisplayString>count={count}</DisplayString>
+		<Expand>
+			<Item Name="count">count</Item>
+			<ArrayItems>
+				<Size>count</Size>
+				<ValuePointer>data</ValuePointer>
+			</ArrayItems>
+		</Expand>
+	</Type>
+	
+	<Type Name="Array&lt;*&gt;">
+		<DisplayString>count={count}, capacity={capacity}</DisplayString>
+		<Expand>
+			<Item Name="count">count</Item>
+			<Item Name="capacity">capacity</Item>
+			<ArrayItems>
+				<Size>count</Size>
+				<ValuePointer>data</ValuePointer>
+			</ArrayItems>
+		</Expand>
+	</Type>
+	
+	<Type Name="FixedCapacityArray&lt;*&gt;">
+		<DisplayString>count={count}, capacity={capacity}</DisplayString>
+		<Expand>
+			<Item Name="count">count</Item>
+			<Item Name="capacity">capacity</Item>
+			<ArrayItems>
+				<Size>count</Size>
+				<ValuePointer>data</ValuePointer>
+			</ArrayItems>
+		</Expand>
+	</Type>
+	
+	<Type Name="FixedCountArray&lt;*&gt;">
+		<DisplayString>count={count}, capacity={capacity}</DisplayString>
+		<Expand>
+			<Item Name="count">count</Item>
+			<Item Name="capacity">capacity</Item>
+			<ArrayItems>
+				<Size>count</Size>
+				<ValuePointer>data</ValuePointer>
+			</ArrayItems>
+		</Expand>
+	</Type>
+	
+	
+	<Type Name="String">
+		<DisplayString>data={data,[count]s8b}, count={count}</DisplayString>
+		<Expand>
+			<Item Name="data">data,[count]s8b</Item>
+			<Item Name="count">count</Item>
+		</Expand>
+	</Type>
+	
+	<Type Name="StringUtf16">
+		<DisplayString>data={data,[count]su}, count={count}</DisplayString>
+		<Expand>
+			<Item Name="data">data,[count]su</Item>
+			<Item Name="count">count</Item>
+		</Expand>
+	</Type>
+	
+</AutoVisualizer>

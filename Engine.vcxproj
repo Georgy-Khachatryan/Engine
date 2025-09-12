@@ -32,6 +32,7 @@
   
   <ItemGroup>
     <ClCompile Include="Basic/Assert.cpp" />
+    <ClCompile Include="Basic/BasicString.cpp" />
     <ClCompile Include="Basic/StackAllocator.cpp" />
     <ClCompile Include="Basic/SystemWin32.cpp" />
     <ClCompile Include="Engine/Main.cpp" />
@@ -41,9 +42,15 @@
   
   <ItemGroup>
     <ClInclude Include="Basic/Basic.h" />
+    <ClInclude Include="Basic/BasicArray.h" />
     <ClInclude Include="Basic/BasicMemory.h" />
+    <ClInclude Include="Basic/BasicString.h" />
     <ClInclude Include="Engine/SystemWindow.h" />
     <ClInclude Include="GraphicsApi/GraphicsApi.h" />
+  </ItemGroup>
+  
+  <ItemGroup>
+    <Natvis Include="Basic/Basic.natvis" />
   </ItemGroup>
   
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

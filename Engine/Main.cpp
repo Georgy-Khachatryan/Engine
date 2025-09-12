@@ -1,16 +1,126 @@
 #include "Basic/Basic.h"
 #include "Basic/BasicMemory.h"
+#include "Basic/BasicArray.h"
+#include "Basic/BasicString.h"
 #include "SystemWindow.h"
 #include "GraphicsApi/GraphicsApi.h"
 
 #include <SDK/imgui/imgui.h>
 #include <SDK/imgui/backends/imgui_impl_win32.h>
 
+void BasicExamples(StackAllocator* alloc) {
+	// Stack allocator:
+	{
+		TempAllocationScopeNamed(initial_size, alloc);
+		
+		void* memory0 = alloc->Allocate(32, 32);
+		void* memory1 = alloc->Reallocate(memory0, 32, 128, 32);
+		DebugAssert(memory0 == memory1, "Reallocation failed.");
+		
+		void* memory2 = alloc->Allocate(64);
+		void* memory3 = alloc->Reallocate(memory0, 128, 1024, 32);
+		DebugAssert(memory0 != memory3, "Reallocation failed.");
+		
+		alloc->Deallocate(memory3, 1024);
+		alloc->Deallocate(memory2, 64);
+		alloc->Deallocate(memory1, 128);
+		DebugAssert(alloc->total_allocated_size == initial_size, "Deallocation failed.");
+	}
+	
+	// String formatting:
+	{
+		TempAllocationScope(alloc);
+		
+		auto alloc_address_string = StringFormat(alloc, "Number: %u.", 10u);
+		DebugAssert(alloc_address_string == "Number: 10."_sl, "String is incorrectly formatted.");
+	}
+	
+	// String utf8 <-> utf16 conversion:
+	{	
+		TempAllocationScope(alloc);
+		
+		auto utf8_source     = u8"Orange կատու."_sl;
+		auto utf16_converted = StringUtf8ToUtf16(alloc, utf8_source);
+		auto utf8_converted  = StringUtf16ToUtf8(alloc, utf16_converted);
+		
+		DebugAssert(utf8_source == utf8_converted, "String mismatch after utf8 -> utf16 -> utf8 conversion.");
+	}
+	
+	// Resizable array:
+	{
+		TempAllocationScope(alloc);
+		
+		Array<u32> values;
+		ArrayReserve(values, alloc, 10);
+		
+		for (u32 i = 0; i < 10; i += 1) {
+			ArrayAppend(values, i);
+		}
+		
+		for (u32 i = 10; i < 20; i += 1) {
+			ArrayAppend(values, alloc, i);
+		}
+		
+		u32 first = ArrayPopFirst(values);
+		DebugAssert(first == 0, "Incorrect first value.");
+		
+		u32 last = ArrayPopLast(values);
+		DebugAssert(last == 19, "Incorrect last value.");
+		
+		ArrayEraseSwapLast(values, 2);
+		DebugAssert(values[2] == 18, "Erase swap last is incorrect.");
+		
+		ArrayEmplace(values) = 100;
+		
+		ArrayErase(values, 1);
+		DebugAssert(values[1] == 18, "Erase is incorrect.");
+	}
+	
+	// Fixed capacity array:
+	{
+		FixedCapacityArray<u32, 10> values;
+		
+		for (u32 i = 0; i < 10; i += 1) {
+			ArrayAppend(values, i);
+		}
+		
+		u32 first = ArrayPopFirst(values);
+		DebugAssert(first == 0, "Incorrect first value.");
+		
+		u32 last = ArrayPopLast(values);
+		DebugAssert(last == 9, "Incorrect last value.");
+		
+		ArrayEraseSwapLast(values, 2);
+		DebugAssert(values[2] == 8, "Erase swap last is incorrect.");
+		
+		ArrayEmplace(values) = 100;
+		
+		ArrayErase(values, 1);
+		DebugAssert(values[1] == 8, "Erase is incorrect.");
+	}
+	
+	// Fixed count array:
+	{
+		FixedCountArray<u32, 10> values;
+		
+		for (u32 i = 0; i < 10; i += 1) {
+			values[i] = i;
+		}
+		
+		u32 first = ArrayFirstElement(values);
+		DebugAssert(first == 0, "Incorrect first value.");
+		
+		u32 last = ArrayLastElement(values);
+		DebugAssert(last == 9, "Incorrect last value.");
+	}
+}
+
 
 s32 main() {
 	auto alloc = CreateStackAllocator(64 * 1024 * 1024, 512 * 1024);
 	defer{ ReleaseStackAllocator(alloc); };
 	
+	BasicExamples(&alloc);
 	
 	ImGui_ImplWin32_EnableDpiAwareness();
 	

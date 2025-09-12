@@ -37,6 +37,8 @@ static StackAllocatorBlock* AllocateNewBlock(u64 reserved_size, u64 committed_si
 }
 
 void* StackAllocator::Allocate(u64 size, u64 alignment) {
+	if (size == 0) return nullptr;
+	
 	auto* block = current_block;
 	
 	// We assume that we only need to align allocation_offset and the base address is already aligned.
@@ -71,6 +73,39 @@ void* StackAllocator::Allocate(u64 size, u64 alignment) {
 	block->allocated_size = allocation_offset + size;
 	
 	return result;
+}
+
+void* StackAllocator::Reallocate(void* old_memory, u64 old_size, u64 new_size, u64 alignment) {
+	if (old_memory == nullptr) return Allocate(new_size, alignment);
+	if (new_size == 0)         return Deallocate(old_memory, old_size), nullptr;
+	if (new_size <= old_size)  return old_memory;
+	
+	auto* block = current_block;
+	bool can_reallocate =
+		(((u8*)old_memory + old_size) == ((u8*)block + block->allocated_size)) &&
+		(new_size - old_size) < (block->reserved_size - block->allocated_size);
+	
+	if (can_reallocate) {
+		block->allocated_size -= old_size;
+		total_allocated_size  -= old_size;
+	}
+	
+	void* result = Allocate(new_size, alignment);
+	if (can_reallocate == false) memcpy(result, old_memory, old_size);
+	
+	return result;
+}
+
+void StackAllocator::Deallocate(void* old_memory, u64 old_size) {
+	if (old_memory == nullptr) return;
+	
+	auto* block = current_block;
+	
+	bool can_deallocate = ((u8*)old_memory + old_size) == ((u8*)block + block->allocated_size);
+	if (can_deallocate) {
+		block->allocated_size -= old_size;
+		total_allocated_size  -= old_size;
+	}
 }
 
 void StackAllocator::DeallocateToSize(u64 new_size) {
