@@ -27,3 +27,7 @@ void ReleaseStackAllocator(StackAllocator& alloc);
 inline void* operator new(u64 size, StackAllocator* alloc, u64 alignment) noexcept { return alloc->Allocate(size, alignment); }
 #define NewFromAlloc(alloc, type) new (alloc, alignof(type)) type
 
+enum struct NewInPlaceToken : u32 {};
+inline void* operator new(u64 size, void* memory, NewInPlaceToken) { return memory; }
+#define NewInPlace(memory, type) new (memory, NewInPlaceToken{}) type
+

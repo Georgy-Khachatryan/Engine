@@ -36,4 +36,4 @@ WindowSwapChain* CreateWindowSwapChain(StackAllocator* alloc, GraphicsContext* c
 void ReleaseWindowSwapChain(WindowSwapChain* swap_chain, GraphicsContext* context);
 void ResizeWindowSwapChain(WindowSwapChain* swap_chain, GraphicsContext* context, u32 width, u32 height);
 void WindowSwapChainBeginFrame(WindowSwapChain* swap_chain, GraphicsContext* context);
-void WindowSwapChainEndFrame(WindowSwapChain* swap_chain, GraphicsContext* context);
+void WindowSwapChainEndFrame(WindowSwapChain* swap_chain, GraphicsContext* context, StackAllocator* alloc);

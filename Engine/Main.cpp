@@ -148,7 +148,10 @@ s32 main() {
 	
 	ImGui::StyleColorsDark();
 	
+	u64 frame_allocation_size = 0;
 	while (window->should_close == false) {
+		TempAllocationScopeNamed(frame_initial_size, &alloc);
+		
 		SystemPollWindowEvents(window);
 		
 		ResizeWindowSwapChain(swap_chain, graphics_context, window->width, window->height);
@@ -159,13 +162,20 @@ s32 main() {
 		
 		ImGui::ShowDemoWindow(nullptr);
 		
+		ImGui::Begin("Stats");
+		ImGui::Text("Initial Alloc Size: %llu", frame_initial_size);
+		ImGui::Text("Frame Alloc Size: %llu", frame_allocation_size);
+		ImGui::End();
+		
 		if (ImGui::IsKeyChordPressed(ImGuiMod_Alt | ImGuiKey_F4)) {
 			window->should_close = true;
 		}
 		
 		ImGui::Render();
 		
-		WindowSwapChainEndFrame(swap_chain, graphics_context);
+		WindowSwapChainEndFrame(swap_chain, graphics_context, &alloc);
+		
+		frame_allocation_size = (alloc.total_allocated_size - frame_initial_size);
 	}
 	
 	return 0;

@@ -12,11 +12,15 @@ bool String::operator!= (String other) const {
 }
 
 String StringFormatV(StackAllocator* alloc, const char* format, va_list args) {
+	va_list args_copy;
+	va_copy(args_copy, args);
+	
 	String result;
 	result.count = vsnprintf(nullptr, 0, format, args);
 	result.data  = (char*)alloc->Allocate(result.count + 1);
 	
-	vsnprintf((char*)result.data, result.count + 1, format, args);
+	vsnprintf((char*)result.data, result.count + 1, format, args_copy);
+	va_end(args_copy);
 	
 	return result;
 }

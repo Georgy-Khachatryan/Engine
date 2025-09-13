@@ -1,30 +1,11 @@
-#include "GraphicsApi.h"
+#include "GraphicsApiD3D12.h"
+#include "RecordContext.h"
 #include "Basic/BasicMemory.h"
-
-#include <d3d12.h>
-#include <dxgi1_4.h>
 
 #pragma comment(lib, "d3d12.lib")
 #pragma comment(lib, "dxgi.lib")
 
 #include <SDK/imgui/backends/imgui_impl_dx12.h>
-
-template<typename ResourceT>
-static void SafeRelease(ResourceT*& resource) {
-	if (resource) resource->Release();
-	resource = nullptr;
-}
-
-struct GraphicsContextD3D12 : GraphicsContext {
-	ID3D12Fence* frame_sync_fence = nullptr;
-	u64 frame_index = 0;
-	
-	ID3D12GraphicsCommandList7* command_list = nullptr;
-	ID3D12CommandAllocator* command_allocators[number_of_frames_in_flight] = {};
-	
-	u32* free_indices = nullptr;
-	u32 free_index_count = 0;
-};
 
 static void WaitForLastFrame(GraphicsContextD3D12* context) {
 	if (context->frame_index < 1) return;
@@ -185,16 +166,6 @@ void ReleaseGraphicsContext(GraphicsContext* api_context) {
 	SafeRelease(context->device.d3d12);
 }
 
-struct SwapChainBackBuffer {
-	ID3D12Resource* resource = nullptr;
-	D3D12_CPU_DESCRIPTOR_HANDLE descriptor = {};
-};
-
-struct WindowSwapChainD3D12 : WindowSwapChain {
-	IDXGISwapChain3* dxgi_swap_chain = nullptr;
-	
-	SwapChainBackBuffer back_buffers[number_of_back_buffers] = {};
-};
 
 static void CreateSwapChainBackBuffers(WindowSwapChainD3D12* swap_chain, GraphicsContextD3D12* context) {
 	auto* dxgi_swap_chain = swap_chain->dxgi_swap_chain;
@@ -221,7 +192,7 @@ static void ReleaseSwapChainBackBuffers(WindowSwapChainD3D12* swap_chain) {
 
 WindowSwapChain* CreateWindowSwapChain(StackAllocator* alloc, GraphicsContext* api_context, void* hwnd) {
 	auto* context = (GraphicsContextD3D12*)api_context;
-
+	
 	auto* swap_chain = NewFromAlloc(alloc, WindowSwapChainD3D12);
 	swap_chain->width  = 0;
 	swap_chain->height = 0;
@@ -308,7 +279,7 @@ void WindowSwapChainBeginFrame(WindowSwapChain* api_swap_chain, GraphicsContext*
 	ImGui_ImplDX12_NewFrame();
 }
 
-void WindowSwapChainEndFrame(WindowSwapChain* api_swap_chain, GraphicsContext* api_context) {
+void WindowSwapChainEndFrame(WindowSwapChain* api_swap_chain, GraphicsContext* api_context, StackAllocator* alloc) {
 	auto* swap_chain = (WindowSwapChainD3D12*)api_swap_chain;
 	auto* context = (GraphicsContextD3D12*)api_context;
 	
@@ -333,8 +304,12 @@ void WindowSwapChainEndFrame(WindowSwapChain* api_swap_chain, GraphicsContext* a
 	auto* command_list = context->command_list;
 	command_list->Barrier(1, &barrier_group);
 	
-	float clear_color[4] = { 0.f, 0.f, 0.f, 0.f };
-	command_list->ClearRenderTargetView(back_buffer.descriptor, clear_color, 0, nullptr);
+	RecordContext record_context;
+	record_context.alloc = alloc;
+	
+	CmdClearRenderTarget(&record_context, back_buffer.descriptor.ptr);
+	ReplayRecordContext(context, &record_context);
+	
 	command_list->OMSetRenderTargets(1, &back_buffer.descriptor, false, nullptr);
 	
 	ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), context->command_list);

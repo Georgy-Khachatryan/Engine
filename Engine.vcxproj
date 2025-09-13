@@ -38,6 +38,8 @@
     <ClCompile Include="Engine/Main.cpp" />
     <ClCompile Include="Engine/SystemWindowWin32.cpp" />
     <ClCompile Include="GraphicsApi/GraphicsApiD3D12.cpp" />
+    <ClCompile Include="GraphicsApi/RecordContext.cpp" />
+    <ClCompile Include="GraphicsApi/RecordContextCommandsD3D12.cpp" />
   </ItemGroup>
   
   <ItemGroup>
@@ -47,6 +49,9 @@
     <ClInclude Include="Basic/BasicString.h" />
     <ClInclude Include="Engine/SystemWindow.h" />
     <ClInclude Include="GraphicsApi/GraphicsApi.h" />
+    <ClInclude Include="GraphicsApi/GraphicsApiD3D12.h" />
+    <ClInclude Include="GraphicsApi/RecordContext.h" />
+    <ClInclude Include="GraphicsApi/RecordContextCommands.h" />
   </ItemGroup>
   
   <ItemGroup>
