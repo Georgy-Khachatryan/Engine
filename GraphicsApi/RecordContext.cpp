@@ -35,7 +35,47 @@ static CommandPacketT& AppendPacket(RecordContext* record_context) {
 	return *packet;
 }
 
+
+void CmdDispatch(RecordContext* record_context, u32 group_count_x, u32 group_count_y, u32 group_count_z) {
+	auto& packet = AppendPacket<CmdDispatchPacket>(record_context);
+	packet.group_count_x = group_count_x;
+	packet.group_count_y = group_count_y;
+	packet.group_count_z = group_count_z;
+}
+
+void CmdDrawInstanced(RecordContext* record_context, u32 vertex_count_per_instance, u32 instance_count, u32 start_vertex_location, u32 start_instance_location) {
+	auto& packet = AppendPacket<CmdDrawInstancedPacket>(record_context);
+	packet.vertex_count_per_instance = vertex_count_per_instance;
+	packet.instance_count            = instance_count;
+	packet.start_vertex_location     = start_vertex_location;
+	packet.start_instance_location   = start_instance_location;
+}
+
+void CmdDrawIndexedInstanced(RecordContext* record_context, u32 index_count_per_instance, u32 instance_count, u32 start_index_location, u32 base_vertex_location, u32 start_instance_location) {
+	auto& packet = AppendPacket<CmdDrawIndexedInstancedPacket>(record_context);
+	packet.index_count_per_instance = index_count_per_instance;
+	packet.instance_count           = instance_count;
+	packet.start_index_location     = start_index_location;
+	packet.base_vertex_location     = base_vertex_location;
+	packet.start_instance_location  = start_instance_location;
+}
+
+
 void CmdClearRenderTarget(RecordContext* record_context, u64 rtv_heap_index) {
 	auto& packet = AppendPacket<CmdClearRenderTargetPacket>(record_context);
 	packet.rtv_heap_index = rtv_heap_index;
 }
+
+void CmdSetRenderTargets(RecordContext* record_context, ArrayView<u64> rtv_heap_indices) {
+	auto& packet = AppendPacket<CmdSetRenderTargetsPacket>(record_context);
+	packet.rtv_heap_indices = ArrayCopy(rtv_heap_indices, record_context->alloc);
+}
+
+void CmdSetViewportAndScissor(RecordContext* record_context, u32 max_x, u32 max_y, u32 min_x, u32 min_y) {
+	auto& packet = AppendPacket<CmdSetViewportAndScissorPacket>(record_context);
+	packet.min_x = min_x;
+	packet.min_y = min_y;
+	packet.max_x = max_x;
+	packet.max_y = max_y;
+}
+

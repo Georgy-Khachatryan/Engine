@@ -2,5 +2,7 @@
 Build/
 Intermediate/
 
+SDK/DXC
+
 .vs/
 *.vcxproj.user

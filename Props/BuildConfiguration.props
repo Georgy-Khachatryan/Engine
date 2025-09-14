@@ -7,6 +7,10 @@
     <IntDir>$(SolutionDir)Intermediate\$(MSBuildProjectName)\$(Platform)\$(Configuration)\</IntDir>
   </PropertyGroup>
   
+  <ItemGroup>
+    <DeployCommands Include=" " />
+  </ItemGroup>
+  
   <!-- Common settings. -->
   <ItemDefinitionGroup>
     <ClCompile>

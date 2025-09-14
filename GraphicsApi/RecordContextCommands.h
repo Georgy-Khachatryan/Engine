@@ -3,9 +3,14 @@
 
 
 enum struct CommandType : u16 {
-	None              = 0,
-	Jump              = 1,
-	ClearRenderTarget = 2,
+	None                  = 0,
+	Jump                  = 1,
+	Dispatch              = 2,
+	DrawInstanced         = 3,
+	DrawIndexedInstanced  = 4,
+	ClearRenderTarget     = 5,
+	SetRenderTargets      = 6,
+	SetViewportAndScissor = 7,
 	
 	Count
 };
@@ -17,11 +22,55 @@ struct RecordContextCommandPacket {
 
 struct CmdJumpPacket : RecordContextCommandPacket {
 	compile_const CommandType my_type = CommandType::Jump;
+	
 	u8* command_memory = nullptr;
+};
+
+struct CmdDispatchPacket : RecordContextCommandPacket {
+	compile_const CommandType my_type = CommandType::Dispatch;
+	
+	u32 group_count_x = 0;
+	u32 group_count_y = 0;
+	u32 group_count_z = 0;
+};
+
+struct CmdDrawInstancedPacket : RecordContextCommandPacket {
+	compile_const CommandType my_type = CommandType::DrawInstanced;
+	
+	u32 vertex_count_per_instance = 0;
+	u32 instance_count            = 0;
+	u32 start_vertex_location     = 0;
+	u32 start_instance_location   = 0;
+};
+
+struct CmdDrawIndexedInstancedPacket : RecordContextCommandPacket {
+	compile_const CommandType my_type = CommandType::DrawIndexedInstanced;
+	
+	u32 index_count_per_instance = 0;
+	u32 instance_count           = 0;
+	u32 start_index_location     = 0;
+	u32 base_vertex_location     = 0;
+	u32 start_instance_location  = 0;
 };
 
 struct CmdClearRenderTargetPacket : RecordContextCommandPacket {
 	compile_const CommandType my_type = CommandType::ClearRenderTarget;
+	
 	u64 rtv_heap_index = 0;
+};
+
+struct CmdSetRenderTargetsPacket : RecordContextCommandPacket {
+	compile_const CommandType my_type = CommandType::SetRenderTargets;
+	
+	ArrayView<u64> rtv_heap_indices;
+};
+
+struct CmdSetViewportAndScissorPacket : RecordContextCommandPacket {
+	compile_const CommandType my_type = CommandType::SetViewportAndScissor;
+	
+	u32 min_x = 0;
+	u32 min_y = 0;
+	u32 max_x = 0;
+	u32 max_y = 0;
 };
 

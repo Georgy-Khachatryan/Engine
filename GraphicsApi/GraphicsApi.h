@@ -4,6 +4,14 @@
 compile_const u32 number_of_frames_in_flight = 2;
 compile_const u32 number_of_back_buffers     = 3;
 
+enum struct ShaderType : u32 {
+	ComputeShader = 0,
+	VertexShader  = 1,
+	PixelShader   = 2,
+	
+	Count
+};
+
 union NativeDevice {
 	struct ID3D12Device4* d3d12 = nullptr;
 };

@@ -136,3 +136,15 @@ template<typename ArrayT> typename ArrayT::ValueType ArrayPopLast(ArrayT& array)
 template<typename ArrayT> typename ArrayT::ValueType& ArrayFirstElement(ArrayT& array) { return array[0]; }
 template<typename ArrayT> typename ArrayT::ValueType& ArrayLastElement(ArrayT& array) { return array[array.count - 1]; }
 
+template<typename ArrayT>
+ArrayView<typename ArrayT::ValueType> ArrayCopy(ArrayT& array, StackAllocator* alloc) {
+	using ValueType = typename ArrayT::ValueType;
+	
+	ArrayView<ValueType> result;
+	result.data  = (ValueType*)alloc->Allocate(array.count * sizeof(ValueType), alignof(ValueType));
+	result.count = array.count;
+	memcpy(result.data, array.data, result.count * sizeof(ValueType));
+	
+	return result;
+}
+

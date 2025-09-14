@@ -31,6 +31,8 @@
 #endif // !BUILD_TYPE(PROFILE)
 
 
+#define compile_const constexpr static const
+
 using u8  = unsigned char;
 using s8  = signed char;
 using u16 = unsigned short;
@@ -40,7 +42,22 @@ using s32 = signed int;
 using u64 = unsigned long long;
 using s64 = signed long long;
 
-#define compile_const constexpr static const
+compile_const u8  u8_max  = (u8)0xFF;
+compile_const u8  u8_min  = (u8)0x00;
+compile_const s8  s8_max  = (s8)0x7F;
+compile_const s8  s8_min  = (s8)0x80;
+compile_const u16 u16_max = (u16)0xFFFF;
+compile_const u16 u16_min = (u16)0x0000;
+compile_const s16 s16_max = (s16)0x7FFF;
+compile_const s16 s16_min = (s16)0x8000;
+compile_const u32 u32_max = (u32)0xFFFF'FFFF;
+compile_const u32 u32_min = (u32)0x0000'0000;
+compile_const s32 s32_max = (s32)0x7FFF'FFFF;
+compile_const s32 s32_min = (s32)0x8000'0000;
+compile_const u64 u64_max = (u64)0xFFFF'FFFF'FFFF'FFFF;
+compile_const u64 u64_min = (u64)0x0000'0000'0000'0000;
+compile_const s64 s64_max = (s64)0x7FFF'FFFF'FFFF'FFFF;
+compile_const s64 s64_min = (s64)0x8000'0000'0000'0000;
 
 
 #if ENABLE_FEATURE(ASSERTS)
@@ -76,6 +93,16 @@ template<typename Lambda>
 inline DeferredLambda<Lambda> operator+ (DeferredLambdaToken, Lambda&& lambda) { return DeferredLambda<Lambda>(static_cast<Lambda&&>(lambda)); }
 
 #define defer auto CREATE_UNIQUE_NAME(deferred_lambda_) = DeferredLambdaToken{} + [&]()
+
+
+#define ENUM_FLAGS_OPERATORS(EnumTypeT) \
+inline constexpr EnumTypeT operator&  (EnumTypeT  lh, EnumTypeT rh) { return (EnumTypeT)((u64)lh & (u64)rh); } \
+inline constexpr EnumTypeT operator|  (EnumTypeT  lh, EnumTypeT rh) { return (EnumTypeT)((u64)lh | (u64)rh); } \
+inline constexpr EnumTypeT operator&= (EnumTypeT& lh, EnumTypeT rh) { return lh = (EnumTypeT)((u64)lh & (u64)rh); } \
+inline constexpr EnumTypeT operator|= (EnumTypeT& lh, EnumTypeT rh) { return lh = (EnumTypeT)((u64)lh | (u64)rh); } \
+inline constexpr EnumTypeT operator~  (EnumTypeT lh)                { return (EnumTypeT)~(u64)lh; } \
+inline constexpr bool HasAnyFlags(EnumTypeT mask, EnumTypeT test_pattern) { return ((u64)mask & (u64)test_pattern) != 0; } \
+inline constexpr bool HasAllFlags(EnumTypeT mask, EnumTypeT test_pattern) { return ((u64)mask & (u64)test_pattern) == (u64)test_pattern; }
 
 
 struct StackAllocator;

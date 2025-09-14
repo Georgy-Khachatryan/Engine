@@ -1,6 +1,7 @@
 #include "GraphicsApiD3D12.h"
 #include "RecordContext.h"
 #include "Basic/BasicMemory.h"
+#include "Engine/ShaderCompiler.h"
 
 #pragma comment(lib, "d3d12.lib")
 #pragma comment(lib, "dxgi.lib")
@@ -116,7 +117,7 @@ GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
 		init_info.Device            = device;
 		init_info.CommandQueue      = context->graphics_command_queue.d3d12;
 		init_info.NumFramesInFlight = number_of_frames_in_flight;
-		init_info.RTVFormat         = DXGI_FORMAT_R8G8B8A8_UNORM;
+		init_info.RTVFormat         = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
 		init_info.DSVFormat         = DXGI_FORMAT_UNKNOWN;
 		init_info.UserData          = context;
 		init_info.SrvDescriptorHeap = context->resource_descriptor_heap.d3d12;
@@ -147,6 +148,88 @@ GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
 			context->free_indices[context->free_index_count++] = index;
 		};
 		ImGui_ImplDX12_Init(&init_info);
+	}
+	
+	{
+		TempAllocationScope(alloc);
+		
+		auto* shader_compiler = CreateShaderCompiler(alloc);
+		defer{ ReleaseShaderCompiler(shader_compiler); };
+		
+		D3D12_VERSIONED_ROOT_SIGNATURE_DESC rs_desc = {};
+		rs_desc.Version  = D3D_ROOT_SIGNATURE_VERSION_1_2;
+		rs_desc.Desc_1_2 = {};
+		
+		ID3DBlob* rs_blob = nullptr;
+		if (FAILED(D3D12SerializeVersionedRootSignature(&rs_desc, &rs_blob, nullptr))) {
+			DebugAssertAlways("Failed to serialize root signature.");
+			return nullptr;
+		}
+		defer{ SafeRelease(rs_blob); };
+		
+		ID3D12RootSignature* root_signature = nullptr;
+		if (FAILED(device->CreateRootSignature(0, rs_blob->GetBufferPointer(), rs_blob->GetBufferSize(), IID_PPV_ARGS(&root_signature)))) {
+			DebugAssertAlways("Failed to create root signature.");
+			return nullptr;
+		}
+		
+		auto bytecode_vs = CompileShader(shader_compiler, alloc, "DrawTriangle.hlsl"_sl, ShaderType::VertexShader);
+		auto bytecode_ps = CompileShader(shader_compiler, alloc, "DrawTriangle.hlsl"_sl, ShaderType::PixelShader);
+		
+		D3D12_GRAPHICS_PIPELINE_STATE_DESC desc = {};
+		desc.pRootSignature                            = root_signature;
+		desc.VS.pShaderBytecode                        = bytecode_vs.data;
+		desc.VS.BytecodeLength                         = bytecode_vs.count;
+		desc.PS.pShaderBytecode                        = bytecode_ps.data;
+		desc.PS.BytecodeLength                         = bytecode_ps.count;
+		desc.BlendState.AlphaToCoverageEnable          = false;
+		desc.BlendState.IndependentBlendEnable         = false;
+		desc.BlendState.RenderTarget[0].BlendEnable    = true;
+		desc.BlendState.RenderTarget[0].SrcBlend       = D3D12_BLEND_SRC_ALPHA;
+		desc.BlendState.RenderTarget[0].DestBlend      = D3D12_BLEND_INV_SRC_ALPHA;
+		desc.BlendState.RenderTarget[0].BlendOp        = D3D12_BLEND_OP_ADD;
+		desc.BlendState.RenderTarget[0].SrcBlendAlpha  = D3D12_BLEND_SRC_ALPHA;
+		desc.BlendState.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_INV_SRC_ALPHA;
+		desc.BlendState.RenderTarget[0].BlendOpAlpha   = D3D12_BLEND_OP_ADD;
+		desc.BlendState.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+		desc.SampleMask                                = u32_max;
+		desc.RasterizerState.FillMode                  = D3D12_FILL_MODE_SOLID;
+		desc.RasterizerState.CullMode                  = D3D12_CULL_MODE_BACK;
+		desc.RasterizerState.FrontCounterClockwise     = true;
+		desc.RasterizerState.DepthBias                 = 0;
+		desc.RasterizerState.DepthBiasClamp            = 0.f;
+		desc.RasterizerState.SlopeScaledDepthBias      = 0.f;
+		desc.RasterizerState.DepthClipEnable           = true;
+		desc.RasterizerState.MultisampleEnable         = false;
+		desc.RasterizerState.AntialiasedLineEnable     = false;
+		desc.RasterizerState.ForcedSampleCount         = 0;
+		desc.RasterizerState.ConservativeRaster        = D3D12_CONSERVATIVE_RASTERIZATION_MODE_OFF;
+		desc.DepthStencilState.DepthEnable             = false;
+		desc.DepthStencilState.DepthWriteMask          = D3D12_DEPTH_WRITE_MASK_ZERO;
+		desc.DepthStencilState.DepthFunc               = D3D12_COMPARISON_FUNC_ALWAYS;
+		desc.DepthStencilState.StencilEnable           = false;
+		desc.DepthStencilState.StencilReadMask         = 0;
+		desc.DepthStencilState.StencilWriteMask        = 0;
+		desc.DepthStencilState.FrontFace               = { D3D12_STENCIL_OP_KEEP, D3D12_STENCIL_OP_KEEP, D3D12_STENCIL_OP_KEEP, D3D12_COMPARISON_FUNC_ALWAYS };
+		desc.DepthStencilState.BackFace                = { D3D12_STENCIL_OP_KEEP, D3D12_STENCIL_OP_KEEP, D3D12_STENCIL_OP_KEEP, D3D12_COMPARISON_FUNC_ALWAYS };
+		desc.InputLayout                               = {};
+		desc.IBStripCutValue                           = D3D12_INDEX_BUFFER_STRIP_CUT_VALUE_DISABLED;
+		desc.PrimitiveTopologyType                     = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+		desc.NumRenderTargets                          = 1;
+		desc.RTVFormats[0]                             = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+		desc.DSVFormat                                 = DXGI_FORMAT_UNKNOWN;
+		desc.SampleDesc                                = { 1, 0 };
+		desc.NodeMask                                  = 0;
+		desc.CachedPSO                                 = {};
+		desc.Flags                                     = D3D12_PIPELINE_STATE_FLAG_NONE;
+		
+		ID3D12PipelineState* pipeline_state = nullptr;
+		if (FAILED(device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(&pipeline_state)))) {
+			DebugAssertAlways("Failed to create graphics pipeline state.");
+			return nullptr;
+		}
+		context->pipeline_state = pipeline_state;
+		context->root_signature = root_signature;
 	}
 	
 	return context;
@@ -307,10 +390,14 @@ void WindowSwapChainEndFrame(WindowSwapChain* api_swap_chain, GraphicsContext* a
 	RecordContext record_context;
 	record_context.alloc = alloc;
 	
-	CmdClearRenderTarget(&record_context, back_buffer.descriptor.ptr);
-	ReplayRecordContext(context, &record_context);
+	command_list->SetGraphicsRootSignature(context->root_signature);
+	command_list->SetPipelineState(context->pipeline_state);
 	
-	command_list->OMSetRenderTargets(1, &back_buffer.descriptor, false, nullptr);
+	CmdClearRenderTarget(&record_context, back_buffer.descriptor.ptr);
+	CmdSetRenderTargets(&record_context, { &back_buffer.descriptor.ptr, 1 });
+	CmdSetViewportAndScissor(&record_context, swap_chain->width, swap_chain->height);
+	CmdDrawInstanced(&record_context, 3);
+	ReplayRecordContext(context, &record_context);
 	
 	ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), context->command_list);
 	

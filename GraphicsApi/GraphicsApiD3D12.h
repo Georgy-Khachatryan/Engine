@@ -23,6 +23,9 @@ static void SafeRelease(ResourceT*& resource) {
 }
 
 struct GraphicsContextD3D12 : GraphicsContext {
+	ID3D12RootSignature* root_signature = nullptr;
+	ID3D12PipelineState* pipeline_state = nullptr;
+	
 	ID3D12Fence* frame_sync_fence = nullptr;
 	u64 frame_index = 0;
 	
