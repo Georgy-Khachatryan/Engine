@@ -26,7 +26,7 @@ GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
 		DebugAssertAlways("D3D12CreateDevice failed.");
 		return nullptr;
 	}
-	context->device.d3d12 = device;
+	context->device = device;
 	
 	
 	{
@@ -41,7 +41,7 @@ GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
 			DebugAssertAlways("CreateDescriptorHeap failed.");
 			return nullptr;
 		}
-		context->resource_descriptor_heap.d3d12 = resource_descriptor_heap;
+		context->resource_descriptor_heap = resource_descriptor_heap;
 		
 		u32* free_indices = (u32*)alloc->Allocate(heap_desc.NumDescriptors * sizeof(u32), alignof(u32));
 		context->free_indices     = free_indices;
@@ -64,7 +64,7 @@ GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
 			DebugAssertAlways("CreateDescriptorHeap failed.");
 			return nullptr;
 		}
-		context->rtv_descriptor_heap.d3d12 = rtv_descriptor_heap;
+		context->rtv_descriptor_heap = rtv_descriptor_heap;
 	}
 	
 	
@@ -80,7 +80,7 @@ GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
 			DebugAssertAlways("CreateCommandQueue failed.");
 			return nullptr;
 		}
-		context->graphics_command_queue.d3d12 = queue;
+		context->graphics_command_queue = queue;
 	}
 	
 	
@@ -115,12 +115,12 @@ GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
 	{
 		ImGui_ImplDX12_InitInfo init_info = {};
 		init_info.Device            = device;
-		init_info.CommandQueue      = context->graphics_command_queue.d3d12;
+		init_info.CommandQueue      = context->graphics_command_queue;
 		init_info.NumFramesInFlight = number_of_frames_in_flight;
 		init_info.RTVFormat         = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
 		init_info.DSVFormat         = DXGI_FORMAT_UNKNOWN;
 		init_info.UserData          = context;
-		init_info.SrvDescriptorHeap = context->resource_descriptor_heap.d3d12;
+		init_info.SrvDescriptorHeap = context->resource_descriptor_heap;
 		
 		init_info.SrvDescriptorAllocFn = [](ImGui_ImplDX12_InitInfo* init_info, D3D12_CPU_DESCRIPTOR_HANDLE* out_cpu_desc_handle, D3D12_GPU_DESCRIPTOR_HANDLE* out_gpu_desc_handle) {
 			auto* context = (GraphicsContextD3D12*)init_info->UserData;
@@ -128,10 +128,10 @@ GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
 			DebugAssert(context->free_index_count != 0, "Resource descriptor heap is exhausted.");
 			u32 index = context->free_indices[--context->free_index_count];
 			
-			auto* resource_descriptor_heap = context->resource_descriptor_heap.d3d12;
+			auto* resource_descriptor_heap = context->resource_descriptor_heap;
 			u64 cpu_heap_base = resource_descriptor_heap->GetCPUDescriptorHandleForHeapStart().ptr;
 			u64 gpu_heap_base = resource_descriptor_heap->GetGPUDescriptorHandleForHeapStart().ptr;
-			u32 heap_increment = context->device.d3d12->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+			u32 heap_increment = context->device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 			
 			out_cpu_desc_handle->ptr = cpu_heap_base + index * heap_increment;
 			out_gpu_desc_handle->ptr = gpu_heap_base + index * heap_increment;
@@ -140,9 +140,9 @@ GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
 		init_info.SrvDescriptorFreeFn = [](ImGui_ImplDX12_InitInfo* init_info, D3D12_CPU_DESCRIPTOR_HANDLE cpu_desc_handle, D3D12_GPU_DESCRIPTOR_HANDLE) {
 			auto* context = (GraphicsContextD3D12*)init_info->UserData;
 			
-			auto* resource_descriptor_heap = context->resource_descriptor_heap.d3d12;
+			auto* resource_descriptor_heap = context->resource_descriptor_heap;
 			u64 cpu_heap_base  = resource_descriptor_heap->GetCPUDescriptorHandleForHeapStart().ptr;
-			u32 heap_increment = context->device.d3d12->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+			u32 heap_increment = context->device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 			
 			u32 index = (u32)((cpu_desc_handle.ptr - cpu_heap_base) / heap_increment);
 			context->free_indices[context->free_index_count++] = index;
@@ -173,15 +173,20 @@ GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
 			return nullptr;
 		}
 		
-		auto bytecode_vs = CompileShader(shader_compiler, alloc, "DrawTriangle.hlsl"_sl, ShaderType::VertexShader);
-		auto bytecode_ps = CompileShader(shader_compiler, alloc, "DrawTriangle.hlsl"_sl, ShaderType::PixelShader);
+		FixedCapacityArray<String, 2> defines;
+		ArrayAppend(defines, "RED_COLOR"_sl);
+		ArrayAppend(defines, "BLUE_COLOR"_sl);
+		
+		ShaderDefinition shader;
+		shader.filename = "DrawTriangle.hlsl"_sl;
+		shader.defines  = defines;
+		
+		auto bytecode      = CompileShader(shader_compiler, &shader, 0x0, ShaderTypeMask::PixelShader | ShaderTypeMask::VertexShader);
+		auto bytecode_red  = CompileShader(shader_compiler, &shader, 0x1, ShaderTypeMask::PixelShader | ShaderTypeMask::VertexShader);
+		auto bytecode_blue = CompileShader(shader_compiler, &shader, 0x2, ShaderTypeMask::PixelShader | ShaderTypeMask::VertexShader);
 		
 		D3D12_GRAPHICS_PIPELINE_STATE_DESC desc = {};
 		desc.pRootSignature                            = root_signature;
-		desc.VS.pShaderBytecode                        = bytecode_vs.data;
-		desc.VS.BytecodeLength                         = bytecode_vs.count;
-		desc.PS.pShaderBytecode                        = bytecode_ps.data;
-		desc.PS.BytecodeLength                         = bytecode_ps.count;
 		desc.BlendState.AlphaToCoverageEnable          = false;
 		desc.BlendState.IndependentBlendEnable         = false;
 		desc.BlendState.RenderTarget[0].BlendEnable    = true;
@@ -223,13 +228,39 @@ GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
 		desc.CachedPSO                                 = {};
 		desc.Flags                                     = D3D12_PIPELINE_STATE_FLAG_NONE;
 		
+		context->root_signature = root_signature;
+		
 		ID3D12PipelineState* pipeline_state = nullptr;
+		
+		desc.VS.pShaderBytecode = bytecode[(u32)ShaderType::VertexShader].data;
+		desc.VS.BytecodeLength  = bytecode[(u32)ShaderType::VertexShader].count;
+		desc.PS.pShaderBytecode = bytecode[(u32)ShaderType::PixelShader].data;
+		desc.PS.BytecodeLength  = bytecode[(u32)ShaderType::PixelShader].count;
 		if (FAILED(device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(&pipeline_state)))) {
 			DebugAssertAlways("Failed to create graphics pipeline state.");
 			return nullptr;
 		}
-		context->pipeline_state = pipeline_state;
-		context->root_signature = root_signature;
+		context->pipeline_state[0] = pipeline_state;
+		
+		desc.VS.pShaderBytecode = bytecode_red[(u32)ShaderType::VertexShader].data;
+		desc.VS.BytecodeLength  = bytecode_red[(u32)ShaderType::VertexShader].count;
+		desc.PS.pShaderBytecode = bytecode_red[(u32)ShaderType::PixelShader].data;
+		desc.PS.BytecodeLength  = bytecode_red[(u32)ShaderType::PixelShader].count;
+		if (FAILED(device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(&pipeline_state)))) {
+			DebugAssertAlways("Failed to create graphics pipeline state.");
+			return nullptr;
+		}
+		context->pipeline_state[1] = pipeline_state;
+		
+		desc.VS.pShaderBytecode = bytecode_blue[(u32)ShaderType::VertexShader].data;
+		desc.VS.BytecodeLength  = bytecode_blue[(u32)ShaderType::VertexShader].count;
+		desc.PS.pShaderBytecode = bytecode_blue[(u32)ShaderType::PixelShader].data;
+		desc.PS.BytecodeLength  = bytecode_blue[(u32)ShaderType::PixelShader].count;
+		if (FAILED(device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(&pipeline_state)))) {
+			DebugAssertAlways("Failed to create graphics pipeline state.");
+			return nullptr;
+		}
+		context->pipeline_state[2] = pipeline_state;
 	}
 	
 	return context;
@@ -243,17 +274,17 @@ void ReleaseGraphicsContext(GraphicsContext* api_context) {
 	SafeRelease(context->command_list);
 	for (auto& command_allocator : context->command_allocators) SafeRelease(command_allocator);
 	SafeRelease(context->frame_sync_fence);
-	SafeRelease(context->rtv_descriptor_heap.d3d12);
-	SafeRelease(context->resource_descriptor_heap.d3d12);
-	SafeRelease(context->graphics_command_queue.d3d12);
-	SafeRelease(context->device.d3d12);
+	SafeRelease(context->rtv_descriptor_heap);
+	SafeRelease(context->resource_descriptor_heap);
+	SafeRelease(context->graphics_command_queue);
+	SafeRelease(context->device);
 }
 
 
 static void CreateSwapChainBackBuffers(WindowSwapChainD3D12* swap_chain, GraphicsContextD3D12* context) {
 	auto* dxgi_swap_chain = swap_chain->dxgi_swap_chain;
-	auto* device = context->device.d3d12;
-	auto* rtv_descriptor_heap = context->rtv_descriptor_heap.d3d12;
+	auto* device = context->device;
+	auto* rtv_descriptor_heap = context->rtv_descriptor_heap;
 	
 	u64 heap_base = rtv_descriptor_heap->GetCPUDescriptorHandleForHeapStart().ptr;
 	u32 heap_increment = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
@@ -302,7 +333,7 @@ WindowSwapChain* CreateWindowSwapChain(StackAllocator* alloc, GraphicsContext* a
 	swap_chain_desc.Flags       = 0;
 	
 	IDXGISwapChain1* dxgi_swap_chain_1 = nullptr;
-	if (FAILED(dxgi_factory_4->CreateSwapChainForHwnd(context->graphics_command_queue.d3d12, (HWND)hwnd, &swap_chain_desc, nullptr, nullptr, &dxgi_swap_chain_1))) {
+	if (FAILED(dxgi_factory_4->CreateSwapChainForHwnd(context->graphics_command_queue, (HWND)hwnd, &swap_chain_desc, nullptr, nullptr, &dxgi_swap_chain_1))) {
 		DebugAssertAlways("CreateSwapChainForHwnd failed.");
 		return nullptr;
 	}
@@ -357,7 +388,7 @@ void WindowSwapChainBeginFrame(WindowSwapChain* api_swap_chain, GraphicsContext*
 	
 	command_allocator->Reset();
 	command_list->Reset(command_allocator, nullptr);
-	command_list->SetDescriptorHeaps(1, &context->resource_descriptor_heap.d3d12);
+	command_list->SetDescriptorHeaps(1, &context->resource_descriptor_heap);
 	
 	ImGui_ImplDX12_NewFrame();
 }
@@ -391,7 +422,7 @@ void WindowSwapChainEndFrame(WindowSwapChain* api_swap_chain, GraphicsContext* a
 	record_context.alloc = alloc;
 	
 	command_list->SetGraphicsRootSignature(context->root_signature);
-	command_list->SetPipelineState(context->pipeline_state);
+	command_list->SetPipelineState(context->pipeline_state[(context->frame_index / 128) % 3]);
 	
 	CmdClearRenderTarget(&record_context, back_buffer.descriptor.ptr);
 	CmdSetRenderTargets(&record_context, { &back_buffer.descriptor.ptr, 1 });
@@ -411,10 +442,11 @@ void WindowSwapChainEndFrame(WindowSwapChain* api_swap_chain, GraphicsContext* a
 	
 	command_list->Close();
 	
-	auto* command_queue = context->graphics_command_queue.d3d12;
+	auto* command_queue = context->graphics_command_queue;
 	command_queue->ExecuteCommandLists(1, (ID3D12CommandList**)&command_list);
 	
-	if (FAILED(swap_chain->dxgi_swap_chain->Present(0, 0))) {
+	u32 sync_interval = 1;
+	if (FAILED(swap_chain->dxgi_swap_chain->Present(sync_interval, 0))) {
 		DebugAssertAlways("Present failed.");
 	}
 	command_queue->Signal(context->frame_sync_fence, context->frame_index);

@@ -23,6 +23,14 @@ InputPS MainVS(uint vertex_id : SV_VertexID) {
 	output.position = positions[vertex_id];
 	output.color    = colors[vertex_id];
 	
+#if defined(RED_COLOR)
+	output.color = float3(1.0, 0.0, 0.0);
+#endif // defined(RED_COLOR)
+	
+#if defined(BLUE_COLOR)
+	output.color = float3(0.0, 0.0, 1.0);
+#endif // defined(BLUE_COLOR)
+	
 	return output;
 }
 #endif // defined(VERTEX_SHADER)

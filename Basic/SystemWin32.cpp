@@ -3,6 +3,7 @@
 #include "BasicFiles.h"
 #include "BasicString.h"
 
+#define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 
 void* SystemAllocateAddressSpace(u64 reserved_size) {
@@ -122,5 +123,13 @@ String SystemReadFileToString(StackAllocator* alloc, String path) {
 	result.data[result.count] = '\0';
 	
 	return result;
+}
+
+
+void SystemWriteToConsole(StackAllocator* alloc, String message) {
+	TempAllocationScope(alloc);
+	
+	auto message_utf16 = StringUtf8ToUtf16(alloc, message);
+	WriteConsoleW(GetStdHandle(STD_ERROR_HANDLE), message_utf16.data, (u32)message_utf16.count, nullptr, nullptr);
 }
 

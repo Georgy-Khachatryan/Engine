@@ -1,34 +1,12 @@
 #pragma once
 #include "Basic/Basic.h"
+#include "GraphicsApiTypes.h"
 
 compile_const u32 number_of_frames_in_flight = 2;
 compile_const u32 number_of_back_buffers     = 3;
 
-enum struct ShaderType : u32 {
-	ComputeShader = 0,
-	VertexShader  = 1,
-	PixelShader   = 2,
-	
-	Count
-};
-
-union NativeDevice {
-	struct ID3D12Device4* d3d12 = nullptr;
-};
-
-union NativeCommandQueue {
-	struct ID3D12CommandQueue* d3d12 = nullptr;
-};
-
-union NativeDescriptorHeap {
-	struct ID3D12DescriptorHeap* d3d12 = nullptr;
-};
-
 struct GraphicsContext {
-	NativeDevice device;
-	NativeCommandQueue graphics_command_queue;
-	NativeDescriptorHeap resource_descriptor_heap;
-	NativeDescriptorHeap rtv_descriptor_heap;
+	
 };
 
 struct WindowSwapChain {
@@ -45,3 +23,4 @@ void ReleaseWindowSwapChain(WindowSwapChain* swap_chain, GraphicsContext* contex
 void ResizeWindowSwapChain(WindowSwapChain* swap_chain, GraphicsContext* context, u32 width, u32 height);
 void WindowSwapChainBeginFrame(WindowSwapChain* swap_chain, GraphicsContext* context);
 void WindowSwapChainEndFrame(WindowSwapChain* swap_chain, GraphicsContext* context, StackAllocator* alloc);
+

@@ -21,3 +21,5 @@ bool SystemReadFile(FileHandle handle, void* data, u64 size, u64 offset);
 u64  SystemFileSize(FileHandle handle);
 
 String SystemReadFileToString(StackAllocator* alloc, String path);
+
+void SystemWriteToConsole(StackAllocator* alloc, String message);

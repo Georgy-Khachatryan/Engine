@@ -2,6 +2,7 @@
 #include "Basic/Basic.h"
 #include "GraphicsApi.h"
 
+#define WIN32_LEAN_AND_MEAN
 #include <d3d12.h>
 #include <dxgi1_4.h>
 
@@ -23,8 +24,13 @@ static void SafeRelease(ResourceT*& resource) {
 }
 
 struct GraphicsContextD3D12 : GraphicsContext {
+	ID3D12Device4*        device                   = nullptr;
+	ID3D12CommandQueue*   graphics_command_queue   = nullptr;
+	ID3D12DescriptorHeap* resource_descriptor_heap = nullptr;
+	ID3D12DescriptorHeap* rtv_descriptor_heap      = nullptr;
+	
 	ID3D12RootSignature* root_signature = nullptr;
-	ID3D12PipelineState* pipeline_state = nullptr;
+	ID3D12PipelineState* pipeline_state[3] = {};
 	
 	ID3D12Fence* frame_sync_fence = nullptr;
 	u64 frame_index = 0;
