@@ -8,6 +8,8 @@
 
 #include <SDK/imgui/backends/imgui_impl_dx12.h>
 
+static ShaderCompiler* shader_compiler = nullptr;
+
 static void WaitForLastFrame(GraphicsContextD3D12* context) {
 	if (context->frame_index < 1) return;
 	context->frame_sync_fence->SetEventOnCompletion(context->frame_index - 1, nullptr);
@@ -17,6 +19,8 @@ static void WaitForNextFrame(GraphicsContextD3D12* context) {
 	if (context->frame_index < number_of_frames_in_flight) return;
 	context->frame_sync_fence->SetEventOnCompletion(context->frame_index - number_of_frames_in_flight, nullptr);
 }
+
+static void CreateTestPipelines(GraphicsContextD3D12* api_context);
 
 GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
 	auto* context = NewFromAlloc(alloc, GraphicsContextD3D12);
@@ -151,11 +155,18 @@ GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
 	}
 	
 	{
-		TempAllocationScope(alloc);
-		
-		auto* shader_compiler = CreateShaderCompiler(alloc);
-		defer{ ReleaseShaderCompiler(shader_compiler); };
-		
+		shader_compiler = CreateShaderCompiler(alloc);
+		CreateTestPipelines(context);
+	}
+	
+	return context;
+}
+
+static void CreateTestPipelines(GraphicsContextD3D12* context) {
+	auto* device = context->device;
+	
+	auto* root_signature = context->root_signature;
+	if (root_signature == nullptr) {
 		D3D12_VERSIONED_ROOT_SIGNATURE_DESC rs_desc = {};
 		rs_desc.Version  = D3D_ROOT_SIGNATURE_VERSION_1_2;
 		rs_desc.Desc_1_2 = {};
@@ -163,113 +174,113 @@ GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
 		ID3DBlob* rs_blob = nullptr;
 		if (FAILED(D3D12SerializeVersionedRootSignature(&rs_desc, &rs_blob, nullptr))) {
 			DebugAssertAlways("Failed to serialize root signature.");
-			return nullptr;
+			return;
 		}
 		defer{ SafeRelease(rs_blob); };
 		
-		ID3D12RootSignature* root_signature = nullptr;
 		if (FAILED(device->CreateRootSignature(0, rs_blob->GetBufferPointer(), rs_blob->GetBufferSize(), IID_PPV_ARGS(&root_signature)))) {
 			DebugAssertAlways("Failed to create root signature.");
-			return nullptr;
+			return;
 		}
-		
-		FixedCapacityArray<String, 2> defines;
-		ArrayAppend(defines, "RED_COLOR"_sl);
-		ArrayAppend(defines, "BLUE_COLOR"_sl);
-		
-		ShaderDefinition shader;
-		shader.filename = "DrawTriangle.hlsl"_sl;
-		shader.defines  = defines;
-		
-		auto bytecode      = CompileShader(shader_compiler, &shader, 0x0, ShaderTypeMask::PixelShader | ShaderTypeMask::VertexShader);
-		auto bytecode_red  = CompileShader(shader_compiler, &shader, 0x1, ShaderTypeMask::PixelShader | ShaderTypeMask::VertexShader);
-		auto bytecode_blue = CompileShader(shader_compiler, &shader, 0x2, ShaderTypeMask::PixelShader | ShaderTypeMask::VertexShader);
-		
-		D3D12_GRAPHICS_PIPELINE_STATE_DESC desc = {};
-		desc.pRootSignature                            = root_signature;
-		desc.BlendState.AlphaToCoverageEnable          = false;
-		desc.BlendState.IndependentBlendEnable         = false;
-		desc.BlendState.RenderTarget[0].BlendEnable    = true;
-		desc.BlendState.RenderTarget[0].SrcBlend       = D3D12_BLEND_SRC_ALPHA;
-		desc.BlendState.RenderTarget[0].DestBlend      = D3D12_BLEND_INV_SRC_ALPHA;
-		desc.BlendState.RenderTarget[0].BlendOp        = D3D12_BLEND_OP_ADD;
-		desc.BlendState.RenderTarget[0].SrcBlendAlpha  = D3D12_BLEND_SRC_ALPHA;
-		desc.BlendState.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_INV_SRC_ALPHA;
-		desc.BlendState.RenderTarget[0].BlendOpAlpha   = D3D12_BLEND_OP_ADD;
-		desc.BlendState.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
-		desc.SampleMask                                = u32_max;
-		desc.RasterizerState.FillMode                  = D3D12_FILL_MODE_SOLID;
-		desc.RasterizerState.CullMode                  = D3D12_CULL_MODE_BACK;
-		desc.RasterizerState.FrontCounterClockwise     = true;
-		desc.RasterizerState.DepthBias                 = 0;
-		desc.RasterizerState.DepthBiasClamp            = 0.f;
-		desc.RasterizerState.SlopeScaledDepthBias      = 0.f;
-		desc.RasterizerState.DepthClipEnable           = true;
-		desc.RasterizerState.MultisampleEnable         = false;
-		desc.RasterizerState.AntialiasedLineEnable     = false;
-		desc.RasterizerState.ForcedSampleCount         = 0;
-		desc.RasterizerState.ConservativeRaster        = D3D12_CONSERVATIVE_RASTERIZATION_MODE_OFF;
-		desc.DepthStencilState.DepthEnable             = false;
-		desc.DepthStencilState.DepthWriteMask          = D3D12_DEPTH_WRITE_MASK_ZERO;
-		desc.DepthStencilState.DepthFunc               = D3D12_COMPARISON_FUNC_ALWAYS;
-		desc.DepthStencilState.StencilEnable           = false;
-		desc.DepthStencilState.StencilReadMask         = 0;
-		desc.DepthStencilState.StencilWriteMask        = 0;
-		desc.DepthStencilState.FrontFace               = { D3D12_STENCIL_OP_KEEP, D3D12_STENCIL_OP_KEEP, D3D12_STENCIL_OP_KEEP, D3D12_COMPARISON_FUNC_ALWAYS };
-		desc.DepthStencilState.BackFace                = { D3D12_STENCIL_OP_KEEP, D3D12_STENCIL_OP_KEEP, D3D12_STENCIL_OP_KEEP, D3D12_COMPARISON_FUNC_ALWAYS };
-		desc.InputLayout                               = {};
-		desc.IBStripCutValue                           = D3D12_INDEX_BUFFER_STRIP_CUT_VALUE_DISABLED;
-		desc.PrimitiveTopologyType                     = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-		desc.NumRenderTargets                          = 1;
-		desc.RTVFormats[0]                             = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
-		desc.DSVFormat                                 = DXGI_FORMAT_UNKNOWN;
-		desc.SampleDesc                                = { 1, 0 };
-		desc.NodeMask                                  = 0;
-		desc.CachedPSO                                 = {};
-		desc.Flags                                     = D3D12_PIPELINE_STATE_FLAG_NONE;
 		
 		context->root_signature = root_signature;
-		
-		ID3D12PipelineState* pipeline_state = nullptr;
-		
-		desc.VS.pShaderBytecode = bytecode[(u32)ShaderType::VertexShader].data;
-		desc.VS.BytecodeLength  = bytecode[(u32)ShaderType::VertexShader].count;
-		desc.PS.pShaderBytecode = bytecode[(u32)ShaderType::PixelShader].data;
-		desc.PS.BytecodeLength  = bytecode[(u32)ShaderType::PixelShader].count;
-		if (FAILED(device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(&pipeline_state)))) {
-			DebugAssertAlways("Failed to create graphics pipeline state.");
-			return nullptr;
-		}
-		context->pipeline_state[0] = pipeline_state;
-		
-		desc.VS.pShaderBytecode = bytecode_red[(u32)ShaderType::VertexShader].data;
-		desc.VS.BytecodeLength  = bytecode_red[(u32)ShaderType::VertexShader].count;
-		desc.PS.pShaderBytecode = bytecode_red[(u32)ShaderType::PixelShader].data;
-		desc.PS.BytecodeLength  = bytecode_red[(u32)ShaderType::PixelShader].count;
-		if (FAILED(device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(&pipeline_state)))) {
-			DebugAssertAlways("Failed to create graphics pipeline state.");
-			return nullptr;
-		}
-		context->pipeline_state[1] = pipeline_state;
-		
-		desc.VS.pShaderBytecode = bytecode_blue[(u32)ShaderType::VertexShader].data;
-		desc.VS.BytecodeLength  = bytecode_blue[(u32)ShaderType::VertexShader].count;
-		desc.PS.pShaderBytecode = bytecode_blue[(u32)ShaderType::PixelShader].data;
-		desc.PS.BytecodeLength  = bytecode_blue[(u32)ShaderType::PixelShader].count;
-		if (FAILED(device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(&pipeline_state)))) {
-			DebugAssertAlways("Failed to create graphics pipeline state.");
-			return nullptr;
-		}
-		context->pipeline_state[2] = pipeline_state;
 	}
 	
-	return context;
+	
+	static FixedCapacityArray<String, 2> defines;
+	if (defines.count == 0) {
+		ArrayAppend(defines, "RED_COLOR"_sl);
+		ArrayAppend(defines, "BLUE_COLOR"_sl);
+	}
+	static ShaderDefinition shader = { "DrawTriangle.hlsl"_sl, defines, };
+	
+	auto bytecode      = CompileShader(shader_compiler, &shader, 0x0, ShaderTypeMask::PixelShader | ShaderTypeMask::VertexShader);
+	auto bytecode_red  = CompileShader(shader_compiler, &shader, 0x1, ShaderTypeMask::PixelShader | ShaderTypeMask::VertexShader);
+	auto bytecode_blue = CompileShader(shader_compiler, &shader, 0x2, ShaderTypeMask::PixelShader | ShaderTypeMask::VertexShader);
+	
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC desc = {};
+	desc.pRootSignature                            = root_signature;
+	desc.BlendState.AlphaToCoverageEnable          = false;
+	desc.BlendState.IndependentBlendEnable         = false;
+	desc.BlendState.RenderTarget[0].BlendEnable    = true;
+	desc.BlendState.RenderTarget[0].SrcBlend       = D3D12_BLEND_SRC_ALPHA;
+	desc.BlendState.RenderTarget[0].DestBlend      = D3D12_BLEND_INV_SRC_ALPHA;
+	desc.BlendState.RenderTarget[0].BlendOp        = D3D12_BLEND_OP_ADD;
+	desc.BlendState.RenderTarget[0].SrcBlendAlpha  = D3D12_BLEND_SRC_ALPHA;
+	desc.BlendState.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_INV_SRC_ALPHA;
+	desc.BlendState.RenderTarget[0].BlendOpAlpha   = D3D12_BLEND_OP_ADD;
+	desc.BlendState.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+	desc.SampleMask                                = u32_max;
+	desc.RasterizerState.FillMode                  = D3D12_FILL_MODE_SOLID;
+	desc.RasterizerState.CullMode                  = D3D12_CULL_MODE_BACK;
+	desc.RasterizerState.FrontCounterClockwise     = true;
+	desc.RasterizerState.DepthBias                 = 0;
+	desc.RasterizerState.DepthBiasClamp            = 0.f;
+	desc.RasterizerState.SlopeScaledDepthBias      = 0.f;
+	desc.RasterizerState.DepthClipEnable           = true;
+	desc.RasterizerState.MultisampleEnable         = false;
+	desc.RasterizerState.AntialiasedLineEnable     = false;
+	desc.RasterizerState.ForcedSampleCount         = 0;
+	desc.RasterizerState.ConservativeRaster        = D3D12_CONSERVATIVE_RASTERIZATION_MODE_OFF;
+	desc.DepthStencilState.DepthEnable             = false;
+	desc.DepthStencilState.DepthWriteMask          = D3D12_DEPTH_WRITE_MASK_ZERO;
+	desc.DepthStencilState.DepthFunc               = D3D12_COMPARISON_FUNC_ALWAYS;
+	desc.DepthStencilState.StencilEnable           = false;
+	desc.DepthStencilState.StencilReadMask         = 0;
+	desc.DepthStencilState.StencilWriteMask        = 0;
+	desc.DepthStencilState.FrontFace               = { D3D12_STENCIL_OP_KEEP, D3D12_STENCIL_OP_KEEP, D3D12_STENCIL_OP_KEEP, D3D12_COMPARISON_FUNC_ALWAYS };
+	desc.DepthStencilState.BackFace                = { D3D12_STENCIL_OP_KEEP, D3D12_STENCIL_OP_KEEP, D3D12_STENCIL_OP_KEEP, D3D12_COMPARISON_FUNC_ALWAYS };
+	desc.InputLayout                               = {};
+	desc.IBStripCutValue                           = D3D12_INDEX_BUFFER_STRIP_CUT_VALUE_DISABLED;
+	desc.PrimitiveTopologyType                     = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+	desc.NumRenderTargets                          = 1;
+	desc.RTVFormats[0]                             = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+	desc.DSVFormat                                 = DXGI_FORMAT_UNKNOWN;
+	desc.SampleDesc                                = { 1, 0 };
+	desc.NodeMask                                  = 0;
+	desc.CachedPSO                                 = {};
+	desc.Flags                                     = D3D12_PIPELINE_STATE_FLAG_NONE;
+	
+	
+	ID3D12PipelineState* pipeline_state = nullptr;
+	
+	desc.VS.pShaderBytecode = bytecode[(u32)ShaderType::VertexShader].data;
+	desc.VS.BytecodeLength  = bytecode[(u32)ShaderType::VertexShader].count;
+	desc.PS.pShaderBytecode = bytecode[(u32)ShaderType::PixelShader].data;
+	desc.PS.BytecodeLength  = bytecode[(u32)ShaderType::PixelShader].count;
+	if (FAILED(device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(&pipeline_state)))) {
+		DebugAssertAlways("Failed to create graphics pipeline state.");
+		return;
+	}
+	context->pipeline_state[0] = pipeline_state;
+	
+	desc.VS.pShaderBytecode = bytecode_red[(u32)ShaderType::VertexShader].data;
+	desc.VS.BytecodeLength  = bytecode_red[(u32)ShaderType::VertexShader].count;
+	desc.PS.pShaderBytecode = bytecode_red[(u32)ShaderType::PixelShader].data;
+	desc.PS.BytecodeLength  = bytecode_red[(u32)ShaderType::PixelShader].count;
+	if (FAILED(device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(&pipeline_state)))) {
+		DebugAssertAlways("Failed to create graphics pipeline state.");
+		return;
+	}
+	context->pipeline_state[1] = pipeline_state;
+	
+	desc.VS.pShaderBytecode = bytecode_blue[(u32)ShaderType::VertexShader].data;
+	desc.VS.BytecodeLength  = bytecode_blue[(u32)ShaderType::VertexShader].count;
+	desc.PS.pShaderBytecode = bytecode_blue[(u32)ShaderType::PixelShader].data;
+	desc.PS.BytecodeLength  = bytecode_blue[(u32)ShaderType::PixelShader].count;
+	if (FAILED(device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(&pipeline_state)))) {
+		DebugAssertAlways("Failed to create graphics pipeline state.");
+		return;
+	}
+	context->pipeline_state[2] = pipeline_state;
 }
 
 void ReleaseGraphicsContext(GraphicsContext* api_context) {
 	auto* context = (GraphicsContextD3D12*)api_context;
 
 	ImGui_ImplDX12_Shutdown();
+	
+	ReleaseShaderCompiler(shader_compiler);
 	
 	SafeRelease(context->command_list);
 	for (auto& command_allocator : context->command_allocators) SafeRelease(command_allocator);
@@ -382,6 +393,11 @@ void ResizeWindowSwapChain(WindowSwapChain* api_swap_chain, GraphicsContext* api
 void WindowSwapChainBeginFrame(WindowSwapChain* api_swap_chain, GraphicsContext* api_context) {
 	auto* context = (GraphicsContextD3D12*)api_context;
 	WaitForNextFrame(context);
+	
+	if (CheckShaderFileChanges(shader_compiler)) {
+		WaitForLastFrame(context);
+		CreateTestPipelines(context);
+	}
 	
 	auto* command_allocator = context->command_allocators[context->frame_index % number_of_frames_in_flight];
 	auto* command_list = context->command_list;

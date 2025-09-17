@@ -1,4 +1,5 @@
 #include "Basic.h"
+#include "BasicArray.h"
 #include "BasicMemory.h"
 #include "BasicFiles.h"
 #include "BasicString.h"
@@ -123,6 +124,92 @@ String SystemReadFileToString(StackAllocator* alloc, String path) {
 	result.data[result.count] = '\0';
 	
 	return result;
+}
+
+
+struct DirectoryChangeTracker {
+	HANDLE directory_handle   = nullptr;
+	HANDLE io_completion_port = nullptr;
+	
+	OVERLAPPED overlapped = {};
+	
+	ArrayView<u8> buffer;
+};
+
+static bool ReadDirectoryChangesAsync(DirectoryChangeTracker* tracker) {
+	auto filter = FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_LAST_WRITE;
+	return ReadDirectoryChangesW(tracker->directory_handle, tracker->buffer.data, (DWORD)tracker->buffer.count, true, filter, nullptr, &tracker->overlapped, nullptr) != 0;
+}
+
+DirectoryChangeTracker* CreateDirectoryChangeTracker(StackAllocator* alloc, String directory_path) {
+	HANDLE directory_handle = nullptr;
+	{
+		TempAllocationScope(alloc);
+		auto directory_path_utf16 = StringUtf8ToUtf16(alloc, directory_path);
+		directory_handle = CreateFileW((wchar_t*)directory_path_utf16.data, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OVERLAPPED, nullptr);
+	}
+	if (directory_handle == INVALID_HANDLE_VALUE) return nullptr;
+	
+	auto io_completion_port = CreateIoCompletionPort(directory_handle, nullptr, 0, 1);
+	if (io_completion_port == nullptr) {
+		CloseHandle(directory_handle);
+		return nullptr;
+	}
+	
+	auto* tracker = NewFromAlloc(alloc, DirectoryChangeTracker);
+	tracker->directory_handle   = directory_handle;
+	tracker->io_completion_port = io_completion_port;
+	tracker->buffer.count = 4096;
+	tracker->buffer.data  = (u8*)alloc->Allocate(tracker->buffer.count);
+	
+	ReadDirectoryChangesAsync(tracker);
+
+	return tracker;
+}
+
+void ReleaseDirectoryChangeTracker(DirectoryChangeTracker* tracker) {
+	CloseHandle(tracker->directory_handle);
+	CloseHandle(tracker->io_completion_port);
+}
+
+static u32 CountFileNotifyRecords(u8* buffer) {
+	u32 record_count = 0;
+	
+	bool has_next_record = true;
+	while (has_next_record) {
+		auto* record = (FILE_NOTIFY_INFORMATION*)buffer;
+		has_next_record = record->NextEntryOffset != 0;
+		buffer += record->NextEntryOffset;
+		
+		record_count += 1;
+	}
+	
+	return record_count;
+}
+
+ArrayView<String> ReadDirectoryChangeEvents(StackAllocator* alloc, DirectoryChangeTracker* tracker) {
+	DWORD number_of_bytes_transfered = 0;
+	u64 completion_key = 0;
+	OVERLAPPED* overlapped = nullptr;
+	
+	bool success = GetQueuedCompletionStatus(tracker->io_completion_port, &number_of_bytes_transfered, &completion_key, &overlapped, 0) != 0;
+	if (success == false || number_of_bytes_transfered == 0) return {};
+	
+	u32 record_count = CountFileNotifyRecords(tracker->buffer.data);
+	
+	Array<String> changed_file_paths;
+	ArrayResize(changed_file_paths, alloc, record_count);
+	
+	u8* buffer = tracker->buffer.data;
+	for (auto& path : changed_file_paths) {
+		auto* record = (FILE_NOTIFY_INFORMATION*)buffer;
+		path = StringUtf16ToUtf8(alloc, StringUtf16{ (u16*)record->FileName, record->FileNameLength / sizeof(wchar_t) });
+		buffer += record->NextEntryOffset;
+	}
+	
+	ReadDirectoryChangesAsync(tracker);
+	
+	return changed_file_paths;
 }
 
 

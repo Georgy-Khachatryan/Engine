@@ -19,6 +19,7 @@ struct ShaderPermutation {
 };
 
 struct ShaderPermutationTable {
+	ShaderDefinition* definition = nullptr;
 	Array<ShaderPermutation> permutations;
 };
 
@@ -29,6 +30,7 @@ struct ShaderCompiler {
 	IDxcIncludeHandler* default_include_handler = nullptr;
 	
 	StackAllocator alloc;
+	DirectoryChangeTracker* directory_change_tracker = nullptr;
 	
 	FixedCapacityArray<ShaderPermutationTable, max_shader_count> shaders;
 };
@@ -57,11 +59,13 @@ compile_const wchar_t* shader_type_defines[(u32)ShaderType::Count] = {
 	L"PIXEL_SHADER",
 };
 
+compile_const String shader_directory_path = "./Shaders"_sl;
+
 static IDxcBlob* CompileShaderToBlob(ShaderCompiler* compiler, StackAllocator* alloc, ShaderDefinition* definition, u64 permutation, ShaderType shader_type) {
 	TempAllocationScope(alloc);
 	
 	auto filename = definition->filename;
-	auto filepath = StringFormat(alloc, "./Shaders/%.*s", (s32)filename.count, filename.data);
+	auto filepath = StringFormat(alloc, "%s/%.*s", shader_directory_path.data, (s32)filename.count, filename.data);
 	
 	auto shader_file = SystemReadFileToString(alloc, filepath);
 	if (shader_file.data == nullptr) {
@@ -107,22 +111,22 @@ static IDxcBlob* CompileShaderToBlob(ShaderCompiler* compiler, StackAllocator* a
 		return nullptr;
 	}
 	
+	
 	IDxcBlobUtf8* error_blob = nullptr;
 	result->GetOutput(DXC_OUT_ERRORS, IID_PPV_ARGS(&error_blob), nullptr);
 	defer{ SafeReleaseDXC(error_blob); };
 	
+	String compiler_message;
 	if (FAILED(status)) {
-		auto error_message = StringFormat(alloc, "Shader '%.*s' failed to compile with target '%S'. Errors:\n%.*s\n", (s32)filename.count, filename.data, target_profiles[(u32)shader_type], (s32)error_blob->GetStringLength(), (char*)error_blob->GetStringPointer());
-		SystemWriteToConsole(alloc, error_message);
-		
-		return nullptr;
+		compiler_message = StringFormat(alloc, "Shader '%.*s' failed to compile with target '%S'. Errors:\n%.*s\n", (s32)filename.count, filename.data, target_profiles[(u32)shader_type], (s32)error_blob->GetStringLength(), error_blob->GetStringPointer());
 	} else if (error_blob->GetStringLength() != 0) {
-		auto warning_message = StringFormat(alloc, "Shader '%.*s' compiled with target '%S'. Warnings:\n%.*s\n", (s32)filename.count, filename.data, target_profiles[(u32)shader_type], (s32)error_blob->GetStringLength(), (char*)error_blob->GetStringPointer());
-		SystemWriteToConsole(alloc, warning_message);
+		compiler_message = StringFormat(alloc, "Shader '%.*s' compiled with target '%S'. Warnings:\n%.*s\n", (s32)filename.count, filename.data, target_profiles[(u32)shader_type], (s32)error_blob->GetStringLength(), error_blob->GetStringPointer());
 	} else {
-		auto success_message = StringFormat(alloc, "Shader '%.*s' compiled with target '%S'.\n", (s32)filename.count, filename.data, target_profiles[(u32)shader_type]);
-		SystemWriteToConsole(alloc, success_message);
+		compiler_message = StringFormat(alloc, "Shader '%.*s' compiled with target '%S'.\n", (s32)filename.count, filename.data, target_profiles[(u32)shader_type]);
 	}
+	SystemWriteToConsole(alloc, compiler_message);
+	
+	if (FAILED(status)) return nullptr;
 	
 	
 	IDxcBlob* bytecode_blob = nullptr;
@@ -140,6 +144,7 @@ static ShaderPermutation* FindShaderPermutation(ShaderCompiler* compiler, Shader
 	auto* shader_table = definition->shader_table;
 	if (shader_table == nullptr) {
 		shader_table = &ArrayEmplace(compiler->shaders);
+		shader_table->definition = definition;
 		
 		definition->shader_table = shader_table;
 		ArrayReserve(shader_table->permutations, alloc, 4);
@@ -198,6 +203,9 @@ ShaderCompiler* CreateShaderCompiler(StackAllocator* alloc) {
 	
 	compiler->alloc = CreateStackAllocator(16 * 1024 * 1024, 64 * 1024);
 	
+	compiler->directory_change_tracker = CreateDirectoryChangeTracker(&compiler->alloc, shader_directory_path);
+	DebugAssert(compiler->directory_change_tracker != nullptr, "Failed to create shader directory change tracker.");
+	
 	DxcCreateInstance(CLSID_DxcCompiler, IID_PPV_ARGS(&compiler->dxc_compiler));
 	DxcCreateInstance(CLSID_DxcUtils, IID_PPV_ARGS(&compiler->dxc_utils));
 	compiler->dxc_utils->CreateDefaultIncludeHandler(&compiler->default_include_handler);
@@ -206,10 +214,40 @@ ShaderCompiler* CreateShaderCompiler(StackAllocator* alloc) {
 }
 
 void ReleaseShaderCompiler(ShaderCompiler* compiler) {
-	ReleaseStackAllocator(compiler->alloc);
-	
 	compiler->default_include_handler->Release();
 	compiler->dxc_utils->Release();
 	compiler->dxc_compiler->Release();
+	
+	ReleaseDirectoryChangeTracker(compiler->directory_change_tracker);
+	
+	ReleaseStackAllocator(compiler->alloc);
+}
+
+bool CheckShaderFileChanges(ShaderCompiler* compiler) {
+	auto* alloc = &compiler->alloc;
+	TempAllocationScope(alloc);
+	
+	auto changed_files = ReadDirectoryChangeEvents(alloc, compiler->directory_change_tracker);
+	
+	bool has_dirty_shaders = false;
+	for (auto& path : changed_files) {
+		ShaderPermutationTable* table = nullptr;
+		for (auto& shader : compiler->shaders) {
+			if (path == shader.definition->filename) {
+				table = &shader;
+				break;
+			}
+		}
+		
+		if (table != nullptr) {
+			for (auto& permutation : table->permutations) {
+				SafeReleaseDXC(permutation.bytecode_blob);
+			}
+			SystemWriteToConsole(alloc, StringFormat(alloc, "File Changed: %.*s\n", (s32)path.count, path.data));
+			has_dirty_shaders = true;
+		}
+	}
+	
+	return has_dirty_shaders;
 }
 

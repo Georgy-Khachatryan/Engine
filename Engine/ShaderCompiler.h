@@ -10,4 +10,4 @@ FixedCountArray<ArrayView<u8>, (u32)ShaderType::Count> CompileShader(ShaderCompi
 
 ShaderCompiler* CreateShaderCompiler(StackAllocator* alloc);
 void ReleaseShaderCompiler(ShaderCompiler* compiler);
-
+bool CheckShaderFileChanges(ShaderCompiler* compiler);
