@@ -22,12 +22,13 @@ static StackAllocatorBlock* AllocateNewBlock(u64 reserved_size, u64 committed_si
 	reserved_size  = reserved_size  < allocation_granularity ? allocation_granularity : AlignUp(reserved_size,  allocation_granularity);
 	committed_size = committed_size < allocation_granularity ? allocation_granularity : AlignUp(committed_size, allocation_granularity);
 	
-	auto* block = (StackAllocatorBlock*)SystemAllocateAddressSpace(reserved_size);
-	DebugAssert(block != nullptr, "Failed to reserve virtual address range.");
+	auto* memory = SystemAllocateAddressSpace(reserved_size);
+	DebugAssert(memory != nullptr, "Failed to reserve virtual address range.");
 	
-	bool success = SystemCommitMemoryPages(block, committed_size);
+	bool success = SystemCommitMemoryPages(memory, committed_size);
 	DebugAssert(success, "Failed to commit memory pages.");
 	
+	auto* block = NewInPlace(memory, StackAllocatorBlock);
 	block->last_block     = last_block;
 	block->allocated_size = sizeof(StackAllocatorBlock);
 	block->committed_size = committed_size;

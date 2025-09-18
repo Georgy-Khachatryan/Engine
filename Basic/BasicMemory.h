@@ -29,7 +29,8 @@ struct HeapAllocator {
 	
 	u32 padding_0 = 0;
 	HeapAllocatorBlock* free_blocks[241] = {};
-	u8 padding[80] = {};
+	void* memory = nullptr;
+	u8 padding[72] = {};
 	
 	void* Allocate(u64 size);
 	void  Deallocate(void* old_memory);

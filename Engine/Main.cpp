@@ -118,13 +118,41 @@ void BasicExamples(StackAllocator* alloc) {
 		auto heap = CreateHeapAllocator(64 * 1024);
 		defer{ ReleaseHeapAllocator(heap); };
 		
-		// heap.Allocate(3);
-		// heap.Allocate(14);
-		// heap.Allocate(127);
-		// heap.Allocate(128);
-		heap.Allocate(32 * 1024 - 24 + 8);
-		heap.Allocate(30720 - 24);
+		{
+			auto* memory0 = heap.Allocate(32 * 1024 - 40);
+			auto* memory1 = heap.Allocate(30720 - 40);
+			
+			heap.Deallocate(memory0);
+			heap.Deallocate(memory1);
+		}
 		
+		{
+			auto* memory0 = heap.Allocate(1024);
+			auto* memory1 = heap.Allocate(2048);
+			auto* memory2 = heap.Allocate(4096);
+			auto* memory3 = heap.Allocate(8192);
+			auto* memory4 = heap.Allocate(16384);
+			
+			heap.Deallocate(memory1);
+			heap.Deallocate(memory3);
+			heap.Deallocate(memory2);
+			heap.Deallocate(memory0);
+			heap.Deallocate(memory4);
+		}
+		
+		{
+			auto* memory0 = heap.Allocate(1024);
+			auto* memory1 = heap.Allocate(1024);
+			auto* memory2 = heap.Allocate(1024);
+			auto* memory3 = heap.Allocate(1024);
+			auto* memory4 = heap.Allocate(1024);
+			
+			heap.Deallocate(memory1);
+			heap.Deallocate(memory3);
+			heap.Deallocate(memory2);
+			heap.Deallocate(memory0);
+			heap.Deallocate(memory4);
+		}
 	}
 }
 
