@@ -21,6 +21,24 @@ struct StackAllocator {
 StackAllocator CreateStackAllocator(u64 reserved_size, u64 committed_size);
 void ReleaseStackAllocator(StackAllocator& alloc);
 
+struct HeapAllocatorBlock;
+
+struct HeapAllocator {
+	u32 mask_level_0 = 0;
+	u8  mask_level_1[32] = {};
+	
+	u32 padding_0 = 0;
+	HeapAllocatorBlock* free_blocks[241] = {};
+	u8 padding[80] = {};
+	
+	void* Allocate(u64 size);
+	void  Deallocate(void* old_memory);
+};
+
+HeapAllocator CreateHeapAllocator(u64 reserved_size);
+void ReleaseHeapAllocator(HeapAllocator& alloc);
+
+
 #define TempAllocationScopeNamed(name, alloc) u64 name = (alloc)->total_allocated_size; defer{ (alloc)->DeallocateToSize(name); }
 #define TempAllocationScope(alloc) TempAllocationScopeNamed(CREATE_UNIQUE_NAME(temp_allocated_size_), alloc)
 

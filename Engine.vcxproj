@@ -34,6 +34,7 @@
   <ItemGroup>
     <ClCompile Include="Basic/Assert.cpp" />
     <ClCompile Include="Basic/BasicString.cpp" />
+    <ClCompile Include="Basic/HeapAllocator.cpp" />
     <ClCompile Include="Basic/StackAllocator.cpp" />
     <ClCompile Include="Basic/SystemWin32.cpp" />
     <ClCompile Include="Engine/Main.cpp" />

@@ -113,6 +113,19 @@ void BasicExamples(StackAllocator* alloc) {
 		u32 last = ArrayLastElement(values);
 		DebugAssert(last == 9, "Incorrect last value.");
 	}
+	
+	{
+		auto heap = CreateHeapAllocator(64 * 1024);
+		defer{ ReleaseHeapAllocator(heap); };
+		
+		// heap.Allocate(3);
+		// heap.Allocate(14);
+		// heap.Allocate(127);
+		// heap.Allocate(128);
+		heap.Allocate(32 * 1024 - 24 + 8);
+		heap.Allocate(30720 - 24);
+		
+	}
 }
 
 
