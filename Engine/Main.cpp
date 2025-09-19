@@ -127,6 +127,11 @@ void BasicExamples(StackAllocator* alloc) {
 		}
 		
 		{
+			auto* memory0 = heap.Allocate(128 * 1024 - 48);
+			heap.Deallocate(memory0);
+		}
+		
+		{
 			auto* memory0 = heap.Allocate(1024);
 			auto* memory1 = heap.Allocate(2048);
 			auto* memory2 = heap.Allocate(4096);
@@ -152,6 +157,50 @@ void BasicExamples(StackAllocator* alloc) {
 			heap.Deallocate(memory2);
 			heap.Deallocate(memory0);
 			heap.Deallocate(memory4);
+		}
+		
+		{
+			auto* memory0 = heap.Allocate(1024);
+			auto* memory1 = heap.Allocate(1024);
+			auto* memory2 = heap.Allocate(1024);
+			auto* memory3 = heap.Allocate(1024);
+			auto* memory4 = heap.Allocate(1024);
+			
+			heap.Deallocate(memory1);
+			heap.Deallocate(memory3);
+			memory2 = heap.Reallocate(memory2, 1024, 1024 * 3);
+			DebugAssert(memory2 == memory1, "Reallocation failed.");
+			heap.Deallocate(memory0);
+			heap.Deallocate(memory4);
+			heap.Deallocate(memory2);
+		}
+		
+		{
+			Array<u32> values;
+			ArrayReserve(values, &heap, 10);
+			defer{ heap.Deallocate(values.data); };
+			
+			for (u32 i = 0; i < 10; i += 1) {
+				ArrayAppend(values, i);
+			}
+			
+			for (u32 i = 10; i < 20; i += 1) {
+				ArrayAppend(values, &heap, i);
+			}
+			
+			u32 first = ArrayPopFirst(values);
+			DebugAssert(first == 0, "Incorrect first value.");
+			
+			u32 last = ArrayPopLast(values);
+			DebugAssert(last == 19, "Incorrect last value.");
+			
+			ArrayEraseSwapLast(values, 2);
+			DebugAssert(values[2] == 18, "Erase swap last is incorrect.");
+			
+			ArrayEmplace(values) = 100;
+			
+			ArrayErase(values, 1);
+			DebugAssert(values[1] == 18, "Erase is incorrect.");
 		}
 	}
 }

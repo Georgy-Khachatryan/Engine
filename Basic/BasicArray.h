@@ -80,27 +80,27 @@ struct FixedCountArray {
 };
 
 
-template<typename T>
-void ArrayReserve(Array<T>& array, StackAllocator* alloc, u64 new_capacity) {
+template<typename T, typename AllocatorT>
+void ArrayReserve(Array<T>& array, AllocatorT* alloc, u64 new_capacity) {
 	if (array.capacity >= new_capacity) return;
 	array.data = (T*)alloc->Reallocate(array.data, array.capacity * sizeof(T), new_capacity * sizeof(T), alignof(T));
 	array.capacity = new_capacity;
 }
 
-template<typename T>
-void ArrayResize(Array<T>& array, StackAllocator* alloc, u64 new_count) {
+template<typename T, typename AllocatorT>
+void ArrayResize(Array<T>& array, AllocatorT* alloc, u64 new_count) {
 	ArrayReserve(array, alloc, new_count);
 	array.count = new_count;
 }
 
-template<typename T>
-void ArrayAppend(Array<T>& array, StackAllocator* alloc, const typename Array<T>::ValueType& value) {
+template<typename T, typename AllocatorT>
+void ArrayAppend(Array<T>& array, AllocatorT* alloc, const typename Array<T>::ValueType& value) {
 	if (array.count >= array.capacity) ArrayReserve(array, alloc, array.capacity ? (array.capacity * 3 / 2 + 1) : 8);
 	array[array.count++] = value;
 }
 
-template<typename T>
-T& ArrayEmplace(Array<T>& array, StackAllocator* alloc) {
+template<typename T, typename AllocatorT>
+T& ArrayEmplace(Array<T>& array, AllocatorT* alloc) {
 	if (array.count >= array.capacity) ArrayReserve(array, alloc, array.capacity ? (array.capacity * 3 / 2 + 1) : 8);
 	return array[array.count++] = {};
 }
@@ -136,8 +136,8 @@ template<typename ArrayT> typename ArrayT::ValueType ArrayPopLast(ArrayT& array)
 template<typename ArrayT> typename ArrayT::ValueType& ArrayFirstElement(ArrayT& array) { return array[0]; }
 template<typename ArrayT> typename ArrayT::ValueType& ArrayLastElement(ArrayT& array) { return array[array.count - 1]; }
 
-template<typename ArrayT>
-ArrayView<typename ArrayT::ValueType> ArrayCopy(ArrayT& array, StackAllocator* alloc) {
+template<typename ArrayT, typename AllocatorT>
+ArrayView<typename ArrayT::ValueType> ArrayCopy(ArrayT& array, AllocatorT* alloc) {
 	using ValueType = typename ArrayT::ValueType;
 	
 	ArrayView<ValueType> result;
