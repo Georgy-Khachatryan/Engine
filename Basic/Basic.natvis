@@ -49,16 +49,43 @@
 	</Type>
 	
 	
-	<Type Name="String">
-		<DisplayString>data={data,[count]s8b}, count={count}</DisplayString>
+	<Type Name="HashTableElement&lt;*&gt;">
+		<DisplayString>key={key}, value={value}, hash={hash,X}</DisplayString>
 		<Expand>
-			<Item Name="data">data,[count]s8b</Item>
+			<Item Name="key">key</Item>
+			<Item Name="value">value</Item>
+			<Item Name="hash">hash,X</Item>
+		</Expand>
+	</Type>
+	
+	<Type Name="HashTable&lt;*&gt;">
+		<DisplayString>count={count}, capacity={capacity}</DisplayString>
+		<Expand>
+			<Item Name="count">count</Item>
+			<Item Name="capacity">capacity</Item>
+			<Item Name="occupied">occupied</Item>
+			<CustomListItems>
+				<Variable Name="index" InitialValue="0"/>
+				<Loop>
+					<Break Condition="index >= capacity" />
+					<Item Condition="data[index].hash > hash_table_hash_value_deleted">data[index]</Item>
+					<Exec>index += 1</Exec>
+				</Loop>
+			</CustomListItems>
+		</Expand>
+	</Type>
+	
+	
+	<Type Name="String">
+		<DisplayString>{data,[count]s8}</DisplayString>
+		<Expand>
+			<Item Name="data">data,[count]s8</Item>
 			<Item Name="count">count</Item>
 		</Expand>
 	</Type>
 	
 	<Type Name="StringUtf16">
-		<DisplayString>data={data,[count]su}, count={count}</DisplayString>
+		<DisplayString>{data,[count]su}</DisplayString>
 		<Expand>
 			<Item Name="data">data,[count]su</Item>
 			<Item Name="count">count</Item>

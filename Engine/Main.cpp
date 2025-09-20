@@ -2,6 +2,7 @@
 #include "Basic/BasicMemory.h"
 #include "Basic/BasicArray.h"
 #include "Basic/BasicString.h"
+#include "Basic/BasicHashTable.h"
 #include "SystemWindow.h"
 #include "GraphicsApi/GraphicsApi.h"
 
@@ -201,6 +202,58 @@ void BasicExamples(StackAllocator* alloc) {
 			
 			ArrayErase(values, 1);
 			DebugAssert(values[1] == 18, "Erase is incorrect.");
+		}
+	}
+	
+	{
+		auto heap = CreateHeapAllocator(64 * 1024);
+		defer{ ReleaseHeapAllocator(heap); };
+		
+		{
+			HashTable<u64, u64> hash_table;
+			HashTableReserve(hash_table, &heap, 128);
+			defer{ HashTableDeallocate(hash_table, &heap); };
+			
+			for (u64 i = 0; i < 128; i += 1) {
+				HashTableAddOrFind(hash_table, &heap, i, i);
+			}
+			
+			for (u64 i = 0; i < 128; i += 1) {
+				u64 value = HashTableFind(hash_table, i)->value;
+				DebugAssert(value == i, "Failed to find an item");
+			}
+			
+			for (u64 i = 0; i < 128; i += 1) {
+				HashTableRemove(hash_table, i);
+			}
+		}
+		
+		{
+			HashTable<String, u64> hash_table;
+			HashTableReserve(hash_table, &heap, 128);
+			defer{ HashTableDeallocate(hash_table, &heap); };
+			
+			TempAllocationScope(alloc);
+			
+			Array<String> keys;
+			ArrayResize(keys, alloc, 128);
+			
+			for (u64 i = 0; i < 128; i += 1) {
+				keys[i] = StringFormat(alloc, "Key: %llu", i);
+			}
+			
+			for (u64 i = 0; i < 128; i += 1) {
+				HashTableAddOrFind(hash_table, &heap, keys[i], i);
+			}
+			
+			for (u64 i = 0; i < 128; i += 1) {
+				u64 value = HashTableFind(hash_table, keys[i])->value;
+				DebugAssert(value == i, "Failed to find an item");
+			}
+			
+			for (u64 i = 0; i < 128; i += 1) {
+				HashTableRemove(hash_table, keys[i]);
+			}
 		}
 	}
 }

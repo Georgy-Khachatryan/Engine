@@ -27,3 +27,6 @@ StringUtf16 StringUtf8ToUtf16(StackAllocator* alloc, StringUtf8  string);
 String StringFormatV(StackAllocator* alloc, const char* format, va_list args);
 String StringFormat(StackAllocator* alloc, const char* format, ...);
 
+u64 ComputeHash(const u8* data, u64 count, u64 seed = 0);
+u64 ComputeHash(String string);
+

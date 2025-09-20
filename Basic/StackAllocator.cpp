@@ -1,4 +1,5 @@
 #include "BasicMemory.h"
+#include "BasicMath.h"
 
 struct StackAllocatorBlock {
 	StackAllocatorBlock* last_block = nullptr;
@@ -6,15 +7,6 @@ struct StackAllocatorBlock {
 	u64 committed_size = 0;
 	u64 allocated_size = 0;
 };
-
-static bool IsPowerOfTwo(u64 value) {
-	return value != 0 && (value & (value - 1)) == 0;
-}
-
-static u64 AlignUp(u64 size, u64 alignment) {
-	DebugAssert(IsPowerOfTwo(alignment), "Invalid alignment '0x%llX'. Alignment must be a power of 2.", alignment);
-	return (size + alignment - 1) & ~(alignment - 1);
-}
 
 compile_const u64 allocation_granularity = 64 * 1024;
 

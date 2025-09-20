@@ -1,10 +1,11 @@
 #include "BasicMemory.h"
-#include <intrin.h>
+#include "BasicMath.h"
 
 compile_const u64 allocation_granularity = 64 * 1024;
 compile_const u64 minimum_alignment_bits = 3;
 compile_const u64 minimum_alignment = (1ull << minimum_alignment_bits);
 compile_const u64 maximum_size      = (1ull << 31) - 1; // Limited by block sizes in HeapAllocatorBlockHeader.
+static_assert(sizeof(HeapAllocator) == 1712, "Incorrect HeapAllocator size.");
 
 struct HeapAllocatorBlockHeader {
 	u32 is_free_block   : 1;
@@ -35,20 +36,6 @@ struct HeapAllocatorPage {
 };
 static_assert(sizeof(HeapAllocatorPage) == 8, "Incorrect HeapAllocatorPage size.");
 
-static bool IsPowerOfTwo(u64 value) {
-	return value != 0 && (value & (value - 1)) == 0;
-}
-
-static u64 AlignUp(u64 size, u64 alignment) {
-	DebugAssert(IsPowerOfTwo(alignment), "Invalid alignment '0x%llX'. Alignment must be a power of 2.", alignment);
-	return (size + alignment - 1) & ~(alignment - 1);
-}
-
-static u32 FirstBitLowU32(u32 mask) {
-	return _tzcnt_u32(mask);
-}
-
-static_assert(sizeof(HeapAllocator) == 1712, "Incorrect HeapAllocator size.");
 
 // 8 bit float binning introduced by Sebastian Aaltonen in REAC2023 "Modern Mobile Rendering @ HypeHype".
 static u32 ComputeBinIndex(u64 size, bool round_up = false) {
@@ -203,10 +190,10 @@ static void* AllocateFromHeap(HeapAllocator* heap, u64 size) {
 		u32 larger_size_mask_level_0 = (heap->mask_level_0 & (u32_max << (index_level_0 + 1)));
 		if (larger_size_mask_level_0 == 0) return nullptr;
 		
-		index_level_0 = FirstBitLowU32(larger_size_mask_level_0);
+		index_level_0 = FirstBitLow32(larger_size_mask_level_0);
 		larger_size_mask_level_1 = (u32)heap->mask_level_1[index_level_0];
 	}
-	index_level_1 = FirstBitLowU32(larger_size_mask_level_1);
+	index_level_1 = FirstBitLow32(larger_size_mask_level_1);
 	
 	
 	u32 free_bin_index = (index_level_0 << 3) | index_level_1;

@@ -49,6 +49,8 @@
     <ClInclude Include="Basic/Basic.h" />
     <ClInclude Include="Basic/BasicArray.h" />
     <ClInclude Include="Basic/BasicFiles.h" />
+    <ClInclude Include="Basic/BasicHashTable.h" />
+    <ClInclude Include="Basic/BasicMath.h" />
     <ClInclude Include="Basic/BasicMemory.h" />
     <ClInclude Include="Basic/BasicString.h" />
     <ClInclude Include="Engine/ShaderCompiler.h" />
