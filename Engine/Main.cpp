@@ -119,15 +119,15 @@ void BasicExamples(StackAllocator* alloc) {
 		defer{ ReleaseHeapAllocator(heap); };
 		
 		{
-			auto* memory0 = heap.Allocate(32 * 1024 - 40);
-			auto* memory1 = heap.Allocate(30720 - 40);
+			auto* memory0 = heap.Allocate(32 * 1024 - 8);
+			auto* memory1 = heap.Allocate(30720 - 8);
 			
 			heap.Deallocate(memory0);
 			heap.Deallocate(memory1);
 		}
 		
 		{
-			auto* memory0 = heap.Allocate(128 * 1024 - 48);
+			auto* memory0 = heap.Allocate(128 * 1024 - 16);
 			heap.Deallocate(memory0);
 		}
 		

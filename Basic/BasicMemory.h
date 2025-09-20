@@ -28,11 +28,9 @@ struct HeapAllocator {
 	u32 mask_level_0 = 0;
 	u8  mask_level_1[32] = {};
 	
-	u32 padding_0 = 0;
-	HeapAllocatorBlock* free_blocks[241] = {};
+	u32 reserved_size = 0;
+	HeapAllocatorBlock* free_blocks[208] = {}; // 208 = ComputeBinIndex(maximum_size, true);
 	HeapAllocatorPage* current_page = nullptr;
-	u64 reserved_size = 0;
-	u8 padding[64] = {};
 	
 	void* Allocate(u64 size, u64 alignment = 8);
 	void* Reallocate(void* old_memory, u64 old_size, u64 new_size, u64 alignment = 8);
