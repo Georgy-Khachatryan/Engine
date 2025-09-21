@@ -291,6 +291,13 @@ s32 main() {
 	
 	BasicExamples(&alloc);
 	
+	auto imgui_heap = CreateHeapAllocator(2 * 1024 * 1024);
+	ImGui::SetAllocatorFunctions(
+		[](u64   size,   void* heap) { return ((HeapAllocator*)heap)->Allocate(size);     },
+		[](void* memory, void* heap) { return ((HeapAllocator*)heap)->Deallocate(memory); },
+		&imgui_heap
+	);
+	
 	ImGui_ImplWin32_EnableDpiAwareness();
 	
 	ImGui::CreateContext();
@@ -334,6 +341,7 @@ s32 main() {
 		ImGui::Begin("Stats");
 		ImGui::Text("Initial Alloc Size: %llu", frame_initial_size);
 		ImGui::Text("Frame Alloc Size: %llu", frame_allocation_size);
+		ImGui::Text("ImGui Alloc Size: %llu", imgui_heap.ComputeTotalMemoryUsage());
 		ImGui::End();
 		
 		if (ImGui::IsKeyChordPressed(ImGuiMod_Alt | ImGuiKey_F4)) {

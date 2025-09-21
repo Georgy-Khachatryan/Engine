@@ -106,3 +106,5 @@ inline constexpr bool HasAllFlags(EnumTypeT mask, EnumTypeT test_pattern) { retu
 
 
 struct StackAllocator;
+struct HeapAllocator;
+

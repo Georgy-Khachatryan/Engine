@@ -80,6 +80,8 @@ static u64 AlignToNextBinSize(u64 size) {
 }
 
 static void PushFreeBlock(HeapAllocator* heap, HeapAllocatorBlock* block) {
+	DebugAssert(block->size >= sizeof(HeapAllocatorBlock), "Block is too small to be cast to HeapAllocatorBlock.");
+	
 	u32 bin_index = ComputeBinIndex(block->size);
 	u32 index_level_0 = (bin_index >> 3);
 	u32 index_level_1 = (bin_index & 0x7);
@@ -130,7 +132,7 @@ static void PopFreeBlock(HeapAllocator* heap, HeapAllocatorBlock* block, u32 bin
 }
 
 static void PushFreeBlockExcess(HeapAllocator* heap, HeapAllocatorBlock* block, u64 size) {
-	if (block->size - size <= sizeof(HeapAllocatorBlock)) return;
+	if (block->size - size < sizeof(HeapAllocatorBlock)) return;
 	
 	auto* new_block = NewInPlace((u8*)block + size, HeapAllocatorBlock);
 	new_block->size = block->size - size;
@@ -179,7 +181,7 @@ static void AllocateNewPage(HeapAllocator* heap, u64 reserved_size) {
 }
 
 static void* AllocateFromHeap(HeapAllocator* heap, u64 size) {
-	size = AlignUp(size, minimum_alignment) + sizeof(HeapAllocatorBlockHeader);
+	size = Max(AlignUp(size, minimum_alignment) + sizeof(HeapAllocatorBlockHeader), sizeof(HeapAllocatorBlock));
 	
 	u32 bin_index = ComputeBinIndex(size, true);
 	u32 index_level_0 = (bin_index >> 3);
@@ -226,7 +228,7 @@ void* HeapAllocator::Reallocate(void* old_memory, u64 old_size, u64 new_size, u6
 	if (new_size <= old_size)  return old_memory;
 	
 	DebugAssert(alignment <= minimum_alignment, "Unsupported alignment.");
-	new_size = AlignUp(new_size, minimum_alignment) + sizeof(HeapAllocatorBlockHeader);
+	new_size = Max(AlignUp(new_size, minimum_alignment) + sizeof(HeapAllocatorBlockHeader), sizeof(HeapAllocatorBlock));
 	
 	auto* block = (HeapAllocatorBlock*)((u8*)old_memory - sizeof(HeapAllocatorBlockHeader));
 	
@@ -254,10 +256,11 @@ void* HeapAllocator::Reallocate(void* old_memory, u64 old_size, u64 new_size, u6
 		}
 	}
 	
-	PushFreeBlock(this, block);
-	
 	void* new_memory = Allocate(new_size, alignment);
 	memcpy(new_memory, old_memory, old_size);
+	
+	// Must happen after we copy old_memory, otherwise we would override the first 16 bytes.
+	PushFreeBlock(this, block);
 	
 	return new_memory;
 }
@@ -307,3 +310,23 @@ void ReleaseHeapAllocator(HeapAllocator& heap) {
 		page = last_page;
 	}
 }
+
+u64 HeapAllocator::ComputeTotalMemoryUsage() {
+	auto* page = current_page;
+	
+	u64 total_memory_usage = 0;
+	while (page != nullptr) {
+		auto* last_page = page->last_page;
+		
+		auto* block = (HeapAllocatorBlock*)(page + 1);
+		while (block != nullptr) {
+			total_memory_usage += block->is_free_block ? 0 : block->size;
+			block = block->GetNextBlock();
+		}
+		
+		page = last_page;
+	}
+	
+	return total_memory_usage;
+}
+
