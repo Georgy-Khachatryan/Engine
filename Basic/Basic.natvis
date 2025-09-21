@@ -50,11 +50,10 @@
 	
 	
 	<Type Name="HashTableElement&lt;*&gt;">
-		<DisplayString>key={key}, value={value}, hash={hash,X}</DisplayString>
+		<DisplayString>key={key}, value={value}</DisplayString>
 		<Expand>
 			<Item Name="key">key</Item>
 			<Item Name="value">value</Item>
-			<Item Name="hash">hash,X</Item>
 		</Expand>
 	</Type>
 	
@@ -68,7 +67,7 @@
 				<Variable Name="index" InitialValue="0"/>
 				<Loop>
 					<Break Condition="index >= capacity" />
-					<Item Condition="data[index].hash > hash_table_hash_value_deleted">data[index]</Item>
+					<Item Condition="metadata[index] > hash_table_hash_value_deleted">data[index]</Item>
 					<Exec>index += 1</Exec>
 				</Loop>
 			</CustomListItems>

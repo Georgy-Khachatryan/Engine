@@ -23,3 +23,22 @@ inline u64 AlignUp(u64 size, u64 alignment) {
 	return (size + alignment - 1) & ~(alignment - 1);
 }
 
+template<typename T, T(FirstBitLowT)(T)>
+struct BitScanLowT {
+	explicit BitScanLowT(T mask) : mask(mask) {}
+	T mask = 0;
+	
+	struct Iterator {
+		T mask = 0;
+		
+		Iterator& operator++ () { mask &= (mask - 1); return *this; }
+		bool operator!= (const Iterator&) const { return mask != 0; }
+		T operator* () { return FirstBitLowT(mask); };
+	};
+	
+	Iterator begin() const { return Iterator{ mask }; }
+	Iterator end()   const { return {}; }
+};
+using BitScanLow   = BitScanLowT<u64, FirstBitLow>;
+using BitScanLow32 = BitScanLowT<u32, FirstBitLow32>;
+

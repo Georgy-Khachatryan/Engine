@@ -9,7 +9,7 @@
 #include <SDK/imgui/imgui.h>
 #include <SDK/imgui/backends/imgui_impl_win32.h>
 
-void BasicExamples(StackAllocator* alloc) {
+static void BasicExamples(StackAllocator* alloc) {
 	// Stack allocator:
 	{
 		TempAllocationScopeNamed(initial_size, alloc);
@@ -226,6 +226,19 @@ void BasicExamples(StackAllocator* alloc) {
 			for (u64 i = 0; i < 128; i += 1) {
 				HashTableRemove(hash_table, i);
 			}
+			
+			for (u64 i = 0; i < 128; i += 1) {
+				HashTableAddOrFind(hash_table, &heap, i, i);
+			}
+			
+			for (u64 i = 0; i < 128; i += 1) {
+				u64 value = HashTableFind(hash_table, i)->value;
+				DebugAssert(value == i, "Failed to find an item");
+			}
+			
+			for (u64 i = 0; i < 128; i += 1) {
+				HashTableRemove(hash_table, i);
+			}
 		}
 		
 		{
@@ -240,6 +253,19 @@ void BasicExamples(StackAllocator* alloc) {
 			
 			for (u64 i = 0; i < 128; i += 1) {
 				keys[i] = StringFormat(alloc, "Key: %llu", i);
+			}
+			
+			for (u64 i = 0; i < 128; i += 1) {
+				HashTableAddOrFind(hash_table, &heap, keys[i], i);
+			}
+			
+			for (u64 i = 0; i < 128; i += 1) {
+				u64 value = HashTableFind(hash_table, keys[i])->value;
+				DebugAssert(value == i, "Failed to find an item");
+			}
+			
+			for (u64 i = 0; i < 128; i += 1) {
+				HashTableRemove(hash_table, keys[i]);
 			}
 			
 			for (u64 i = 0; i < 128; i += 1) {
