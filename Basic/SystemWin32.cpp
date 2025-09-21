@@ -53,11 +53,11 @@ FileHandle SystemOpenFile(StackAllocator* alloc, String path, OpenFileFlags flag
 	
 	//
 	// - Don't support simultaneous read and write.
-	// - For read open an existing file. Allow sharing with other processes for reading.
+	// - For read open an existing file. Allow sharing with other processes for reading and writing.
 	// - For write always create a new file. Don't allow shared reading or writing.
 	//
 	switch (flags & (OpenFileFlags::Read | OpenFileFlags::Write)) {
-	case OpenFileFlags::Read:  access = GENERIC_READ;  sharing_mode = FILE_SHARE_READ; creation_mode = OPEN_EXISTING; break;
+	case OpenFileFlags::Read:  access = GENERIC_READ;  creation_mode = OPEN_EXISTING; sharing_mode = FILE_SHARE_READ | FILE_SHARE_WRITE; break;
 	case OpenFileFlags::Write: access = GENERIC_WRITE; creation_mode = CREATE_ALWAYS; break;
 	default: DebugAssertAlways("Invalid combination of open file flags '%u'.", (u32)flags);
 	}

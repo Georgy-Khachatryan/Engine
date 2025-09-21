@@ -30,3 +30,4 @@ String StringFormat(StackAllocator* alloc, const char* format, ...);
 u64 ComputeHash(const u8* data, u64 count, u64 seed = 0);
 u64 ComputeHash(String string);
 
+String StringCopy(HeapAllocator* alloc, String source);

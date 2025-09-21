@@ -35,6 +35,18 @@ String StringFormat(StackAllocator* alloc, const char* format, ...) {
 	return result;
 }
 
+String StringCopy(HeapAllocator* alloc, String source) {
+	if (source.count == 0) return {};
+	
+	String result;
+	result.count = source.count;
+	result.data  = (char*)alloc->Allocate(result.count + 1);
+	memcpy(result.data, source.data, result.count);
+	result.data[result.count] = 0;
+	
+	return result;
+}
+
 
 // Based on wyhash by Wang Yi (public domain).
 static inline u64 WyHashMix(u64 a, u64 b)     { a = _mulx_u64(a, b, &b); return a ^ b; }

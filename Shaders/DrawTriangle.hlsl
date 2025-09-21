@@ -1,4 +1,4 @@
-
+#include "Colors.hlsl"
 
 struct InputPS {
 	float4 position : SV_Position;
@@ -24,11 +24,11 @@ InputPS MainVS(uint vertex_id : SV_VertexID) {
 	output.color    = colors[vertex_id];
 	
 #if defined(RED_COLOR)
-	output.color = float3(1.0, 0.0, 0.0);
+	output.color = red_color;
 #endif // defined(RED_COLOR)
 	
 #if defined(BLUE_COLOR)
-	output.color = float3(0.0, 0.0, 1.0);
+	output.color = blue_color;
 #endif // defined(BLUE_COLOR)
 	
 	return output;
