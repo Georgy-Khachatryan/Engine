@@ -2,8 +2,12 @@
 #include "Basic/Basic.h"
 #include "GraphicsApiTypes.h"
 
+
 compile_const u32 number_of_frames_in_flight = 2;
 compile_const u32 number_of_back_buffers     = 3;
+compile_const u32 persistent_srv_descriptor_count = 1024;
+compile_const u32 transient_srv_descriptor_count  = 1024;
+
 
 struct GraphicsContext {
 	

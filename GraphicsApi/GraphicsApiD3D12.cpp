@@ -33,42 +33,45 @@ GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
 	context->device = device;
 	
 	
-	{
+	for (u32 i = 0; i < (u32)DescriptorHeapType::Count; i += 1) {
+		compile_const D3D12_DESCRIPTOR_HEAP_TYPE heap_type_map[(u32)DescriptorHeapType::Count] = {
+			D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV,
+			D3D12_DESCRIPTOR_HEAP_TYPE_RTV,
+			D3D12_DESCRIPTOR_HEAP_TYPE_DSV,
+		};
+		
+		compile_const u32 descriptor_heap_size_map[(u32)DescriptorHeapType::Count] = {
+			persistent_srv_descriptor_count + transient_srv_descriptor_count,
+			rtv_descriptor_count,
+			dsv_descriptor_count,
+		};
+		
 		D3D12_DESCRIPTOR_HEAP_DESC heap_desc = {};
-		heap_desc.Type           = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-		heap_desc.NumDescriptors = 256;
-		heap_desc.Flags          = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+		heap_desc.Type           = heap_type_map[i];
+		heap_desc.NumDescriptors = descriptor_heap_size_map[i];
+		heap_desc.Flags          = (heap_desc.Type == D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV) ? D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE : D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
 		heap_desc.NodeMask       = 0;
 		
-		ID3D12DescriptorHeap* resource_descriptor_heap = nullptr;
-		if (FAILED(device->CreateDescriptorHeap(&heap_desc, IID_PPV_ARGS(&resource_descriptor_heap)))) {
+		ID3D12DescriptorHeap* descriptor_heap = nullptr;
+		if (FAILED(device->CreateDescriptorHeap(&heap_desc, IID_PPV_ARGS(&descriptor_heap)))) {
 			DebugAssertAlways("CreateDescriptorHeap failed.");
 			return nullptr;
 		}
-		context->resource_descriptor_heap = resource_descriptor_heap;
 		
-		u32* free_indices = (u32*)alloc->Allocate(heap_desc.NumDescriptors * sizeof(u32), alignof(u32));
-		context->free_indices     = free_indices;
-		context->free_index_count = heap_desc.NumDescriptors;
-		for (u32 i = 0; i < heap_desc.NumDescriptors; i += 1) {
-			free_indices[i] = i;
-		}
+		context->descriptor_heaps[i] = descriptor_heap;
+		context->descriptor_sizes[i] = device->GetDescriptorHandleIncrementSize(heap_desc.Type);
+		context->cpu_base_handles[i] = descriptor_heap->GetCPUDescriptorHandleForHeapStart();
+		context->gpu_base_handles[i] = descriptor_heap->GetGPUDescriptorHandleForHeapStart();
 	}
 	
 	
 	{
-		D3D12_DESCRIPTOR_HEAP_DESC heap_desc = {};
-		heap_desc.Type           = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
-		heap_desc.NumDescriptors = 256;
-		heap_desc.Flags          = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
-		heap_desc.NodeMask       = 0;
+		ArrayResize(context->srv_heap_free_indices, alloc, persistent_srv_descriptor_count);
+		static_assert(persistent_srv_descriptor_count - 1 <= u16_max, "Persistent SRV indices are too large.");
 		
-		ID3D12DescriptorHeap* rtv_descriptor_heap = nullptr;
-		if (FAILED(device->CreateDescriptorHeap(&heap_desc, IID_PPV_ARGS(&rtv_descriptor_heap)))) {
-			DebugAssertAlways("CreateDescriptorHeap failed.");
-			return nullptr;
+		for (u32 i = 0; i < persistent_srv_descriptor_count; i += 1) {
+			context->srv_heap_free_indices[i] = (u16)i;
 		}
-		context->rtv_descriptor_heap = rtv_descriptor_heap;
 	}
 	
 	
@@ -90,7 +93,7 @@ GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
 	
 	{
 		ID3D12Fence* fence = nullptr;
-		if (device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence))) {
+		if (FAILED(device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence)))) {
 			DebugAssertAlways("CreateFence failed.");
 			return nullptr;
 		}
@@ -124,32 +127,32 @@ GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
 		init_info.RTVFormat         = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
 		init_info.DSVFormat         = DXGI_FORMAT_UNKNOWN;
 		init_info.UserData          = context;
-		init_info.SrvDescriptorHeap = context->resource_descriptor_heap;
+		init_info.SrvDescriptorHeap = context->descriptor_heaps[(u32)DescriptorHeapType::SRV];
 		
 		init_info.SrvDescriptorAllocFn = [](ImGui_ImplDX12_InitInfo* init_info, D3D12_CPU_DESCRIPTOR_HANDLE* out_cpu_desc_handle, D3D12_GPU_DESCRIPTOR_HANDLE* out_gpu_desc_handle) {
 			auto* context = (GraphicsContextD3D12*)init_info->UserData;
 			
-			DebugAssert(context->free_index_count != 0, "Resource descriptor heap is exhausted.");
-			u32 index = context->free_indices[--context->free_index_count];
+			DebugAssert(context->srv_heap_free_indices.count != 0, "Resource descriptor heap is exhausted.");
+			u64 index = ArrayPopLast(context->srv_heap_free_indices);
 			
-			auto* resource_descriptor_heap = context->resource_descriptor_heap;
-			u64 cpu_heap_base = resource_descriptor_heap->GetCPUDescriptorHandleForHeapStart().ptr;
-			u64 gpu_heap_base = resource_descriptor_heap->GetGPUDescriptorHandleForHeapStart().ptr;
-			u32 heap_increment = context->device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+			auto cpu_base_handle = context->cpu_base_handles[(u32)DescriptorHeapType::SRV].ptr;
+			auto gpu_base_handle = context->gpu_base_handles[(u32)DescriptorHeapType::SRV].ptr;
+			auto descriptor_size = context->descriptor_sizes[(u32)DescriptorHeapType::SRV];
 			
-			out_cpu_desc_handle->ptr = cpu_heap_base + index * heap_increment;
-			out_gpu_desc_handle->ptr = gpu_heap_base + index * heap_increment;
+			out_cpu_desc_handle->ptr = cpu_base_handle + index * descriptor_size;
+			out_gpu_desc_handle->ptr = gpu_base_handle + index * descriptor_size;
 		};
 		
 		init_info.SrvDescriptorFreeFn = [](ImGui_ImplDX12_InitInfo* init_info, D3D12_CPU_DESCRIPTOR_HANDLE cpu_desc_handle, D3D12_GPU_DESCRIPTOR_HANDLE) {
 			auto* context = (GraphicsContextD3D12*)init_info->UserData;
 			
-			auto* resource_descriptor_heap = context->resource_descriptor_heap;
-			u64 cpu_heap_base  = resource_descriptor_heap->GetCPUDescriptorHandleForHeapStart().ptr;
-			u32 heap_increment = context->device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+			auto cpu_base_handle = context->cpu_base_handles[(u32)DescriptorHeapType::SRV].ptr;
+			auto descriptor_size = context->descriptor_sizes[(u32)DescriptorHeapType::SRV];
 			
-			u32 index = (u32)((cpu_desc_handle.ptr - cpu_heap_base) / heap_increment);
-			context->free_indices[context->free_index_count++] = index;
+			u64 index = (cpu_desc_handle.ptr - cpu_base_handle) / descriptor_size;
+			DebugAssert(index < persistent_srv_descriptor_count, "Deallocated SRV index is out of bounds.");
+			
+			ArrayAppend(context->srv_heap_free_indices, (u16)index);
 		};
 		ImGui_ImplDX12_Init(&init_info);
 	}
@@ -277,7 +280,7 @@ static void CreateTestPipelines(GraphicsContextD3D12* context) {
 
 void ReleaseGraphicsContext(GraphicsContext* api_context) {
 	auto* context = (GraphicsContextD3D12*)api_context;
-
+	
 	ImGui_ImplDX12_Shutdown();
 	
 	ReleaseShaderCompiler(shader_compiler);
@@ -285,8 +288,7 @@ void ReleaseGraphicsContext(GraphicsContext* api_context) {
 	SafeRelease(context->command_list);
 	for (auto& command_allocator : context->command_allocators) SafeRelease(command_allocator);
 	SafeRelease(context->frame_sync_fence);
-	SafeRelease(context->rtv_descriptor_heap);
-	SafeRelease(context->resource_descriptor_heap);
+	for (auto& descriptor_heap : context->descriptor_heaps) SafeRelease(descriptor_heap);
 	SafeRelease(context->graphics_command_queue);
 	SafeRelease(context->device);
 }
@@ -295,15 +297,14 @@ void ReleaseGraphicsContext(GraphicsContext* api_context) {
 static void CreateSwapChainBackBuffers(WindowSwapChainD3D12* swap_chain, GraphicsContextD3D12* context) {
 	auto* dxgi_swap_chain = swap_chain->dxgi_swap_chain;
 	auto* device = context->device;
-	auto* rtv_descriptor_heap = context->rtv_descriptor_heap;
 	
-	u64 heap_base = rtv_descriptor_heap->GetCPUDescriptorHandleForHeapStart().ptr;
-	u32 heap_increment = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+	auto cpu_base_handle = context->cpu_base_handles[(u32)DescriptorHeapType::RTV].ptr;
+	auto descriptor_size = context->descriptor_sizes[(u32)DescriptorHeapType::RTV];
 	
-	for (u32 i = 0; i < number_of_back_buffers; i += 1) {
-		auto& back_buffer = swap_chain->back_buffers[i];
-		dxgi_swap_chain->GetBuffer(i, IID_PPV_ARGS(&back_buffer.resource));
-		back_buffer.descriptor.ptr = heap_base + heap_increment * i;
+	for (u32 index = 0; index < number_of_back_buffers; index += 1) {
+		auto& back_buffer = swap_chain->back_buffers[index];
+		dxgi_swap_chain->GetBuffer(index, IID_PPV_ARGS(&back_buffer.resource));
+		back_buffer.descriptor.ptr = cpu_base_handle + index * descriptor_size;
 		
 		device->CreateRenderTargetView(back_buffer.resource, nullptr, back_buffer.descriptor);
 	}
@@ -404,7 +405,7 @@ void WindowSwapChainBeginFrame(WindowSwapChain* api_swap_chain, GraphicsContext*
 	
 	command_allocator->Reset();
 	command_list->Reset(command_allocator, nullptr);
-	command_list->SetDescriptorHeaps(1, &context->resource_descriptor_heap);
+	command_list->SetDescriptorHeaps(1, &context->descriptor_heaps[(u32)DescriptorHeapType::SRV]);
 	
 	ImGui_ImplDX12_NewFrame();
 }

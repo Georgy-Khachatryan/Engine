@@ -6,6 +6,19 @@
 #include <d3d12.h>
 #include <dxgi1_4.h>
 
+
+compile_const u32 rtv_descriptor_count = 256;
+compile_const u32 dsv_descriptor_count = 256;
+
+enum struct DescriptorHeapType : u32 { 
+	SRV = 0,
+	RTV = 1,
+	DSV = 2,
+	
+	Count
+};
+
+
 struct SwapChainBackBuffer {
 	ID3D12Resource* resource = nullptr;
 	D3D12_CPU_DESCRIPTOR_HANDLE descriptor = {};
@@ -14,7 +27,7 @@ struct SwapChainBackBuffer {
 struct WindowSwapChainD3D12 : WindowSwapChain {
 	IDXGISwapChain3* dxgi_swap_chain = nullptr;
 	
-	SwapChainBackBuffer back_buffers[number_of_back_buffers] = {};
+	FixedCountArray<SwapChainBackBuffer, number_of_back_buffers> back_buffers = {};
 };
 
 template<typename ResourceT>
@@ -24,13 +37,18 @@ static void SafeRelease(ResourceT*& resource) {
 }
 
 struct GraphicsContextD3D12 : GraphicsContext {
-	ID3D12Device4*        device                   = nullptr;
-	ID3D12CommandQueue*   graphics_command_queue   = nullptr;
-	ID3D12DescriptorHeap* resource_descriptor_heap = nullptr;
-	ID3D12DescriptorHeap* rtv_descriptor_heap      = nullptr;
+	ID3D12Device4*      device                 = nullptr;
+	ID3D12CommandQueue* graphics_command_queue = nullptr;
 	
 	ID3D12RootSignature* root_signature = nullptr;
-	ID3D12PipelineState* pipeline_state[3] = {};
+	FixedCountArray<ID3D12PipelineState*, 3> pipeline_state = {};
+	
+	
+	FixedCountArray<ID3D12DescriptorHeap*,       (u32)DescriptorHeapType::Count> descriptor_heaps;
+	FixedCountArray<u32,                         (u32)DescriptorHeapType::Count> descriptor_sizes;
+	FixedCountArray<D3D12_CPU_DESCRIPTOR_HANDLE, (u32)DescriptorHeapType::Count> cpu_base_handles;
+	FixedCountArray<D3D12_GPU_DESCRIPTOR_HANDLE, (u32)DescriptorHeapType::Count> gpu_base_handles;
+	
 	
 	ID3D12Fence* frame_sync_fence = nullptr;
 	u64 frame_index = 0;
@@ -38,7 +56,6 @@ struct GraphicsContextD3D12 : GraphicsContext {
 	ID3D12GraphicsCommandList7* command_list = nullptr;
 	ID3D12CommandAllocator* command_allocators[number_of_frames_in_flight] = {};
 	
-	u32* free_indices = nullptr;
-	u32 free_index_count = 0;
+	Array<u16> srv_heap_free_indices;
 };
 
