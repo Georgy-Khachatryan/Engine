@@ -37,11 +37,8 @@ static void SafeRelease(ResourceT*& resource) {
 }
 
 struct GraphicsContextD3D12 : GraphicsContext {
-	ID3D12Device4*      device                 = nullptr;
+	ID3D12Device10*     device                 = nullptr;
 	ID3D12CommandQueue* graphics_command_queue = nullptr;
-	
-	ID3D12RootSignature* root_signature = nullptr;
-	FixedCountArray<ID3D12PipelineState*, 3> pipeline_state = {};
 	
 	
 	FixedCountArray<ID3D12DescriptorHeap*,       (u32)DescriptorHeapType::Count> descriptor_heaps;
@@ -57,5 +54,6 @@ struct GraphicsContextD3D12 : GraphicsContext {
 	ID3D12CommandAllocator* command_allocators[number_of_frames_in_flight] = {};
 	
 	Array<u16> srv_heap_free_indices;
+	u32 srv_heap_offset = 0;
 };
 

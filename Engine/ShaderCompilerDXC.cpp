@@ -186,9 +186,9 @@ static bool CompileShaderToBlob(ShaderCompiler* compiler, ShaderDefinition* defi
 	
 	String compiler_message;
 	if (FAILED(status)) {
-		compiler_message = StringFormat(alloc, "Shader '%.*s' failed to compile with target '%S'. Errors:\n%.*s\n", (s32)filename.count, filename.data, target_profiles[(u32)shader_type], (s32)error_blob->GetStringLength(), error_blob->GetStringPointer());
+		compiler_message = StringFormat(alloc, "Shader '%.*s' failed to compile with target '%S'. Errors:\n\x1B[31m%.*s\x1B[0m\n", (s32)filename.count, filename.data, target_profiles[(u32)shader_type], (s32)error_blob->GetStringLength(), error_blob->GetStringPointer());
 	} else if (error_blob->GetStringLength() != 0) {
-		compiler_message = StringFormat(alloc, "Shader '%.*s' compiled with target '%S'. Warnings:\n%.*s\n", (s32)filename.count, filename.data, target_profiles[(u32)shader_type], (s32)error_blob->GetStringLength(), error_blob->GetStringPointer());
+		compiler_message = StringFormat(alloc, "Shader '%.*s' compiled with target '%S'. Warnings:\n\x1B[33m%.*s\x1B[0m\n", (s32)filename.count, filename.data, target_profiles[(u32)shader_type], (s32)error_blob->GetStringLength(), error_blob->GetStringPointer());
 	} else {
 		compiler_message = StringFormat(alloc, "Shader '%.*s' compiled with target '%S'.\n", (s32)filename.count, filename.data, target_profiles[(u32)shader_type]);
 	}
@@ -210,7 +210,7 @@ static bool CompileShaderToBlob(ShaderCompiler* compiler, ShaderDefinition* defi
 		heap->Deallocate(hashed_file.filename.data);
 	}
 	shader_permutation->hashed_source_files.count = 0;
-
+	
 	ArrayReserve(shader_permutation->hashed_source_files, heap, include_handler.hashed_source_files.count);
 	for (auto& src_hashed_file : include_handler.hashed_source_files) {
 		auto& dst_hashed_file = ArrayEmplace(shader_permutation->hashed_source_files);
@@ -266,9 +266,9 @@ FixedCountArray<ArrayView<u8>, (u32)ShaderType::Count> CompileShader(ShaderCompi
 		
 		bool should_recompile = shader->shader_dirty;
 		while (should_recompile) {
-			if (CompileShaderToBlob(compiler, definition, permutation, (ShaderType)i, shader)) {
+			if (CompileShaderToBlob(compiler, definition, permutation, (ShaderType)i, shader) || shader->bytecode_blob.data != nullptr) {
 				should_recompile = false;
-			} else if (shader->bytecode_blob.data == nullptr) {
+			} else {
 				TempAllocationScope(alloc);
 				SystemWriteToConsole(alloc, "Press enter to recompile.\n"_sl);
 				
@@ -338,10 +338,8 @@ bool CheckShaderFileChanges(ShaderCompiler* compiler) {
 				break;
 			}
 			
-			if (is_dirty_permutation) {
-				permutation.shader_dirty = true;
-				has_dirty_shaders = true;
-			}
+			permutation.shader_dirty |= is_dirty_permutation;
+			has_dirty_shaders |= permutation.shader_dirty;
 		}
 	}
 	

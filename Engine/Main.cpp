@@ -348,8 +348,6 @@ s32 main() {
 			window->should_close = true;
 		}
 		
-		ImGui::Render();
-		
 		WindowSwapChainEndFrame(swap_chain, graphics_context, &alloc);
 		
 		frame_allocation_size = (alloc.total_allocated_size - frame_initial_size);
