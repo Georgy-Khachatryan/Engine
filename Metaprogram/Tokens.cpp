@@ -111,16 +111,16 @@ Token Tokenizer::FindNextToken() {
 	case ']': return MakeToken(string, 1, TokenType::ClosingBracket);
 	case ',': return MakeToken(string, 1, TokenType::Comma);
 	case '.': return MakeToken(string, 1, TokenType::Dot);
-	case ':': return MakeToken(string, 1, TokenType::Colon);
+	case ':': return string[1] == ':' ? MakeToken(string, 2, TokenType::DoubleColon) : MakeToken(string, 1, TokenType::Colon);
 	case ';': return MakeToken(string, 1, TokenType::Semicolon);
 	case '#': return MakeToken(string, 1, TokenType::Hash);
 	case '"': return ParseStringLiteral(string);
 	}
 	
 	Token token;
+	token.string.data = (char*)string;
+	
 	if (IsAlphaNumeric(leading_char)) {
-		token.string.data = (char*)string;
-		
 		if (IsNumeric(leading_char)) {
 			token.type = TokenType::Number;
 			while (IsAlphaNumeric(*string) || *string == '.') string += 1;
@@ -150,6 +150,9 @@ Token Tokenizer::FindNextToken() {
 		} case 9: {
 			if (CheckKeyword(token, "namespace", 8, KeywordType::Namespace)) break;
 			break;
+		} case 13: {
+			if (CheckKeyword(token, "compile_const", 13, KeywordType::CompileConst)) break;
+			break;
 		}
 		}
 	}
@@ -162,6 +165,22 @@ Token Tokenizer::PeekNextToken() {
 	defer{ string = backup_string; };
 	
 	return FindNextToken();
+}
+
+Token Tokenizer::ExpectToken(TokenType expected_type) {
+	auto token = FindNextToken();
+	if (token.type == expected_type) return token;
+	
+	ReportError(token, "Unexpected token '%s'. Expected '%s'.", token_type_names[(u32)token.type].data, token_type_names[(u32)expected_type].data);
+	return {};
+}
+
+Token Tokenizer::ExpectKeyword(KeywordType expected_keyword) {
+	auto token = FindNextToken();
+	if (token.keyword == expected_keyword) return token;
+	
+	ReportError(token, "Unexpected token '%s'. Expected a keyword '%s'.", token_type_names[(u32)token.type].data, keyword_type_names[(u32)expected_keyword].data);
+	return {};
 }
 
 
@@ -228,6 +247,8 @@ void Tokenizer::ReportError(Token token, const char* format, ...) {
 	va_end(va_args);
 	
 	ReportMessage(token, message, 31);
+	
+	SystemExitProcess(1);
 }
 
 
@@ -255,6 +276,7 @@ String token_type_names[] = {
 	"Dot"_sl,
 	"Assign"_sl,
 	"Colon"_sl,
+	"DoubleColon"_sl,
 	"Semicolon"_sl,
 	"Hash"_sl,
 	"Number"_sl,
@@ -272,6 +294,7 @@ String keyword_type_names[] = {
 	"Union"_sl,
 	"Template"_sl,
 	"Namespace"_sl,
+	"CompileConst"_sl,
 };
 static_assert(ArraySize(keyword_type_names) == (u32)KeywordType::Count, "Mismatching keyword_type_names count.");
 

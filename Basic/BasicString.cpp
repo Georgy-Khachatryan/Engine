@@ -116,8 +116,8 @@ void StringBuilder::AppendV(const char* format, va_list args) {
 	va_copy(args_copy, args);
 	
 	auto result = AppendStringBuilderEntry(*this, vsnprintf(nullptr, 0, format, args));
-	
 	vsnprintf(result.data, result.count + 1, format, args_copy);
+	
 	va_end(args_copy);
 }
 

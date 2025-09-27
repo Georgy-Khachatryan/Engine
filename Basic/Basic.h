@@ -65,6 +65,8 @@ bool IsAssertEnabled(const char* format);
 void AssertHandler(const char* format, ...);
 #endif // ENABLE_FEATURE(ASSERTS)
 
+void SystemExitProcess(u32 exit_code);
+
 #if ENABLE_FEATURE(ASSERTS)
 #define DebugAssert(expression, format, ...)     do { if (!(expression) && IsAssertEnabled(format)) { AssertHandler(format, __VA_ARGS__); } } while (false)
 #define DebugAssertOnce(expression, format, ...) do { static bool is_enabled = true; if (is_enabled && !(expression) && IsAssertEnabled(format)) { is_enabled = false; AssertHandler(format, __VA_ARGS__); } } while (false)
@@ -111,4 +113,7 @@ inline constexpr u32 ArraySize(const T(&)[size]) { return size; }
 
 struct StackAllocator;
 struct HeapAllocator;
+
+
+#define NOTES(...)
 

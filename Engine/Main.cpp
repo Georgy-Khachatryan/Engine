@@ -308,6 +308,7 @@ s32 main() {
 	font_config.GlyphOffset.y = -1.f;
 	
 	auto& io = ImGui::GetIO();
+	io.IniFilename = "./Build/ImGuiSettings.ini";
 	io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 	io.Fonts->AddFontFromFileTTF("./Assets/OpenSans-Regular.ttf", 18.f, &font_config);
 	

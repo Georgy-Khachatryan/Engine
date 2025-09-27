@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?> 
+<AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
+	
+	<Type Name="AstNode" Inheritable="false">
+		<DisplayString>{{type={type}}}</DisplayString>
+		<Expand>
+			<ExpandedItem Condition="type == AstNodeType::Notes">*(AstNodeNotes*)this,na</ExpandedItem>
+			<ExpandedItem Condition="type == AstNodeType::CodeBlock">*(AstNodeCodeBlock*)this,na</ExpandedItem>
+			<ExpandedItem Condition="type == AstNodeType::Declaration">*(AstNodeDeclaration*)this,na</ExpandedItem>
+			<ExpandedItem Condition="type == AstNodeType::Struct">*(AstNodeStruct*)this,na</ExpandedItem>
+		</Expand>
+	</Type>
+	
+</AutoVisualizer>

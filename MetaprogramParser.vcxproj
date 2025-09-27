@@ -32,6 +32,7 @@
     <ClCompile Include="Basic/HeapAllocator.cpp" />
     <ClCompile Include="Basic/StackAllocator.cpp" />
     <ClCompile Include="Basic/SystemWin32.cpp" />
+    
     <ClCompile Include="Metaprogram/MetaprogramParserMain.cpp" />
     <ClCompile Include="Metaprogram/Tokens.cpp" />
   </ItemGroup>
@@ -44,11 +45,14 @@
     <ClInclude Include="Basic/BasicMath.h" />
     <ClInclude Include="Basic/BasicMemory.h" />
     <ClInclude Include="Basic/BasicString.h" />
+    
     <ClInclude Include="Metaprogram/Tokens.h" />
+    <ClInclude Include="Metaprogram/AstNodes.h" />
   </ItemGroup>
   
   <ItemGroup>
     <Natvis Include="Basic/Basic.natvis" />
+    <Natvis Include="Metaprogram/Metaprogram.natvis" />
   </ItemGroup>
   
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

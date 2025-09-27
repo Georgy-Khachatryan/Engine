@@ -230,3 +230,8 @@ void SystemWriteToConsole(StackAllocator* alloc, const char* format, ...) {
 	
 	SystemWriteToConsole(alloc, message);
 }
+
+
+void SystemExitProcess(u32 exit_code) {
+	ExitProcess(exit_code);
+}

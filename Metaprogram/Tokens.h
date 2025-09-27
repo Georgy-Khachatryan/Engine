@@ -26,12 +26,13 @@ enum struct TokenType : u32 {
 	Dot            = 20, // '.'
 	Assign         = 21, // '='
 	Colon          = 22, // ':'
-	Semicolon      = 23, // ';'
-	Hash           = 24, // '#'
-	Number         = 25, // '10'
-	Identifier     = 26, // 'main'
-	Keyword        = 27, // 'struct'
-	String         = 28, // '"hello"'
+	DoubleColon    = 23, // '::'
+	Semicolon      = 24, // ';'
+	Hash           = 25, // '#'
+	Number         = 26, // '10'
+	Identifier     = 27, // 'main'
+	Keyword        = 28, // 'struct'
+	String         = 29, // '"hello"'
 	
 	Count
 };
@@ -45,6 +46,7 @@ enum struct KeywordType : u32 {
 	Union     = 4,
 	Template  = 5,
 	Namespace = 6,
+	CompileConst = 7,
 	
 	Count
 };
@@ -66,6 +68,8 @@ struct Tokenizer {
 	
 	Token FindNextToken();
 	Token PeekNextToken();
+	Token ExpectToken(TokenType expected_type);
+	Token ExpectKeyword(KeywordType expected_keyword);
 	
 	void ReportMessage(Token token, String message, u32 color_code = 0);
 	void ReportError(Token token, const char* format, ...);

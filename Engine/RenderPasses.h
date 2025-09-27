@@ -1,7 +1,6 @@
 #pragma once
 #include "Basic/Basic.h"
 
-#define NOTES(...)
 #define RENDER_PASS_GENERATED_CODE() static struct RootSignature root_signature;
 
 // Single line comment.
@@ -12,6 +11,7 @@
 namespace Meta {
 	struct RenderGraphSystem {};
 	struct RenderPass {};
+	enum struct RenderPassType : u32 { None = 0, Compute = 1, Graphics = 2, Count };
 };
 
 namespace HLSL {
@@ -30,27 +30,32 @@ struct float2 { float values[2]; };
 struct float3 { float values[3]; };
 struct float4 { float values[4]; };
 
+NOTES(Meta::HlslFile{ "AtmosphereData.hlsl" })
 struct AtmosphereParameters {
-	float bottom_radius; // Radius of the planet (center to ground)
-	float top_radius;    // Maximum considered atmosphere height (center to atmosphere top)
+	compile_const u32 transmittance_lut_width = 256;
 	
-	float  rayleigh_density_exp_scale; // Rayleigh scattering exponential distribution scale in the atmosphere.
-	float3 rayleigh_scattering;        // Rayleigh scattering coefficients.
+	float bottom_radius = 6360.f; // Radius of the planet (center to ground).
+	float top_radius    = 6460.f; // Maximum considered atmosphere height (center to atmosphere top).
 	
-	float  mie_density_exp_scale; // Mie scattering exponential distribution scale in the atmosphere
-	float3 mie_scattering; // Mie scattering coefficients
-	float3 mie_absorption; // Mie absorption coefficients
-	float  mie_phase_g;    // Mie phase function excentricity
+	// Rayleigh scattering exponential distribution scale in the atmosphere.
+	float  rayleigh_density_exp_scale = -1.f / 8.f;
+	float3 rayleigh_scattering        = { 0.005802f, 0.013558f, 0.033100f };
 	
-	// Ozone layer (no scattering, absorption only).
-	float  ozone_density_layer_height;
-	float2 ozone_density_scale;
-	float2 ozone_density_offset;
-	float3 ozone_absorption;
+	// Mie scattering exponential distribution scale in the atmosphere
+	float  mie_density_exp_scale = -1.f / 1.2f;
+	float3 mie_scattering = { 0.003996f, 0.003996f, 0.003996f };
+	float3 mie_absorption = { 0.000444f, 0.000444f, 0.000444f };
+	float  mie_phase_g    = 0.8f;
+	
+	// Ozone layer (no scattering, absorption only). Two layers, the first one below layer_height, the second one is above.
+	float  ozone_density_layer_height = 25.f;
+	float2 ozone_density_scale  = { +1.f / 15.f, -1.f / 15.f };
+	float2 ozone_density_offset = { -2.f /  3.f,  8.f /  3.f };
+	float3 ozone_absorption     = { 0.000650f, 0.001881f, 0.000085f };
 };
 
 
-NOTES(Meta::RenderPass{})
+NOTES(Meta::RenderPass{}, Meta::RenderGraphSystem{}, Meta::RenderPassType::Compute)
 struct TransittanceLutRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
