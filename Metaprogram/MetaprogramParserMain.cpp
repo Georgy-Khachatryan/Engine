@@ -20,11 +20,19 @@ s32 main() {
 	}
 	
 	Tokenizer tokenizer;
-	tokenizer.string = file.data;
+	tokenizer.file     = file;
+	tokenizer.filepath = filepath;
+	tokenizer.string   = file.data;
+	tokenizer.alloc    = &alloc;
 	
 	auto token = tokenizer.FindNextToken();
 	while (token.type != TokenType::None) {
 		SystemWriteToConsole(&alloc, "TokenType: '%s', String: '%.*s'\n", token_type_names[(u32)token.type].data, (s32)token.string.count, token.string.data);
+		
+		if (token.keyword == KeywordType::Notes) {
+			tokenizer.ReportError(token, "Found notes! TokenTypeIndex: '%u'.", (u32)token.type);
+		}
+		
 		token = tokenizer.FindNextToken();
 	}
 	

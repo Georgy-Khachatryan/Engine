@@ -1,6 +1,7 @@
 #pragma once
 #include "Basic.h"
 #include "BasicString.h"
+#include "BasicArray.h"
 
 struct FileHandle {
 	void* handle = nullptr;

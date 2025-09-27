@@ -1,4 +1,6 @@
 #include "Tokens.h"
+#include "Basic/BasicMemory.h"
+#include "Basic/BasicFiles.h"
 
 static bool IsLineEnding(char c) { return (c == '\n') || (c == '\r'); }
 static bool IsWhiteSpace(char c) { return (c == ' ') || (c == '\t') || IsLineEnding(c); }
@@ -160,6 +162,72 @@ Token Tokenizer::PeekNextToken() {
 	defer{ string = backup_string; };
 	
 	return FindNextToken();
+}
+
+
+void Tokenizer::ReportMessage(Token token, String message, u32 color_code) {
+	TempAllocationScope(alloc);
+	
+	StringBuilder builder;
+	builder.alloc = alloc;
+	
+	compile_const u32 tab_width = 4;
+	
+	u32 line   = 0;
+	u32 column = 0;
+	const char* string = file.data;
+	while (*string && string < token.string.data) {
+		if (*string == '\n') {
+			line  += 1;
+			column = 0;
+		} else {
+			column += (*string == '\t') ? tab_width : 1;
+		}
+		string += 1;
+	}
+	
+	if (color_code != 0) builder.Append("\x1B[%um", color_code);
+	
+	builder.Append("%.*s(%u,%u): error: %.*s\n", (s32)filepath.count, filepath.data, line + 1, column + 1, (s32)message.count, message.data);
+	
+	if (token.string.data != nullptr) {
+		auto error_line = token.string;
+		u64 error_line_skip_count = 0;
+		
+		// Extend the token string to the beginning of the line.
+		while (error_line.data > file.data && IsLineEnding(error_line.data[-1]) == false) {
+			error_line_skip_count += error_line.data[-1] == '\t' ? tab_width : 1;
+			error_line.data  -= 1;
+			error_line.count += 1;
+		}
+		
+		// Extend the token string to the end of the line.
+		while ((error_line.data + error_line.count) < (file.data + file.count) && IsLineEnding(error_line.data[error_line.count]) == false) {
+			error_line.count += 1;
+		}
+		
+		auto highlight_line = StringAllocate(alloc, error_line_skip_count + token.string.count);
+		memset(highlight_line.data, ' ', error_line_skip_count);
+		memset(highlight_line.data + error_line_skip_count, '^', token.string.count);
+		
+		auto error_line_with_spaces = StringReplaceTabsWithSpaces(alloc, error_line, tab_width);
+		builder.Append("%.*s\n%.*s\n", (s32)error_line_with_spaces.count, error_line_with_spaces.data, (s32)highlight_line.count, highlight_line.data);
+	}
+	
+	if (color_code != 0) builder.AppendUnformatted("\x1B[0m"_sl);
+	
+	SystemWriteToConsole(alloc, builder.ToString());
+}
+
+void Tokenizer::ReportError(Token token, const char* format, ...) {
+	TempAllocationScope(alloc);
+	
+	va_list va_args;
+	va_start(va_args, format);
+	auto message = StringFormatV(alloc, format, va_args);
+	va_end(va_args);
+	
+	ReportMessage(token, message, 31);
 }
 
 

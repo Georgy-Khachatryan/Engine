@@ -19,8 +19,8 @@ String StringFormatV(StackAllocator* alloc, const char* format, va_list args) {
 	String result;
 	result.count = vsnprintf(nullptr, 0, format, args);
 	result.data  = (char*)alloc->Allocate(result.count + 1);
-	
 	vsnprintf((char*)result.data, result.count + 1, format, args_copy);
+	
 	va_end(args_copy);
 	
 	return result;
@@ -43,6 +43,104 @@ String StringCopy(HeapAllocator* alloc, String source) {
 	result.data  = (char*)alloc->Allocate(result.count + 1);
 	memcpy(result.data, source.data, result.count);
 	result.data[result.count] = 0;
+	
+	return result;
+}
+
+String StringAllocate(StackAllocator* alloc, u64 count) {
+	String result;
+	result.count = count;
+	result.data  = (char*)alloc->Allocate(result.count + 1);
+	result.data[result.count] = 0;
+	
+	return result;
+}
+
+String StringReplaceTabsWithSpaces(StackAllocator* alloc, String source, u32 tab_width) {
+	u64 result_count = 0;
+	for (u64 i = 0; i < source.count; i += 1) {
+		result_count += source[i] == '\t' ? tab_width : 1;
+	}
+	if (result_count == source.count) return source;
+	
+	auto result = StringAllocate(alloc, result_count);
+	for (u64 i = 0, j = 0; i < source.count; i += 1) {
+		if (source[i] == '\t') {
+			memset(&result[j], ' ', tab_width);
+			j += tab_width;
+		} else {
+			result[j] = source[i];
+			j += 1;
+		}
+	}
+	
+	return result;
+}
+
+
+struct StringBuilderEntry {
+	StringBuilderEntry* next_entry = nullptr;
+	u64 size = 0;
+};
+
+static String AppendStringBuilderEntry(StringBuilder& builder, u64 size) {
+	auto* entry = NewInPlace(builder.alloc->Allocate(sizeof(StringBuilderEntry) + size + 1), StringBuilderEntry);
+	entry->size = size;
+	
+	if (builder.head_entry == nullptr) {
+		builder.head_entry = entry;
+	} else {
+		builder.tail_entry->next_entry = entry;
+	}
+	
+	builder.tail_entry = entry;
+	builder.total_string_size += size;
+	
+	String result;
+	result.data  = (char*)(entry + 1);
+	result.count = size;
+	result.data[result.count] = 0;
+	
+	return result;
+}
+
+void StringBuilder::Append(const char* format, ...) {
+	va_list va_args;
+	va_start(va_args, format);
+	StringBuilder::AppendV(format, va_args);
+	va_end(va_args);
+}
+
+void StringBuilder::AppendV(const char* format, va_list args) {
+	va_list args_copy;
+	va_copy(args_copy, args);
+	
+	auto result = AppendStringBuilderEntry(*this, vsnprintf(nullptr, 0, format, args));
+	
+	vsnprintf(result.data, result.count + 1, format, args_copy);
+	va_end(args_copy);
+}
+
+void StringBuilder::AppendUnformatted(String string) {
+	auto result = AppendStringBuilderEntry(*this, string.count);
+	memcpy(result.data, string.data, string.count);
+}
+
+String StringBuilder::ToString(StackAllocator* string_alloc) {
+	if (total_string_size == 0) return {};
+	
+	auto  result = StringAllocate(string_alloc ? string_alloc : alloc, total_string_size);
+	char* cursor = result.data;
+	
+	auto* entry = head_entry;
+	while (entry) {
+		u64 entry_size = entry->size;
+		
+		memcpy(cursor, entry + 1, entry_size);
+		cursor += entry_size;
+		
+		entry = entry->next_entry;
+	}
 	
 	return result;
 }

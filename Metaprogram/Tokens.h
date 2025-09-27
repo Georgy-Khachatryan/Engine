@@ -60,6 +60,13 @@ struct Token {
 struct Tokenizer {
 	const char* string = nullptr;
 	
+	StackAllocator* alloc = nullptr;
+	String file;
+	String filepath;
+	
 	Token FindNextToken();
 	Token PeekNextToken();
+	
+	void ReportMessage(Token token, String message, u32 color_code = 0);
+	void ReportError(Token token, const char* format, ...);
 };
