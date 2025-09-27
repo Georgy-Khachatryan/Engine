@@ -29,3 +29,4 @@ ArrayView<String> ReadDirectoryChangeEvents(StackAllocator* alloc, DirectoryChan
 void ReleaseDirectoryChangeTracker(DirectoryChangeTracker* tracker);
 
 void SystemWriteToConsole(StackAllocator* alloc, String message);
+void SystemWriteToConsole(StackAllocator* alloc, const char* format, ...);

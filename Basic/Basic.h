@@ -105,6 +105,10 @@ inline constexpr bool HasAnyFlags(EnumTypeT mask, EnumTypeT test_pattern) { retu
 inline constexpr bool HasAllFlags(EnumTypeT mask, EnumTypeT test_pattern) { return ((u64)mask & (u64)test_pattern) == (u64)test_pattern; }
 
 
+template<typename T, u32 size>
+inline constexpr u32 ArraySize(const T(&)[size]) { return size; }
+
+
 struct StackAllocator;
 struct HeapAllocator;
 

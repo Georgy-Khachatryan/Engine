@@ -26,11 +26,11 @@ struct AtmosphereParameters {
 	float3 mie_absorption; // Mie absorption coefficients
 	float  mie_phase_g;    // Mie phase function excentricity
 	
-	// Ozone layer (absorption only).
+	// Ozone layer (no scattering, absorption only).
 	float  ozone_density_layer_height;
 	float2 ozone_density_scale;
 	float2 ozone_density_offset;
-	float3 ozone_extinction;
+	float3 ozone_absorption;
 };
 
 compile_const AtmosphereParameters default_atmosphere = {
@@ -48,7 +48,7 @@ compile_const AtmosphereParameters default_atmosphere = {
 	25.0, // ozone_density_layer_height, km
 	float2( 1.0 / 15.0, -1.0 / 15.0), // ozone_density_scale
 	float2(-2.0 /  3.0,  8.0 /  3.0), // ozone_density_offset
-	float3(0.000650, 0.001881, 0.000085), // ozone_extinction
+	float3(0.000650, 0.001881, 0.000085), // ozone_absorption
 };
 
 
@@ -88,7 +88,7 @@ AtmosphereMedium SampleAtmosphereMedium(AtmosphereParameters atmosphere, float3 
 	sample.extinction_rayleigh = sample.scattering_rayleigh + sample.absorption_rayleigh;
 	
 	sample.scattering_ozone = 0.0;
-	sample.absorption_ozone = density_ozone * atmosphere.ozone_extinction;
+	sample.absorption_ozone = density_ozone * atmosphere.ozone_absorption;
 	sample.extinction_ozone = sample.scattering_ozone + sample.absorption_ozone;
 	
 	sample.scattering = sample.scattering_mie + sample.scattering_rayleigh + sample.scattering_ozone;

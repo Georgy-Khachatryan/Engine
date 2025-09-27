@@ -220,3 +220,13 @@ void SystemWriteToConsole(StackAllocator* alloc, String message) {
 	WriteConsoleW(GetStdHandle(STD_ERROR_HANDLE), message_utf16.data, (u32)message_utf16.count, nullptr, nullptr);
 }
 
+void SystemWriteToConsole(StackAllocator* alloc, const char* format, ...) {
+	TempAllocationScope(alloc);
+	
+	va_list va_args;
+	va_start(va_args, format);
+	auto message = StringFormatV(alloc, format, va_args);
+	va_end(va_args);
+	
+	SystemWriteToConsole(alloc, message);
+}

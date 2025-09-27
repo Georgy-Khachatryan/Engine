@@ -4,6 +4,7 @@
 #include "Basic/BasicString.h"
 #include "Basic/BasicHashTable.h"
 #include "SystemWindow.h"
+#include "RenderPasses.h"
 #include "GraphicsApi/GraphicsApi.h"
 
 #include <SDK/imgui/imgui.h>
