@@ -1,5 +1,6 @@
 #pragma once
 #include "Basic/Basic.h"
+#include "Basic/BasicArray.h"
 #include "Basic/BasicString.h"
 
 enum struct TokenType : u32 {
@@ -36,7 +37,7 @@ enum struct TokenType : u32 {
 	
 	Count
 };
-String token_type_names[];
+extern String token_type_names[];
 
 enum struct KeywordType : u32 {
 	None      = 0,
@@ -50,7 +51,7 @@ enum struct KeywordType : u32 {
 	
 	Count
 };
-String keyword_type_names[];
+extern String keyword_type_names[];
 
 struct Token {
 	String string;
@@ -65,6 +66,7 @@ struct Tokenizer {
 	StackAllocator* alloc = nullptr;
 	String file;
 	String filepath;
+	Array<String> namespace_stack;
 	
 	Token FindNextToken();
 	Token PeekNextToken();

@@ -57,6 +57,9 @@ struct AstNodeDeclaration : AstNode {
 struct AstNodeCodeBlock : AstNode {
 	compile_const AstNodeType my_type = AstNodeType::CodeBlock;
 	
+	String namespace_path;
+	String declared_namespace;
+	
 	ArrayView<AstNodeDeclaration*> declarations;
 };
 

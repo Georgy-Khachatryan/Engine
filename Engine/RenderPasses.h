@@ -1,5 +1,6 @@
 #pragma once
 #include "Basic/Basic.h"
+#include "Basic/BasicString.h"
 
 #define RENDER_PASS_GENERATED_CODE() static struct RootSignature root_signature;
 
@@ -9,28 +10,28 @@
 */
 
 namespace Meta {
-	struct RenderGraphSystem {};
-	struct RenderPass {};
-	enum struct RenderPassType : u32 { None = 0, Compute = 1, Graphics = 2, Count };
+	NOTES() struct RenderGraphSystem {};
+	NOTES() struct RenderPass {};
+	NOTES() struct HlslFile { String filename; };
 };
 
 namespace HLSL {
-	template<typename T> struct Texture2D   {};
-	template<typename T> struct RWTexture2D {};
+	NOTES() /*template<typename T>*/ struct Texture2D   {};
+	NOTES() /*template<typename T>*/ struct RWTexture2D {};
 	
-	template<typename T> struct RegularBuffer   {};
-	template<typename T> struct RWRegularBuffer {};
+	NOTES() /*template<typename T>*/ struct RegularBuffer   {};
+	NOTES() /*template<typename T>*/ struct RWRegularBuffer {};
 	
-	template<typename T> struct DescriptorTable { u32 offset = 0; };
-	template<typename T> struct ConstantBuffer  { u32 offset = 0; };
+	NOTES() /*template<typename T>*/ struct DescriptorTable { u32 offset = 0; };
+	NOTES() /*template<typename T>*/ struct ConstantBuffer  { u32 offset = 0; };
 };
 
 
-struct float2 { float values[2]; };
-struct float3 { float values[3]; };
-struct float4 { float values[4]; };
+NOTES() struct float2 { float x; float y; };
+NOTES() struct float3 { float x; float y; float z; };
+NOTES() struct float4 { float x; float y; float z; float w; };
 
-NOTES(Meta::HlslFile{ "AtmosphereData.hlsl" })
+NOTES(Meta::HlslFile{ "AtmosphereData.hlsl"_sl })
 struct AtmosphereParameters {
 	compile_const u32 transmittance_lut_width = 256;
 	
@@ -55,17 +56,25 @@ struct AtmosphereParameters {
 };
 
 
-NOTES(Meta::RenderPass{}, Meta::RenderGraphSystem{}, Meta::RenderPassType::Compute)
+NOTES(Meta::RenderPass{}, Meta::RenderGraphSystem{})
 struct TransittanceLutRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
 	struct Descriptors {
-		HLSL::RWTexture2D<float4> transmittance_lut;
+		HLSL::RWTexture2D/*<float4>*/ transmittance_lut;
 	};
 	
 	struct RootSignature {
-		HLSL::DescriptorTable<Descriptors> descriptor_table;
-		HLSL::ConstantBuffer<AtmosphereParameters> atmosphere;
+		struct PushConstants {
+			u32 sample_count  = 0;
+			u32 group_count_x = 0;
+		};
+		
+		struct PopConstants {
+		};
+		
+		HLSL::DescriptorTable/*<Descriptors>*/ descriptor_table;
+		HLSL::ConstantBuffer/*<AtmosphereParameters>*/ atmosphere;
 	};
 };
 
@@ -74,13 +83,13 @@ struct MultipleScatteringLutRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
 	struct Descriptors {
-		HLSL::Texture2D<float4>   transmittance_lut;
-		HLSL::RWTexture2D<float4> multiple_scattering_lut;
+		HLSL::Texture2D/*<float4>*/   transmittance_lut;
+		HLSL::RWTexture2D/*<float4>*/ multiple_scattering_lut;
 	};
 	
 	struct RootSignature {
-		HLSL::DescriptorTable<Descriptors> descriptor_table;
-		HLSL::ConstantBuffer<AtmosphereParameters> atmosphere;
+		HLSL::DescriptorTable/*<Descriptors>*/ descriptor_table;
+		HLSL::ConstantBuffer/*<AtmosphereParameters>*/ atmosphere;
 	};
 };
 
@@ -89,14 +98,14 @@ struct SkyPanoramaLutRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
 	struct Descriptors {
-		HLSL::Texture2D<float4>   transmittance_lut;
-		HLSL::Texture2D<float4>   multiple_scattering_lut;
-		HLSL::RWTexture2D<float4> sky_panorama_lut;
+		HLSL::Texture2D/*<float4>*/   transmittance_lut;
+		HLSL::Texture2D/*<float4>*/   multiple_scattering_lut;
+		HLSL::RWTexture2D/*<float4>*/ sky_panorama_lut;
 	};
 	
 	struct RootSignature {
-		HLSL::DescriptorTable<Descriptors> descriptor_table;
-		HLSL::ConstantBuffer<AtmosphereParameters> atmosphere;
+		HLSL::DescriptorTable/*<Descriptors>*/ descriptor_table;
+		HLSL::ConstantBuffer/*<AtmosphereParameters>*/ atmosphere;
 	};
 };
 

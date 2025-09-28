@@ -35,6 +35,7 @@
     
     <ClCompile Include="Metaprogram/MetaprogramParserMain.cpp" />
     <ClCompile Include="Metaprogram/Tokens.cpp" />
+    <ClCompile Include="Metaprogram/TypeInfo.cpp" />
   </ItemGroup>
   
   <ItemGroup>
@@ -48,6 +49,7 @@
     
     <ClInclude Include="Metaprogram/Tokens.h" />
     <ClInclude Include="Metaprogram/AstNodes.h" />
+    <ClInclude Include="Metaprogram/TypeInfo.h" />
   </ItemGroup>
   
   <ItemGroup>

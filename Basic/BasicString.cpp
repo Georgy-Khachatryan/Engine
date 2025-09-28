@@ -84,8 +84,9 @@ struct StringBuilderEntry {
 };
 
 static String AppendStringBuilderEntry(StringBuilder& builder, u64 size) {
-	auto* entry = NewInPlace(builder.alloc->Allocate(sizeof(StringBuilderEntry) + size + 1), StringBuilderEntry);
-	entry->size = size;
+	u64 indentation_level = builder.indentation_level;
+	auto* entry = NewInPlace(builder.alloc->Allocate(sizeof(StringBuilderEntry) + size + indentation_level + 1), StringBuilderEntry);
+	entry->size = size + indentation_level;
 	
 	if (builder.head_entry == nullptr) {
 		builder.head_entry = entry;
@@ -94,10 +95,14 @@ static String AppendStringBuilderEntry(StringBuilder& builder, u64 size) {
 	}
 	
 	builder.tail_entry = entry;
-	builder.total_string_size += size;
+	builder.total_string_size += size + indentation_level;
+	
+	if (indentation_level != 0) {
+		memset(entry + 1, '\t', indentation_level);
+	}
 	
 	String result;
-	result.data  = (char*)(entry + 1);
+	result.data  = (char*)(entry + 1) + indentation_level;
 	result.count = size;
 	result.data[result.count] = 0;
 	

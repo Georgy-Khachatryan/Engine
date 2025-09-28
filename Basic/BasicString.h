@@ -39,10 +39,14 @@ struct StringBuilder {
 	StringBuilderEntry* head_entry = nullptr;
 	StringBuilderEntry* tail_entry = nullptr;
 	u64 total_string_size = 0;
+	u64 indentation_level = 0;
 	
 	void Append(const char* format, ...);
 	void AppendV(const char* format, va_list args);
 	void AppendUnformatted(String string);
+	
+	void Indent()   { indentation_level += 1; }
+	void Unindent() { DebugAssert(indentation_level != 0, "Mismatched Indent/Unindent."); indentation_level -= 1; }
 	
 	String ToString(StackAllocator* string_alloc = nullptr);
 };
