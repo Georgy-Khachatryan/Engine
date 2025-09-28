@@ -23,6 +23,8 @@ u64  SystemFileSize(FileHandle handle);
 
 String SystemReadFileToString(StackAllocator* alloc, String path);
 
+bool SystemCreateDirectory(StackAllocator* alloc, String path);
+
 struct DirectoryChangeTracker;
 
 DirectoryChangeTracker* CreateDirectoryChangeTracker(StackAllocator* alloc, String directory_path);

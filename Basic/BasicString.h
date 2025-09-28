@@ -1,5 +1,6 @@
 #pragma once
 #include "Basic.h"
+#include "BasicArray.h"
 
 #include <stdarg.h>
 
@@ -29,6 +30,7 @@ String StringFormat(StackAllocator* alloc, const char* format, ...);
 String StringCopy(HeapAllocator* alloc, String source);
 String StringAllocate(StackAllocator* alloc, u64 count);
 String StringReplaceTabsWithSpaces(StackAllocator* alloc, String source, u32 tab_width);
+String StringJoin(StackAllocator* alloc, ArrayView<String> source_strings, String separator = ""_sl);
 
 
 struct StringBuilderEntry;

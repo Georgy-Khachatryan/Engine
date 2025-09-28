@@ -68,6 +68,7 @@ struct AstNodeStruct : AstNode {
 	
 	String name;
 	
+	AstNodeCodeBlock* template_code_block = nullptr;
 	AstNodeCodeBlock* code_block = nullptr;
 	AstNodeNotes* notes = nullptr;
 };

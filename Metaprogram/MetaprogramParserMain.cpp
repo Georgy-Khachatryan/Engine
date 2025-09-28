@@ -3,35 +3,12 @@
 #include "Basic/BasicArray.h"
 #include "Basic/BasicString.h"
 #include "Basic/BasicFiles.h"
-#include "Basic/BasicHashTable.h"
 #include "Tokens.h"
 #include "AstNodes.h"
 
 
 static String NamespaceStackToString(Tokenizer& tokenizer) {
-	if (tokenizer.namespace_stack.count == 0) return ""_sl;
-	if (tokenizer.namespace_stack.count == 1) return tokenizer.namespace_stack[0];
-	
-	u64 total_string_length = 0;
-	for (auto& name : tokenizer.namespace_stack) {
-		total_string_length += name.count;
-	}
-	total_string_length += (tokenizer.namespace_stack.count - 1) * 2;
-	
-	auto string = StringAllocate(tokenizer.alloc, total_string_length);
-	
-	u64 offset = 0;
-	for (auto& name : tokenizer.namespace_stack) {
-		memcpy(string.data + offset, name.data, name.count);
-		offset += name.count;
-		
-		if (offset < string.count) {
-			memset(string.data + offset, ':', 2);
-			offset += 2;
-		}
-	}
-	
-	return string;
+	return StringJoin(tokenizer.alloc, tokenizer.namespace_stack, "::"_sl);
 }
 
 static AstNodeDeclaration* ParseDeclaration(Tokenizer& tokenizer);
@@ -142,6 +119,42 @@ static AstNodeNotes* ParseNotes(Tokenizer& tokenizer) {
 	return node;
 }
 
+static AstNodeCodeBlock* ParseTemplate(Tokenizer& tokenizer) {
+	tokenizer.ExpectKeyword(KeywordType::Template);
+	tokenizer.ExpectToken(TokenType::Less);
+	auto token_0 = tokenizer.PeekNextToken();
+	
+	auto* code_block = AstNew<AstNodeCodeBlock>(tokenizer.alloc);
+	
+	Array<AstNodeDeclaration*> declarations;
+	
+	auto token = token_0;
+	while (token.type != TokenType::None && token.type != TokenType::Greater) {
+		tokenizer.ExpectKeyword(KeywordType::Typename);
+		auto name = tokenizer.ExpectToken(TokenType::Identifier);
+		
+		auto* declaration = AstNew<AstNodeDeclaration>(tokenizer.alloc);
+		declaration->name = name.string;
+		declaration->declaration_type = AstNodeDeclarationType::Typename;
+		ArrayAppend(declarations, tokenizer.alloc, declaration);
+		
+		token = tokenizer.PeekNextToken();
+		if (token.type == TokenType::Comma) {
+			tokenizer.FindNextToken();
+			token = tokenizer.PeekNextToken();
+		}
+	}
+	
+	auto token_1 = tokenizer.ExpectToken(TokenType::Greater);
+	
+	code_block->namespace_path = NamespaceStackToString(tokenizer);
+	code_block->declarations = declarations;
+	code_block->declared_namespace.data  = token_0.string.data;
+	code_block->declared_namespace.count = token_1.string.data - token_0.string.data;
+	
+	return code_block;
+}
+
 static AstNodeStruct* ParseStruct(Tokenizer& tokenizer, AstNodeNotes* notes) {
 	tokenizer.ExpectKeyword(KeywordType::Struct);
 	
@@ -192,10 +205,18 @@ static AstNodeDeclaration* ParseDeclaration(Tokenizer& tokenizer) {
 		token = tokenizer.PeekNextToken();
 	}
 	
+	AstNodeCodeBlock* template_code_block = nullptr;
+	if (token.keyword == KeywordType::Template) {
+		template_code_block = ParseTemplate(tokenizer);
+		token = tokenizer.PeekNextToken();
+	}
+	
 	auto* declaration = AstNew<AstNodeDeclaration>(tokenizer.alloc);
 	
 	if (token.keyword == KeywordType::Struct) {
 		auto* ast_node_struct = ParseStruct(tokenizer, notes);
+		ast_node_struct->template_code_block = template_code_block;
+		
 		tokenizer.ExpectToken(TokenType::Semicolon);
 		
 		declaration->name             = ast_node_struct->name;
@@ -274,17 +295,51 @@ static AstNodeCodeBlock* ParseFile(StackAllocator* alloc, String file, String fi
 
 static void GenerateCodeForCodeBlockTypeDeclarations(StringBuilder& builder, AstNodeCodeBlock* code_block);
 
+static String TemplateExpressionArguments(StackAllocator* alloc, AstNodeCodeBlock* template_code_block) {
+	if (template_code_block->declarations.count == 0) return ""_sl;
+	if (template_code_block->declarations.count == 1) return template_code_block->declarations[0]->name;
+	
+	Array<String> arguments;
+	ArrayReserve(arguments, alloc, template_code_block->declarations.count);
+	
+	for (auto* declaration : template_code_block->declarations) {
+		ArrayAppend(arguments, declaration->name);
+	}
+	
+	return StringJoin(alloc, arguments, ", "_sl);
+}
+
 static void GenerateCodeForStruct(StringBuilder& builder, AstNodeStruct* ast_node_struct) {
 	// Generate code for internal structs first.
 	auto* code_block = ast_node_struct->code_block;
 	GenerateCodeForCodeBlockTypeDeclarations(builder, code_block);
 	
 	auto name = code_block->namespace_path;
+	auto* template_code_block = ast_node_struct->template_code_block;
 	
-	builder.Append("template<> struct TypeInfoOfInternal<const %.*s> { static TypeInfoStruct* Get(); };\n\n", (s32)name.count, name.data);
-	
-	builder.Append("TypeInfoStruct* TypeInfoOfInternal<const %.*s>::Get() {\n", (s32)name.count, name.data);
+	if (template_code_block) {
+		auto template_expression = template_code_block->declared_namespace;
+		auto template_arguments = TemplateExpressionArguments(builder.alloc, template_code_block);
+		name = StringFormat(builder.alloc, "%.*s<%.*s>", (s32)name.count, name.data, (s32)template_arguments.count, template_arguments.data);;
+		
+		builder.Append("template<%.*s> struct TypeInfoOfInternal<const %.*s> { static TypeInfoStruct* Get(); };\n\n",
+			(s32)template_expression.count, template_expression.data,
+			(s32)name.count, name.data
+		);
+		
+		builder.Append("template<%.*s> TypeInfoStruct* TypeInfoOfInternal<const %.*s>::Get() {\n",
+			(s32)template_expression.count, template_expression.data,
+			(s32)name.count, name.data
+		);
+	} else {
+		builder.Append("template<> struct TypeInfoOfInternal<const %.*s> { static TypeInfoStruct* Get(); };\n\n", (s32)name.count, name.data);
+		
+		builder.Append("TypeInfoStruct* TypeInfoOfInternal<const %.*s>::Get() {\n", (s32)name.count, name.data);
+	}
 	builder.Indent();
+	
+	// Rename the type so it's possible to use offsetof macro with types that have comma in the name.
+	builder.Append("using TypeName = %.*s;\n\n", (s32)name.count, name.data);
 	
 	// Array of notes.
 	auto* notes = ast_node_struct->notes;
@@ -310,27 +365,36 @@ static void GenerateCodeForStruct(StringBuilder& builder, AstNodeStruct* ast_nod
 	}
 	
 	// Array of fields.
-	if (code_block->declarations.count != 0) {
+	if (code_block->declarations.count != 0 || (template_code_block && template_code_block->declarations.count != 0)) {
 		builder.AppendUnformatted("static TypeInfoStructField fields[] = {\n"_sl);
 		builder.Indent();
 		
+		if (template_code_block) {
+			for (auto* declaration : template_code_block->declarations) {
+				builder.Append("{ \"%.*s\"_sl, &type_info_type, 0, TypeInfoOf<%.*s>(), TypeInfoStructFieldFlags::TemplateParameter },\n",
+					(s32)declaration->name.count, declaration->name.data,
+					(s32)declaration->name.count, declaration->name.data
+				);
+			}
+		}
+		
 		for (auto* declaration : code_block->declarations) {
 			if (declaration->declaration_type == AstNodeDeclarationType::Variable) {
-				builder.Append("{ \"%.*s\"_sl, TypeInfoOf<decltype(%.*s::%.*s)>(), offsetof(%.*s, %.*s) },\n",
+				builder.Append("{ \"%.*s\"_sl, TypeInfoOf<decltype(TypeName::%.*s)>(), offsetof(TypeName, %.*s) },\n",
 					(s32)declaration->name.count, declaration->name.data,
-					(s32)name.count, name.data, (s32)declaration->name.count, declaration->name.data,
-					(s32)name.count, name.data, (s32)declaration->name.count, declaration->name.data
+					(s32)declaration->name.count, declaration->name.data,
+					(s32)declaration->name.count, declaration->name.data
 				);
 			} else if (declaration->declaration_type == AstNodeDeclarationType::Constant) {
-				builder.Append("{ \"%.*s\"_sl, TypeInfoOf<decltype(%.*s::%.*s)>(), 0, &%.*s::%.*s },\n",
+				builder.Append("{ \"%.*s\"_sl, TypeInfoOf<decltype(TypeName::%.*s)>(), 0, &TypeName::%.*s },\n",
 					(s32)declaration->name.count, declaration->name.data,
-					(s32)name.count, name.data, (s32)declaration->name.count, declaration->name.data,
-					(s32)name.count, name.data, (s32)declaration->name.count, declaration->name.data
+					(s32)declaration->name.count, declaration->name.data,
+					(s32)declaration->name.count, declaration->name.data
 				);
 			} else if (declaration->declaration_type == AstNodeDeclarationType::Typename) {
-				builder.Append("{ \"%.*s\"_sl, &type_info_type, 0, TypeInfoOf<%.*s::%.*s>() },\n",
+				builder.Append("{ \"%.*s\"_sl, &type_info_type, 0, TypeInfoOf<TypeName::%.*s>() },\n",
 					(s32)declaration->name.count, declaration->name.data,
-					(s32)name.count, name.data, (s32)declaration->name.count, declaration->name.data
+					(s32)declaration->name.count, declaration->name.data
 				);
 			} else {
 				DebugAssertAlways("Unhanlded declaration type.");
@@ -348,7 +412,7 @@ static void GenerateCodeForStruct(StringBuilder& builder, AstNodeStruct* ast_nod
 		
 		builder.Append("TypeInfoType::Struct,\n");
 		builder.Append("\"%.*s\"_sl,\n", (s32)name.count, name.data);
-		builder.Append("sizeof(%.*s),\n", (s32)name.count, name.data);
+		builder.AppendUnformatted("sizeof(TypeName),\n"_sl);
 		
 		if (code_block->declarations.count != 0) {
 			builder.Append("ArrayView<TypeInfoStructField>{ fields, %u },\n", (u32)code_block->declarations.count);
@@ -387,6 +451,38 @@ static void GenerateCodeForCodeBlockTypeDeclarations(StringBuilder& builder, Ast
 	}
 }
 
+static void GenerateCodeForTypeTable(StringBuilder& builder, AstNodeCodeBlock* code_block) {
+	builder.AppendUnformatted("TypeInfo* type_table_internal[] = {\n"_sl);
+	builder.Indent();
+	
+	u32 type_table_size = 0;
+	for (auto* declaration : code_block->declarations) {
+		if (declaration->type_declaration == nullptr) continue;
+		
+		String name;
+		switch (declaration->type_declaration->type) {
+		case AstNodeType::Struct: {
+			auto* ast_node_struct = (AstNodeStruct*)declaration->type_declaration;
+			name = ast_node_struct->template_code_block ? ""_sl : ast_node_struct->code_block->namespace_path;
+			break;
+		} default: {
+			DebugAssertAlways("Unhanlded type declaration ast node type.");
+			break;
+		}
+		}
+		
+		if (name.count != 0) {
+			builder.Append("TypeInfoOf<%.*s>(),\n", (s32)name.count, name.data);
+			type_table_size += 1;
+		}
+	}
+	
+	builder.Unindent();
+	builder.AppendUnformatted("};\n\n"_sl);
+	
+	builder.Append("ArrayView<TypeInfo*> type_table = { type_table_internal, %u };\n\n", type_table_size);
+}
+
 s32 main() {
 	auto alloc = CreateStackAllocator(64 * 1024 * 1024, 512 * 1024);
 	defer{ ReleaseStackAllocator(alloc); };
@@ -402,9 +498,31 @@ s32 main() {
 	
 	StringBuilder builder;
 	builder.alloc = &alloc;
+	
+	builder.Append("#include \"Engine/RenderPasses.h\"\n");
+	builder.Append("#include \"Metaprogram/TypeInfo.h\"\n");
+	builder.Append("#include <stddef.h>\n\n"); // Included to get offsetof().
+	
 	GenerateCodeForCodeBlockTypeDeclarations(builder, top_level_code_block);
+	GenerateCodeForTypeTable(builder, top_level_code_block);
+	
+	
+	auto output_directory = "./Metaprogram/Generated/"_sl;
+	if (SystemCreateDirectory(&alloc, output_directory) == false) {
+		SystemWriteToConsole(&alloc, "\x1B[31mFailed to create output directory '%s'.\x1B[0m\n", output_directory.data);
+		return 1;
+	}
+	
+	auto output_filepath = "./Metaprogram/Generated/RenderPasses.cpp"_sl;
+	auto output_file = SystemOpenFile(&alloc, output_filepath, OpenFileFlags::Write);
+	if (output_file.handle == nullptr) {
+		SystemWriteToConsole(&alloc, "\x1B[31mFailed to open output file '%s'.\x1B[0m\n", output_filepath.data);
+		return 1;
+	}
 	
 	auto file_string = builder.ToString();
+	SystemWriteFile(output_file, file_string.data, file_string.count, 0);
+	SystemCloseFile(output_file);
 	
 	return 0;
 }

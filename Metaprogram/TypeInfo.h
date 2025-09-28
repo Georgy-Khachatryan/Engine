@@ -38,6 +38,12 @@ struct TypeInfoNote {
 	const void* value = nullptr;
 };
 
+enum struct TypeInfoStructFieldFlags : u32 {
+	None              = 0,
+	TemplateParameter = 1u << 0,
+};
+ENUM_FLAGS_OPERATORS(TypeInfoStructFieldFlags);
+
 struct TypeInfoStructField {
 	String name;
 	
@@ -45,6 +51,8 @@ struct TypeInfoStructField {
 	u64 offset = 0;
 	
 	const void* constant_value = nullptr;
+	
+	TypeInfoStructFieldFlags flags = TypeInfoStructFieldFlags::None;
 };
 
 struct TypeInfoStruct : TypeInfo {

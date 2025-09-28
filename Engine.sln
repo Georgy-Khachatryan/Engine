@@ -7,6 +7,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Engine", "Engine.vcxproj", 
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MetaprogramParser", "MetaprogramParser.vcxproj", "{E49F501A-D638-4D0B-8D7C-A1B42943DFFD}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Metaprogram", "Metaprogram.vcxproj", "{A9CE4BEB-74DA-447B-AA83-627DA6F8DF69}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -26,6 +28,12 @@ Global
 		{E49F501A-D638-4D0B-8D7C-A1B42943DFFD}.Dev|x64.Build.0 = Dev|x64
 		{E49F501A-D638-4D0B-8D7C-A1B42943DFFD}.Profile|x64.ActiveCfg = Profile|x64
 		{E49F501A-D638-4D0B-8D7C-A1B42943DFFD}.Profile|x64.Build.0 = Profile|x64
+		{A9CE4BEB-74DA-447B-AA83-627DA6F8DF69}.Debug|x64.ActiveCfg = Debug|x64
+		{A9CE4BEB-74DA-447B-AA83-627DA6F8DF69}.Debug|x64.Build.0 = Debug|x64
+		{A9CE4BEB-74DA-447B-AA83-627DA6F8DF69}.Dev|x64.ActiveCfg = Dev|x64
+		{A9CE4BEB-74DA-447B-AA83-627DA6F8DF69}.Dev|x64.Build.0 = Dev|x64
+		{A9CE4BEB-74DA-447B-AA83-627DA6F8DF69}.Profile|x64.ActiveCfg = Profile|x64
+		{A9CE4BEB-74DA-447B-AA83-627DA6F8DF69}.Profile|x64.Build.0 = Profile|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -77,6 +77,31 @@ String StringReplaceTabsWithSpaces(StackAllocator* alloc, String source, u32 tab
 	return result;
 }
 
+String StringJoin(StackAllocator* alloc, ArrayView<String> source_strings, String separator) {
+	if (source_strings.count == 0) return ""_sl;
+	if (source_strings.count == 1) return source_strings[0];
+	
+	u64 total_string_length = 0;
+	for (auto& string : source_strings) {
+		total_string_length += string.count;
+	}
+	total_string_length += (source_strings.count - 1) * separator.count;
+	
+	auto result = StringAllocate(alloc, total_string_length);
+	
+	u64 offset = 0;
+	for (auto& string : source_strings) {
+		memcpy(result.data + offset, string.data, string.count);
+		offset += string.count;
+		
+		if (offset < result.count && separator.count != 0) {
+			memcpy(result.data + offset, separator.data, separator.count);
+			offset += separator.count;
+		}
+	}
+	
+	return result;
+}
 
 struct StringBuilderEntry {
 	StringBuilderEntry* next_entry = nullptr;

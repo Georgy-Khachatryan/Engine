@@ -4,10 +4,6 @@
 
 #define RENDER_PASS_GENERATED_CODE() static struct RootSignature root_signature;
 
-// Single line comment.
-/*
-	Multi line comment.
-*/
 
 namespace Meta {
 	NOTES() struct RenderGraphSystem {};
@@ -16,14 +12,14 @@ namespace Meta {
 };
 
 namespace HLSL {
-	NOTES() /*template<typename T>*/ struct Texture2D   {};
-	NOTES() /*template<typename T>*/ struct RWTexture2D {};
+	NOTES() template<typename T> struct Texture2D   {};
+	NOTES() template<typename T> struct RWTexture2D {};
 	
-	NOTES() /*template<typename T>*/ struct RegularBuffer   {};
-	NOTES() /*template<typename T>*/ struct RWRegularBuffer {};
+	NOTES() template<typename T> struct RegularBuffer   {};
+	NOTES() template<typename T> struct RWRegularBuffer {};
 	
-	NOTES() /*template<typename T>*/ struct DescriptorTable { u32 offset = 0; };
-	NOTES() /*template<typename T>*/ struct ConstantBuffer  { u32 offset = 0; };
+	NOTES() template<typename T> struct DescriptorTable { u32 offset = 0; };
+	NOTES() template<typename T> struct ConstantBuffer  { u32 offset = 0; };
 };
 
 
@@ -61,7 +57,7 @@ struct TransittanceLutRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
 	struct Descriptors {
-		HLSL::RWTexture2D/*<float4>*/ transmittance_lut;
+		HLSL::RWTexture2D<float4> transmittance_lut;
 	};
 	
 	struct RootSignature {
@@ -70,11 +66,8 @@ struct TransittanceLutRenderPass {
 			u32 group_count_x = 0;
 		};
 		
-		struct PopConstants {
-		};
-		
-		HLSL::DescriptorTable/*<Descriptors>*/ descriptor_table;
-		HLSL::ConstantBuffer/*<AtmosphereParameters>*/ atmosphere;
+		HLSL::DescriptorTable<Descriptors> descriptor_table;
+		HLSL::ConstantBuffer<AtmosphereParameters> atmosphere;
 	};
 };
 
@@ -83,13 +76,13 @@ struct MultipleScatteringLutRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
 	struct Descriptors {
-		HLSL::Texture2D/*<float4>*/   transmittance_lut;
-		HLSL::RWTexture2D/*<float4>*/ multiple_scattering_lut;
+		HLSL::Texture2D<float4>   transmittance_lut;
+		HLSL::RWTexture2D<float4> multiple_scattering_lut;
 	};
 	
 	struct RootSignature {
-		HLSL::DescriptorTable/*<Descriptors>*/ descriptor_table;
-		HLSL::ConstantBuffer/*<AtmosphereParameters>*/ atmosphere;
+		HLSL::DescriptorTable<Descriptors> descriptor_table;
+		HLSL::ConstantBuffer<AtmosphereParameters> atmosphere;
 	};
 };
 
@@ -98,14 +91,14 @@ struct SkyPanoramaLutRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
 	struct Descriptors {
-		HLSL::Texture2D/*<float4>*/   transmittance_lut;
-		HLSL::Texture2D/*<float4>*/   multiple_scattering_lut;
-		HLSL::RWTexture2D/*<float4>*/ sky_panorama_lut;
+		HLSL::Texture2D<float4>   transmittance_lut;
+		HLSL::Texture2D<float4>   multiple_scattering_lut;
+		HLSL::RWTexture2D<float4> sky_panorama_lut;
 	};
 	
 	struct RootSignature {
-		HLSL::DescriptorTable/*<Descriptors>*/ descriptor_table;
-		HLSL::ConstantBuffer/*<AtmosphereParameters>*/ atmosphere;
+		HLSL::DescriptorTable<Descriptors> descriptor_table;
+		HLSL::ConstantBuffer<AtmosphereParameters> atmosphere;
 	};
 };
 

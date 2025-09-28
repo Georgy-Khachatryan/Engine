@@ -11,4 +11,13 @@
 		</Expand>
 	</Type>
 	
+	<Type Name="TypeInfo" Inheritable="false">
+		<DisplayString>{{type={info_type}}}</DisplayString>
+		<Expand>
+			<ExpandedItem Condition="info_type == TypeInfoType::Integer">*(TypeInfoInteger*)this,na</ExpandedItem>
+			<ExpandedItem Condition="info_type == TypeInfoType::Float">*(TypeInfoFloat*)this,na</ExpandedItem>
+			<ExpandedItem Condition="info_type == TypeInfoType::Struct">*(TypeInfoStruct*)this,na</ExpandedItem>
+		</Expand>
+	</Type>
+	
 </AutoVisualizer>

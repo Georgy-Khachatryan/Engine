@@ -146,6 +146,7 @@ Token Tokenizer::FindNextToken() {
 			break;
 		} case 8: {
 			if (CheckKeyword(token, "template", 8, KeywordType::Template)) break;
+			if (CheckKeyword(token, "typename", 8, KeywordType::Typename)) break;
 			break;
 		} case 9: {
 			if (CheckKeyword(token, "namespace", 8, KeywordType::Namespace)) break;
@@ -293,6 +294,7 @@ String keyword_type_names[] = {
 	"Struct"_sl,
 	"Union"_sl,
 	"Template"_sl,
+	"Typename"_sl,
 	"Namespace"_sl,
 	"CompileConst"_sl,
 };

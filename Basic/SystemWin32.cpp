@@ -115,15 +115,23 @@ String SystemReadFileToString(StackAllocator* alloc, String path) {
 	if (file.handle == nullptr) return {};
 	defer{ SystemCloseFile(file); };
 	
-	String result;
-	result.count = SystemFileSize(file);
-	result.data  = (char*)alloc->Allocate(result.count + 1);
+	auto result = StringAllocate(alloc, SystemFileSize(file));
 	
 	bool success = SystemReadFile(file, result.data, result.count, 0);
 	DebugAssert(success, "Failed to read a file to string.");
-	result.data[result.count] = '\0';
 	
 	return result;
+}
+
+bool SystemCreateDirectory(StackAllocator* alloc, String path) {
+	TempAllocationScope(alloc);
+	
+	auto path_utf16 = StringUtf8ToUtf16(alloc, path);
+	
+	bool success = CreateDirectoryW((wchar_t*)path_utf16.data, nullptr) != 0;
+	if (success == false) success |= (GetLastError() == ERROR_ALREADY_EXISTS);
+	
+	return success;
 }
 
 

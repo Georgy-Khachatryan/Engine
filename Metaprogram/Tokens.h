@@ -40,14 +40,15 @@ enum struct TokenType : u32 {
 extern String token_type_names[];
 
 enum struct KeywordType : u32 {
-	None      = 0,
-	Notes     = 1,
-	Enum      = 2,
-	Struct    = 3,
-	Union     = 4,
-	Template  = 5,
-	Namespace = 6,
-	CompileConst = 7,
+	None         = 0,
+	Notes        = 1,
+	Enum         = 2,
+	Struct       = 3,
+	Union        = 4,
+	Template     = 5,
+	Typename     = 6,
+	Namespace    = 7,
+	CompileConst = 8,
 	
 	Count
 };
