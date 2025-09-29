@@ -35,7 +35,7 @@
     
     <ClCompile Include="Metaprogram/MetaprogramMain.cpp" />
     <ClCompile Include="Metaprogram/TypeInfo.cpp" />
-    <ClCompile Include="Metaprogram/Generated/*.cpp" />
+    <ClCompile Include="Metaprogram/Generated/RenderPasses.cpp" />
   </ItemGroup>
   
   <ItemGroup>
@@ -47,6 +47,8 @@
     <ClInclude Include="Basic/BasicMemory.h" />
     <ClInclude Include="Basic/BasicString.h" />
     
+    <ClInclude Include="Engine/RenderPasses.h" />
+    
     <ClInclude Include="Metaprogram/Tokens.h" />
     <ClInclude Include="Metaprogram/AstNodes.h" />
     <ClInclude Include="Metaprogram/TypeInfo.h" />
@@ -56,6 +58,10 @@
     <Natvis Include="Basic/Basic.natvis" />
     <Natvis Include="Metaprogram/Metaprogram.natvis" />
   </ItemGroup>
+  
+  <Target Name="PreBuild" AfterTargets="PreBuildEvent">
+    <Exec Command="$(OutDir)MetaprogramParser.exe" />
+  </Target>
   
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>

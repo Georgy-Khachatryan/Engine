@@ -185,7 +185,7 @@ Token Tokenizer::ExpectKeyword(KeywordType expected_keyword) {
 }
 
 
-void Tokenizer::ReportMessage(Token token, String message, u32 color_code) {
+void Tokenizer::ReportMessage(Token token, String message) {
 	TempAllocationScope(alloc);
 	
 	StringBuilder builder;
@@ -205,8 +205,6 @@ void Tokenizer::ReportMessage(Token token, String message, u32 color_code) {
 		}
 		string += 1;
 	}
-	
-	if (color_code != 0) builder.Append("\x1B[%um", color_code);
 	
 	builder.Append("%.*s(%u,%u): error: %.*s\n", (s32)filepath.count, filepath.data, line + 1, column + 1, (s32)message.count, message.data);
 	
@@ -234,9 +232,7 @@ void Tokenizer::ReportMessage(Token token, String message, u32 color_code) {
 		builder.Append("%.*s\n%.*s\n", (s32)error_line_with_spaces.count, error_line_with_spaces.data, (s32)highlight_line.count, highlight_line.data);
 	}
 	
-	if (color_code != 0) builder.AppendUnformatted("\x1B[0m"_sl);
-	
-	SystemWriteToConsole(alloc, builder.ToString());
+	SystemWriteToConsole(builder.ToString());
 }
 
 void Tokenizer::ReportError(Token token, const char* format, ...) {
@@ -247,7 +243,7 @@ void Tokenizer::ReportError(Token token, const char* format, ...) {
 	auto message = StringFormatV(alloc, format, va_args);
 	va_end(va_args);
 	
-	ReportMessage(token, message, 31);
+	ReportMessage(token, message);
 	
 	SystemExitProcess(1);
 }

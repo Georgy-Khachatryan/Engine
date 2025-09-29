@@ -221,11 +221,9 @@ ArrayView<String> ReadDirectoryChangeEvents(StackAllocator* alloc, DirectoryChan
 }
 
 
-void SystemWriteToConsole(StackAllocator* alloc, String message) {
-	TempAllocationScope(alloc);
-	
-	auto message_utf16 = StringUtf8ToUtf16(alloc, message);
-	WriteConsoleW(GetStdHandle(STD_ERROR_HANDLE), message_utf16.data, (u32)message_utf16.count, nullptr, nullptr);
+void SystemWriteToConsole(String message) {
+	SetConsoleOutputCP(CP_UTF8); // TODO: Set char page on startup.
+	WriteFile(GetStdHandle(STD_ERROR_HANDLE), message.data, (u32)message.count, nullptr, nullptr);
 }
 
 void SystemWriteToConsole(StackAllocator* alloc, const char* format, ...) {
@@ -236,7 +234,7 @@ void SystemWriteToConsole(StackAllocator* alloc, const char* format, ...) {
 	auto message = StringFormatV(alloc, format, va_args);
 	va_end(va_args);
 	
-	SystemWriteToConsole(alloc, message);
+	SystemWriteToConsole(message);
 }
 
 

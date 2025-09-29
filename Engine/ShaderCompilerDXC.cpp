@@ -131,7 +131,7 @@ static bool CompileShaderToBlob(ShaderCompiler* compiler, ShaderDefinition* defi
 	auto shader_file = ReadShaderSourceFile(alloc, filename);
 	
 	if (shader_file.contents.data == nullptr) {
-		SystemWriteToConsole(alloc, StringFormat(alloc, "Failed to open shader source file '%.*s'.\n", (s32)filename.count, filename.data));
+		SystemWriteToConsole(alloc, "Failed to open shader source file '%.*s'.\n", (s32)filename.count, filename.data);
 		return false;
 	}
 	
@@ -145,7 +145,7 @@ static bool CompileShaderToBlob(ShaderCompiler* compiler, ShaderDefinition* defi
 	
 	
 	Array<const wchar_t*> arguments;
-	ArrayReserve(arguments, alloc, 9 + CountSetBits(permutation) * 2);
+	ArrayReserve(arguments, alloc, 10 + CountSetBits(permutation) * 2);
 	
 	ArrayAppend(arguments, (wchar_t*)StringUtf8ToUtf16(alloc, filename).data);
 	ArrayAppend(arguments, L"-E"); ArrayAppend(arguments, entry_point_names[(u32)shader_type]);
@@ -153,6 +153,7 @@ static bool CompileShaderToBlob(ShaderCompiler* compiler, ShaderDefinition* defi
 	ArrayAppend(arguments, L"-D"); ArrayAppend(arguments, shader_type_defines[(u32)shader_type]);
 	ArrayAppend(arguments, L"-Zpr");
 	ArrayAppend(arguments, L"-Qstrip_reflect");
+	ArrayAppend(arguments, L"-enable-16bit-types");
 	
 	for (u64 i : BitScanLow(permutation)) {
 		ArrayAppend(arguments, L"-D");
@@ -192,7 +193,7 @@ static bool CompileShaderToBlob(ShaderCompiler* compiler, ShaderDefinition* defi
 	} else {
 		compiler_message = StringFormat(alloc, "Shader '%.*s' compiled with target '%S'.\n", (s32)filename.count, filename.data, target_profiles[(u32)shader_type]);
 	}
-	SystemWriteToConsole(alloc, compiler_message);
+	SystemWriteToConsole(compiler_message);
 	
 	if (FAILED(status)) return false;
 	
@@ -269,8 +270,7 @@ FixedCountArray<ArrayView<u8>, (u32)ShaderType::Count> CompileShader(ShaderCompi
 			if (CompileShaderToBlob(compiler, definition, permutation, (ShaderType)i, shader) || shader->bytecode_blob.data != nullptr) {
 				should_recompile = false;
 			} else {
-				TempAllocationScope(alloc);
-				SystemWriteToConsole(alloc, "Press enter to recompile.\n"_sl);
+				SystemWriteToConsole("Press enter to recompile.\n"_sl);
 				
 				FixedCapacityArray<wchar_t, 16> buffer;
 				ReadConsoleW(GetStdHandle(STD_INPUT_HANDLE), buffer.data, buffer.capacity, (DWORD*)&buffer.count, nullptr);

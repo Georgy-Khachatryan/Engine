@@ -1,9 +1,16 @@
 
+; Build artifacts:
 Build/
 Intermediate/
-Metaprogram/Generated/
 
+; Generated code:
+Engine/Generated/
+Metaprogram/Generated/
+Shaders/Generated/
+
+; Third party SDKs:
 SDK/DXC
 
+; Visual studio files:
 .vs/
 *.vcxproj.user

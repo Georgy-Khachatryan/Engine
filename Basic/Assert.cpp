@@ -1,4 +1,5 @@
 #include "Basic.h"
+#include "BasicFiles.h"
 
 #if ENABLE_FEATURE(ASSERTS)
 #include <stdarg.h>
@@ -26,14 +27,19 @@ static void DisableAssert(const char* format) {
 
 #pragma optimize("", off)
 void AssertHandler(const char* format, ...) {
-	char formatted_error_message[1024] = {};
+	char formatted_error_message_buffer[1024] = {};
+	
+	String formatted_error_message;
+	formatted_error_message.data  = formatted_error_message_buffer;
+	formatted_error_message.count = sizeof(formatted_error_message_buffer);
 	
 	va_list va_args;
 	va_start(va_args, format);
-	vsnprintf(formatted_error_message, sizeof(formatted_error_message), format, va_args);
+	formatted_error_message.count = vsnprintf(formatted_error_message.data, formatted_error_message.count, format, va_args);
 	va_end(va_args);
 	
-	printf("Assertion Failed: %s\n", formatted_error_message);
+	SystemWriteToConsole("Assertion Failed: "_sl);
+	SystemWriteToConsole(formatted_error_message);
 	
 	u32 disable_assert = 0; // Can be set from the debugger.
 	__debugbreak();

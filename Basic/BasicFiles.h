@@ -31,5 +31,5 @@ DirectoryChangeTracker* CreateDirectoryChangeTracker(StackAllocator* alloc, Stri
 ArrayView<String> ReadDirectoryChangeEvents(StackAllocator* alloc, DirectoryChangeTracker* tracker);
 void ReleaseDirectoryChangeTracker(DirectoryChangeTracker* tracker);
 
-void SystemWriteToConsole(StackAllocator* alloc, String message);
+void SystemWriteToConsole(String message);
 void SystemWriteToConsole(StackAllocator* alloc, const char* format, ...);

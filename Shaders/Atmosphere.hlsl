@@ -1,4 +1,5 @@
 #include "Basic.hlsl"
+#include "Generated/AtmosphereData.hlsl"
 
 //
 // Sebastien Hillaire. 2020. A Scalable and Production Ready Sky and Atmosphere Rendering Technique.
@@ -13,25 +14,6 @@ compile_const float2 inv_multiple_scattering_lut_size = 1.0 / multiple_scatterin
 compile_const float2 inv_sky_panorama_lut_size        = 1.0 / sky_panorama_lut_size;
 compile_const float  planet_radius_offset             = 0.01;
 
-
-struct AtmosphereParameters {
-	float bottom_radius; // Radius of the planet (center to ground)
-	float top_radius;    // Maximum considered atmosphere height (center to atmosphere top)
-	
-	float  rayleigh_density_exp_scale; // Rayleigh scattering exponential distribution scale in the atmosphere.
-	float3 rayleigh_scattering;        // Rayleigh scattering coefficients.
-	
-	float  mie_density_exp_scale; // Mie scattering exponential distribution scale in the atmosphere
-	float3 mie_scattering; // Mie scattering coefficients
-	float3 mie_absorption; // Mie absorption coefficients
-	float  mie_phase_g;    // Mie phase function excentricity
-	
-	// Ozone layer (no scattering, absorption only).
-	float  ozone_density_layer_height;
-	float2 ozone_density_scale;
-	float2 ozone_density_offset;
-	float3 ozone_absorption;
-};
 
 compile_const AtmosphereParameters default_atmosphere = {
 	6360.0, // bottom_radius, km
@@ -211,7 +193,7 @@ float3 ComputeScatteringIntegral(float3 slice_scattering, float3 slice_transmitt
 
 
 #if defined(TRANSMITTANCE_LUT)
-RWTexture2D<float4> transmittance_lut : register(u0);
+#include "Generated/TransittanceLutRenderPass.hlsl"
 
 float3 IntegrateTransmittance(AtmosphereParameters atmosphere, float3 planet_space_position, float3 planet_space_direction) {
 	float t_max = RaySphereIntersect(planet_space_position, planet_space_direction, atmosphere.top_radius);
@@ -254,9 +236,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 #endif // defined(TRANSMITTANCE_LUT)
 
 #if defined(MULTIPLE_SCATTERING_LUT)
-Texture2D<float4>   transmittance_lut       : register(t0);
-RWTexture2D<float4> multiple_scattering_lut : register(u0);
-SamplerState        sampler_linear_clamp    : register(s0);
+#include "Generated/MultipleScatteringLutRenderPass.hlsl"
 
 struct MultipleScatteringValues {
 	float3 multiple_scattering;
@@ -382,10 +362,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 
 
 #if defined(SKY_PANORAMA_LUT)
-Texture2D<float4>   transmittance_lut       : register(t0);
-Texture2D<float4>   multiple_scattering_lut : register(t1);
-RWTexture2D<float4> sky_panorama_lut        : register(u0);
-SamplerState        sampler_linear_clamp    : register(s0);
+#include "Generated/SkyPanoramaLutRenderPass.hlsl"
 
 float RayleighPhase(float cos_theta) {
 	float factor = 3.0 / (16.0 * PI);

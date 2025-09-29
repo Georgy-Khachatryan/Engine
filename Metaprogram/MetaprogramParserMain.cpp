@@ -280,9 +280,15 @@ static AstNodeCodeBlock* ParseFile(StackAllocator* alloc, String file, String fi
 			auto* declaration = ParseDeclaration(tokenizer);
 			ArrayAppend(declarations, tokenizer.alloc, declaration);
 		} else if (token.keyword == KeywordType::Namespace) {
-			ArrayAppend(namespace_brace_depth_stack, alloc, brace_nesting_depth);
 			tokenizer.FindNextToken();
-			ArrayAppend(tokenizer.namespace_stack, alloc, ParseIdentifierWithNamespace(tokenizer).string);
+			auto name = ParseIdentifierWithNamespace(tokenizer);
+			
+			token = tokenizer.PeekNextToken();
+			
+			if (token.type == TokenType::OpeningBrace) {
+				ArrayAppend(namespace_brace_depth_stack, alloc, brace_nesting_depth);
+				ArrayAppend(tokenizer.namespace_stack, alloc, name.string);
+			}
 		} else {
 			tokenizer.FindNextToken(); // Skip over unknown tokens.
 		}
@@ -365,6 +371,7 @@ static void GenerateCodeForStruct(StringBuilder& builder, AstNodeStruct* ast_nod
 	}
 	
 	// Array of fields.
+	u32 field_count = 0;
 	if (code_block->declarations.count != 0 || (template_code_block && template_code_block->declarations.count != 0)) {
 		builder.AppendUnformatted("static TypeInfoStructField fields[] = {\n"_sl);
 		builder.Indent();
@@ -376,6 +383,7 @@ static void GenerateCodeForStruct(StringBuilder& builder, AstNodeStruct* ast_nod
 					(s32)declaration->name.count, declaration->name.data
 				);
 			}
+			field_count += (u32)template_code_block->declarations.count;
 		}
 		
 		for (auto* declaration : code_block->declarations) {
@@ -400,6 +408,7 @@ static void GenerateCodeForStruct(StringBuilder& builder, AstNodeStruct* ast_nod
 				DebugAssertAlways("Unhanlded declaration type.");
 			}
 		}
+		field_count += (u32)code_block->declarations.count;
 		
 		builder.Unindent();
 		builder.AppendUnformatted("};\n\n"_sl);
@@ -414,8 +423,8 @@ static void GenerateCodeForStruct(StringBuilder& builder, AstNodeStruct* ast_nod
 		builder.Append("\"%.*s\"_sl,\n", (s32)name.count, name.data);
 		builder.AppendUnformatted("sizeof(TypeName),\n"_sl);
 		
-		if (code_block->declarations.count != 0) {
-			builder.Append("ArrayView<TypeInfoStructField>{ fields, %u },\n", (u32)code_block->declarations.count);
+		if (field_count != 0) {
+			builder.Append("ArrayView<TypeInfoStructField>{ fields, %u },\n", field_count);
 		} else {
 			builder.AppendUnformatted("ArrayView<TypeInfoStructField>{},\n"_sl);
 		}
@@ -483,6 +492,8 @@ static void GenerateCodeForTypeTable(StringBuilder& builder, AstNodeCodeBlock* c
 	builder.Append("ArrayView<TypeInfo*> type_table = { type_table_internal, %u };\n\n", type_table_size);
 }
 
+#include <stdio.h>
+
 s32 main() {
 	auto alloc = CreateStackAllocator(64 * 1024 * 1024, 512 * 1024);
 	defer{ ReleaseStackAllocator(alloc); };
@@ -490,7 +501,7 @@ s32 main() {
 	auto filepath = "./Engine/RenderPasses.h"_sl;
 	auto file = SystemReadFileToString(&alloc, filepath);
 	if (file.data == nullptr) {
-		SystemWriteToConsole(&alloc, "\x1B[31mFailed to open file '%s'.\x1B[0m\n", filepath.data);
+		SystemWriteToConsole(&alloc, "Failed to open file '%s'.\n", filepath.data);
 		return 1;
 	}
 	
@@ -509,14 +520,14 @@ s32 main() {
 	
 	auto output_directory = "./Metaprogram/Generated/"_sl;
 	if (SystemCreateDirectory(&alloc, output_directory) == false) {
-		SystemWriteToConsole(&alloc, "\x1B[31mFailed to create output directory '%s'.\x1B[0m\n", output_directory.data);
+		SystemWriteToConsole(&alloc, "Failed to create output directory '%s'.\n", output_directory.data);
 		return 1;
 	}
 	
 	auto output_filepath = "./Metaprogram/Generated/RenderPasses.cpp"_sl;
 	auto output_file = SystemOpenFile(&alloc, output_filepath, OpenFileFlags::Write);
 	if (output_file.handle == nullptr) {
-		SystemWriteToConsole(&alloc, "\x1B[31mFailed to open output file '%s'.\x1B[0m\n", output_filepath.data);
+		SystemWriteToConsole(&alloc, "Failed to open output file '%s'.\n", output_filepath.data);
 		return 1;
 	}
 	

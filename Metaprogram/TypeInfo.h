@@ -106,3 +106,5 @@ template<> struct TypeInfoOfInternal<const float>  { static TypeInfo* Get() { re
 template<> struct TypeInfoOfInternal<const double> { static TypeInfo* Get() { return &type_info_float64; } };
 template<> struct TypeInfoOfInternal<const String> { static TypeInfo* Get() { return &type_info_string;  } };
 
+
+#define FORWARD_DECLARE_NOTE(name) template<> struct TypeInfoOfInternal<const name> { static TypeInfoStruct* Get(); };

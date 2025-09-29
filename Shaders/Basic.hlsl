@@ -1,8 +1,18 @@
 #ifndef BASIC_HLSL
 #define BASIC_HLSL
 
+SamplerState sampler_linear_clamp : register(s0);
+
+
 #define compile_const static const
 #define ThreadGroupSize(x, y, z) numthreads(x, y, z)
+
+using u16 = uint16_t;
+using s16 = int16_t;
+using u32 = uint32_t;
+using s32 = int32_t;
+using u64 = uint64_t;
+using s64 = int64_t;
 
 compile_const float PI = 3.1415927;
 

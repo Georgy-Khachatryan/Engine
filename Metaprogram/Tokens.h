@@ -74,6 +74,6 @@ struct Tokenizer {
 	Token ExpectToken(TokenType expected_type);
 	Token ExpectKeyword(KeywordType expected_keyword);
 	
-	void ReportMessage(Token token, String message, u32 color_code = 0);
+	void ReportMessage(Token token, String message);
 	void ReportError(Token token, const char* format, ...);
 };

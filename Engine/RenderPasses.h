@@ -2,13 +2,14 @@
 #include "Basic/Basic.h"
 #include "Basic/BasicString.h"
 
-#define RENDER_PASS_GENERATED_CODE() static struct RootSignature root_signature;
+#define RENDER_PASS_GENERATED_CODE() struct RootSignature; static RootSignature root_signature;
 
 
 namespace Meta {
 	NOTES() struct RenderGraphSystem {};
 	NOTES() struct RenderPass {};
 	NOTES() struct HlslFile { String filename; };
+	NOTES() struct HlslDescriptorFormatString { String format; };
 };
 
 namespace HLSL {
@@ -18,7 +19,7 @@ namespace HLSL {
 	NOTES() template<typename T> struct RegularBuffer   {};
 	NOTES() template<typename T> struct RWRegularBuffer {};
 	
-	NOTES() template<typename T> struct DescriptorTable { u32 offset = 0; };
+	NOTES() template<typename T> struct DescriptorTable { u32 offset = 0; u32 descriptor_count = 0; };
 	NOTES() template<typename T> struct ConstantBuffer  { u32 offset = 0; };
 };
 
