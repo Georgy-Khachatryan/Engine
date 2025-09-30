@@ -9,7 +9,6 @@ namespace Meta {
 	NOTES() struct RenderGraphSystem {};
 	NOTES() struct RenderPass {};
 	NOTES() struct HlslFile { String filename; };
-	NOTES() struct HlslDescriptorFormatString { String format; };
 };
 
 namespace HLSL {
@@ -21,6 +20,9 @@ namespace HLSL {
 	
 	NOTES() template<typename T> struct DescriptorTable { u32 offset = 0; u32 descriptor_count = 0; };
 	NOTES() template<typename T> struct ConstantBuffer  { u32 offset = 0; };
+	
+	NOTES() struct BaseRootSignature   { u32 root_signature_index = 0; };
+	NOTES() struct BaseDescriptorTable { u32 descriptor_heap_offset = 0; u32 descriptor_count = 0; };
 };
 
 
@@ -57,11 +59,11 @@ NOTES(Meta::RenderPass{}, Meta::RenderGraphSystem{})
 struct TransittanceLutRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
-	struct Descriptors {
+	struct Descriptors : HLSL::BaseDescriptorTable {
 		HLSL::RWTexture2D<float4> transmittance_lut;
 	};
 	
-	struct RootSignature {
+	struct RootSignature : HLSL::BaseRootSignature {
 		struct PushConstants {
 			u32 sample_count  = 0;
 			u32 group_count_x = 0;
@@ -76,12 +78,12 @@ NOTES(Meta::RenderPass{})
 struct MultipleScatteringLutRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
-	struct Descriptors {
+	struct Descriptors : HLSL::BaseDescriptorTable {
 		HLSL::Texture2D<float4>   transmittance_lut;
 		HLSL::RWTexture2D<float4> multiple_scattering_lut;
 	};
 	
-	struct RootSignature {
+	struct RootSignature : HLSL::BaseRootSignature {
 		HLSL::DescriptorTable<Descriptors> descriptor_table;
 		HLSL::ConstantBuffer<AtmosphereParameters> atmosphere;
 	};
@@ -91,15 +93,22 @@ NOTES(Meta::RenderPass{})
 struct SkyPanoramaLutRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
-	struct Descriptors {
+	struct Descriptors : HLSL::BaseDescriptorTable {
 		HLSL::Texture2D<float4>   transmittance_lut;
 		HLSL::Texture2D<float4>   multiple_scattering_lut;
 		HLSL::RWTexture2D<float4> sky_panorama_lut;
 	};
 	
-	struct RootSignature {
+	struct RootSignature : HLSL::BaseRootSignature {
 		HLSL::DescriptorTable<Descriptors> descriptor_table;
 		HLSL::ConstantBuffer<AtmosphereParameters> atmosphere;
 	};
 };
 
+NOTES(Meta::RenderPass{})
+struct DrawTriangleRenderPass {
+	RENDER_PASS_GENERATED_CODE();
+	
+	struct RootSignature : HLSL::BaseRootSignature {
+	};
+};

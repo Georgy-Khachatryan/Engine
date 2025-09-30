@@ -256,9 +256,9 @@ static ShaderPermutation* FindShaderPermutation(ShaderCompiler* compiler, Shader
 	return shader_permutation;
 }
 
-FixedCountArray<ArrayView<u8>, (u32)ShaderType::Count> CompileShader(ShaderCompiler* compiler, ShaderDefinition* definition, u64 permutation, ShaderTypeMask shader_type_mask) {
+ShaderBytecode CompileShader(ShaderCompiler* compiler, ShaderDefinition* definition, u64 permutation, ShaderTypeMask shader_type_mask) {
 	auto* alloc = compiler->alloc;
-	FixedCountArray<ArrayView<u8>, (u32)ShaderType::Count> result;
+	ShaderBytecode result;
 	
 	for (u32 i = 0; i < (u32)ShaderType::Count; i += 1) {
 		if (((u32)shader_type_mask & (1u << i)) == 0) continue;

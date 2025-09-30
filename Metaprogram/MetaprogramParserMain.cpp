@@ -162,9 +162,15 @@ static AstNodeStruct* ParseStruct(Tokenizer& tokenizer, AstNodeNotes* notes) {
 	ArrayAppend(tokenizer.namespace_stack, tokenizer.alloc, name.string);
 	defer{ ArrayPopLast(tokenizer.namespace_stack); };
 	
+	auto token = tokenizer.PeekNextToken();
+	if (token.type == TokenType::Colon) {
+		tokenizer.FindNextToken();
+		ParseIdentifierWithNamespace(tokenizer);
+	}
+	
 	tokenizer.ExpectToken(TokenType::OpeningBrace);
 	
-	auto token = tokenizer.PeekNextToken();
+	token = tokenizer.PeekNextToken();
 	if (token.type == TokenType::Identifier && token.string == "RENDER_PASS_GENERATED_CODE"_sl) {
 		tokenizer.ExpectToken(TokenType::Identifier);
 		tokenizer.ExpectToken(TokenType::OpeningParen);

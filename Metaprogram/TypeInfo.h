@@ -102,6 +102,7 @@ template<> struct TypeInfoOfInternal<const u16> { static TypeInfoInteger* Get() 
 template<> struct TypeInfoOfInternal<const u32> { static TypeInfoInteger* Get() { return &type_info_u32; } };
 template<> struct TypeInfoOfInternal<const u64> { static TypeInfoInteger* Get() { return &type_info_u64; } };
 
+template<> struct TypeInfoOfInternal<const bool>   { static TypeInfo* Get() { return &type_info_bool; } };
 template<> struct TypeInfoOfInternal<const float>  { static TypeInfo* Get() { return &type_info_float32; } };
 template<> struct TypeInfoOfInternal<const double> { static TypeInfo* Get() { return &type_info_float64; } };
 template<> struct TypeInfoOfInternal<const String> { static TypeInfo* Get() { return &type_info_string;  } };

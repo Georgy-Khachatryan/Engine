@@ -9,6 +9,11 @@
 #include "AstNodes.h"
 #include "TypeInfo.h"
 
+#pragma comment(lib, "d3d12.lib")
+
+#define WIN32_LEAN_AND_MEAN
+#include <d3d12.h>
+
 FORWARD_DECLARE_NOTE(Meta::RenderGraphSystem);
 FORWARD_DECLARE_NOTE(Meta::RenderPass);
 FORWARD_DECLARE_NOTE(Meta::HlslFile);
@@ -69,6 +74,16 @@ static String ExtractNameWithoutNamespace(String name) {
 struct HlslFileData {
 	StringBuilder builder;
 	String include_guard;
+};
+
+struct RootSignaturePassData {
+	ArrayView<u8> blob;
+	String include_file_name;
+};
+
+struct RootSignatureFileData {
+	StringBuilder builder;
+	Array<RootSignaturePassData> root_signatures;
 };
 
 static String PrintTypeName(TypeInfo* type_info) {
@@ -202,7 +217,7 @@ static void WriteHlslFilesToDisk(StackAllocator* alloc, HashTable<String, HlslFi
 	}
 }
 
-static void GenerateCodeForRenderPass(StackAllocator* alloc, HlslFileData& hlsl_bindings_file, HlslFileData& root_signature_file, TypeInfo* type_info) {
+static void GenerateCodeForRenderPass(StackAllocator* alloc, String filename, HlslFileData& hlsl_bindings_file, RootSignatureFileData& root_signature_file, TypeInfo* type_info) {
 	auto* type_info_struct = (TypeInfoStruct*)type_info;
 	auto& builder = hlsl_bindings_file.builder;
 	
@@ -261,40 +276,83 @@ static void GenerateCodeForRenderPass(StackAllocator* alloc, HlslFileData& hlsl_
 	cpp_builder.Append("%.*s::RootSignature %.*s::root_signature = {\n", (s32)name.count, name.data, (s32)name.count, name.data);
 	cpp_builder.Indent();
 	
+	cpp_builder.Append("%u,\n", (u32)root_signature_file.root_signatures.count);
+	
+	Array<D3D12_ROOT_PARAMETER1> root_parameters; 
+	
 	u32 root_parameter_index = 0;
 	for (auto& field : root_signature_type->fields) {
 		auto* template_type = TypeInfoCast<TypeInfoStruct>(ExtractTemplateParameterType(field.type, 0));
 		
 		auto type_name = PrintTypeName(field.type);
 		if (type_name == "HLSL::DescriptorTable<T>"_sl) {
+			auto& root_parameter = ArrayEmplace(root_parameters, alloc); 
+			root_parameter.ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+			root_parameter.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+			
+			Array<D3D12_DESCRIPTOR_RANGE1> descriptor_ranges;
+			
+			u32 descriptor_count = 0;
+			auto last_range_type = (D3D12_DESCRIPTOR_RANGE_TYPE)u32_max;
 			for (auto& field : template_type->fields) {
 				auto* template_type = ExtractTemplateParameterType(field.type, 0);
 				auto template_type_name = PrintTypeName(template_type);
 				
+				auto range_type = last_range_type;
 				auto type_name = PrintTypeName(field.type);
 				if (type_name == "HLSL::Texture2D<T>"_sl) {
 					builder.Append("Texture2D<%.*s> %.*s : register(t%u);\n", (s32)template_type_name.count, template_type_name.data, (s32)field.name.count, field.name.data, srv_index);
-					srv_index += 1;
+					range_type = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
 				} else if (type_name == "HLSL::RWTexture2D<T>"_sl) {
 					builder.Append("RWTexture2D<%.*s> %.*s : register(u%u);\n", (s32)template_type_name.count, template_type_name.data, (s32)field.name.count, field.name.data, uav_index);
-					uav_index += 1;
+					range_type = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
 				} else if (type_name == "HLSL::RegularBuffer<T>"_sl) {
 					builder.Append("StructuredBuffer<%.*s> %.*s : register(t%u);\n", (s32)template_type_name.count, template_type_name.data, (s32)field.name.count, field.name.data, srv_index);
-					srv_index += 1;
+					range_type = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
 				} else if (type_name == "HLSL::RWRegularBuffer<T>"_sl) {
 					builder.Append("RWStructuredBuffer<%.*s> %.*s : register(u%u);\n", (s32)template_type_name.count, template_type_name.data, (s32)field.name.count, field.name.data, uav_index);
-					uav_index += 1;
+					range_type = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
 				} else {
 					DebugAssertAlways("Unexpected field '%.*s' of type '%.*s' used in a descriptor table of pass '%.*s'. Only descriptors are allowed.", (s32)field.name.count, field.name.data, (s32)type_name.count, type_name.data, (s32)name.count, name.data);
 				}
+				
+				if (last_range_type != range_type) {
+					last_range_type = range_type;
+					auto& descriptor_range = ArrayEmplace(descriptor_ranges, alloc);
+					descriptor_range.RangeType          = range_type;
+					descriptor_range.NumDescriptors     = 0;
+					descriptor_range.BaseShaderRegister = range_type == D3D12_DESCRIPTOR_RANGE_TYPE_SRV ? srv_index : uav_index;
+					descriptor_range.RegisterSpace      = 0;
+					descriptor_range.Flags              = D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC_WHILE_SET_AT_EXECUTE | D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_STATIC_KEEPING_BUFFER_BOUNDS_CHECKS;
+					descriptor_range.OffsetInDescriptorsFromTableStart = descriptor_count;
+				}
+				
+				if (range_type == D3D12_DESCRIPTOR_RANGE_TYPE_SRV) {
+					srv_index += 1;
+				} else {
+					uav_index += 1;
+				}
+				
+				ArrayLastElement(descriptor_ranges).NumDescriptors += 1;
+				descriptor_count += 1;
 			}
 			
-			cpp_builder.Append("{ %u, %u },\n", root_parameter_index, (u32)template_type->fields.count);
+			root_parameter.DescriptorTable.NumDescriptorRanges = (u32)descriptor_ranges.count;
+			root_parameter.DescriptorTable.pDescriptorRanges   = descriptor_ranges.data;
+			
+			cpp_builder.Append("{ %u, %u },\n", root_parameter_index, descriptor_count);
 			root_parameter_index += 1;
 		} else if (type_name == "HLSL::ConstantBuffer<T>"_sl) {
 			auto template_type_name = PrintTypeName(template_type);
 			
 			builder.Append("ConstantBuffer<%.*s> %.*s : register(b%u);\n", (s32)template_type_name.count, template_type_name.data, (s32)field.name.count, field.name.data, cbv_index);
+			
+			auto& root_parameter = ArrayEmplace(root_parameters, alloc); 
+			root_parameter.ParameterType             = D3D12_ROOT_PARAMETER_TYPE_CBV;
+			root_parameter.Descriptor.ShaderRegister = cbv_index;
+			root_parameter.Descriptor.RegisterSpace  = 0;
+			root_parameter.ShaderVisibility          = D3D12_SHADER_VISIBILITY_ALL;
+			
 			cbv_index += 1;
 			
 			cpp_builder.Append("{ %u },\n", root_parameter_index);
@@ -305,18 +363,65 @@ static void GenerateCodeForRenderPass(StackAllocator* alloc, HlslFileData& hlsl_
 	}
 	builder.AppendUnformatted("\n"_sl);
 	
+	
+	FixedCapacityArray<D3D12_STATIC_SAMPLER_DESC1, 7> sampler_descs;
+	auto append_sampler = [&](D3D12_FILTER filter, D3D12_TEXTURE_ADDRESS_MODE address_mode, u32 max_anisotropy = 0) {
+		auto& desc = ArrayEmplace(sampler_descs);
+		desc.Filter           = filter;
+		desc.AddressU         = address_mode;
+		desc.AddressV         = address_mode;
+		desc.AddressW         = address_mode;
+		desc.MipLODBias       = 0.f;
+		desc.MaxAnisotropy    = max_anisotropy;
+		desc.ComparisonFunc   = D3D12_COMPARISON_FUNC_NONE;
+		desc.BorderColor      = D3D12_STATIC_BORDER_COLOR_TRANSPARENT_BLACK;
+		desc.MinLOD           = 0.f;
+		desc.MaxLOD           = D3D12_FLOAT32_MAX;
+		desc.ShaderRegister   = (u32)sampler_descs.count - 1;
+		desc.RegisterSpace    = 0;
+		desc.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+		desc.Flags            = D3D12_SAMPLER_FLAG_NONE;
+	};
+	append_sampler(D3D12_FILTER_MIN_MAG_MIP_LINEAR, D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
+	append_sampler(D3D12_FILTER_MIN_MAG_MIP_POINT,  D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
+	append_sampler(D3D12_FILTER_MIN_MAG_MIP_LINEAR, D3D12_TEXTURE_ADDRESS_MODE_WRAP);
+	append_sampler(D3D12_FILTER_MIN_MAG_MIP_POINT,  D3D12_TEXTURE_ADDRESS_MODE_WRAP);
+	append_sampler(D3D12_FILTER_ANISOTROPIC,        D3D12_TEXTURE_ADDRESS_MODE_WRAP, 0);
+	append_sampler(D3D12_FILTER_MINIMUM_MIN_MAG_MIP_LINEAR, D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
+	append_sampler(D3D12_FILTER_MAXIMUM_MIN_MAG_MIP_LINEAR, D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
+	
+	
+	D3D12_VERSIONED_ROOT_SIGNATURE_DESC rs_desc = {};
+	rs_desc.Version  = D3D_ROOT_SIGNATURE_VERSION_1_2;
+	rs_desc.Desc_1_2.NumParameters     = (u32)root_parameters.count;
+	rs_desc.Desc_1_2.pParameters       = root_parameters.data;
+	rs_desc.Desc_1_2.NumStaticSamplers = (u32)sampler_descs.count;
+	rs_desc.Desc_1_2.pStaticSamplers   = sampler_descs.data;
+	
+	ID3DBlob* root_signature_blob = nullptr;
+	ID3DBlob* root_signature_error_blob = nullptr;
+	if (FAILED(D3D12SerializeVersionedRootSignature(&rs_desc, &root_signature_blob, &root_signature_error_blob))) {
+		DebugAssertAlways("Failed to serialize root signature for pass '%.*s'. Errors: %.*s", (s32)name.count, name.data, (s32)root_signature_blob->GetBufferSize(), root_signature_blob->GetBufferPointer());
+	}
+	
+	RootSignaturePassData root_signature;
+	root_signature.blob.data  = (u8*)root_signature_blob->GetBufferPointer();
+	root_signature.blob.count = root_signature_blob->GetBufferSize();
+	root_signature.include_file_name = filename;
+	ArrayAppend(root_signature_file.root_signatures, alloc, root_signature);
+	
 	cpp_builder.Unindent();
 	cpp_builder.Append("};\n\n");
 }
 
-static void GenerateCodeForRenderPass(StackAllocator* alloc, HashTable<String, HlslFileData>& hlsl_bindings_files, HlslFileData& root_signature_file, TypeInfo* type_info, Meta::RenderPass* render_pass_note) {
+static void GenerateCodeForRenderPass(StackAllocator* alloc, HashTable<String, HlslFileData>& hlsl_bindings_files, RootSignatureFileData& root_signature_file, TypeInfo* type_info, Meta::RenderPass* render_pass_note) {
 	auto* type_info_struct = (TypeInfoStruct*)type_info;
 	auto render_pass_name = ExtractNameWithoutNamespace(type_info_struct->name);
 	auto filename = StringFormat(alloc, "%.*s.hlsl", (s32)render_pass_name.count, render_pass_name.data);
 	
 	auto& hlsl_file = AddOrFindHlslFile(alloc, hlsl_bindings_files, filename);
 	
-	GenerateCodeForRenderPass(alloc, hlsl_file, root_signature_file, type_info);
+	GenerateCodeForRenderPass(alloc, filename, hlsl_file, root_signature_file, type_info);
 }
 
 s32 main() {
@@ -326,7 +431,7 @@ s32 main() {
 	HashTable<String, HlslFileData> hlsl_files;
 	HashTable<String, HlslFileData> hlsl_bindings_files;
 	
-	HlslFileData root_signature_file;
+	RootSignatureFileData root_signature_file;
 	root_signature_file.builder.alloc = &alloc;
 	root_signature_file.builder.AppendUnformatted("#include \"Basic/Basic.h\"\n"_sl);
 	root_signature_file.builder.AppendUnformatted("#include \"Engine/RenderPasses.h\"\n\n"_sl);
@@ -346,6 +451,17 @@ s32 main() {
 	WriteHlslFilesToDisk(&alloc, hlsl_bindings_files);
 	
 	{
+		auto& builder = root_signature_file.builder;
+		builder.AppendUnformatted("String root_signature_include_filenames[] = {\n"_sl);
+		builder.Indent();
+		
+		for (auto& root_signature : root_signature_file.root_signatures) {
+			builder.Append("\"%.*s\"_sl,\n", (s32)root_signature.include_file_name.count, root_signature.include_file_name.data);
+		}
+		
+		builder.Unindent();
+		builder.Append("};\n\n");
+		
 		SystemCreateDirectory(&alloc, "./Engine/Generated/"_sl);
 		
 		auto output_filepath = "./Engine/Generated/RootSignature.cpp"_sl;
@@ -355,9 +471,40 @@ s32 main() {
 			SystemExitProcess(1);
 		}
 		
-		auto file_string = root_signature_file.builder.ToString();
+		auto file_string = builder.ToString();
 		SystemWriteFile(output_file, file_string.data, file_string.count, 0);
 		SystemCloseFile(output_file);
+	}
+	
+	{
+		auto output_filepath = "./Build/RootSignature.bin"_sl;
+		auto file = SystemOpenFile(&alloc, output_filepath, OpenFileFlags::Write);
+		if (file.handle == nullptr) {
+			SystemWriteToConsole(&alloc, "Failed to open output file '%s'.\n", output_filepath.data);
+			SystemExitProcess(1);
+		}
+		
+		Array<u32> offsets;
+		ArrayResize(offsets, &alloc, root_signature_file.root_signatures.count);
+		
+		u32 offset = (u32)(sizeof(u32) + offsets.count * sizeof(u32));
+		for (u32 i = 0; i < offsets.count; i += 1) {
+			u32 size = (u32)root_signature_file.root_signatures[i].blob.count;
+			offsets[i] = offset;
+			offset += size;
+		}
+		
+		SystemWriteFile(file, &offsets.count, sizeof(u32), 0);
+		SystemWriteFile(file, offsets.data, offsets.count * sizeof(u32), sizeof(u32));
+		
+		offset = (u32)(sizeof(u32) + offsets.count * sizeof(u32));
+		for (u32 i = 0; i < offsets.count; i += 1) {
+			u32 size = (u32)root_signature_file.root_signatures[i].blob.count;
+			SystemWriteFile(file, root_signature_file.root_signatures[i].blob.data, size, offset);
+			offset += size;
+		}
+		
+		SystemCloseFile(file);
 	}
 	
 	return 0;

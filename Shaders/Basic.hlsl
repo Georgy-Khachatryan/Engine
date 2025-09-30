@@ -1,7 +1,13 @@
 #ifndef BASIC_HLSL
 #define BASIC_HLSL
 
-SamplerState sampler_linear_clamp : register(s0);
+SamplerState sampler_linear_clamp  : register(s0);
+SamplerState sampler_nearest_clamp : register(s1);
+SamplerState sampler_linear_wrap   : register(s2);
+SamplerState sampler_nearest_wrap  : register(s3);
+SamplerState sampler_aniso_wrap    : register(s4);
+SamplerState sampler_min_clamp     : register(s5);
+SamplerState sampler_max_clamp     : register(s6);
 
 
 #define compile_const static const

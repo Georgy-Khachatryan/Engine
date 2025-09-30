@@ -1,25 +1,27 @@
 #include "GraphicsApiD3D12.h"
 #include "RecordContext.h"
 #include "Basic/BasicMemory.h"
+#include "Basic/BasicFiles.h"
 #include "Engine/ShaderCompiler.h"
+#include "Engine/RenderPasses.h"
 
 #pragma comment(lib, "d3d12.lib")
 #pragma comment(lib, "dxgi.lib")
 
 #include <SDK/imgui/backends/imgui_impl_dx12.h>
 
+static Array<ID3D12RootSignature*> root_signature_table = {};
+
 static struct {
-	ID3D12RootSignature* root_signature = nullptr;
 	FixedCountArray<ID3D12PipelineState*, 3> pipeline_state = {};
 } debug_draw_triangle;
 
 static struct {
-	FixedCountArray<ID3D12RootSignature*, 3> root_signature = {};
 	FixedCountArray<ID3D12PipelineState*, 3> pipeline_state = {};
 	
 	NativeTextureResource transmittance_lut = {};
 	NativeTextureResource multiple_scattering_lut = {};
-	NativeTextureResource sky_panorma_lut = {};
+	NativeTextureResource sky_panorama_lut = {};
 } debug_atmosphere;
 
 static ShaderCompiler* shader_compiler = nullptr;
@@ -174,6 +176,29 @@ GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
 	
 	{
 		shader_compiler = CreateShaderCompiler(alloc);
+		
+		auto filepath = "./Build/RootSignature.bin"_sl;
+		auto file = SystemReadFileToString(alloc, filepath);
+		DebugAssert(file.data != nullptr, "Failed to read root signature file '%.*s'.", (s32)filepath.count, filepath.data);
+		
+		ArrayView<u32> offset_table;
+		offset_table.count = *(u32*)file.data;
+		offset_table.data  = (u32*)file.data + 1;
+		
+		ArrayResize(root_signature_table, alloc, offset_table.count);
+		for (u32 i = 0; i < offset_table.count; i += 1) {
+			u32 offset = offset_table[i];
+			u32 size   = (u32)(i + 1 >= offset_table.count ? file.count : offset_table[i + 1]) - offset;
+			
+			ID3D12RootSignature* root_signature = nullptr;
+			if (FAILED(device->CreateRootSignature(0, file.data + offset, size, IID_PPV_ARGS(&root_signature)))) {
+				DebugAssertAlways("Failed to create root signature.");
+				return nullptr;
+			}
+			
+			root_signature_table[i] = root_signature;
+		}
+		
 		CreateTestPipelines(context);
 		CreateAtmospherePipelines(context);
 	}
@@ -183,27 +208,6 @@ GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
 
 static void CreateTestPipelines(GraphicsContextD3D12* context) {
 	auto* device = context->device;
-	
-	auto* root_signature = debug_draw_triangle.root_signature;
-	if (root_signature == nullptr) {
-		D3D12_VERSIONED_ROOT_SIGNATURE_DESC rs_desc = {};
-		rs_desc.Version  = D3D_ROOT_SIGNATURE_VERSION_1_2;
-		rs_desc.Desc_1_2 = {};
-		
-		ID3DBlob* root_signature_blob = nullptr;
-		if (FAILED(D3D12SerializeVersionedRootSignature(&rs_desc, &root_signature_blob, nullptr))) {
-			DebugAssertAlways("Failed to serialize root signature.");
-			return;
-		}
-		defer{ SafeRelease(root_signature_blob); };
-		
-		if (FAILED(device->CreateRootSignature(0, root_signature_blob->GetBufferPointer(), root_signature_blob->GetBufferSize(), IID_PPV_ARGS(&root_signature)))) {
-			DebugAssertAlways("Failed to create root signature.");
-			return;
-		}
-		
-		debug_draw_triangle.root_signature = root_signature;
-	}
 	
 	static FixedCapacityArray<String, 2> defines;
 	if (defines.count == 0) {
@@ -217,7 +221,7 @@ static void CreateTestPipelines(GraphicsContextD3D12* context) {
 	auto bytecode_blue = CompileShader(shader_compiler, &shader, 0x2, ShaderTypeMask::PixelShader | ShaderTypeMask::VertexShader);
 	
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC desc = {};
-	desc.pRootSignature                            = root_signature;
+	desc.pRootSignature                            = root_signature_table[DrawTriangleRenderPass::root_signature.root_signature_index];
 	desc.BlendState.AlphaToCoverageEnable          = false;
 	desc.BlendState.IndependentBlendEnable         = false;
 	desc.BlendState.RenderTarget[0].BlendEnable    = true;
@@ -296,164 +300,27 @@ static void CreateTestPipelines(GraphicsContextD3D12* context) {
 	debug_draw_triangle.pipeline_state[2] = pipeline_state;
 }
 
+static void CreateComputePipelineState(GraphicsContextD3D12* context, const ShaderBytecode& bytecode, u32 root_signature_index, ID3D12PipelineState*& pipeline_state) {
+	D3D12_COMPUTE_PIPELINE_STATE_DESC desc = {};
+	desc.NodeMask  = 0;
+	desc.CachedPSO = {};
+	desc.Flags     = D3D12_PIPELINE_STATE_FLAG_NONE;
+	
+	desc.pRootSignature     = root_signature_table[root_signature_index];
+	desc.CS.pShaderBytecode = bytecode[(u32)ShaderType::ComputeShader].data;
+	desc.CS.BytecodeLength  = bytecode[(u32)ShaderType::ComputeShader].count;
+	
+	ID3D12PipelineState* new_pipeline_state = nullptr;
+	if (FAILED(context->device->CreateComputePipelineState(&desc, IID_PPV_ARGS(&new_pipeline_state)))) {
+		DebugAssertAlways("Failed to create compute pipeline state.");
+		return;
+	}
+	
+	SafeRelease(pipeline_state);
+	pipeline_state = new_pipeline_state;
+}
+
 static void CreateAtmospherePipelines(GraphicsContextD3D12* context) {
-	auto* device = context->device;
-	
-	if (debug_atmosphere.root_signature[0] == nullptr) {
-		FixedCountArray<D3D12_DESCRIPTOR_RANGE1, 1> descriptor_ranges; 
-		descriptor_ranges[0].RangeType          = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
-		descriptor_ranges[0].NumDescriptors     = 1;
-		descriptor_ranges[0].BaseShaderRegister = 0;
-		descriptor_ranges[0].RegisterSpace      = 0;
-		descriptor_ranges[0].Flags              = D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC_WHILE_SET_AT_EXECUTE | D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_STATIC_KEEPING_BUFFER_BOUNDS_CHECKS;
-		descriptor_ranges[0].OffsetInDescriptorsFromTableStart = 0;
-		
-		FixedCountArray<D3D12_ROOT_PARAMETER1, 1> root_parameters; 
-		root_parameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-		root_parameters[0].DescriptorTable.NumDescriptorRanges = (u32)descriptor_ranges.count;
-		root_parameters[0].DescriptorTable.pDescriptorRanges   = descriptor_ranges.data;
-		
-		D3D12_VERSIONED_ROOT_SIGNATURE_DESC rs_desc = {};
-		rs_desc.Version  = D3D_ROOT_SIGNATURE_VERSION_1_2;
-		rs_desc.Desc_1_2.NumParameters = (u32)root_parameters.count;
-		rs_desc.Desc_1_2.pParameters   = root_parameters.data;
-		
-		ID3DBlob* root_signature_blob = nullptr;
-		if (FAILED(D3D12SerializeVersionedRootSignature(&rs_desc, &root_signature_blob, nullptr))) {
-			DebugAssertAlways("Failed to serialize root signature.");
-			return;
-		}
-		defer{ SafeRelease(root_signature_blob); };
-		
-		ID3D12RootSignature* root_signature = nullptr;
-		if (FAILED(device->CreateRootSignature(0, root_signature_blob->GetBufferPointer(), root_signature_blob->GetBufferSize(), IID_PPV_ARGS(&root_signature)))) {
-			DebugAssertAlways("Failed to create root signature.");
-			return;
-		}
-		
-		debug_atmosphere.root_signature[0] = root_signature;
-	}
-	
-	if (debug_atmosphere.root_signature[1] == nullptr) {
-		FixedCountArray<D3D12_DESCRIPTOR_RANGE1, 2> descriptor_ranges; 
-		descriptor_ranges[0].RangeType          = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-		descriptor_ranges[0].NumDescriptors     = 1;
-		descriptor_ranges[0].BaseShaderRegister = 0;
-		descriptor_ranges[0].RegisterSpace      = 0;
-		descriptor_ranges[0].Flags              = D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC_WHILE_SET_AT_EXECUTE | D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_STATIC_KEEPING_BUFFER_BOUNDS_CHECKS;
-		descriptor_ranges[0].OffsetInDescriptorsFromTableStart = 0;
-		
-		descriptor_ranges[1].RangeType          = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
-		descriptor_ranges[1].NumDescriptors     = 1;
-		descriptor_ranges[1].BaseShaderRegister = 0;
-		descriptor_ranges[1].RegisterSpace      = 0;
-		descriptor_ranges[1].Flags              = D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC_WHILE_SET_AT_EXECUTE | D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_STATIC_KEEPING_BUFFER_BOUNDS_CHECKS;
-		descriptor_ranges[1].OffsetInDescriptorsFromTableStart = 1;
-		
-		FixedCountArray<D3D12_ROOT_PARAMETER1, 1> root_parameters; 
-		root_parameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-		root_parameters[0].DescriptorTable.NumDescriptorRanges = (u32)descriptor_ranges.count;
-		root_parameters[0].DescriptorTable.pDescriptorRanges   = descriptor_ranges.data;
-		
-		FixedCountArray<D3D12_STATIC_SAMPLER_DESC1, 1> sampler_descs;
-		sampler_descs[0].Filter         = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
-		sampler_descs[0].AddressU       = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
-		sampler_descs[0].AddressV       = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
-		sampler_descs[0].AddressW       = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
-		sampler_descs[0].MipLODBias     = 0.f;
-		sampler_descs[0].MaxAnisotropy  = 0;
-		sampler_descs[0].ComparisonFunc = D3D12_COMPARISON_FUNC_NONE;
-		sampler_descs[0].BorderColor    = D3D12_STATIC_BORDER_COLOR_TRANSPARENT_BLACK;
-		sampler_descs[0].MinLOD         = 0.f;
-		sampler_descs[0].MaxLOD         = D3D12_FLOAT32_MAX;
-		sampler_descs[0].ShaderRegister = 0;
-		sampler_descs[0].RegisterSpace  = 0;
-		sampler_descs[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-		sampler_descs[0].Flags          = D3D12_SAMPLER_FLAG_NONE;
-		
-		D3D12_VERSIONED_ROOT_SIGNATURE_DESC rs_desc = {};
-		rs_desc.Version  = D3D_ROOT_SIGNATURE_VERSION_1_2;
-		rs_desc.Desc_1_2.NumParameters     = (u32)root_parameters.count;
-		rs_desc.Desc_1_2.pParameters       = root_parameters.data;
-		rs_desc.Desc_1_2.NumStaticSamplers = (u32)sampler_descs.count;
-		rs_desc.Desc_1_2.pStaticSamplers   = sampler_descs.data;
-		
-		ID3DBlob* root_signature_blob = nullptr;
-		if (FAILED(D3D12SerializeVersionedRootSignature(&rs_desc, &root_signature_blob, nullptr))) {
-			DebugAssertAlways("Failed to serialize root signature.");
-			return;
-		}
-		defer{ SafeRelease(root_signature_blob); };
-		
-		ID3D12RootSignature* root_signature = nullptr;
-		if (FAILED(device->CreateRootSignature(0, root_signature_blob->GetBufferPointer(), root_signature_blob->GetBufferSize(), IID_PPV_ARGS(&root_signature)))) {
-			DebugAssertAlways("Failed to create root signature.");
-			return;
-		}
-		
-		debug_atmosphere.root_signature[1] = root_signature;
-	}
-	
-	if (debug_atmosphere.root_signature[2] == nullptr) {
-		FixedCountArray<D3D12_DESCRIPTOR_RANGE1, 2> descriptor_ranges; 
-		descriptor_ranges[0].RangeType          = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-		descriptor_ranges[0].NumDescriptors     = 2;
-		descriptor_ranges[0].BaseShaderRegister = 0;
-		descriptor_ranges[0].RegisterSpace      = 0;
-		descriptor_ranges[0].Flags              = D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC_WHILE_SET_AT_EXECUTE | D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_STATIC_KEEPING_BUFFER_BOUNDS_CHECKS;
-		descriptor_ranges[0].OffsetInDescriptorsFromTableStart = 0;
-		
-		descriptor_ranges[1].RangeType          = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
-		descriptor_ranges[1].NumDescriptors     = 1;
-		descriptor_ranges[1].BaseShaderRegister = 0;
-		descriptor_ranges[1].RegisterSpace      = 0;
-		descriptor_ranges[1].Flags              = D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC_WHILE_SET_AT_EXECUTE | D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_STATIC_KEEPING_BUFFER_BOUNDS_CHECKS;
-		descriptor_ranges[1].OffsetInDescriptorsFromTableStart = 2;
-		
-		FixedCountArray<D3D12_ROOT_PARAMETER1, 1> root_parameters; 
-		root_parameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-		root_parameters[0].DescriptorTable.NumDescriptorRanges = (u32)descriptor_ranges.count;
-		root_parameters[0].DescriptorTable.pDescriptorRanges   = descriptor_ranges.data;
-		
-		FixedCountArray<D3D12_STATIC_SAMPLER_DESC1, 1> sampler_descs;
-		sampler_descs[0].Filter         = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
-		sampler_descs[0].AddressU       = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
-		sampler_descs[0].AddressV       = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
-		sampler_descs[0].AddressW       = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
-		sampler_descs[0].MipLODBias     = 0.f;
-		sampler_descs[0].MaxAnisotropy  = 0;
-		sampler_descs[0].ComparisonFunc = D3D12_COMPARISON_FUNC_NONE;
-		sampler_descs[0].BorderColor    = D3D12_STATIC_BORDER_COLOR_TRANSPARENT_BLACK;
-		sampler_descs[0].MinLOD         = 0.f;
-		sampler_descs[0].MaxLOD         = D3D12_FLOAT32_MAX;
-		sampler_descs[0].ShaderRegister = 0;
-		sampler_descs[0].RegisterSpace  = 0;
-		sampler_descs[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-		sampler_descs[0].Flags          = D3D12_SAMPLER_FLAG_NONE;
-		
-		D3D12_VERSIONED_ROOT_SIGNATURE_DESC rs_desc = {};
-		rs_desc.Version  = D3D_ROOT_SIGNATURE_VERSION_1_2;
-		rs_desc.Desc_1_2.NumParameters     = (u32)root_parameters.count;
-		rs_desc.Desc_1_2.pParameters       = root_parameters.data;
-		rs_desc.Desc_1_2.NumStaticSamplers = (u32)sampler_descs.count;
-		rs_desc.Desc_1_2.pStaticSamplers   = sampler_descs.data;
-		
-		ID3DBlob* root_signature_blob = nullptr;
-		if (FAILED(D3D12SerializeVersionedRootSignature(&rs_desc, &root_signature_blob, nullptr))) {
-			DebugAssertAlways("Failed to serialize root signature.");
-			return;
-		}
-		defer{ SafeRelease(root_signature_blob); };
-		
-		ID3D12RootSignature* root_signature = nullptr;
-		if (FAILED(device->CreateRootSignature(0, root_signature_blob->GetBufferPointer(), root_signature_blob->GetBufferSize(), IID_PPV_ARGS(&root_signature)))) {
-			DebugAssertAlways("Failed to create root signature.");
-			return;
-		}
-		
-		debug_atmosphere.root_signature[2] = root_signature;
-	}
-	
 	static FixedCapacityArray<String, 3> defines;
 	if (defines.count == 0) {
 		ArrayAppend(defines, "TRANSMITTANCE_LUT"_sl);
@@ -461,48 +328,14 @@ static void CreateAtmospherePipelines(GraphicsContextD3D12* context) {
 		ArrayAppend(defines, "SKY_PANORAMA_LUT"_sl);
 	}
 	static ShaderDefinition shader = { "Atmosphere.hlsl"_sl, defines, };
+	
 	auto bytecode_transmittance_lut       = CompileShader(shader_compiler, &shader, 0x1, ShaderTypeMask::ComputeShader);
 	auto bytecode_multiple_scattering_lut = CompileShader(shader_compiler, &shader, 0x2, ShaderTypeMask::ComputeShader);
 	auto bytecode_sky_panorama_lut        = CompileShader(shader_compiler, &shader, 0x4, ShaderTypeMask::ComputeShader);
 	
-	
-	D3D12_COMPUTE_PIPELINE_STATE_DESC desc = {};
-	desc.NodeMask  = 0;
-	desc.CachedPSO = {};
-	desc.Flags     = D3D12_PIPELINE_STATE_FLAG_NONE;
-	
-	
-	ID3D12PipelineState* pipeline_state = nullptr;
-	
-	desc.pRootSignature     = debug_atmosphere.root_signature[0];
-	desc.CS.pShaderBytecode = bytecode_transmittance_lut[(u32)ShaderType::ComputeShader].data;
-	desc.CS.BytecodeLength  = bytecode_transmittance_lut[(u32)ShaderType::ComputeShader].count;
-	if (FAILED(device->CreateComputePipelineState(&desc, IID_PPV_ARGS(&pipeline_state)))) {
-		DebugAssertAlways("Failed to create compute pipeline state.");
-		return;
-	}
-	SafeRelease(debug_atmosphere.pipeline_state[0]);
-	debug_atmosphere.pipeline_state[0] = pipeline_state;
-	
-	desc.pRootSignature     = debug_atmosphere.root_signature[1];
-	desc.CS.pShaderBytecode = bytecode_multiple_scattering_lut[(u32)ShaderType::ComputeShader].data;
-	desc.CS.BytecodeLength  = bytecode_multiple_scattering_lut[(u32)ShaderType::ComputeShader].count;
-	if (FAILED(device->CreateComputePipelineState(&desc, IID_PPV_ARGS(&pipeline_state)))) {
-		DebugAssertAlways("Failed to create compute pipeline state.");
-		return;
-	}
-	SafeRelease(debug_atmosphere.pipeline_state[1]);
-	debug_atmosphere.pipeline_state[1] = pipeline_state;
-	
-	desc.pRootSignature     = debug_atmosphere.root_signature[2];
-	desc.CS.pShaderBytecode = bytecode_sky_panorama_lut[(u32)ShaderType::ComputeShader].data;
-	desc.CS.BytecodeLength  = bytecode_sky_panorama_lut[(u32)ShaderType::ComputeShader].count;
-	if (FAILED(device->CreateComputePipelineState(&desc, IID_PPV_ARGS(&pipeline_state)))) {
-		DebugAssertAlways("Failed to create compute pipeline state.");
-		return;
-	}
-	SafeRelease(debug_atmosphere.pipeline_state[2]);
-	debug_atmosphere.pipeline_state[2] = pipeline_state;
+	CreateComputePipelineState(context, bytecode_transmittance_lut, TransittanceLutRenderPass::root_signature.root_signature_index, debug_atmosphere.pipeline_state[0]);
+	CreateComputePipelineState(context, bytecode_multiple_scattering_lut, MultipleScatteringLutRenderPass::root_signature.root_signature_index, debug_atmosphere.pipeline_state[1]);
+	CreateComputePipelineState(context, bytecode_sky_panorama_lut, SkyPanoramaLutRenderPass::root_signature.root_signature_index, debug_atmosphere.pipeline_state[2]);
 }
 
 void ReleaseGraphicsContext(GraphicsContext* api_context) {
@@ -720,7 +553,7 @@ void WindowSwapChainEndFrame(WindowSwapChain* api_swap_chain, GraphicsContext* a
 	RecordContext record_context;
 	record_context.alloc = alloc;
 	
-	command_list->SetGraphicsRootSignature(debug_draw_triangle.root_signature);
+	command_list->SetGraphicsRootSignature(root_signature_table[DrawTriangleRenderPass::root_signature.root_signature_index]);
 	command_list->SetPipelineState(debug_draw_triangle.pipeline_state[(context->frame_index / 128) % 3]);
 	
 	CmdClearRenderTarget(&record_context, back_buffer.descriptor.ptr);
@@ -737,8 +570,8 @@ void WindowSwapChainEndFrame(WindowSwapChain* api_swap_chain, GraphicsContext* a
 		debug_atmosphere.multiple_scattering_lut = CreateTextureResource(context, 32, 32, DXGI_FORMAT_R16G16B16A16_FLOAT);
 	}
 	
-	if (debug_atmosphere.sky_panorma_lut.d3d12 == nullptr) {
-		debug_atmosphere.sky_panorma_lut = CreateTextureResource(context, 192, 128, DXGI_FORMAT_R16G16B16A16_FLOAT);
+	if (debug_atmosphere.sky_panorama_lut.d3d12 == nullptr) {
+		debug_atmosphere.sky_panorama_lut = CreateTextureResource(context, 192, 128, DXGI_FORMAT_R16G16B16A16_FLOAT);
 	}
 	
 	{
@@ -761,7 +594,7 @@ void WindowSwapChainEndFrame(WindowSwapChain* api_swap_chain, GraphicsContext* a
 		
 		context->device->CreateUnorderedAccessView(debug_atmosphere.transmittance_lut.d3d12, nullptr, &desc, cpu_handle);
 		
-		command_list->SetComputeRootSignature(debug_atmosphere.root_signature[0]);
+		command_list->SetComputeRootSignature(root_signature_table[TransittanceLutRenderPass::root_signature.root_signature_index]);
 		command_list->SetComputeRootDescriptorTable(0, gpu_handle);
 		command_list->SetPipelineState(debug_atmosphere.pipeline_state[0]);
 		command_list->Dispatch(16, 4, 1); // TODO: Missing barriers before and after.
@@ -825,7 +658,7 @@ void WindowSwapChainEndFrame(WindowSwapChain* api_swap_chain, GraphicsContext* a
 			context->device->CreateUnorderedAccessView(debug_atmosphere.multiple_scattering_lut.d3d12, nullptr, &desc, cpu_handle);
 		}
 		
-		command_list->SetComputeRootSignature(debug_atmosphere.root_signature[1]);
+		command_list->SetComputeRootSignature(root_signature_table[MultipleScatteringLutRenderPass::root_signature.root_signature_index]);
 		command_list->SetComputeRootDescriptorTable(0, gpu_handle);
 		command_list->SetPipelineState(debug_atmosphere.pipeline_state[1]);
 		command_list->Dispatch(32, 32, 1); // TODO: Missing barriers before and after.
@@ -904,10 +737,10 @@ void WindowSwapChainEndFrame(WindowSwapChain* api_swap_chain, GraphicsContext* a
 			desc.Texture2D.MipSlice   = 0;
 			desc.Texture2D.PlaneSlice = 0;
 			
-			context->device->CreateUnorderedAccessView(debug_atmosphere.sky_panorma_lut.d3d12, nullptr, &desc, cpu_handle);
+			context->device->CreateUnorderedAccessView(debug_atmosphere.sky_panorama_lut.d3d12, nullptr, &desc, cpu_handle);
 		}
 		
-		command_list->SetComputeRootSignature(debug_atmosphere.root_signature[2]);
+		command_list->SetComputeRootSignature(root_signature_table[SkyPanoramaLutRenderPass::root_signature.root_signature_index]);
 		command_list->SetComputeRootDescriptorTable(0, gpu_handle);
 		command_list->SetPipelineState(debug_atmosphere.pipeline_state[2]);
 		command_list->Dispatch(12, 8, 1); // TODO: Missing barriers before and after.
@@ -919,7 +752,7 @@ void WindowSwapChainEndFrame(WindowSwapChain* api_swap_chain, GraphicsContext* a
 		barrier.AccessAfter  = D3D12_BARRIER_ACCESS_SHADER_RESOURCE;
 		barrier.LayoutBefore = D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS;
 		barrier.LayoutAfter  = D3D12_BARRIER_LAYOUT_COMMON;
-		barrier.pResource    = debug_atmosphere.sky_panorma_lut.d3d12;
+		barrier.pResource    = debug_atmosphere.sky_panorama_lut.d3d12;
 		barrier.Subresources = {};
 		barrier.Flags        = D3D12_TEXTURE_BARRIER_FLAG_NONE;
 		
@@ -967,7 +800,7 @@ void WindowSwapChainEndFrame(WindowSwapChain* api_swap_chain, GraphicsContext* a
 				ImGui::Image(gpu_handle.ptr, ImVec2(32.f, 32.f));
 				ImGui::End();
 			} else {
-				context->device->CreateShaderResourceView(debug_atmosphere.sky_panorma_lut.d3d12, &desc, cpu_handle);
+				context->device->CreateShaderResourceView(debug_atmosphere.sky_panorama_lut.d3d12, &desc, cpu_handle);
 				
 				ImGui::Begin("Sky Panorma LUT");
 				ImGui::Image(gpu_handle.ptr, ImVec2(192.f, 128.f) * 4.f);
