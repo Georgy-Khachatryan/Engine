@@ -3,13 +3,22 @@
 #include "Basic/BasicArray.h"
 
 struct GraphicsContext;
+namespace HLSL {
+	struct BaseDescriptorTable;
+	struct BaseRootSignature;
+	template<typename T> struct DescriptorTable;
+}
 
 struct RecordContext {
+	GraphicsContext* context = nullptr;
+	
 	StackAllocator* alloc = nullptr;
 	u8* command_memory = nullptr;
 	u32 remaining_size = 0; 
 	u32 command_count  = 0;
 	u8* command_memory_base = nullptr;
+	
+	Array<HLSL::BaseDescriptorTable*> descriptor_tables;
 };
 
 void CmdDispatch(RecordContext* record_context, u32 group_count_x = 1, u32 group_count_y = 1, u32 group_count_z = 1);
@@ -19,5 +28,25 @@ void CmdClearRenderTarget(RecordContext* record_context, u64 rtv_heap_index);
 void CmdSetRenderTargets(RecordContext* record_context, ArrayView<u64> rtv_heap_indices);
 void CmdSetViewportAndScissor(RecordContext* record_context, u32 max_x, u32 max_y, u32 min_x = 0, u32 min_y = 0);
 
+void CmdSetRootSignature(RecordContext* record_context, const HLSL::BaseRootSignature& root_signature);
+void CmdSetDescriptorTable(RecordContext* record_context, u32 offset, HLSL::BaseDescriptorTable& descriptor_table);
+void CmdSetPipelineState(RecordContext* record_context, u32 pipeline_index);
+
 void ReplayRecordContext(GraphicsContext* context, RecordContext* record_context);
 
+
+template<typename T>
+static T& AllocateDescriptorTable(RecordContext* record_context, const HLSL::DescriptorTable<T>& root_descriptor_table) {
+	auto* descriptor_table = NewFromAlloc(record_context->alloc, T);
+	descriptor_table->descriptor_heap_offset = AllocateTransientSrvDescriptorTable(record_context->context, root_descriptor_table.descriptor_count);
+	descriptor_table->descriptor_count       = root_descriptor_table.descriptor_count;
+	
+	ArrayAppend(record_context->descriptor_tables, record_context->alloc, descriptor_table);
+	
+	return *descriptor_table;
+}
+
+template<typename T>
+void CmdSetRootArgument(RecordContext* record_context, const HLSL::DescriptorTable<T>& root_descriptor_table, HLSL::BaseDescriptorTable& descriptor_table) {
+	CmdSetDescriptorTable(record_context, root_descriptor_table.offset, descriptor_table);
+}

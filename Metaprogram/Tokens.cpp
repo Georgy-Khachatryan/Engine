@@ -9,7 +9,7 @@ static bool IsAlphabetical(char c) { return ('a' <= c && c <= 'z') || ('A' <= c 
 static bool IsAlphaNumeric(char c) { return IsAlphabetical(c) || IsNumeric(c); }
 
 static const char* EatWhiteSpace(const char* string) {
-	while (*string && IsWhiteSpace(*string)) string += 1;
+	while (*string && (IsWhiteSpace(*string) || *string == '\\')) string += 1;
 	return string;
 }
 

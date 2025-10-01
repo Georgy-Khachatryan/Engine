@@ -2,6 +2,7 @@
 
 #include "Basic/BasicMemory.h"
 #include "RecordContextCommands.h"
+#include "Engine/RenderPasses.h"
 
 compile_const u32 record_context_page_size = 4 * 1024;
 
@@ -77,5 +78,22 @@ void CmdSetViewportAndScissor(RecordContext* record_context, u32 max_x, u32 max_
 	packet.min_y = min_y;
 	packet.max_x = max_x;
 	packet.max_y = max_y;
+}
+
+
+void CmdSetRootSignature(RecordContext* record_context, const HLSL::BaseRootSignature& root_signature) {
+	auto& packet = AppendPacket<CmdSetRootSignaturePacket>(record_context);
+	packet.root_signature_index = root_signature.root_signature_index;
+}
+
+void CmdSetDescriptorTable(RecordContext* record_context, u32 offset, HLSL::BaseDescriptorTable& descriptor_table) {
+	auto& packet = AppendPacket<CmdSetDescriptorTablePacket>(record_context);
+	packet.offset                 = offset;
+	packet.descriptor_heap_offset = descriptor_table.descriptor_heap_offset;
+}
+
+void CmdSetPipelineState(RecordContext* record_context, u32 pipeline_index) {
+	auto& packet = AppendPacket<CmdSetPipelineStatePacket>(record_context);
+	packet.pipeline_index = pipeline_index;
 }
 

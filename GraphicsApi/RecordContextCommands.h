@@ -11,6 +11,9 @@ enum struct CommandType : u16 {
 	ClearRenderTarget     = 5,
 	SetRenderTargets      = 6,
 	SetViewportAndScissor = 7,
+	SetRootSignature      = 8,
+	SetDescriptorTable    = 9,
+	SetPipelineState      = 10,
 	
 	Count
 };
@@ -74,3 +77,21 @@ struct CmdSetViewportAndScissorPacket : RecordContextCommandPacket {
 	u32 max_y = 0;
 };
 
+struct CmdSetRootSignaturePacket : RecordContextCommandPacket {
+	compile_const CommandType my_type = CommandType::SetRootSignature;
+	
+	u32 root_signature_index = 0;
+};
+
+struct CmdSetDescriptorTablePacket : RecordContextCommandPacket {
+	compile_const CommandType my_type = CommandType::SetDescriptorTable;
+	
+	u32 offset = 0;
+	u32 descriptor_heap_offset = 0;
+};
+
+struct CmdSetPipelineStatePacket : RecordContextCommandPacket {
+	compile_const CommandType my_type = CommandType::SetPipelineState;
+	
+	u32 pipeline_index = 0;
+};

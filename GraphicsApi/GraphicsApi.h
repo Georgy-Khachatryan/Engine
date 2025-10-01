@@ -28,3 +28,5 @@ void ResizeWindowSwapChain(WindowSwapChain* swap_chain, GraphicsContext* context
 void WindowSwapChainBeginFrame(WindowSwapChain* swap_chain, GraphicsContext* context);
 void WindowSwapChainEndFrame(WindowSwapChain* swap_chain, GraphicsContext* context, StackAllocator* alloc);
 
+u32 AllocateTransientSrvDescriptorTable(GraphicsContext* api_context, u32 count);
+

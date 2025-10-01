@@ -186,7 +186,7 @@ static AstNodeStruct* ParseStruct(Tokenizer& tokenizer, AstNodeNotes* notes) {
 	Array<AstNodeDeclaration*> declarations;
 	while (token.type != TokenType::None && token.type != TokenType::ClosingBrace) {
 		auto* declaration = ParseDeclaration(tokenizer);
-		ArrayAppend(declarations, tokenizer.alloc, declaration);
+		if (declaration) ArrayAppend(declarations, tokenizer.alloc, declaration);
 		
 		token = tokenizer.PeekNextToken();
 	}
@@ -245,6 +245,16 @@ static AstNodeDeclaration* ParseDeclaration(Tokenizer& tokenizer) {
 		token = tokenizer.PeekNextToken();
 		if (token.type == TokenType::Assign) {
 			SkipTokens(tokenizer, TokenType::Assign, TokenType::Semicolon); // Skip variable initialization.
+		} else if (token.type == TokenType::OpeningParen) { // Skip function.
+			declaration = nullptr;
+			SkipTokensWithNestingTracking(tokenizer, TokenType::OpeningParen, TokenType::ClosingParen);
+			
+			token = tokenizer.PeekNextToken();
+			if (token.type == TokenType::OpeningBrace) {
+				SkipTokensWithNestingTracking(tokenizer, TokenType::OpeningBrace, TokenType::ClosingBrace);
+			} else {
+				tokenizer.ExpectToken(TokenType::Semicolon);
+			}
 		} else {
 			tokenizer.ExpectToken(TokenType::Semicolon);
 		}
@@ -284,6 +294,10 @@ static AstNodeCodeBlock* ParseFile(StackAllocator* alloc, String file, String fi
 		
 		if (token.keyword == KeywordType::Notes) {
 			auto* declaration = ParseDeclaration(tokenizer);
+			if (declaration == nullptr) {
+				tokenizer.ReportError(token, "Expected declaration after notes.");
+			}
+			
 			ArrayAppend(declarations, tokenizer.alloc, declaration);
 		} else if (token.keyword == KeywordType::Namespace) {
 			tokenizer.FindNextToken();
@@ -497,8 +511,6 @@ static void GenerateCodeForTypeTable(StringBuilder& builder, AstNodeCodeBlock* c
 	
 	builder.Append("ArrayView<TypeInfo*> type_table = { type_table_internal, %u };\n\n", type_table_size);
 }
-
-#include <stdio.h>
 
 s32 main() {
 	auto alloc = CreateStackAllocator(64 * 1024 * 1024, 512 * 1024);

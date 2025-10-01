@@ -1,7 +1,61 @@
 #include "GraphicsApiD3D12.h"
+#include "Basic/BasicMemory.h"
+#include "Engine/RenderPasses.h"
 #include "RecordContext.h"
 #include "RecordContextCommands.h"
-#include "Basic/BasicMemory.h"
+
+
+static void FillDescriptorTables(GraphicsContextD3D12* context, ArrayView<HLSL::BaseDescriptorTable*> descriptor_tables) {
+	auto cpu_base_handle = context->cpu_base_handles[(u32)DescriptorHeapType::SRV];
+	auto descriptor_size = context->descriptor_sizes[(u32)DescriptorHeapType::SRV];
+	auto* device = context->device;
+	
+	for (auto* descriptor_table : descriptor_tables) {
+		auto descriptors = ArrayView<HLSL::ResourceDescriptor>{ (HLSL::ResourceDescriptor*)(descriptor_table + 1), (u64)descriptor_table->descriptor_count };
+		auto descriptor_table_handle = cpu_base_handle;
+		descriptor_table_handle.ptr += descriptor_table->descriptor_heap_offset * descriptor_size;
+		
+		for (auto& descriptor : descriptors) {
+			switch (descriptor.type) {
+			case HLSL::ResourceDescriptorType::Texture2D: {
+				D3D12_SHADER_RESOURCE_VIEW_DESC desc = {};
+				desc.Format                        = DXGI_FORMAT_R16G16B16A16_FLOAT;
+				desc.ViewDimension                 = D3D12_SRV_DIMENSION_TEXTURE2D;
+				desc.Shader4ComponentMapping       = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+				desc.Texture2D.MostDetailedMip     = 0;
+				desc.Texture2D.MipLevels           = 1;
+				desc.Texture2D.PlaneSlice          = 0;
+				desc.Texture2D.ResourceMinLODClamp = 0.f;
+				
+				device->CreateShaderResourceView(descriptor.texture.d3d12, &desc, descriptor_table_handle);
+				break;
+			} case HLSL::ResourceDescriptorType::RWTexture2D: {
+				D3D12_UNORDERED_ACCESS_VIEW_DESC desc = {};
+				desc.Format               = DXGI_FORMAT_R16G16B16A16_FLOAT;
+				desc.ViewDimension        = D3D12_UAV_DIMENSION_TEXTURE2D;
+				desc.Texture2D.MipSlice   = 0;
+				desc.Texture2D.PlaneSlice = 0;
+				
+				context->device->CreateUnorderedAccessView(descriptor.texture.d3d12, nullptr, &desc, descriptor_table_handle);
+				break;
+			} case HLSL::ResourceDescriptorType::RegularBuffer: {
+				
+				// break;
+			} case HLSL::ResourceDescriptorType::RWRegularBuffer: {
+				
+				// break;
+			} default: {
+				DebugAssertAlways("Unhandled ResourceDescriptorType '%u'.", (u32)descriptor.type);
+			}
+			}
+			
+			descriptor_table_handle.ptr += descriptor_size;
+		}
+	}
+	
+}
+
+
 
 
 static void CmdClearRenderTargetD3D12(CmdClearRenderTargetPacket* packet, ID3D12GraphicsCommandList7* command_list) {
@@ -44,8 +98,26 @@ static void CmdDrawIndexedInstancedD3D12(CmdDrawIndexedInstancedPacket* packet, 
 }
 
 
+static void CmdSetRootSignatureD3D12(CmdSetRootSignaturePacket* packet, ID3D12GraphicsCommandList7* command_list, GraphicsContextD3D12* context) {
+	command_list->SetComputeRootSignature(context->root_signature_table[packet->root_signature_index]);
+}
+
+static void CmdSetDescriptorTableD3D12(CmdSetDescriptorTablePacket* packet, ID3D12GraphicsCommandList7* command_list, GraphicsContextD3D12* context) {
+	auto gpu_base_handle = context->gpu_base_handles[(u32)DescriptorHeapType::SRV].ptr;
+	auto descriptor_size = context->descriptor_sizes[(u32)DescriptorHeapType::SRV];
+	u64  descriptor_table = gpu_base_handle + packet->descriptor_heap_offset * descriptor_size;
+	
+	command_list->SetComputeRootDescriptorTable(packet->offset, { descriptor_table });
+}
+
+static void CmdSetPipelineStateD3D12(CmdSetPipelineStatePacket* packet, ID3D12GraphicsCommandList7* command_list, GraphicsContextD3D12* context) {
+	command_list->SetPipelineState(context->pipeline_state_table[packet->pipeline_index]);
+}
+
+
 void ReplayRecordContext(GraphicsContext* api_context, RecordContext* record_context) {
 	auto* context = (GraphicsContextD3D12*)api_context;
+	FillDescriptorTables(context, record_context->descriptor_tables);
 	
 	auto* command_list = context->command_list;
 	
@@ -63,8 +135,10 @@ void ReplayRecordContext(GraphicsContext* api_context, RecordContext* record_con
 		case CommandType::ClearRenderTarget:     CmdClearRenderTargetD3D12((CmdClearRenderTargetPacket*)packet, command_list); break;
 		case CommandType::SetRenderTargets:      CmdSetRenderTargetsD3D12((CmdSetRenderTargetsPacket*)packet, command_list); break;
 		case CommandType::SetViewportAndScissor: CmdSetViewportAndScissorD3D12((CmdSetViewportAndScissorPacket*)packet, command_list); break;
+		case CommandType::SetRootSignature:      CmdSetRootSignatureD3D12((CmdSetRootSignaturePacket*)packet, command_list, context); break;
+		case CommandType::SetDescriptorTable:    CmdSetDescriptorTableD3D12((CmdSetDescriptorTablePacket*)packet, command_list, context); break;
+		case CommandType::SetPipelineState:      CmdSetPipelineStateD3D12((CmdSetPipelineStatePacket*)packet, command_list, context); break;
 		default: DebugAssertAlways("Unhandled command packet type '%u'.", (u32)packet->packet_type); i = command_count; break;
 		}
 	}
 }
-

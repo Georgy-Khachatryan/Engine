@@ -1,8 +1,14 @@
 #pragma once
 #include "Basic/Basic.h"
 #include "Basic/BasicString.h"
+#include "GraphicsApi/GraphicsApiTypes.h"
 
-#define RENDER_PASS_GENERATED_CODE() struct RootSignature; static RootSignature root_signature;
+struct RecordContext;
+
+#define RENDER_PASS_GENERATED_CODE()\
+	struct RootSignature;\
+	static RootSignature root_signature;\
+	void RecordPass(RecordContext* record_context)
 
 
 namespace Meta {
@@ -12,11 +18,47 @@ namespace Meta {
 };
 
 namespace HLSL {
-	NOTES() template<typename T> struct Texture2D   {};
-	NOTES() template<typename T> struct RWTexture2D {};
+	enum struct ResourceDescriptorType : u32 {
+		None            = 0,
+		Texture2D       = 1,
+		RWTexture2D     = 2,
+		RegularBuffer   = 3,
+		RWRegularBuffer = 4,
+	};
 	
-	NOTES() template<typename T> struct RegularBuffer   {};
-	NOTES() template<typename T> struct RWRegularBuffer {};
+	struct ResourceDescriptor {
+		ResourceDescriptorType type = ResourceDescriptorType::None;
+		NativeBufferResource  buffer;
+		NativeTextureResource texture;
+	};
+	
+	NOTES() template<typename T> struct Texture2D : ResourceDescriptor {
+		void Bind(NativeTextureResource resource) {
+			type    = ResourceDescriptorType::Texture2D;
+			texture = resource;
+		}
+	};
+	
+	NOTES() template<typename T> struct RWTexture2D : ResourceDescriptor {
+		void Bind(NativeTextureResource resource) {
+			type    = ResourceDescriptorType::RWTexture2D;
+			texture = resource;
+		}
+	};
+	
+	NOTES() template<typename T> struct RegularBuffer : ResourceDescriptor {
+		void Bind(NativeBufferResource resource) {
+			type   = ResourceDescriptorType::RegularBuffer;
+			buffer = resource;
+		}
+	};
+	
+	NOTES() template<typename T> struct RWRegularBuffer : ResourceDescriptor {
+		void Bind(NativeBufferResource resource) {
+			type   = ResourceDescriptorType::RWRegularBuffer;
+			buffer = resource;
+		}
+	};
 	
 	NOTES() template<typename T> struct DescriptorTable { u32 offset = 0; u32 descriptor_count = 0; };
 	NOTES() template<typename T> struct ConstantBuffer  { u32 offset = 0; };
