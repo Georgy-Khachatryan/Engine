@@ -44,6 +44,7 @@
     <ClCompile Include="Engine/AtmosphereRenderPasses.cpp" />
     <ClCompile Include="Engine/Generated/RootSignature.cpp" />
     
+    <ClCompile Include="GraphicsApi/GraphicsApi.cpp" />
     <ClCompile Include="GraphicsApi/GraphicsApiD3D12.cpp" />
     <ClCompile Include="GraphicsApi/RecordContextCommands.cpp" />
     <ClCompile Include="GraphicsApi/RecordContextCommandsD3D12.cpp" />

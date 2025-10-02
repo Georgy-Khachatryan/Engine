@@ -30,3 +30,18 @@ void WindowSwapChainEndFrame(WindowSwapChain* swap_chain, GraphicsContext* conte
 
 u32 AllocateTransientSrvDescriptorTable(GraphicsContext* api_context, u32 count);
 
+
+struct PipelineDefinition {
+	ShaderDefinition* shader_definition = nullptr;
+	u64               permutation       = 0;
+	ShaderTypeMask    shader_type_mask  = ShaderTypeMask::None;
+	u32               root_signature_index = 0;
+};
+
+struct PipelineLibrary {
+	StackAllocator* alloc = nullptr;
+	Array<PipelineDefinition> pipeline_definitions;
+	u32 current_pass_root_signature_index = 0;
+};
+
+u32 CreateComputePipeline(PipelineLibrary* lib, ShaderDefinition& shader_definition, u64 permutation = 0);

@@ -143,6 +143,8 @@ Token Tokenizer::FindNextToken() {
 			break;
 		} case 6: {
 			if (CheckKeyword(token, "struct", 6, KeywordType::Struct)) break;
+			if (CheckKeyword(token, "static", 6, KeywordType::Static)) break;
+			if (CheckKeyword(token, "inline", 6, KeywordType::Inline)) break;
 			break;
 		} case 8: {
 			if (CheckKeyword(token, "template", 8, KeywordType::Template)) break;
@@ -287,8 +289,10 @@ String keyword_type_names[] = {
 	"None"_sl,
 	"Notes"_sl,
 	"Enum"_sl,
-	"Struct"_sl,
 	"Union"_sl,
+	"Struct"_sl,
+	"Static"_sl,
+	"Inline"_sl,
 	"Template"_sl,
 	"Typename"_sl,
 	"Namespace"_sl,

@@ -43,12 +43,14 @@ enum struct KeywordType : u32 {
 	None         = 0,
 	Notes        = 1,
 	Enum         = 2,
-	Struct       = 3,
-	Union        = 4,
-	Template     = 5,
-	Typename     = 6,
-	Namespace    = 7,
-	CompileConst = 8,
+	Union        = 3,
+	Struct       = 4,
+	Static       = 5,
+	Inline       = 6,
+	Template     = 7,
+	Typename     = 8,
+	Namespace    = 9,
+	CompileConst = 10,
 	
 	Count
 };

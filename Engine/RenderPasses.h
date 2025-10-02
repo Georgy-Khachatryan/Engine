@@ -4,10 +4,12 @@
 #include "GraphicsApi/GraphicsApiTypes.h"
 
 struct RecordContext;
+struct PipelineLibrary;
 
 #define RENDER_PASS_GENERATED_CODE()\
 	struct RootSignature;\
 	static RootSignature root_signature;\
+	static void CreatePipelines(PipelineLibrary* lib);\
 	void RecordPass(RecordContext* record_context)
 
 
@@ -114,6 +116,8 @@ struct TransittanceLutRenderPass {
 		HLSL::DescriptorTable<Descriptors> descriptor_table;
 		HLSL::ConstantBuffer<AtmosphereParameters> atmosphere;
 	};
+	
+	inline static u32 pipeline_id = u32_max;
 };
 
 NOTES(Meta::RenderPass{})
@@ -129,6 +133,8 @@ struct MultipleScatteringLutRenderPass {
 		HLSL::DescriptorTable<Descriptors> descriptor_table;
 		HLSL::ConstantBuffer<AtmosphereParameters> atmosphere;
 	};
+
+	inline static u32 pipeline_id = u32_max;
 };
 
 NOTES(Meta::RenderPass{})
@@ -145,6 +151,8 @@ struct SkyPanoramaLutRenderPass {
 		HLSL::DescriptorTable<Descriptors> descriptor_table;
 		HLSL::ConstantBuffer<AtmosphereParameters> atmosphere;
 	};
+
+	inline static u32 pipeline_id = u32_max;
 };
 
 NOTES(Meta::RenderPass{})

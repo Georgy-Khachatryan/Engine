@@ -57,6 +57,7 @@ struct GraphicsContextD3D12 : GraphicsContext {
 	u32 srv_heap_offset = 0;
 	
 	Array<ID3D12RootSignature*> root_signature_table;
-	FixedCountArray<ID3D12PipelineState*, 3> pipeline_state_table;
+	Array<ID3D12PipelineState*> pipeline_state_table;
+	ArrayView<PipelineDefinition> pipeline_definitions;
 };
 

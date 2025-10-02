@@ -31,7 +31,8 @@ static void WaitForNextFrame(GraphicsContextD3D12* context) {
 }
 
 static void CreateTestPipelines(GraphicsContextD3D12* api_context);
-static void CreateAtmospherePipelines(GraphicsContextD3D12* api_context);
+static void GatherPipelineDefinitions(GraphicsContextD3D12* api_context, StackAllocator* alloc);
+static void BuildPipelineStates(GraphicsContextD3D12* context);
 
 GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
 	auto* context = NewFromAlloc(alloc, GraphicsContextD3D12);
@@ -194,7 +195,8 @@ GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
 		}
 		
 		CreateTestPipelines(context);
-		CreateAtmospherePipelines(context);
+		GatherPipelineDefinitions(context, alloc);
+		BuildPipelineStates(context);
 	}
 	
 	return context;
@@ -314,23 +316,33 @@ static void CreateComputePipelineState(GraphicsContextD3D12* context, const Shad
 	pipeline_state = new_pipeline_state;
 }
 
-static void CreateAtmospherePipelines(GraphicsContextD3D12* context) {
-	static FixedCapacityArray<String, 3> defines;
-	if (defines.count == 0) {
-		ArrayAppend(defines, "TRANSMITTANCE_LUT"_sl);
-		ArrayAppend(defines, "MULTIPLE_SCATTERING_LUT"_sl);
-		ArrayAppend(defines, "SKY_PANORAMA_LUT"_sl);
-	}
-	static ShaderDefinition shader = { "Atmosphere.hlsl"_sl, defines, };
+static void GatherPipelineDefinitions(GraphicsContextD3D12* context, StackAllocator* alloc) {
+	PipelineLibrary lib;
+	lib.alloc = alloc;
 	
-	auto bytecode_transmittance_lut       = CompileShader(shader_compiler, &shader, 0x1, ShaderTypeMask::ComputeShader);
-	auto bytecode_multiple_scattering_lut = CompileShader(shader_compiler, &shader, 0x2, ShaderTypeMask::ComputeShader);
-	auto bytecode_sky_panorama_lut        = CompileShader(shader_compiler, &shader, 0x4, ShaderTypeMask::ComputeShader);
+	lib.current_pass_root_signature_index = TransittanceLutRenderPass::root_signature.root_signature_index;
+	TransittanceLutRenderPass::CreatePipelines(&lib);
 	
-	CreateComputePipelineState(context, bytecode_transmittance_lut, TransittanceLutRenderPass::root_signature.root_signature_index, context->pipeline_state_table[0]);
-	CreateComputePipelineState(context, bytecode_multiple_scattering_lut, MultipleScatteringLutRenderPass::root_signature.root_signature_index, context->pipeline_state_table[1]);
-	CreateComputePipelineState(context, bytecode_sky_panorama_lut, SkyPanoramaLutRenderPass::root_signature.root_signature_index, context->pipeline_state_table[2]);
+	lib.current_pass_root_signature_index = MultipleScatteringLutRenderPass::root_signature.root_signature_index;
+	MultipleScatteringLutRenderPass::CreatePipelines(&lib);
+	
+	lib.current_pass_root_signature_index = SkyPanoramaLutRenderPass::root_signature.root_signature_index;
+	SkyPanoramaLutRenderPass::CreatePipelines(&lib);
+	
+	context->pipeline_definitions = lib.pipeline_definitions;
+	ArrayResize(context->pipeline_state_table, alloc, context->pipeline_definitions.count);
+	memset(context->pipeline_state_table.data, 0, context->pipeline_state_table.count * sizeof(ID3D12PipelineState*));
 }
+
+static void BuildPipelineStates(GraphicsContextD3D12* context) {
+	for (u64 i = 0; i < context->pipeline_definitions.count; i += 1) {
+		auto& definition = context->pipeline_definitions[i];
+		
+		auto bytecode = CompileShader(shader_compiler, definition.shader_definition, definition.permutation, definition.shader_type_mask);
+		CreateComputePipelineState(context, bytecode, definition.root_signature_index, context->pipeline_state_table[i]);
+	}
+}
+
 
 void ReleaseGraphicsContext(GraphicsContext* api_context) {
 	auto* context = (GraphicsContextD3D12*)api_context;
@@ -508,7 +520,7 @@ void WindowSwapChainBeginFrame(WindowSwapChain* api_swap_chain, GraphicsContext*
 	if (CheckShaderFileChanges(shader_compiler)) {
 		WaitForLastFrame(context);
 		CreateTestPipelines(context);
-		CreateAtmospherePipelines(context);
+		BuildPipelineStates(context);
 	}
 	
 	auto* command_allocator = context->command_allocators[context->frame_index % number_of_frames_in_flight];

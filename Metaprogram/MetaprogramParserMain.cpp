@@ -217,6 +217,18 @@ static AstNodeDeclaration* ParseDeclaration(Tokenizer& tokenizer) {
 		token = tokenizer.PeekNextToken();
 	}
 	
+	if (token.keyword == KeywordType::Inline) {
+		tokenizer.FindNextToken();
+		token = tokenizer.PeekNextToken();
+	}
+	
+	bool is_static = false;
+	if (token.keyword == KeywordType::Static) {
+		is_static = true;
+		tokenizer.FindNextToken();
+		token = tokenizer.PeekNextToken();
+	}
+	
 	auto* declaration = AstNew<AstNodeDeclaration>(tokenizer.alloc);
 	
 	if (token.keyword == KeywordType::Struct) {
@@ -262,7 +274,8 @@ static AstNodeDeclaration* ParseDeclaration(Tokenizer& tokenizer) {
 		tokenizer.ReportError(token, "Unexpected token in a declaration.");
 	}
 	
-	return declaration;
+	// Skip static declarations for now.
+	return is_static ? nullptr : declaration;
 }
 
 static AstNodeCodeBlock* ParseFile(StackAllocator* alloc, String file, String filepath) {
