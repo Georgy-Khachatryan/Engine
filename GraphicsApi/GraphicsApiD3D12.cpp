@@ -30,9 +30,9 @@ static void WaitForNextFrame(GraphicsContextD3D12* context) {
 	context->frame_sync_fence->SetEventOnCompletion(context->frame_index - number_of_frames_in_flight, nullptr);
 }
 
-static void CreateTestPipelines(GraphicsContextD3D12* api_context);
+static void CreateTestPipelines(GraphicsContextD3D12* api_context, StackAllocator* alloc);
 static void GatherPipelineDefinitions(GraphicsContextD3D12* api_context, StackAllocator* alloc);
-static void BuildPipelineStates(GraphicsContextD3D12* context);
+static void BuildPipelineStates(GraphicsContextD3D12* context, StackAllocator* alloc);
 
 GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
 	auto* context = NewFromAlloc(alloc, GraphicsContextD3D12);
@@ -194,27 +194,23 @@ GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
 			context->root_signature_table[i] = root_signature;
 		}
 		
-		CreateTestPipelines(context);
+		CreateTestPipelines(context, alloc);
 		GatherPipelineDefinitions(context, alloc);
-		BuildPipelineStates(context);
+		BuildPipelineStates(context, alloc);
 	}
 	
 	return context;
 }
 
-static void CreateTestPipelines(GraphicsContextD3D12* context) {
+static void CreateTestPipelines(GraphicsContextD3D12* context, StackAllocator* alloc) {
 	auto* device = context->device;
 	
-	static FixedCapacityArray<String, 2> defines;
-	if (defines.count == 0) {
-		ArrayAppend(defines, "RED_COLOR"_sl);
-		ArrayAppend(defines, "BLUE_COLOR"_sl);
-	}
-	static ShaderDefinition shader = { "DrawTriangle.hlsl"_sl, defines, };
+	extern ArrayView<ShaderDefinition*> shader_definition_table;
+	auto* shader = shader_definition_table[DrawTriangleShadersID.index];
 	
-	auto bytecode      = CompileShader(shader_compiler, &shader, 0x0, ShaderTypeMask::PixelShader | ShaderTypeMask::VertexShader);
-	auto bytecode_red  = CompileShader(shader_compiler, &shader, 0x1, ShaderTypeMask::PixelShader | ShaderTypeMask::VertexShader);
-	auto bytecode_blue = CompileShader(shader_compiler, &shader, 0x2, ShaderTypeMask::PixelShader | ShaderTypeMask::VertexShader);
+	auto bytecode      = CompileShader(shader_compiler, alloc, shader, (u64)DrawTriangleShaders::None, ShaderTypeMask::PixelShader | ShaderTypeMask::VertexShader);
+	auto bytecode_red  = CompileShader(shader_compiler, alloc, shader, (u64)DrawTriangleShaders::RedColor, ShaderTypeMask::PixelShader | ShaderTypeMask::VertexShader);
+	auto bytecode_blue = CompileShader(shader_compiler, alloc, shader, (u64)DrawTriangleShaders::BlueColor, ShaderTypeMask::PixelShader | ShaderTypeMask::VertexShader);
 	
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC desc = {};
 	desc.pRootSignature                            = context->root_signature_table[DrawTriangleRenderPass::root_signature.root_signature_index];
@@ -320,8 +316,8 @@ static void GatherPipelineDefinitions(GraphicsContextD3D12* context, StackAlloca
 	PipelineLibrary lib;
 	lib.alloc = alloc;
 	
-	lib.current_pass_root_signature_index = TransittanceLutRenderPass::root_signature.root_signature_index;
-	TransittanceLutRenderPass::CreatePipelines(&lib);
+	lib.current_pass_root_signature_index = TransmittanceLutRenderPass::root_signature.root_signature_index;
+	TransmittanceLutRenderPass::CreatePipelines(&lib);
 	
 	lib.current_pass_root_signature_index = MultipleScatteringLutRenderPass::root_signature.root_signature_index;
 	MultipleScatteringLutRenderPass::CreatePipelines(&lib);
@@ -334,11 +330,11 @@ static void GatherPipelineDefinitions(GraphicsContextD3D12* context, StackAlloca
 	memset(context->pipeline_state_table.data, 0, context->pipeline_state_table.count * sizeof(ID3D12PipelineState*));
 }
 
-static void BuildPipelineStates(GraphicsContextD3D12* context) {
+static void BuildPipelineStates(GraphicsContextD3D12* context, StackAllocator* alloc) {
 	for (u64 i = 0; i < context->pipeline_definitions.count; i += 1) {
 		auto& definition = context->pipeline_definitions[i];
 		
-		auto bytecode = CompileShader(shader_compiler, definition.shader_definition, definition.permutation, definition.shader_type_mask);
+		auto bytecode = CompileShader(shader_compiler, alloc, definition.shader_definition, definition.permutation, definition.shader_type_mask);
 		CreateComputePipelineState(context, bytecode, definition.root_signature_index, context->pipeline_state_table[i]);
 	}
 }
@@ -513,14 +509,14 @@ void ResizeWindowSwapChain(WindowSwapChain* api_swap_chain, GraphicsContext* api
 	CreateSwapChainBackBuffers(swap_chain, context);
 }
 
-void WindowSwapChainBeginFrame(WindowSwapChain* api_swap_chain, GraphicsContext* api_context) {
+void WindowSwapChainBeginFrame(WindowSwapChain* api_swap_chain, GraphicsContext* api_context, StackAllocator* alloc) {
 	auto* context = (GraphicsContextD3D12*)api_context;
 	WaitForNextFrame(context);
 	
-	if (CheckShaderFileChanges(shader_compiler)) {
+	if (CheckShaderFileChanges(shader_compiler, alloc)) {
 		WaitForLastFrame(context);
-		CreateTestPipelines(context);
-		BuildPipelineStates(context);
+		CreateTestPipelines(context, alloc);
+		BuildPipelineStates(context, alloc);
 	}
 	
 	auto* command_allocator = context->command_allocators[context->frame_index % number_of_frames_in_flight];
@@ -582,7 +578,7 @@ void WindowSwapChainEndFrame(WindowSwapChain* api_swap_chain, GraphicsContext* a
 		sky_panorama_lut = CreateTextureResource(context, 192, 128, DXGI_FORMAT_R16G16B16A16_FLOAT);
 	}
 	
-	TransittanceLutRenderPass{}.RecordPass(&record_context);
+	TransmittanceLutRenderPass{}.RecordPass(&record_context);
 	MultipleScatteringLutRenderPass{}.RecordPass(&record_context);
 	SkyPanoramaLutRenderPass{}.RecordPass(&record_context);
 	

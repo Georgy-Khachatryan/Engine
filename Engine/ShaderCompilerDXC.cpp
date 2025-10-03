@@ -40,7 +40,6 @@ struct ShaderCompiler {
 	compile_const u32 max_shader_count = 32;
 	FixedCapacityArray<ShaderPermutationTable, max_shader_count> shaders;
 	
-	StackAllocator* alloc = nullptr; // Temporary allocator (shader sources, string formatting, etc.)
 	HeapAllocator heap; // Persistent allocator (shader bytecode, shader permutations, hashed sources, etc.)
 };
 
@@ -123,8 +122,7 @@ struct IncludeHandler : IDxcIncludeHandler {
 	ULONG Release() { return 0; }
 };
 
-static bool CompileShaderToBlob(ShaderCompiler* compiler, ShaderDefinition* definition, u64 permutation, ShaderType shader_type, ShaderPermutation* shader_permutation) {
-	auto* alloc = compiler->alloc;
+static bool CompileShaderToBlob(ShaderCompiler* compiler, StackAllocator* alloc, ShaderDefinition* definition, u64 permutation, ShaderType shader_type, ShaderPermutation* shader_permutation) {
 	TempAllocationScope(alloc);
 	
 	auto filename = definition->filename;
@@ -256,18 +254,15 @@ static ShaderPermutation* FindShaderPermutation(ShaderCompiler* compiler, Shader
 	return shader_permutation;
 }
 
-ShaderBytecode CompileShader(ShaderCompiler* compiler, ShaderDefinition* definition, u64 permutation, ShaderTypeMask shader_type_mask) {
-	auto* alloc = compiler->alloc;
+ShaderBytecode CompileShader(ShaderCompiler* compiler, StackAllocator* alloc, ShaderDefinition* definition, u64 permutation, ShaderTypeMask shader_type_mask) {
 	ShaderBytecode result;
 	
-	for (u32 i = 0; i < (u32)ShaderType::Count; i += 1) {
-		if (((u32)shader_type_mask & (1u << i)) == 0) continue;
-		
+	for (u32 i : BitScanLow32((u32)shader_type_mask)) {
 		auto* shader = FindShaderPermutation(compiler, definition, permutation, (ShaderType)i);
 		
 		bool should_recompile = shader->shader_dirty;
 		while (should_recompile) {
-			if (CompileShaderToBlob(compiler, definition, permutation, (ShaderType)i, shader) || shader->bytecode_blob.data != nullptr) {
+			if (CompileShaderToBlob(compiler, alloc, definition, permutation, (ShaderType)i, shader) || shader->bytecode_blob.data != nullptr) {
 				should_recompile = false;
 			} else {
 				SystemWriteToConsole("Press enter to recompile.\n"_sl);
@@ -286,8 +281,7 @@ ShaderBytecode CompileShader(ShaderCompiler* compiler, ShaderDefinition* definit
 ShaderCompiler* CreateShaderCompiler(StackAllocator* alloc) {
 	auto* compiler = NewFromAlloc(alloc, ShaderCompiler);
 	
-	compiler->heap  = CreateHeapAllocator(2 * 1024 * 1024);
-	compiler->alloc = alloc;
+	compiler->heap = CreateHeapAllocator(2 * 1024 * 1024);
 	
 	compiler->directory_change_tracker = CreateDirectoryChangeTracker(alloc, shader_directory_path);
 	DebugAssert(compiler->directory_change_tracker != nullptr, "Failed to create shader directory change tracker.");
@@ -309,8 +303,7 @@ void ReleaseShaderCompiler(ShaderCompiler* compiler) {
 	ReleaseHeapAllocator(compiler->heap);
 }
 
-bool CheckShaderFileChanges(ShaderCompiler* compiler) {
-	auto* alloc = compiler->alloc;
+bool CheckShaderFileChanges(ShaderCompiler* compiler, StackAllocator* alloc) {
 	TempAllocationScope(alloc);
 	
 	auto changed_files = ReadDirectoryChangeEvents(alloc, compiler->directory_change_tracker);

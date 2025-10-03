@@ -17,6 +17,7 @@
 FORWARD_DECLARE_NOTE(Meta::RenderGraphSystem);
 FORWARD_DECLARE_NOTE(Meta::RenderPass);
 FORWARD_DECLARE_NOTE(Meta::HlslFile);
+FORWARD_DECLARE_NOTE(Meta::ShaderName);
 
 template<typename T>
 inline T* TypeInfoCast(TypeInfo* type_info) {
@@ -41,6 +42,7 @@ static T* FindNote(TypeInfo* type_info) {
 	
 	switch (type_info->info_type) {
 	case TypeInfoType::Struct: return FindNote<T>(static_cast<TypeInfoStruct*>(type_info)->notes);
+	case TypeInfoType::Enum:   return FindNote<T>(static_cast<TypeInfoEnum*>(type_info)->notes);
 	default: return nullptr;
 	}
 }
@@ -84,6 +86,11 @@ struct RootSignaturePassData {
 struct RootSignatureFileData {
 	StringBuilder builder;
 	Array<RootSignaturePassData> root_signatures;
+};
+
+struct ShaderDefinitionFileData {
+	StringBuilder builder;
+	Array<String> shader_names;
 };
 
 static String PrintTypeName(TypeInfo* type_info) {
@@ -131,7 +138,7 @@ static String PrintTypeName(TypeInfo* type_info) {
 void GenerateCodeForHlslFile(StackAllocator* alloc, HlslFileData& hlsl_file, TypeInfo* type_info) {
 	auto& builder = hlsl_file.builder;
 	
-	auto* type_info_struct = (TypeInfoStruct*)type_info;
+	auto* type_info_struct = TypeInfoCast<TypeInfoStruct>(type_info);
 	auto name = ExtractNameWithoutNamespace(type_info_struct->name);
 	
 	// TODO: Dependent type includes?
@@ -168,8 +175,8 @@ HlslFileData& AddOrFindHlslFile(StackAllocator* alloc, HashTable<String, HlslFil
 			
 			if (c == '.') {
 				include_guard[i] = '_';
-			} else if (c >= 'a' && c <= 'z') {
-				include_guard[i] = c - 'a' + 'A';
+			} else {
+				include_guard[i] = CharToUpperCase(c);
 			}
 		}
 		hlsl_file.include_guard = include_guard;
@@ -415,13 +422,72 @@ static void GenerateCodeForRenderPass(StackAllocator* alloc, String filename, Hl
 }
 
 static void GenerateCodeForRenderPass(StackAllocator* alloc, HashTable<String, HlslFileData>& hlsl_bindings_files, RootSignatureFileData& root_signature_file, TypeInfo* type_info, Meta::RenderPass* render_pass_note) {
-	auto* type_info_struct = (TypeInfoStruct*)type_info;
+	auto* type_info_struct = TypeInfoCast<TypeInfoStruct>(type_info);
 	auto render_pass_name = ExtractNameWithoutNamespace(type_info_struct->name);
 	auto filename = StringFormat(alloc, "%.*s.hlsl", (s32)render_pass_name.count, render_pass_name.data);
 	
 	auto& hlsl_file = AddOrFindHlslFile(alloc, hlsl_bindings_files, filename);
 	
 	GenerateCodeForRenderPass(alloc, filename, hlsl_file, root_signature_file, type_info);
+}
+
+static void GenerateCodeForShaderDefinition(StackAllocator* alloc, ShaderDefinitionFileData& shader_definition_file, TypeInfo* type_info, Meta::ShaderName* note) {
+	auto* type_info_enum = TypeInfoCast<TypeInfoEnum>(type_info);
+	auto name = type_info_enum->name;
+	
+	auto& builder = shader_definition_file.builder;
+	builder.Append("static String shader_defines_%.*s[] = {\n", (s32)name.count, name.data);
+	builder.Indent();
+	
+	u32 define_count = 0;
+	for (auto& field : type_info_enum->fields) {
+		if (CountSetBits(field.value) != 1) continue;
+		
+		DebugAssert(FirstBitLow(field.value) == define_count, "Out of order shader definition '%.*s' in shader '%.*s'. Position in enum: '%u', Value: '1u << %u'.", (s32)field.name.count, field.name.data, (s32)name.count, name.data, define_count, FirstBitLow(field.value));
+		
+		u64 underscore_count = 0;
+		for (u64 i = 0; i < field.name.count - 1; i += 1) {
+			char c0 = field.name[i + 0];
+			char c1 = field.name[i + 1];
+			
+			if (CharIsLowerCase(c0) && CharIsUpperCase(c1)) {
+				underscore_count += 1;
+			}
+		}
+		
+		auto string = StringAllocate(alloc, field.name.count + underscore_count);
+		
+		u64 offset = 0;
+		for (u64 i = 0; i < field.name.count; i += 1) {
+			char c0 = field.name[i + 0];
+			string[offset++] = CharToUpperCase(c0);
+			
+			if (i + 1 < field.name.count && CharIsLowerCase(c0) && CharIsUpperCase(field.name[i + 1])) {
+				string[offset++] = '_';
+			}
+		}
+		
+		builder.Append("\"%.*s\"_sl,\n", (s32)string.count, string.data);
+		define_count += 1;
+	}
+	
+	builder.Unindent();
+	builder.AppendUnformatted("};\n\n"_sl);
+	
+	{
+		builder.Append("static ShaderDefinition shader_definition_%.*s = {\n", (s32)name.count, name.data);
+		builder.Indent();
+		
+		builder.Append("\"%.*s\"_sl,\n", (s32)note->filename.count, note->filename.data);
+		builder.Append("ArrayView<String>{ shader_defines_%.*s, %u },\n", (s32)name.count, name.data, define_count);
+		
+		builder.Unindent();
+		builder.AppendUnformatted("};\n\n"_sl);
+	}
+	
+	builder.Append("ShaderID %.*sID = { %u };\n\n\n", (s32)name.count, name.data, (u32)shader_definition_file.shader_names.count);
+	
+	ArrayAppend(shader_definition_file.shader_names, alloc, name);
 }
 
 s32 main() {
@@ -436,6 +502,12 @@ s32 main() {
 	root_signature_file.builder.AppendUnformatted("#include \"Basic/Basic.h\"\n"_sl);
 	root_signature_file.builder.AppendUnformatted("#include \"Engine/RenderPasses.h\"\n\n"_sl);
 	
+	ShaderDefinitionFileData shader_definition_file;
+	shader_definition_file.builder.alloc = &alloc;
+	shader_definition_file.builder.AppendUnformatted("#include \"Basic/Basic.h\"\n"_sl);
+	shader_definition_file.builder.AppendUnformatted("#include \"Basic/BasicString.h\"\n"_sl);
+	shader_definition_file.builder.AppendUnformatted("#include \"Engine/RenderPasses.h\"\n\n"_sl);
+	
 	extern ArrayView<TypeInfo*> type_table;
 	for (auto* type_info : type_table) {
 		if (auto* note = FindNote<Meta::HlslFile>(type_info)) {
@@ -444,6 +516,10 @@ s32 main() {
 		
 		if (auto* note = FindNote<Meta::RenderPass>(type_info)) {
 			GenerateCodeForRenderPass(&alloc, hlsl_bindings_files, root_signature_file, type_info, note);
+		}
+		
+		if (auto* note = FindNote<Meta::ShaderName>(type_info)) {
+			GenerateCodeForShaderDefinition(&alloc, shader_definition_file, type_info, note);
 		}
 	}
 	
@@ -460,7 +536,7 @@ s32 main() {
 		}
 		
 		builder.Unindent();
-		builder.Append("};\n\n");
+		builder.AppendUnformatted("};\n\n"_sl);
 		
 		SystemCreateDirectory(&alloc, "./Engine/Generated/"_sl);
 		
@@ -505,6 +581,32 @@ s32 main() {
 		}
 		
 		SystemCloseFile(file);
+	}
+	
+	{
+		auto& builder = shader_definition_file.builder;
+		builder.AppendUnformatted("static ShaderDefinition* shader_definitions[] = {\n"_sl);
+		builder.Indent();
+		
+		for (auto& shader_name : shader_definition_file.shader_names) {
+			builder.Append("&shader_definition_%.*s,\n", (s32)shader_name.count, shader_name.data);
+		}
+		
+		builder.Unindent();
+		builder.AppendUnformatted("};\n\n"_sl);
+		
+		builder.Append("ArrayView<ShaderDefinition*> shader_definition_table = { shader_definitions, %u };\n\n", (u32)shader_definition_file.shader_names.count);
+		
+		auto output_filepath = "./Engine/Generated/ShaderDefinitions.cpp"_sl;
+		auto output_file = SystemOpenFile(&alloc, output_filepath, OpenFileFlags::Write);
+		if (output_file.handle == nullptr) {
+			SystemWriteToConsole(&alloc, "Failed to open output file '%s'.\n", output_filepath.data);
+			SystemExitProcess(1);
+		}
+		
+		auto file_string = builder.ToString();
+		SystemWriteFile(output_file, file_string.data, file_string.count, 0);
+		SystemCloseFile(output_file);
 	}
 	
 	return 0;

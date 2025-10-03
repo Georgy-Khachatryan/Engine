@@ -36,3 +36,6 @@ struct ShaderDefinition {
 	struct ShaderPermutationTable* shader_table = nullptr;
 };
 
+
+struct ShaderID { u32 index = 0; };
+

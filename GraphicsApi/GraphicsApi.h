@@ -25,7 +25,7 @@ void ReleaseGraphicsContext(GraphicsContext* context);
 WindowSwapChain* CreateWindowSwapChain(StackAllocator* alloc, GraphicsContext* context, void* hwnd);
 void ReleaseWindowSwapChain(WindowSwapChain* swap_chain, GraphicsContext* context);
 void ResizeWindowSwapChain(WindowSwapChain* swap_chain, GraphicsContext* context, u32 width, u32 height);
-void WindowSwapChainBeginFrame(WindowSwapChain* swap_chain, GraphicsContext* context);
+void WindowSwapChainBeginFrame(WindowSwapChain* swap_chain, GraphicsContext* context, StackAllocator* alloc);
 void WindowSwapChainEndFrame(WindowSwapChain* swap_chain, GraphicsContext* context, StackAllocator* alloc);
 
 u32 AllocateTransientSrvDescriptorTable(GraphicsContext* api_context, u32 count);
@@ -44,4 +44,9 @@ struct PipelineLibrary {
 	u32 current_pass_root_signature_index = 0;
 };
 
-u32 CreateComputePipeline(PipelineLibrary* lib, ShaderDefinition& shader_definition, u64 permutation = 0);
+u32 CreateComputePipeline(PipelineLibrary* lib, ShaderID shader_id, u64 permutation = 0);
+
+template<typename ShadersEnumT>
+u32 CreateComputePipeline(PipelineLibrary* lib, ShaderID shader_id, ShadersEnumT permutation) {
+	return CreateComputePipeline(lib, shader_id, (u64)permutation);
+}

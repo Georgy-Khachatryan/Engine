@@ -6,18 +6,11 @@ extern NativeTextureResource transmittance_lut;
 extern NativeTextureResource multiple_scattering_lut;
 extern NativeTextureResource sky_panorama_lut;
 
-static String defines[] = {
-	"TRANSMITTANCE_LUT"_sl,
-	"MULTIPLE_SCATTERING_LUT"_sl,
-	"SKY_PANORAMA_LUT"_sl,
-};
-static ShaderDefinition atmosphere_shaders = { "Atmosphere.hlsl"_sl, { defines, 3 } };
-
-void TransittanceLutRenderPass::CreatePipelines(PipelineLibrary* lib) {
-	pipeline_id = CreateComputePipeline(lib, atmosphere_shaders, 0x1);
+void TransmittanceLutRenderPass::CreatePipelines(PipelineLibrary* lib) {
+	pipeline_id = CreateComputePipeline(lib, AtmosphereShadersID, AtmosphereShaders::TransmittanceLut);
 }
 
-void TransittanceLutRenderPass::RecordPass(RecordContext* record_context) {
+void TransmittanceLutRenderPass::RecordPass(RecordContext* record_context) {
 	auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
 	descriptor_table.transmittance_lut.Bind(transmittance_lut);
 	
@@ -29,7 +22,7 @@ void TransittanceLutRenderPass::RecordPass(RecordContext* record_context) {
 }
 
 void MultipleScatteringLutRenderPass::CreatePipelines(PipelineLibrary* lib) {
-	pipeline_id = CreateComputePipeline(lib, atmosphere_shaders, 0x2);
+	pipeline_id = CreateComputePipeline(lib, AtmosphereShadersID, AtmosphereShaders::MultipleScatteringLut);
 }
 
 void MultipleScatteringLutRenderPass::RecordPass(RecordContext* record_context) {
@@ -45,7 +38,7 @@ void MultipleScatteringLutRenderPass::RecordPass(RecordContext* record_context) 
 }
 
 void SkyPanoramaLutRenderPass::CreatePipelines(PipelineLibrary* lib) {
-	pipeline_id = CreateComputePipeline(lib, atmosphere_shaders, 0x4);
+	pipeline_id = CreateComputePipeline(lib, AtmosphereShadersID, AtmosphereShaders::SkyPanoramaLut);
 }
 
 void SkyPanoramaLutRenderPass::RecordPass(RecordContext* record_context) {

@@ -8,9 +8,10 @@ enum struct TypeInfoType : u8 {
 	Integer = 1,
 	Float   = 2,
 	Struct  = 3,
-	Type    = 4,
-	Void    = 5,
-	String  = 6,
+	Enum    = 4,
+	Type    = 5,
+	Void    = 6,
+	String  = 7,
 	
 	Count
 };
@@ -65,6 +66,21 @@ struct TypeInfoStruct : TypeInfo {
 	ArrayView<TypeInfoNote> notes;
 };
 
+struct TypeInfoEnumField {
+	String name;
+	u64 value = 0;
+};
+
+struct TypeInfoEnum : TypeInfo {
+	compile_const TypeInfoType my_type = TypeInfoType::Enum;
+	
+	String name;
+	TypeInfoInteger* underlying_type = nullptr;
+	
+	ArrayView<TypeInfoEnumField> fields;
+	ArrayView<TypeInfoNote> notes;
+};
+
 
 extern TypeInfoInteger type_info_s8;
 extern TypeInfoInteger type_info_s16;
@@ -102,9 +118,9 @@ template<> struct TypeInfoOfInternal<const u16> { static TypeInfoInteger* Get() 
 template<> struct TypeInfoOfInternal<const u32> { static TypeInfoInteger* Get() { return &type_info_u32; } };
 template<> struct TypeInfoOfInternal<const u64> { static TypeInfoInteger* Get() { return &type_info_u64; } };
 
-template<> struct TypeInfoOfInternal<const bool>   { static TypeInfo* Get() { return &type_info_bool; } };
-template<> struct TypeInfoOfInternal<const float>  { static TypeInfo* Get() { return &type_info_float32; } };
-template<> struct TypeInfoOfInternal<const double> { static TypeInfo* Get() { return &type_info_float64; } };
+template<> struct TypeInfoOfInternal<const bool>   { static TypeInfoInteger* Get() { return &type_info_bool; } };
+template<> struct TypeInfoOfInternal<const float>  { static TypeInfoFloat* Get() { return &type_info_float32; } };
+template<> struct TypeInfoOfInternal<const double> { static TypeInfoFloat* Get() { return &type_info_float64; } };
 template<> struct TypeInfoOfInternal<const String> { static TypeInfo* Get() { return &type_info_string;  } };
 
 

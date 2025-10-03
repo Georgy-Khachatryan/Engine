@@ -10,6 +10,7 @@ enum struct AstNodeType : u32 {
 	CodeBlock   = 2,
 	Declaration = 3,
 	Struct      = 4,
+	Enum        = 5,
 	
 	Count
 };
@@ -19,6 +20,7 @@ struct AstNodeNotes;
 struct AstNodeCodeBlock;
 struct AstNodeDeclaration;
 struct AstNodeStruct;
+struct AstNodeEnum;
 
 
 struct AstNode {
@@ -69,6 +71,16 @@ struct AstNodeStruct : AstNode {
 	String name;
 	
 	AstNodeCodeBlock* template_code_block = nullptr;
+	AstNodeCodeBlock* code_block = nullptr;
+	AstNodeNotes* notes = nullptr;
+};
+
+struct AstNodeEnum : AstNode {
+	compile_const AstNodeType my_type = AstNodeType::Enum;
+	
+	String name;
+	
+	String underlying_type;
 	AstNodeCodeBlock* code_block = nullptr;
 	AstNodeNotes* notes = nullptr;
 };

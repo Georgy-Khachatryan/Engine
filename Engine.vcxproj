@@ -43,6 +43,7 @@
     <ClCompile Include="Engine/SystemWindowWin32.cpp" />
     <ClCompile Include="Engine/AtmosphereRenderPasses.cpp" />
     <ClCompile Include="Engine/Generated/RootSignature.cpp" />
+    <ClCompile Include="Engine/Generated/ShaderDefinitions.cpp" />
     
     <ClCompile Include="GraphicsApi/GraphicsApi.cpp" />
     <ClCompile Include="GraphicsApi/GraphicsApiD3D12.cpp" />

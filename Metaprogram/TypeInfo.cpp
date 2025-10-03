@@ -25,6 +25,7 @@ String type_info_type_names[] = {
 	"Integer"_sl,
 	"Float"_sl,
 	"Struct"_sl,
+	"Enum"_sl,
 	"Type"_sl,
 	"Void"_sl,
 	"String"_sl,

@@ -195,11 +195,73 @@ static AstNodeStruct* ParseStruct(Tokenizer& tokenizer, AstNodeNotes* notes) {
 	tokenizer.ExpectToken(TokenType::ClosingBrace);
 	
 	auto* ast_node_struct = AstNew<AstNodeStruct>(tokenizer.alloc);
-	ast_node_struct->name = name.string;
+	ast_node_struct->name       = name.string;
 	ast_node_struct->code_block = code_block;
-	ast_node_struct->notes = notes;
+	ast_node_struct->notes      = notes;
 	
 	return ast_node_struct;
+}
+
+static AstNodeEnum* ParseEnum(Tokenizer& tokenizer, AstNodeNotes* notes) {
+	tokenizer.ExpectKeyword(KeywordType::Enum);
+	tokenizer.ExpectKeyword(KeywordType::Struct);
+	
+	auto name = tokenizer.ExpectToken(TokenType::Identifier);
+	ArrayAppend(tokenizer.namespace_stack, tokenizer.alloc, name.string);
+	defer{ ArrayPopLast(tokenizer.namespace_stack); };
+	
+	auto token = tokenizer.PeekNextToken();
+	
+	String underlying_type;
+	if (token.type == TokenType::Colon) {
+		tokenizer.FindNextToken();
+		underlying_type = ParseIdentifierWithNamespace(tokenizer).string;
+	}
+	
+	tokenizer.ExpectToken(TokenType::OpeningBrace);
+	
+	token = tokenizer.PeekNextToken();
+	
+	auto* code_block = AstNew<AstNodeCodeBlock>(tokenizer.alloc);
+	code_block->namespace_path = NamespaceStackToString(tokenizer);
+	
+	Array<AstNodeDeclaration*> declarations;
+	while (token.type != TokenType::None && token.type != TokenType::ClosingBrace) {
+		auto* declaration = AstNew<AstNodeDeclaration>(tokenizer.alloc);
+		declaration->name = tokenizer.ExpectToken(TokenType::Identifier).string;
+		declaration->declaration_type = AstNodeDeclarationType::Constant;
+		ArrayAppend(declarations, tokenizer.alloc, declaration);
+		
+		token = tokenizer.PeekNextToken();
+		if (token.type == TokenType::Assign) {
+			tokenizer.FindNextToken();
+			
+			token = tokenizer.PeekNextToken();
+			while (token.type != TokenType::None && token.type != TokenType::Comma && token.type != TokenType::ClosingBrace) {
+				tokenizer.FindNextToken();
+			
+				token = tokenizer.PeekNextToken();
+			}
+		} else {
+			token = tokenizer.PeekNextToken();
+		}
+		
+		if (token.type != TokenType::ClosingBrace) {
+			tokenizer.ExpectToken(TokenType::Comma);
+			token = tokenizer.PeekNextToken();
+		}
+	}
+	code_block->declarations = declarations;
+	
+	tokenizer.ExpectToken(TokenType::ClosingBrace);
+	
+	auto* ast_node_enum = AstNew<AstNodeEnum>(tokenizer.alloc);
+	ast_node_enum->name            = name.string;
+	ast_node_enum->underlying_type = underlying_type;
+	ast_node_enum->code_block      = code_block;
+	ast_node_enum->notes           = notes;
+	
+	return ast_node_enum;
 }
 
 static AstNodeDeclaration* ParseDeclaration(Tokenizer& tokenizer) {
@@ -239,6 +301,13 @@ static AstNodeDeclaration* ParseDeclaration(Tokenizer& tokenizer) {
 		
 		declaration->name             = ast_node_struct->name;
 		declaration->type_declaration = ast_node_struct;
+		declaration->declaration_type = AstNodeDeclarationType::Typename;
+	} else if (token.keyword == KeywordType::Enum) {
+		auto* ast_node_enum = ParseEnum(tokenizer, notes);
+		tokenizer.ExpectToken(TokenType::Semicolon);
+		
+		declaration->name             = ast_node_enum->name;
+		declaration->type_declaration = ast_node_enum;
 		declaration->declaration_type = AstNodeDeclarationType::Typename;
 	} else if (token.keyword == KeywordType::CompileConst || token.type == TokenType::Identifier) {
 		bool is_constant = token.keyword == KeywordType::CompileConst;
@@ -348,6 +417,29 @@ static String TemplateExpressionArguments(StackAllocator* alloc, AstNodeCodeBloc
 	return StringJoin(alloc, arguments, ", "_sl);
 }
 
+static void GenerateCodeForNotes(StringBuilder& builder, AstNodeNotes* notes) {
+	if (notes == nullptr || notes->notes.count == 0) return;
+	
+	u32 note_count = 0;
+	for (auto& note : notes->notes) {
+		builder.Append("static auto note_%u = %.*s;\n", note_count, (s32)note.expression.count, note.expression.data);
+		note_count += 1;
+	}
+	builder.AppendUnformatted("\n"_sl);
+	
+	builder.Append("static TypeInfoNote notes[] = {\n");
+	builder.Indent();
+	
+	note_count = 0;
+	for (auto& note : notes->notes) {
+		builder.Append("{ TypeInfoOf<decltype(note_%u)>(), &note_%u },\n", note_count, note_count);
+		note_count += 1;
+	}
+	
+	builder.Unindent();
+	builder.AppendUnformatted("};\n\n"_sl);
+}
+
 static void GenerateCodeForStruct(StringBuilder& builder, AstNodeStruct* ast_node_struct) {
 	// Generate code for internal structs first.
 	auto* code_block = ast_node_struct->code_block;
@@ -382,26 +474,7 @@ static void GenerateCodeForStruct(StringBuilder& builder, AstNodeStruct* ast_nod
 	
 	// Array of notes.
 	auto* notes = ast_node_struct->notes;
-	if (notes && notes->notes.count != 0) {
-		u32 note_count = 0;
-		for (auto& note : notes->notes) {
-			builder.Append("static auto note_%u = %.*s;\n", note_count, (s32)note.expression.count, note.expression.data);
-			note_count += 1;
-		}
-		builder.AppendUnformatted("\n"_sl);
-		
-		builder.Append("static TypeInfoNote notes[] = {\n");
-		builder.Indent();
-		
-		note_count = 0;
-		for (auto& note : notes->notes) {
-			builder.Append("{ TypeInfoOf<decltype(note_%u)>(), &note_%u },\n", note_count, note_count);
-			note_count += 1;
-		}
-		
-		builder.Unindent();
-		builder.AppendUnformatted("};\n\n"_sl);
-	}
+	GenerateCodeForNotes(builder, notes);
 	
 	// Array of fields.
 	u32 field_count = 0;
@@ -477,6 +550,68 @@ static void GenerateCodeForStruct(StringBuilder& builder, AstNodeStruct* ast_nod
 	builder.AppendUnformatted("}\n\n"_sl);
 }
 
+static void GenerateCodeForEnum(StringBuilder& builder, AstNodeEnum* ast_node_enum) {
+	auto* code_block = ast_node_enum->code_block;
+	auto name = code_block->namespace_path;
+	
+	builder.Append("template<> struct TypeInfoOfInternal<const %.*s> { static TypeInfoEnum* Get(); };\n\n", (s32)name.count, name.data);
+	builder.Append("TypeInfoEnum* TypeInfoOfInternal<const %.*s>::Get() {\n", (s32)name.count, name.data);
+	builder.Indent();
+	
+	builder.Append("using TypeName = %.*s;\n\n", (s32)name.count, name.data);
+	
+	// Array of notes.
+	auto* notes = ast_node_enum->notes;
+	GenerateCodeForNotes(builder, notes);
+	
+	// Array of fields.
+	if (code_block->declarations.count != 0) {
+		builder.AppendUnformatted("static TypeInfoEnumField fields[] = {\n"_sl);
+		builder.Indent();
+		
+		for (auto* declaration : code_block->declarations) {
+			builder.Append("{ \"%.*s\"_sl, (u64)TypeName::%.*s },\n",
+				(s32)declaration->name.count, declaration->name.data,
+				(s32)declaration->name.count, declaration->name.data
+			);
+		}
+		
+		builder.Unindent();
+		builder.AppendUnformatted("};\n\n"_sl);
+	}
+	
+	// TypeInfoEnum:
+	{
+		builder.AppendUnformatted("static TypeInfoEnum type_info = {\n"_sl);
+		builder.Indent();
+		
+		builder.Append("TypeInfoType::Enum,\n");
+		builder.Append("\"%.*s\"_sl,\n", (s32)name.count, name.data);
+		
+		auto underlying_type = ast_node_enum->underlying_type.count ? ast_node_enum->underlying_type : "s32"_sl;
+		builder.Append("TypeInfoOf<%.*s>(),\n", (s32)underlying_type.count, underlying_type.data);
+		
+		if (code_block->declarations.count != 0) {
+			builder.Append("ArrayView<TypeInfoEnumField>{ fields, %u },\n", (u32)code_block->declarations.count);
+		} else {
+			builder.AppendUnformatted("ArrayView<TypeInfoEnumField>{},\n"_sl);
+		}
+		
+		if (notes && notes->notes.count != 0) {
+			builder.Append("ArrayView<TypeInfoNote>{ notes, %u },\n", notes->notes.count);
+		} else {
+			builder.AppendUnformatted("ArrayView<TypeInfoNote>{},\n"_sl);
+		}
+		
+		builder.Unindent();
+		builder.AppendUnformatted("};\n\n"_sl);
+	}
+	
+	builder.AppendUnformatted("return &type_info;\n"_sl);
+	builder.Unindent();
+	builder.AppendUnformatted("};\n\n"_sl);
+}
+
 static void GenerateCodeForCodeBlockTypeDeclarations(StringBuilder& builder, AstNodeCodeBlock* code_block) {
 	for (auto* declaration : code_block->declarations) {
 		if (declaration->type_declaration == nullptr) continue;
@@ -484,6 +619,9 @@ static void GenerateCodeForCodeBlockTypeDeclarations(StringBuilder& builder, Ast
 		switch (declaration->type_declaration->type) {
 		case AstNodeType::Struct: {
 			GenerateCodeForStruct(builder, (AstNodeStruct*)declaration->type_declaration);
+			break;
+		} case AstNodeType::Enum: {
+			GenerateCodeForEnum(builder, (AstNodeEnum*)declaration->type_declaration);
 			break;
 		} default: {
 			DebugAssertAlways("Unhanlded type declaration ast node type.");
@@ -506,6 +644,10 @@ static void GenerateCodeForTypeTable(StringBuilder& builder, AstNodeCodeBlock* c
 		case AstNodeType::Struct: {
 			auto* ast_node_struct = (AstNodeStruct*)declaration->type_declaration;
 			name = ast_node_struct->template_code_block ? ""_sl : ast_node_struct->code_block->namespace_path;
+			break;
+		} case AstNodeType::Enum: {
+			auto* ast_node_enum = (AstNodeEnum*)declaration->type_declaration;
+			name = ast_node_enum->code_block->namespace_path;
 			break;
 		} default: {
 			DebugAssertAlways("Unhanlded type declaration ast node type.");

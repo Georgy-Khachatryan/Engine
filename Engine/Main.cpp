@@ -334,7 +334,7 @@ s32 main() {
 		
 		ResizeWindowSwapChain(swap_chain, graphics_context, window->width, window->height);
 		
-		WindowSwapChainBeginFrame(swap_chain, graphics_context);
+		WindowSwapChainBeginFrame(swap_chain, graphics_context, &alloc);
 		ImGui_ImplWin32_NewFrame();
 		ImGui::NewFrame();
 		

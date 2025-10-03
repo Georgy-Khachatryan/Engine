@@ -8,8 +8,8 @@ struct ShaderCompiler;
 
 using ShaderBytecode = FixedCountArray<ArrayView<u8>, (u32)ShaderType::Count>;
 
-ShaderBytecode CompileShader(ShaderCompiler* compiler, ShaderDefinition* definition, u64 permutation, ShaderTypeMask shader_type_mask);
+ShaderBytecode CompileShader(ShaderCompiler* compiler, StackAllocator* alloc, ShaderDefinition* definition, u64 permutation, ShaderTypeMask shader_type_mask);
 
 ShaderCompiler* CreateShaderCompiler(StackAllocator* alloc);
 void ReleaseShaderCompiler(ShaderCompiler* compiler);
-bool CheckShaderFileChanges(ShaderCompiler* compiler);
+bool CheckShaderFileChanges(ShaderCompiler* compiler, StackAllocator* alloc);

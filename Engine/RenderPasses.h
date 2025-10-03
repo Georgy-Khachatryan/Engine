@@ -12,11 +12,16 @@ struct PipelineLibrary;
 	static void CreatePipelines(PipelineLibrary* lib);\
 	void RecordPass(RecordContext* record_context)
 
+#define SHADER_DEFINITION_GENERATED_CODE(name)\
+	extern ShaderID name##ID;\
+	ENUM_FLAGS_OPERATORS(name)
+
 
 namespace Meta {
 	NOTES() struct RenderGraphSystem {};
 	NOTES() struct RenderPass {};
 	NOTES() struct HlslFile { String filename; };
+	NOTES() struct ShaderName { String filename; };
 };
 
 namespace HLSL {
@@ -99,8 +104,16 @@ struct AtmosphereParameters {
 };
 
 
+NOTES(Meta::ShaderName{ "Atmosphere.hlsl"_sl })
+enum struct AtmosphereShaders : u32 {
+	TransmittanceLut      = 1u << 0,
+	MultipleScatteringLut = 1u << 1,
+	SkyPanoramaLut        = 1u << 2,
+};
+SHADER_DEFINITION_GENERATED_CODE(AtmosphereShaders);
+
 NOTES(Meta::RenderPass{}, Meta::RenderGraphSystem{})
-struct TransittanceLutRenderPass {
+struct TransmittanceLutRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
@@ -154,6 +167,15 @@ struct SkyPanoramaLutRenderPass {
 
 	inline static u32 pipeline_id = u32_max;
 };
+
+
+NOTES(Meta::ShaderName{ "DrawTriangle.hlsl"_sl })
+enum struct DrawTriangleShaders : u32 {
+	None      = 0,
+	RedColor  = 1u << 0,
+	BlueColor = 1u << 1,
+};
+SHADER_DEFINITION_GENERATED_CODE(DrawTriangleShaders);
 
 NOTES(Meta::RenderPass{})
 struct DrawTriangleRenderPass {
