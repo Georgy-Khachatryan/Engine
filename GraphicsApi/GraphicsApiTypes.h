@@ -38,4 +38,5 @@ struct ShaderDefinition {
 
 
 struct ShaderID { u32 index = 0; };
+struct PipelineID { u32 index = 0; };
 

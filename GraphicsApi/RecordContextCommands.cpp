@@ -92,8 +92,8 @@ void CmdSetDescriptorTable(RecordContext* record_context, u32 offset, HLSL::Base
 	packet.descriptor_heap_offset = descriptor_table.descriptor_heap_offset;
 }
 
-void CmdSetPipelineState(RecordContext* record_context, u32 pipeline_index) {
+void CmdSetPipelineState(RecordContext* record_context, PipelineID pipeline_id) {
 	auto& packet = AppendPacket<CmdSetPipelineStatePacket>(record_context);
-	packet.pipeline_index = pipeline_index;
+	packet.pipeline_id = pipeline_id;
 }
 

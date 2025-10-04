@@ -23,6 +23,7 @@ inline u64 AlignUp(u64 size, u64 alignment) {
 	return (size + alignment - 1) & ~(alignment - 1);
 }
 
+inline u64 Min(u64 lh, u64 rh) { return lh < rh ? lh : rh; }
 inline u64 Max(u64 lh, u64 rh) { return lh > rh ? lh : rh; }
 
 template<typename T, T(FirstBitLowT)(T)>

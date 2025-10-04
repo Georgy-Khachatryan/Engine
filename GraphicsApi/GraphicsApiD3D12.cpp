@@ -14,10 +14,6 @@ static struct {
 	FixedCountArray<ID3D12PipelineState*, 3> pipeline_state = {};
 } debug_draw_triangle;
 
-NativeTextureResource transmittance_lut = {};
-NativeTextureResource multiple_scattering_lut = {};
-NativeTextureResource sky_panorama_lut = {};
-
 static ShaderCompiler* shader_compiler = nullptr;
 
 static void WaitForLastFrame(GraphicsContextD3D12* context) {
@@ -197,6 +193,8 @@ GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
 		CreateTestPipelines(context, alloc);
 		GatherPipelineDefinitions(context, alloc);
 		BuildPipelineStates(context, alloc);
+		
+		ArrayReserve(context->resource_table, alloc, (u64)VirtualResourceID::Count);
 	}
 	
 	return context;
@@ -566,16 +564,13 @@ void WindowSwapChainEndFrame(WindowSwapChain* api_swap_chain, GraphicsContext* a
 	CmdSetViewportAndScissor(&record_context, swap_chain->width, swap_chain->height);
 	CmdDrawInstanced(&record_context, 3);
 	
-	if (transmittance_lut.d3d12 == nullptr) {
-		transmittance_lut = CreateTextureResource(context, 256, 64, DXGI_FORMAT_R16G16B16A16_FLOAT);
-	}
-	
-	if (multiple_scattering_lut.d3d12 == nullptr) {
-		multiple_scattering_lut = CreateTextureResource(context, 32, 32, DXGI_FORMAT_R16G16B16A16_FLOAT);
-	}
-	
-	if (sky_panorama_lut.d3d12 == nullptr) {
-		sky_panorama_lut = CreateTextureResource(context, 192, 128, DXGI_FORMAT_R16G16B16A16_FLOAT);
+	if (context->resource_table.count == 0) {
+		context->resource_table.count = context->resource_table.capacity;
+		
+		using ID = VirtualResourceID;
+		context->resource_table[(u32)ID::TransmittanceLut]      = CreateTextureResource(context, 256,  64, DXGI_FORMAT_R16G16B16A16_FLOAT).d3d12;
+		context->resource_table[(u32)ID::MultipleScatteringLut] = CreateTextureResource(context,  32,  32, DXGI_FORMAT_R16G16B16A16_FLOAT).d3d12;
+		context->resource_table[(u32)ID::SkyPanoramaLut]        = CreateTextureResource(context, 192, 128, DXGI_FORMAT_R16G16B16A16_FLOAT).d3d12;
 	}
 	
 	TransmittanceLutRenderPass{}.RecordPass(&record_context);
@@ -583,16 +578,13 @@ void WindowSwapChainEndFrame(WindowSwapChain* api_swap_chain, GraphicsContext* a
 	SkyPanoramaLutRenderPass{}.RecordPass(&record_context);
 	
 	struct ImGuiDescriptorTable : HLSL::BaseDescriptorTable {
-		HLSL::Texture2D<float4> transmittance_lut;
-		HLSL::Texture2D<float4> multiple_scattering_lut;
-		HLSL::Texture2D<float4> sky_panorama_lut;
+		HLSL::Texture2D<float4> transmittance_lut       = VirtualResourceID::TransmittanceLut;
+		HLSL::Texture2D<float4> multiple_scattering_lut = VirtualResourceID::MultipleScatteringLut;
+		HLSL::Texture2D<float4> sky_panorama_lut        = VirtualResourceID::SkyPanoramaLut;
 	};
 	HLSL::DescriptorTable<ImGuiDescriptorTable> root_descriptor_table = { 0, 3 };
 	
 	auto& descriptor_table = AllocateDescriptorTable(&record_context, root_descriptor_table);
-	descriptor_table.transmittance_lut.Bind(transmittance_lut);
-	descriptor_table.multiple_scattering_lut.Bind(multiple_scattering_lut);
-	descriptor_table.sky_panorama_lut.Bind(sky_panorama_lut);
 	
 	ReplayRecordContext(context, &record_context);
 	

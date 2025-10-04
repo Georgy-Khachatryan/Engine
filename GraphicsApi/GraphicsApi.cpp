@@ -2,7 +2,7 @@
 
 extern ArrayView<ShaderDefinition*> shader_definition_table;
 
-u32 CreateComputePipeline(PipelineLibrary* lib, ShaderID shader_id, u64 permutation) {
+PipelineID CreateComputePipeline(PipelineLibrary* lib, ShaderID shader_id, u64 permutation) {
 	u32 pipeline_index = (u32)lib->pipeline_definitions.count;
 	
 	auto& pipeline_definition = ArrayEmplace(lib->pipeline_definitions, lib->alloc);
@@ -11,5 +11,5 @@ u32 CreateComputePipeline(PipelineLibrary* lib, ShaderID shader_id, u64 permutat
 	pipeline_definition.shader_type_mask     = ShaderTypeMask::ComputeShader;
 	pipeline_definition.root_signature_index = lib->current_pass_root_signature_index;
 	
-	return pipeline_index;
+	return PipelineID{ pipeline_index };
 }

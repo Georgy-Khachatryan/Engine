@@ -93,5 +93,5 @@ struct CmdSetDescriptorTablePacket : RecordContextCommandPacket {
 struct CmdSetPipelineStatePacket : RecordContextCommandPacket {
 	compile_const CommandType my_type = CommandType::SetPipelineState;
 	
-	u32 pipeline_index = 0;
+	PipelineID pipeline_id;
 };

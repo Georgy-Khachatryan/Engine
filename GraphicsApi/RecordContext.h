@@ -1,6 +1,7 @@
 #pragma once
 #include "Basic/Basic.h"
 #include "Basic/BasicArray.h"
+#include "GraphicsApiTypes.h"
 
 struct GraphicsContext;
 namespace HLSL {
@@ -30,7 +31,7 @@ void CmdSetViewportAndScissor(RecordContext* record_context, u32 max_x, u32 max_
 
 void CmdSetRootSignature(RecordContext* record_context, const HLSL::BaseRootSignature& root_signature);
 void CmdSetDescriptorTable(RecordContext* record_context, u32 offset, HLSL::BaseDescriptorTable& descriptor_table);
-void CmdSetPipelineState(RecordContext* record_context, u32 pipeline_index);
+void CmdSetPipelineState(RecordContext* record_context, PipelineID pipeline_id);
 
 void ReplayRecordContext(GraphicsContext* context, RecordContext* record_context);
 

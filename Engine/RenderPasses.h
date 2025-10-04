@@ -24,46 +24,85 @@ namespace Meta {
 	NOTES() struct ShaderName { String filename; };
 };
 
+
+enum struct VirtualResourceID : u32;
+
 namespace HLSL {
-	enum struct ResourceDescriptorType : u32 {
+	enum struct ResourceDescriptorType : u16 {
 		None            = 0,
 		Texture2D       = 1,
 		RWTexture2D     = 2,
 		RegularBuffer   = 3,
 		RWRegularBuffer = 4,
+		ByteBuffer      = 5,
+		RWByteBuffer    = 6,
 	};
 	
 	struct ResourceDescriptor {
-		ResourceDescriptorType type = ResourceDescriptorType::None;
-		NativeBufferResource  buffer;
-		NativeTextureResource texture;
+		using Type = ResourceDescriptorType;
+		VirtualResourceID resource_id;
+		
+		union {
+			struct {
+				Type type = Type::None;
+			} common = {};
+			
+			struct {
+				Type type;
+				u16 stride;
+				
+				u32 offset;
+				u32 size;
+			} buffer;
+			
+			struct {
+				Type type;
+				
+				u8 mip_index;
+				u8 mip_count;
+				
+				u16 array_index;
+				u16 array_count;
+				
+				u32 padding_2;
+			} texture;
+		};
 	};
+	static_assert(sizeof(ResourceDescriptor) == 16, "Incorrect ResourceDescriptor size.");
 	
 	NOTES() template<typename T> struct Texture2D : ResourceDescriptor {
-		void Bind(NativeTextureResource resource) {
-			type    = ResourceDescriptorType::Texture2D;
-			texture = resource;
+		Texture2D(VirtualResourceID resource = (VirtualResourceID)0, u32 mip_offset = 0, u32 mip_count = u32_max, u32 array_index = 0) { Bind(resource, mip_offset, mip_count, array_index); }
+		
+		void Bind(VirtualResourceID resource, u32 mip_offset = 0, u32 mip_count = u32_max, u32 array_index = 0) {
+			resource_id = resource;
+			texture = { Type::Texture2D, (u8)mip_offset, (u8)mip_count, (u16)array_index, 1, 0 };
 		}
 	};
 	
 	NOTES() template<typename T> struct RWTexture2D : ResourceDescriptor {
-		void Bind(NativeTextureResource resource) {
-			type    = ResourceDescriptorType::RWTexture2D;
-			texture = resource;
+		RWTexture2D(VirtualResourceID resource = (VirtualResourceID)0, u32 mip_index = 0, u32 array_index = 0) { Bind(resource, mip_index, array_index); }
+		
+		void Bind(VirtualResourceID resource, u32 mip_index = 0, u32 array_index = 0) {
+			resource_id = resource;
+			texture = { Type::RWTexture2D, (u8)mip_index, 1, (u16)array_index, 1, 0 };
 		}
 	};
 	
 	NOTES() template<typename T> struct RegularBuffer : ResourceDescriptor {
-		void Bind(NativeBufferResource resource) {
-			type   = ResourceDescriptorType::RegularBuffer;
-			buffer = resource;
+		RegularBuffer(VirtualResourceID resource, u32 offset = 0, u32 size = u32_max) { Bind(resource, offset, size); }
+		
+		void Bind(VirtualResourceID resource, u32 offset = 0, u32 size = u32_max) {
+			resource_id = resource;
+			buffer = { Type::RegularBuffer, (u16)sizeof(T), offset, size };
 		}
 	};
 	
 	NOTES() template<typename T> struct RWRegularBuffer : ResourceDescriptor {
-		void Bind(NativeBufferResource resource) {
-			type   = ResourceDescriptorType::RWRegularBuffer;
-			buffer = resource;
+		RWRegularBuffer(VirtualResourceID resource, u32 offset = 0, u32 size = u32_max) { Bind(resource, offset, size); }
+		
+		void Bind(VirtualResourceID resource, u32 offset = 0, u32 size = u32_max) {
+			resource_id = resource;
+			buffer = { Type::RWRegularBuffer, (u16)sizeof(T), offset, size };
 		}
 	};
 	
@@ -104,6 +143,15 @@ struct AtmosphereParameters {
 };
 
 
+enum struct VirtualResourceID : u32 {
+	TransmittanceLut,
+	MultipleScatteringLut,
+	SkyPanoramaLut,
+	
+	Count
+};
+
+
 NOTES(Meta::ShaderName{ "Atmosphere.hlsl"_sl })
 enum struct AtmosphereShaders : u32 {
 	TransmittanceLut      = 1u << 0,
@@ -117,7 +165,7 @@ struct TransmittanceLutRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
-		HLSL::RWTexture2D<float4> transmittance_lut;
+		HLSL::RWTexture2D<float4> transmittance_lut = VirtualResourceID::TransmittanceLut;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {
@@ -130,7 +178,7 @@ struct TransmittanceLutRenderPass {
 		HLSL::ConstantBuffer<AtmosphereParameters> atmosphere;
 	};
 	
-	inline static u32 pipeline_id = u32_max;
+	inline static PipelineID pipeline_id;
 };
 
 NOTES(Meta::RenderPass{})
@@ -138,8 +186,8 @@ struct MultipleScatteringLutRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
-		HLSL::Texture2D<float4>   transmittance_lut;
-		HLSL::RWTexture2D<float4> multiple_scattering_lut;
+		HLSL::Texture2D<float4>   transmittance_lut       = VirtualResourceID::TransmittanceLut;
+		HLSL::RWTexture2D<float4> multiple_scattering_lut = VirtualResourceID::MultipleScatteringLut;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {
@@ -147,7 +195,7 @@ struct MultipleScatteringLutRenderPass {
 		HLSL::ConstantBuffer<AtmosphereParameters> atmosphere;
 	};
 
-	inline static u32 pipeline_id = u32_max;
+	inline static PipelineID pipeline_id;
 };
 
 NOTES(Meta::RenderPass{})
@@ -155,9 +203,9 @@ struct SkyPanoramaLutRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
-		HLSL::Texture2D<float4>   transmittance_lut;
-		HLSL::Texture2D<float4>   multiple_scattering_lut;
-		HLSL::RWTexture2D<float4> sky_panorama_lut;
+		HLSL::Texture2D<float4>   transmittance_lut       = VirtualResourceID::TransmittanceLut;
+		HLSL::Texture2D<float4>   multiple_scattering_lut = VirtualResourceID::MultipleScatteringLut;
+		HLSL::RWTexture2D<float4> sky_panorama_lut        = VirtualResourceID::SkyPanoramaLut;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {
@@ -165,7 +213,7 @@ struct SkyPanoramaLutRenderPass {
 		HLSL::ConstantBuffer<AtmosphereParameters> atmosphere;
 	};
 
-	inline static u32 pipeline_id = u32_max;
+	inline static PipelineID pipeline_id;
 };
 
 

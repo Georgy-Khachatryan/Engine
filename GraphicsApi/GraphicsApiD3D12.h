@@ -59,5 +59,7 @@ struct GraphicsContextD3D12 : GraphicsContext {
 	Array<ID3D12RootSignature*> root_signature_table;
 	Array<ID3D12PipelineState*> pipeline_state_table;
 	ArrayView<PipelineDefinition> pipeline_definitions;
+	
+	Array<ID3D12Resource*> resource_table;
 };
 

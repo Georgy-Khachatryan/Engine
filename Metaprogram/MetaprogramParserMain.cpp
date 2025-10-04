@@ -320,8 +320,10 @@ static AstNodeDeclaration* ParseDeclaration(Tokenizer& tokenizer) {
 			SkipTokensWithNestingTracking(tokenizer, TokenType::Less, TokenType::Greater); // Skip over template parameters.
 		}
 		
-		declaration->name = tokenizer.ExpectToken(TokenType::Identifier).string;
-		declaration->declaration_type = is_constant ? AstNodeDeclarationType::Constant : AstNodeDeclarationType::Variable;
+		if (token.type != TokenType::OpeningParen) {
+			declaration->name = tokenizer.ExpectToken(TokenType::Identifier).string;
+			declaration->declaration_type = is_constant ? AstNodeDeclarationType::Constant : AstNodeDeclarationType::Variable;
+		}
 		
 		token = tokenizer.PeekNextToken();
 		if (token.type == TokenType::Assign) {

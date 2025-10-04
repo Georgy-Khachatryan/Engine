@@ -2,17 +2,12 @@
 #include "GraphicsApi/GraphicsApiD3D12.h"
 #include "GraphicsApi/RecordContext.h"
 
-extern NativeTextureResource transmittance_lut;
-extern NativeTextureResource multiple_scattering_lut;
-extern NativeTextureResource sky_panorama_lut;
-
 void TransmittanceLutRenderPass::CreatePipelines(PipelineLibrary* lib) {
 	pipeline_id = CreateComputePipeline(lib, AtmosphereShadersID, AtmosphereShaders::TransmittanceLut);
 }
 
 void TransmittanceLutRenderPass::RecordPass(RecordContext* record_context) {
 	auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
-	descriptor_table.transmittance_lut.Bind(transmittance_lut);
 	
 	CmdSetRootSignature(record_context, root_signature);
 	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
@@ -27,8 +22,6 @@ void MultipleScatteringLutRenderPass::CreatePipelines(PipelineLibrary* lib) {
 
 void MultipleScatteringLutRenderPass::RecordPass(RecordContext* record_context) {
 	auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
-	descriptor_table.transmittance_lut.Bind(transmittance_lut);
-	descriptor_table.multiple_scattering_lut.Bind(multiple_scattering_lut);
 	
 	CmdSetRootSignature(record_context, root_signature);
 	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
@@ -43,9 +36,6 @@ void SkyPanoramaLutRenderPass::CreatePipelines(PipelineLibrary* lib) {
 
 void SkyPanoramaLutRenderPass::RecordPass(RecordContext* record_context) {
 	auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
-	descriptor_table.transmittance_lut.Bind(transmittance_lut);
-	descriptor_table.multiple_scattering_lut.Bind(multiple_scattering_lut);
-	descriptor_table.sky_panorama_lut.Bind(sky_panorama_lut);
 	
 	CmdSetRootSignature(record_context, root_signature);
 	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);

@@ -44,9 +44,9 @@ struct PipelineLibrary {
 	u32 current_pass_root_signature_index = 0;
 };
 
-u32 CreateComputePipeline(PipelineLibrary* lib, ShaderID shader_id, u64 permutation = 0);
+PipelineID CreateComputePipeline(PipelineLibrary* lib, ShaderID shader_id, u64 permutation = 0);
 
 template<typename ShadersEnumT>
-u32 CreateComputePipeline(PipelineLibrary* lib, ShaderID shader_id, ShadersEnumT permutation) {
+PipelineID CreateComputePipeline(PipelineLibrary* lib, ShaderID shader_id, ShadersEnumT permutation) {
 	return CreateComputePipeline(lib, shader_id, (u64)permutation);
 }
