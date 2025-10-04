@@ -353,7 +353,7 @@ void ReleaseGraphicsContext(GraphicsContext* api_context) {
 	SafeRelease(context->device);
 }
 
-static NativeTextureResource CreateTextureResource(GraphicsContext* api_context, u32 width, u32 height, DXGI_FORMAT format) {
+static NativeTextureResource CreateTextureResource(GraphicsContext* api_context, uint2 size, DXGI_FORMAT format) {
 	auto* context = (GraphicsContextD3D12*)api_context;
 	
 	D3D12_HEAP_PROPERTIES heap_properties = {};
@@ -366,8 +366,8 @@ static NativeTextureResource CreateTextureResource(GraphicsContext* api_context,
 	D3D12_RESOURCE_DESC1 resource_desc = {};
 	resource_desc.Dimension        = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
 	resource_desc.Alignment        = 0;
-	resource_desc.Width            = width;
-	resource_desc.Height           = height;
+	resource_desc.Width            = size.x;
+	resource_desc.Height           = size.y;
 	resource_desc.DepthOrArraySize = 1;
 	resource_desc.MipLevels        = 1;
 	resource_desc.Format           = format;
@@ -436,8 +436,7 @@ WindowSwapChain* CreateWindowSwapChain(StackAllocator* alloc, GraphicsContext* a
 	auto* context = (GraphicsContextD3D12*)api_context;
 	
 	auto* swap_chain = NewFromAlloc(alloc, WindowSwapChainD3D12);
-	swap_chain->width  = 0;
-	swap_chain->height = 0;
+	swap_chain->size = 0;
 	
 	IDXGIFactory4* dxgi_factory_4 = nullptr;
 	defer{ SafeRelease(dxgi_factory_4); };
@@ -487,8 +486,8 @@ void ReleaseWindowSwapChain(WindowSwapChain* api_swap_chain, GraphicsContext* ap
 	SafeRelease(swap_chain->dxgi_swap_chain);
 }
 
-void ResizeWindowSwapChain(WindowSwapChain* api_swap_chain, GraphicsContext* api_context, u32 width, u32 height) {
-	if (api_swap_chain->width == width && api_swap_chain->height == height) return;
+void ResizeWindowSwapChain(WindowSwapChain* api_swap_chain, GraphicsContext* api_context, uint2 size) {
+	if (api_swap_chain->size.x == size.x && api_swap_chain->size.y == size.y) return;
 	
 	auto* context = (GraphicsContextD3D12*)api_context;
 	WaitForLastFrame(context);
@@ -496,13 +495,12 @@ void ResizeWindowSwapChain(WindowSwapChain* api_swap_chain, GraphicsContext* api
 	auto* swap_chain = (WindowSwapChainD3D12*)api_swap_chain;
 	ReleaseSwapChainBackBuffers(swap_chain);
 	
-	if (FAILED(swap_chain->dxgi_swap_chain->ResizeBuffers(0, width, height, DXGI_FORMAT_UNKNOWN, 0))) {
+	if (FAILED(swap_chain->dxgi_swap_chain->ResizeBuffers(0, size.x, size.y, DXGI_FORMAT_UNKNOWN, 0))) {
 		DebugAssertAlways("ResizeBuffers failed.");
 		return;
 	}
 	
-	swap_chain->width  = width;
-	swap_chain->height = height;
+	swap_chain->size = size;
 	
 	CreateSwapChainBackBuffers(swap_chain, context);
 }
@@ -561,16 +559,16 @@ void WindowSwapChainEndFrame(WindowSwapChain* api_swap_chain, GraphicsContext* a
 	
 	CmdClearRenderTarget(&record_context, back_buffer.descriptor.ptr);
 	CmdSetRenderTargets(&record_context, { &back_buffer.descriptor.ptr, 1 });
-	CmdSetViewportAndScissor(&record_context, swap_chain->width, swap_chain->height);
+	CmdSetViewportAndScissor(&record_context, swap_chain->size);
 	CmdDrawInstanced(&record_context, 3);
 	
 	if (context->resource_table.count == 0) {
 		context->resource_table.count = context->resource_table.capacity;
 		
 		using ID = VirtualResourceID;
-		context->resource_table[(u32)ID::TransmittanceLut]      = CreateTextureResource(context, 256,  64, DXGI_FORMAT_R16G16B16A16_FLOAT).d3d12;
-		context->resource_table[(u32)ID::MultipleScatteringLut] = CreateTextureResource(context,  32,  32, DXGI_FORMAT_R16G16B16A16_FLOAT).d3d12;
-		context->resource_table[(u32)ID::SkyPanoramaLut]        = CreateTextureResource(context, 192, 128, DXGI_FORMAT_R16G16B16A16_FLOAT).d3d12;
+		context->resource_table[(u32)ID::TransmittanceLut]      = CreateTextureResource(context, uint2(256, 64),  DXGI_FORMAT_R16G16B16A16_FLOAT).d3d12;
+		context->resource_table[(u32)ID::MultipleScatteringLut] = CreateTextureResource(context, uint2(32,  32),  DXGI_FORMAT_R16G16B16A16_FLOAT).d3d12;
+		context->resource_table[(u32)ID::SkyPanoramaLut]        = CreateTextureResource(context, uint2(192, 128), DXGI_FORMAT_R16G16B16A16_FLOAT).d3d12;
 	}
 	
 	TransmittanceLutRenderPass{}.RecordPass(&record_context);

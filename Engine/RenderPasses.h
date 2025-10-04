@@ -1,6 +1,7 @@
 #pragma once
 #include "Basic/Basic.h"
 #include "Basic/BasicString.h"
+#include "Basic/BasicMath.h"
 #include "GraphicsApi/GraphicsApiTypes.h"
 
 struct RecordContext;
@@ -113,10 +114,6 @@ namespace HLSL {
 	NOTES() struct BaseDescriptorTable { u32 descriptor_heap_offset = 0; u32 descriptor_count = 0; };
 };
 
-
-NOTES() struct float2 { float x; float y; };
-NOTES() struct float3 { float x; float y; float z; };
-NOTES() struct float4 { float x; float y; float z; float w; };
 
 NOTES(Meta::HlslFile{ "AtmosphereData.hlsl"_sl })
 struct AtmosphereParameters {

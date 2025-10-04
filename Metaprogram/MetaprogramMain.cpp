@@ -490,9 +490,15 @@ static void GenerateCodeForShaderDefinition(StackAllocator* alloc, ShaderDefinit
 	ArrayAppend(shader_definition_file.shader_names, alloc, name);
 }
 
-s32 main() {
+s32 main(s32 argument_count, const char* arguments[]) {
 	auto alloc = CreateStackAllocator(64 * 1024 * 1024, 512 * 1024);
 	defer{ ReleaseStackAllocator(alloc); };
+	
+	if ((argument_count >= 2) && (strcmp(arguments[1], "-m") == 0)) {
+		extern void GenerateMathLibrary(StackAllocator* alloc);
+		TempAllocationScope(&alloc);
+		GenerateMathLibrary(&alloc);
+	}
 	
 	HashTable<String, HlslFileData> hlsl_files;
 	HashTable<String, HlslFileData> hlsl_bindings_files;

@@ -1,5 +1,6 @@
 #pragma once
 #include "Basic/Basic.h"
+#include "Basic/BasicMath.h"
 #include "GraphicsApiTypes.h"
 
 
@@ -14,8 +15,7 @@ struct GraphicsContext {
 };
 
 struct WindowSwapChain {
-	u32 width  = 0;
-	u32 height = 0;
+	uint2 size = 0;
 };
 
 
@@ -24,7 +24,7 @@ void ReleaseGraphicsContext(GraphicsContext* context);
 
 WindowSwapChain* CreateWindowSwapChain(StackAllocator* alloc, GraphicsContext* context, void* hwnd);
 void ReleaseWindowSwapChain(WindowSwapChain* swap_chain, GraphicsContext* context);
-void ResizeWindowSwapChain(WindowSwapChain* swap_chain, GraphicsContext* context, u32 width, u32 height);
+void ResizeWindowSwapChain(WindowSwapChain* swap_chain, GraphicsContext* context, uint2 size);
 void WindowSwapChainBeginFrame(WindowSwapChain* swap_chain, GraphicsContext* context, StackAllocator* alloc);
 void WindowSwapChainEndFrame(WindowSwapChain* swap_chain, GraphicsContext* context, StackAllocator* alloc);
 

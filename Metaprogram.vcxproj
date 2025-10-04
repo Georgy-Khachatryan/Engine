@@ -33,9 +33,10 @@
     <ClCompile Include="Basic/StackAllocator.cpp" />
     <ClCompile Include="Basic/SystemWin32.cpp" />
     
-    <ClCompile Include="Metaprogram/MetaprogramMain.cpp" />
-    <ClCompile Include="Metaprogram/TypeInfo.cpp" />
     <ClCompile Include="Metaprogram/Generated/RenderPasses.cpp" />
+    <ClCompile Include="Metaprogram/MetaprogramMain.cpp" />
+    <ClCompile Include="Metaprogram/MetaprogramMath.cpp" />
+    <ClCompile Include="Metaprogram/TypeInfo.cpp" />
   </ItemGroup>
   
   <ItemGroup>
@@ -44,6 +45,7 @@
     <ClInclude Include="Basic/BasicFiles.h" />
     <ClInclude Include="Basic/BasicHashTable.h" />
     <ClInclude Include="Basic/BasicMath.h" />
+    <ClInclude Include="Basic/BasicMathGenerated.h" />
     <ClInclude Include="Basic/BasicMemory.h" />
     <ClInclude Include="Basic/BasicString.h" />
     

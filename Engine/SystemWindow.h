@@ -1,10 +1,10 @@
 #pragma once
 #include "Basic/Basic.h"
+#include "Basic/BasicMath.h"
 
 struct SystemWindow {
 	void* hwnd = nullptr;
-	u32 width  = 0;
-	u32 height = 0;
+	uint2 size = 0;
 	bool should_close = false;
 };
 

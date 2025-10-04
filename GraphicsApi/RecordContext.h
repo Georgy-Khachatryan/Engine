@@ -1,6 +1,7 @@
 #pragma once
 #include "Basic/Basic.h"
 #include "Basic/BasicArray.h"
+#include "Basic/BasicMath.h"
 #include "GraphicsApiTypes.h"
 
 struct GraphicsContext;
@@ -27,7 +28,7 @@ void CmdDrawInstanced(RecordContext* record_context, u32 vertex_count_per_instan
 void CmdDrawIndexedInstanced(RecordContext* record_context, u32 index_count_per_instance, u32 instance_count = 1, u32 start_index_location = 0, u32 base_vertex_location = 0, u32 start_instance_location = 0);
 void CmdClearRenderTarget(RecordContext* record_context, u64 rtv_heap_index);
 void CmdSetRenderTargets(RecordContext* record_context, ArrayView<u64> rtv_heap_indices);
-void CmdSetViewportAndScissor(RecordContext* record_context, u32 max_x, u32 max_y, u32 min_x = 0, u32 min_y = 0);
+void CmdSetViewportAndScissor(RecordContext* record_context, uint2 max, uint2 min = 0);
 
 void CmdSetRootSignature(RecordContext* record_context, const HLSL::BaseRootSignature& root_signature);
 void CmdSetDescriptorTable(RecordContext* record_context, u32 offset, HLSL::BaseDescriptorTable& descriptor_table);

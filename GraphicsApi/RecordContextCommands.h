@@ -32,9 +32,7 @@ struct CmdJumpPacket : RecordContextCommandPacket {
 struct CmdDispatchPacket : RecordContextCommandPacket {
 	compile_const CommandType my_type = CommandType::Dispatch;
 	
-	u32 group_count_x = 0;
-	u32 group_count_y = 0;
-	u32 group_count_z = 0;
+	uint3 group_count;
 };
 
 struct CmdDrawInstancedPacket : RecordContextCommandPacket {
@@ -71,10 +69,8 @@ struct CmdSetRenderTargetsPacket : RecordContextCommandPacket {
 struct CmdSetViewportAndScissorPacket : RecordContextCommandPacket {
 	compile_const CommandType my_type = CommandType::SetViewportAndScissor;
 	
-	u32 min_x = 0;
-	u32 min_y = 0;
-	u32 max_x = 0;
-	u32 max_y = 0;
+	uint2 min = 0;
+	uint2 max = 0;
 };
 
 struct CmdSetRootSignaturePacket : RecordContextCommandPacket {

@@ -91,24 +91,24 @@ static void CmdSetRenderTargetsD3D12(CmdSetRenderTargetsPacket* packet, ID3D12Gr
 
 static void CmdSetViewportAndScissorD3D12(CmdSetViewportAndScissorPacket* packet, ID3D12GraphicsCommandList7* command_list) {
 	D3D12_VIEWPORT viewport = {};
-	viewport.TopLeftX = (float)packet->min_x;
-	viewport.TopLeftY = (float)packet->min_y;
-	viewport.Width    = (float)(packet->max_x - packet->min_x);
-	viewport.Height   = (float)(packet->max_y - packet->min_y);
+	viewport.TopLeftX = (float)packet->min.x;
+	viewport.TopLeftY = (float)packet->min.y;
+	viewport.Width    = (float)(packet->max.x - packet->min.x);
+	viewport.Height   = (float)(packet->max.y - packet->min.y);
 	viewport.MinDepth = 0.f;
 	viewport.MaxDepth = 1.f;
 	command_list->RSSetViewports(1, &viewport);
 	
 	D3D12_RECT scissor = {};
-	scissor.left   = (s32)packet->min_x;
-	scissor.top    = (s32)packet->min_y;
-	scissor.right  = (s32)packet->max_x;
-	scissor.bottom = (s32)packet->max_y;
+	scissor.left   = (s32)packet->min.x;
+	scissor.top    = (s32)packet->min.y;
+	scissor.right  = (s32)packet->max.x;
+	scissor.bottom = (s32)packet->max.y;
 	command_list->RSSetScissorRects(1, &scissor);
 }
 
 static void CmdDispatchD3D12(CmdDispatchPacket* packet, ID3D12GraphicsCommandList7* command_list) {
-	command_list->Dispatch(packet->group_count_x, packet->group_count_y, packet->group_count_z);
+	command_list->Dispatch(packet->group_count.x, packet->group_count.y, packet->group_count.z);
 }
 
 static void CmdDrawInstancedD3D12(CmdDrawInstancedPacket* packet, ID3D12GraphicsCommandList7* command_list) {

@@ -101,6 +101,16 @@ extern TypeInfo type_info_type;
 extern TypeInfo type_info_void;
 extern TypeInfo type_info_string;
 
+extern TypeInfoStruct type_info_float2;
+extern TypeInfoStruct type_info_float3;
+extern TypeInfoStruct type_info_float4;
+extern TypeInfoStruct type_info_uint2;
+extern TypeInfoStruct type_info_uint3;
+extern TypeInfoStruct type_info_uint4;
+extern TypeInfoStruct type_info_float4x4;
+extern TypeInfoStruct type_info_float3x4;
+extern TypeInfoStruct type_info_float3x3;
+
 
 template<typename T>
 struct TypeInfoOfInternal { static TypeInfoStruct* Get() { static_assert(false, "Type info is unknown."); return nullptr; } };
@@ -118,10 +128,21 @@ template<> struct TypeInfoOfInternal<const u16> { static TypeInfoInteger* Get() 
 template<> struct TypeInfoOfInternal<const u32> { static TypeInfoInteger* Get() { return &type_info_u32; } };
 template<> struct TypeInfoOfInternal<const u64> { static TypeInfoInteger* Get() { return &type_info_u64; } };
 
-template<> struct TypeInfoOfInternal<const bool>   { static TypeInfoInteger* Get() { return &type_info_bool; } };
-template<> struct TypeInfoOfInternal<const float>  { static TypeInfoFloat* Get() { return &type_info_float32; } };
-template<> struct TypeInfoOfInternal<const double> { static TypeInfoFloat* Get() { return &type_info_float64; } };
-template<> struct TypeInfoOfInternal<const String> { static TypeInfo* Get() { return &type_info_string;  } };
+template<> struct TypeInfoOfInternal<const bool>   { static TypeInfoInteger* Get() { return &type_info_bool;    } };
+template<> struct TypeInfoOfInternal<const float>  { static TypeInfoFloat*   Get() { return &type_info_float32; } };
+template<> struct TypeInfoOfInternal<const double> { static TypeInfoFloat*   Get() { return &type_info_float64; } };
+template<> struct TypeInfoOfInternal<const String> { static TypeInfo*        Get() { return &type_info_string;  } };
+
+namespace Math { struct Vec2f; struct Vec3f; struct Vec4f; struct Vec2u32; struct Vec3u32; struct Vec4u32; struct Mat4x4f; struct Mat3x4f; struct Mat3x3f; }
+template<> struct TypeInfoOfInternal<const Math::Vec2f>   { static TypeInfoStruct* Get() { return &type_info_float2;   } };
+template<> struct TypeInfoOfInternal<const Math::Vec3f>   { static TypeInfoStruct* Get() { return &type_info_float3;   } };
+template<> struct TypeInfoOfInternal<const Math::Vec4f>   { static TypeInfoStruct* Get() { return &type_info_float4;   } };
+template<> struct TypeInfoOfInternal<const Math::Vec2u32> { static TypeInfoStruct* Get() { return &type_info_uint2;    } };
+template<> struct TypeInfoOfInternal<const Math::Vec3u32> { static TypeInfoStruct* Get() { return &type_info_uint3;    } };
+template<> struct TypeInfoOfInternal<const Math::Vec4u32> { static TypeInfoStruct* Get() { return &type_info_uint4;    } };
+template<> struct TypeInfoOfInternal<const Math::Mat4x4f> { static TypeInfoStruct* Get() { return &type_info_float4x4; } };
+template<> struct TypeInfoOfInternal<const Math::Mat3x4f> { static TypeInfoStruct* Get() { return &type_info_float3x4; } };
+template<> struct TypeInfoOfInternal<const Math::Mat3x3f> { static TypeInfoStruct* Get() { return &type_info_float3x3; } };
 
 
 #define FORWARD_DECLARE_NOTE(name) template<> struct TypeInfoOfInternal<const name> { static TypeInfoStruct* Get(); };

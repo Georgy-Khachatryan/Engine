@@ -91,4 +91,63 @@
 		</Expand>
 	</Type>
 	
+	
+	<Type Name="Math::Vec4f">
+		<DisplayString>x={x}, y={y}, z={z}, w={w}</DisplayString>
+		<Expand> <Item Name="x">x</Item> <Item Name="y">y</Item> <Item Name="z">z</Item> <Item Name="w">w</Item> </Expand>
+	</Type>
+	
+	<Type Name="Math::Vec3f">
+		<DisplayString>x={x}, y={y}, z={z}</DisplayString>
+		<Expand> <Item Name="x">x</Item> <Item Name="y">y</Item> <Item Name="z">z</Item> </Expand>
+	</Type>
+	
+	<Type Name="Math::Vec2f">
+		<DisplayString>x={x}, y={y}</DisplayString>
+		<Expand> <Item Name="x">x</Item> <Item Name="y">y</Item> </Expand>
+	</Type>
+	
+	<Type Name="Math::Vec4u32">
+		<DisplayString>x={x}, y={y}, z={z}, w={w}</DisplayString>
+		<Expand> <Item Name="x">x</Item> <Item Name="y">y</Item> <Item Name="z">z</Item> <Item Name="w">w</Item> </Expand>
+	</Type>
+	
+	<Type Name="Math::Vec3u32">
+		<DisplayString>x={x}, y={y}, z={z}</DisplayString>
+		<Expand> <Item Name="x">x</Item> <Item Name="y">y</Item> <Item Name="z">z</Item> </Expand>
+	</Type>
+	
+	<Type Name="Math::Vec2u32">
+		<DisplayString>x={x}, y={y}</DisplayString>
+		<Expand> <Item Name="x">x</Item> <Item Name="y">y</Item> </Expand>
+	</Type>
+	
+	<Type Name="Math::Mat4x4f">
+		<DisplayString>r0={rows[0]}, r1={rows[1]}, r2={rows[2]}, r3={rows[3]}</DisplayString>
+		<Expand>
+			<Item Name="r0">rows[0]</Item>
+			<Item Name="r1">rows[1]</Item>
+			<Item Name="r2">rows[2]</Item>
+			<Item Name="r3">rows[3]</Item>
+		</Expand>
+	</Type>
+	
+	<Type Name="Math::Mat3x4f">
+		<DisplayString>r0={rows[0]}, r1={rows[1]}, r2={rows[2]}</DisplayString>
+		<Expand>
+			<Item Name="r0">rows[0]</Item>
+			<Item Name="r1">rows[1]</Item>
+			<Item Name="r2">rows[2]</Item>
+		</Expand>
+	</Type>
+	
+	<Type Name="Math::Mat3x3f">
+		<DisplayString>r0={rows[0]}, r1={rows[1]}, r2={rows[2]}</DisplayString>
+		<Expand>
+			<Item Name="r0">rows[0]</Item>
+			<Item Name="r1">rows[1]</Item>
+			<Item Name="r2">rows[2]</Item>
+		</Expand>
+	</Type>
+	
 </AutoVisualizer>

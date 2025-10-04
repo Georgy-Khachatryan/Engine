@@ -1,5 +1,6 @@
 #pragma once
 #include "Basic.h"
+#include "BasicMathGenerated.h"
 
 #include <immintrin.h>
 
@@ -44,4 +45,17 @@ struct BitScanLowT {
 };
 using BitScanLow   = BitScanLowT<u64, FirstBitLow>;
 using BitScanLow32 = BitScanLowT<u32, FirstBitLow32>;
+
+
+using float4 = Math::Vec4f;
+using float3 = Math::Vec3f;
+using float2 = Math::Vec2f;
+
+using uint4 = Math::Vec4u32;
+using uint3 = Math::Vec3u32;
+using uint2 = Math::Vec2u32;
+
+using float4x4 = Math::Mat4x4f;
+using float3x4 = Math::Mat3x4f;
+using float3x3 = Math::Mat3x3f;
 
