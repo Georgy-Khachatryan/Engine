@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?> 
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+    
+  <ItemDefinitionGroup>
+    <Link>
+      <AdditionalDependencies>
+        d3d12.lib;
+        dxgi.lib;
+        %(AdditionalDependencies)
+      </AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+  
+  <ItemGroup>
+    <DeployCommands Include="if not exist $(OutDir)D3D12 mkdir $(OutDir)D3D12" />
+    <DeployCommands Include="xcopy /y /d $(SdkDir)D3D12\bin\D3D12Core.dll $(OutDir)D3D12" />
+    <DeployCommands Include="xcopy /y /d $(SdkDir)D3D12\bin\d3d12SDKLayers.dll $(OutDir)D3D12" />
+  </ItemGroup>
+  
+  <ItemGroup>
+    <ClInclude Include="$(SdkDir)D3D12/include/d3d12.h" />
+    <ClInclude Include="$(SdkDir)D3D12/include/dxgiformat.h" />
+  </ItemGroup>
+  
+</Project>

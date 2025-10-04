@@ -3,7 +3,7 @@
 #include "GraphicsApi.h"
 
 #define WIN32_LEAN_AND_MEAN
-#include <d3d12.h>
+#include <SDK/D3D12/include/d3d12.h>
 #include <dxgi1_4.h>
 
 

@@ -5,10 +5,10 @@
 #include "Engine/ShaderCompiler.h"
 #include "Engine/RenderPasses.h"
 
-#pragma comment(lib, "d3d12.lib")
-#pragma comment(lib, "dxgi.lib")
-
 #include <SDK/imgui/backends/imgui_impl_dx12.h>
+
+extern "C" __declspec(dllexport) extern const UINT  D3D12SDKVersion = 618;
+extern "C" __declspec(dllexport) extern const char* D3D12SDKPath    = u8".\\D3D12\\";
 
 static struct {
 	FixedCountArray<ID3D12PipelineState*, 3> pipeline_state = {};

@@ -28,6 +28,7 @@
   
   <ImportGroup Label="PropertySheets">
     <Import Project="Props/Basic.props" />
+    <Import Project="Props/Direct3D12.props" />
     <Import Project="Props/DirectXShaderCompiler.props" />
     <Import Project="Props/ImGui.props" />
   </ImportGroup>
