@@ -27,17 +27,12 @@
   </ImportGroup>
   
   <ImportGroup Label="PropertySheets">
+    <Import Project="Props/Basic.props" />
     <Import Project="Props/DirectXShaderCompiler.props" />
     <Import Project="Props/ImGui.props" />
   </ImportGroup>
   
   <ItemGroup>
-    <ClCompile Include="Basic/Assert.cpp" />
-    <ClCompile Include="Basic/BasicString.cpp" />
-    <ClCompile Include="Basic/HeapAllocator.cpp" />
-    <ClCompile Include="Basic/StackAllocator.cpp" />
-    <ClCompile Include="Basic/SystemWin32.cpp" />
-    
     <ClCompile Include="Engine/Main.cpp" />
     <ClCompile Include="Engine/ShaderCompilerDXC.cpp" />
     <ClCompile Include="Engine/SystemWindowWin32.cpp" />
@@ -52,15 +47,6 @@
   </ItemGroup>
   
   <ItemGroup>
-    <ClInclude Include="Basic/Basic.h" />
-    <ClInclude Include="Basic/BasicArray.h" />
-    <ClInclude Include="Basic/BasicFiles.h" />
-    <ClInclude Include="Basic/BasicHashTable.h" />
-    <ClInclude Include="Basic/BasicMath.h" />
-    <ClInclude Include="Basic/BasicMathGenerated.h" />
-    <ClInclude Include="Basic/BasicMemory.h" />
-    <ClInclude Include="Basic/BasicString.h" />
-    
     <ClInclude Include="Engine/ShaderCompiler.h" />
     <ClInclude Include="Engine/SystemWindow.h" />
     <ClInclude Include="Engine/RenderPasses.h" />
@@ -69,10 +55,6 @@
     <ClInclude Include="GraphicsApi/GraphicsApiD3D12.h" />
     <ClInclude Include="GraphicsApi/RecordContext.h" />
     <ClInclude Include="GraphicsApi/RecordContextCommands.h" />
-  </ItemGroup>
-  
-  <ItemGroup>
-    <Natvis Include="Basic/Basic.natvis" />
   </ItemGroup>
   
   <Target Name="PreBuild" AfterTargets="PreBuildEvent">

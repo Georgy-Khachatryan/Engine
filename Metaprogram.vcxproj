@@ -26,13 +26,11 @@
     <Import Project="Props/BuildConfiguration.props" />
   </ImportGroup>
   
+  <ImportGroup Label="PropertySheets">
+    <Import Project="Props/Basic.props" />
+  </ImportGroup>
+  
   <ItemGroup>
-    <ClCompile Include="Basic/Assert.cpp" />
-    <ClCompile Include="Basic/BasicString.cpp" />
-    <ClCompile Include="Basic/HeapAllocator.cpp" />
-    <ClCompile Include="Basic/StackAllocator.cpp" />
-    <ClCompile Include="Basic/SystemWin32.cpp" />
-    
     <ClCompile Include="Metaprogram/Generated/RenderPasses.cpp" />
     <ClCompile Include="Metaprogram/MetaprogramMain.cpp" />
     <ClCompile Include="Metaprogram/MetaprogramMath.cpp" />
@@ -40,24 +38,12 @@
   </ItemGroup>
   
   <ItemGroup>
-    <ClInclude Include="Basic/Basic.h" />
-    <ClInclude Include="Basic/BasicArray.h" />
-    <ClInclude Include="Basic/BasicFiles.h" />
-    <ClInclude Include="Basic/BasicHashTable.h" />
-    <ClInclude Include="Basic/BasicMath.h" />
-    <ClInclude Include="Basic/BasicMathGenerated.h" />
-    <ClInclude Include="Basic/BasicMemory.h" />
-    <ClInclude Include="Basic/BasicString.h" />
-    
     <ClInclude Include="Engine/RenderPasses.h" />
     
-    <ClInclude Include="Metaprogram/Tokens.h" />
-    <ClInclude Include="Metaprogram/AstNodes.h" />
     <ClInclude Include="Metaprogram/TypeInfo.h" />
   </ItemGroup>
   
   <ItemGroup>
-    <Natvis Include="Basic/Basic.natvis" />
     <Natvis Include="Metaprogram/Metaprogram.natvis" />
   </ItemGroup>
   

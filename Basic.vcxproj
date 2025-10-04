@@ -6,14 +6,14 @@
   </ImportGroup>
   
   <PropertyGroup Label="Globals">
-    <ProjectGuid>{e49f501a-d638-4d0b-8d7c-a1b42943dffd}</ProjectGuid>
-    <RootNamespace>MetaprogramParser</RootNamespace>
+    <ProjectGuid>{c3c15b0c-1fcd-4c0a-a5dc-fcb7978cab70}</ProjectGuid>
+    <RootNamespace>Basic</RootNamespace>
   </PropertyGroup>
   
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   
   <PropertyGroup Label="Configuration">
-    <ConfigurationType>Application</ConfigurationType>
+    <ConfigurationType>StaticLibrary</ConfigurationType>
   </PropertyGroup>
   
   <ImportGroup Label="PropertySheets">
@@ -26,22 +26,27 @@
     <Import Project="Props/BuildConfiguration.props" />
   </ImportGroup>
   
-  <ImportGroup Label="PropertySheets">
-    <Import Project="Props/Basic.props" />
-  </ImportGroup>
-  
   <ItemGroup>
-    <ClCompile Include="Metaprogram/MetaprogramParserMain.cpp" />
-    <ClCompile Include="Metaprogram/Tokens.cpp" />
+    <ClCompile Include="Basic/Assert.cpp" />
+    <ClCompile Include="Basic/BasicString.cpp" />
+    <ClCompile Include="Basic/HeapAllocator.cpp" />
+    <ClCompile Include="Basic/StackAllocator.cpp" />
+    <ClCompile Include="Basic/SystemWin32.cpp" />
   </ItemGroup>
   
   <ItemGroup>
-    <ClInclude Include="Metaprogram/AstNodes.h" />
-    <ClInclude Include="Metaprogram/Tokens.h" />
+    <ClInclude Include="Basic/Basic.h" />
+    <ClInclude Include="Basic/BasicArray.h" />
+    <ClInclude Include="Basic/BasicFiles.h" />
+    <ClInclude Include="Basic/BasicHashTable.h" />
+    <ClInclude Include="Basic/BasicMath.h" />
+    <ClInclude Include="Basic/BasicMathGenerated.h" />
+    <ClInclude Include="Basic/BasicMemory.h" />
+    <ClInclude Include="Basic/BasicString.h" />
   </ItemGroup>
   
   <ItemGroup>
-    <Natvis Include="Metaprogram/Metaprogram.natvis" />
+    <Natvis Include="Basic/Basic.natvis" />
   </ItemGroup>
   
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

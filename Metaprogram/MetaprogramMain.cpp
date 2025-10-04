@@ -5,8 +5,6 @@
 #include "Basic/BasicHashTable.h"
 #include "Basic/BasicFiles.h"
 #include "Engine/RenderPasses.h"
-#include "Tokens.h"
-#include "AstNodes.h"
 #include "TypeInfo.h"
 
 #pragma comment(lib, "d3d12.lib")
