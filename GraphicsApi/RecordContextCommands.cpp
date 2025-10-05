@@ -42,6 +42,16 @@ void CmdDispatch(RecordContext* record_context, u32 group_count_x, u32 group_cou
 	packet.group_count = uint3(group_count_x, group_count_y, group_count_z);
 }
 
+void CmdDispatch(RecordContext* record_context, uint2 group_count_xy, u32 group_count_z) {
+	auto& packet = AppendPacket<CmdDispatchPacket>(record_context);
+	packet.group_count = uint3(group_count_xy, group_count_z);
+}
+
+void CmdDispatch(RecordContext* record_context, const uint3& group_count_xyz) {
+	auto& packet = AppendPacket<CmdDispatchPacket>(record_context);
+	packet.group_count = group_count_xyz;
+}
+
 void CmdDrawInstanced(RecordContext* record_context, u32 vertex_count_per_instance, u32 instance_count, u32 start_vertex_location, u32 start_instance_location) {
 	auto& packet = AppendPacket<CmdDrawInstancedPacket>(record_context);
 	packet.vertex_count_per_instance = vertex_count_per_instance;

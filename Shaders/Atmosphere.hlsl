@@ -6,12 +6,9 @@
 // https://github.com/sebh/UnrealEngineSkyAtmosphere see license in THIRD_PARTY_LICENSES.md
 //
 
-compile_const uint2 transmittance_lut_size       = uint2(256, 64);
-compile_const uint2 multiple_scattering_lut_size = uint2(32, 32);
-compile_const uint2 sky_panorama_lut_size        = uint2(192, 128);
-compile_const float2 inv_transmittance_lut_size       = 1.0 / transmittance_lut_size;
-compile_const float2 inv_multiple_scattering_lut_size = 1.0 / multiple_scattering_lut_size;
-compile_const float2 inv_sky_panorama_lut_size        = 1.0 / sky_panorama_lut_size;
+compile_const float2 inv_transmittance_lut_size       = 1.0 / AtmosphereParameters::transmittance_lut_size;
+compile_const float2 inv_multiple_scattering_lut_size = 1.0 / AtmosphereParameters::multiple_scattering_lut_size;
+compile_const float2 inv_sky_panorama_lut_size        = 1.0 / AtmosphereParameters::sky_panorama_lut_size;
 compile_const float  planet_radius_offset             = 0.01;
 
 

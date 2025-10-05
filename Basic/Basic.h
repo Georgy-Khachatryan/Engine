@@ -41,6 +41,8 @@ using u32 = unsigned int;
 using s32 = signed int;
 using u64 = unsigned long long;
 using s64 = signed long long;
+using float32 = float;
+using float64 = double;
 
 compile_const u8  u8_max  = (u8)0xFF;
 compile_const u8  u8_min  = (u8)0x00;

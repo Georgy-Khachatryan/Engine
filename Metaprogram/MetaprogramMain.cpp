@@ -118,6 +118,9 @@ static String PrintTypeName(TypeInfo* type_info) {
 	} case TypeInfoType::Struct: {
 		auto* type_info_struct = (TypeInfoStruct*)type_info;
 		return type_info_struct->name;
+	} case TypeInfoType::Enum: {
+		auto* type_info_enum = (TypeInfoEnum*)type_info;
+		return type_info_enum->name;
 	} case TypeInfoType::Type: {
 		return "Type"_sl;
 	} case TypeInfoType::Void: {
@@ -126,6 +129,63 @@ static String PrintTypeName(TypeInfo* type_info) {
 		return "String"_sl;
 	} case TypeInfoType::None: {
 		return "None"_sl;
+	} default: {
+		DebugAssertAlways("Unhandled TypeInfoType.");
+		return "Unknown Type"_sl;
+	}
+	}
+}
+
+static String PrintTypeValue(StackAllocator* alloc, TypeInfo* type_info, const void* value) {
+	switch (type_info ? type_info->info_type : TypeInfoType::None) {
+	case TypeInfoType::Integer: {
+		auto* type_info_integer = (TypeInfoInteger*)type_info;
+		compile_const u32 is_signed_flag = 128;
+		switch (type_info_integer->bit_width | (type_info_integer->is_signed ? is_signed_flag : 0)) {
+		case 1:  return *(bool*)value ? "true"_sl : "false"_sl;
+		case 8:  return StringFormat(alloc, "%u", (u32)(*(u8*)value));
+		case 16: return StringFormat(alloc, "%u", (u32)(*(u16*)value));
+		case 32: return StringFormat(alloc, "%u",   *(u32*)value);
+		case 64: return StringFormat(alloc, "%llu", *(u64*)value);
+		case 8  | is_signed_flag: StringFormat(alloc, "%d", (s32)(*(s8*)value));
+		case 16 | is_signed_flag: StringFormat(alloc, "%d", (s32)(*(s16*)value));
+		case 32 | is_signed_flag: StringFormat(alloc, "%d",   *(s32*)value);
+		case 64 | is_signed_flag: StringFormat(alloc, "%lld", *(s64*)value);
+		default: return "Unknown Integer"_sl;
+		}
+	} case TypeInfoType::Float: {
+		auto* type_info_float = (TypeInfoFloat*)type_info;
+		switch (type_info_float->bit_width) {
+		case 32: return StringFormat(alloc, "%f", *(float*)value);
+		case 64: return StringFormat(alloc, "%f", *(double*)value);
+		default: return "Unknown Float"_sl;
+		}
+	} case TypeInfoType::Struct: {
+		auto* type_info_struct = (TypeInfoStruct*)type_info;
+		
+		StringBuilder builder;
+		builder.alloc = alloc;
+		builder.AppendUnformatted("{ "_sl);
+		
+		bool is_first_field = true;
+		for (auto& field : type_info_struct->fields) {
+			if (field.type == &type_info_type) continue;
+			if (field.constant_value) continue;
+			
+			if (is_first_field == false) {
+				builder.AppendUnformatted(", "_sl);
+			}
+			is_first_field = false;
+			
+			auto field_value = PrintTypeValue(alloc, field.type, (u8*)value + field.offset);
+			builder.AppendUnformatted(field_value);
+		}
+		
+		builder.AppendUnformatted(" }"_sl);
+		
+		return builder.ToString();
+	} case TypeInfoType::String: {
+		return *(String*)value;
 	} default: {
 		DebugAssertAlways("Unhandled TypeInfoType.");
 		return "Unknown Type"_sl;
@@ -144,13 +204,15 @@ void GenerateCodeForHlslFile(StackAllocator* alloc, HlslFileData& hlsl_file, Typ
 	builder.Append("struct %.*s {\n", (s32)name.count, name.data);
 	builder.Indent();
 	
+	u32 constant_count = 0;
 	for (auto& field : type_info_struct->fields) {
 		if (field.type == &type_info_type) {
 			builder.Append("\n");
 			GenerateCodeForHlslFile(alloc, hlsl_file, (TypeInfo*)field.constant_value);
 		} else if (field.constant_value) {
 			auto type_name = PrintTypeName(field.type);
-			builder.Append("compile_const %.*s %.*s = %u;\n", (s32)type_name.count, type_name.data, (s32)field.name.count, field.name.data, *(u32*)field.constant_value);
+			builder.Append("compile_const %.*s %.*s;\n", (s32)type_name.count, type_name.data, (s32)field.name.count, field.name.data);
+			constant_count += 1;
 		} else {
 			auto type_name = PrintTypeName(field.type);
 			builder.Append("%.*s %.*s;\n", (s32)type_name.count, type_name.data, (s32)field.name.count, field.name.data);
@@ -159,6 +221,18 @@ void GenerateCodeForHlslFile(StackAllocator* alloc, HlslFileData& hlsl_file, Typ
 	
 	builder.Unindent();
 	builder.AppendUnformatted("};\n\n"_sl);
+	
+	// Hlsl doesn't support inline constant declarations for non trivial types. Output them after the struct.
+	if (constant_count != 0) {
+		for (auto& field : type_info_struct->fields) {
+			if (field.constant_value == nullptr) continue;
+			
+			auto type_name = PrintTypeName(field.type);
+			auto type_value = PrintTypeValue(alloc, field.type, field.constant_value);
+			builder.Append("compile_const %.*s %.*s::%.*s = %.*s;\n", (s32)type_name.count, type_name.data, (s32)name.count, name.data, (s32)field.name.count, field.name.data, (s32)type_value.count, type_value.data);
+		}
+		builder.AppendUnformatted("\n"_sl);
+	}
 }
 
 HlslFileData& AddOrFindHlslFile(StackAllocator* alloc, HashTable<String, HlslFileData>& hlsl_files, String filename) {

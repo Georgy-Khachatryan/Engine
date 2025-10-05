@@ -8,12 +8,12 @@ namespace Math {
 	struct Vec2u32 {
 		u32 x; u32 y;
 
-		Vec2u32() : x(0), y(0) {}
-		Vec2u32(u32 x) : x(x), y(x) {}
-		Vec2u32(u32 x, u32 y) : x(x), y(y) {}
-		Vec2u32(const Vec2u32& xy) : x(xy.x), y(xy.y) {}
+		constexpr Vec2u32() : x(0), y(0) {}
+		constexpr Vec2u32(u32 x) : x(x), y(x) {}
+		constexpr Vec2u32(u32 x, u32 y) : x(x), y(y) {}
+		constexpr Vec2u32(const Vec2u32& xy) : x(xy.x), y(xy.y) {}
 
-		template<typename T> explicit Vec2u32(const T& xy) : x((u32)xy.x), y((u32)xy.y) {}
+		template<typename T> explicit constexpr Vec2u32(const T& xy) : x((u32)xy.x), y((u32)xy.y) {}
 
 		Vec2u32 operator+(const Vec2u32& other) const { return Vec2u32(x + other.x, y + other.y); }
 		Vec2u32 operator+(u32 other) const { return Vec2u32(x + other, y + other); }
@@ -57,13 +57,13 @@ namespace Math {
 			Vec2u32 xy;
 		};
 
-		Vec3u32() : x(0), y(0), z(0) {}
-		Vec3u32(u32 x) : x(x), y(x), z(x) {}
-		Vec3u32(u32 x, u32 y, u32 z) : x(x), y(y), z(z) {}
-		Vec3u32(const Vec2u32& xy, u32 z) : x(xy.x), y(xy.y), z(z) {}
-		Vec3u32(const Vec3u32& xyz) : x(xyz.x), y(xyz.y), z(xyz.z) {}
+		constexpr Vec3u32() : x(0), y(0), z(0) {}
+		constexpr Vec3u32(u32 x) : x(x), y(x), z(x) {}
+		constexpr Vec3u32(u32 x, u32 y, u32 z) : x(x), y(y), z(z) {}
+		constexpr Vec3u32(const Vec2u32& xy, u32 z) : x(xy.x), y(xy.y), z(z) {}
+		constexpr Vec3u32(const Vec3u32& xyz) : x(xyz.x), y(xyz.y), z(xyz.z) {}
 
-		template<typename T> explicit Vec3u32(const T& xyz) : x((u32)xyz.x), y((u32)xyz.y), z((u32)xyz.z) {}
+		template<typename T> explicit constexpr Vec3u32(const T& xyz) : x((u32)xyz.x), y((u32)xyz.y), z((u32)xyz.z) {}
 
 		Vec3u32 operator+(const Vec3u32& other) const { return Vec3u32(x + other.x, y + other.y, z + other.z); }
 		Vec3u32 operator+(u32 other) const { return Vec3u32(x + other, y + other, z + other); }
@@ -108,15 +108,15 @@ namespace Math {
 			Vec3u32 xyz;
 		};
 
-		Vec4u32() : x(0), y(0), z(0), w(0) {}
-		Vec4u32(u32 x) : x(x), y(x), z(x), w(x) {}
-		Vec4u32(u32 x, u32 y, u32 z, u32 w) : x(x), y(y), z(z), w(w) {}
-		Vec4u32(const Vec2u32& xy, u32 z, u32 w) : x(xy.x), y(xy.y), z(z), w(w) {}
-		Vec4u32(const Vec2u32& xy, const Vec2u32& zw) : x(xy.x), y(xy.y), z(zw.x), w(zw.y) {}
-		Vec4u32(const Vec3u32& xyz, u32 w) : x(xyz.x), y(xyz.y), z(xyz.z), w(w) {}
-		Vec4u32(const Vec4u32& xyzw) : x(xyzw.x), y(xyzw.y), z(xyzw.z), w(xyzw.w) {}
+		constexpr Vec4u32() : x(0), y(0), z(0), w(0) {}
+		constexpr Vec4u32(u32 x) : x(x), y(x), z(x), w(x) {}
+		constexpr Vec4u32(u32 x, u32 y, u32 z, u32 w) : x(x), y(y), z(z), w(w) {}
+		constexpr Vec4u32(const Vec2u32& xy, u32 z, u32 w) : x(xy.x), y(xy.y), z(z), w(w) {}
+		constexpr Vec4u32(const Vec2u32& xy, const Vec2u32& zw) : x(xy.x), y(xy.y), z(zw.x), w(zw.y) {}
+		constexpr Vec4u32(const Vec3u32& xyz, u32 w) : x(xyz.x), y(xyz.y), z(xyz.z), w(w) {}
+		constexpr Vec4u32(const Vec4u32& xyzw) : x(xyzw.x), y(xyzw.y), z(xyzw.z), w(xyzw.w) {}
 
-		template<typename T> explicit Vec4u32(const T& xyzw) : x((u32)xyzw.x), y((u32)xyzw.y), z((u32)xyzw.z), w((u32)xyzw.w) {}
+		template<typename T> explicit constexpr Vec4u32(const T& xyzw) : x((u32)xyzw.x), y((u32)xyzw.y), z((u32)xyzw.z), w((u32)xyzw.w) {}
 
 		Vec4u32 operator+(const Vec4u32& other) const { return Vec4u32(x + other.x, y + other.y, z + other.z, w + other.w); }
 		Vec4u32 operator+(u32 other) const { return Vec4u32(x + other, y + other, z + other, w + other); }
@@ -157,12 +157,12 @@ namespace Math {
 	struct Vec2f {
 		float x; float y;
 
-		Vec2f() : x(0), y(0) {}
-		Vec2f(float x) : x(x), y(x) {}
-		Vec2f(float x, float y) : x(x), y(y) {}
-		Vec2f(const Vec2f& xy) : x(xy.x), y(xy.y) {}
+		constexpr Vec2f() : x(0), y(0) {}
+		constexpr Vec2f(float x) : x(x), y(x) {}
+		constexpr Vec2f(float x, float y) : x(x), y(y) {}
+		constexpr Vec2f(const Vec2f& xy) : x(xy.x), y(xy.y) {}
 
-		template<typename T> explicit Vec2f(const T& xy) : x((float)xy.x), y((float)xy.y) {}
+		template<typename T> explicit constexpr Vec2f(const T& xy) : x((float)xy.x), y((float)xy.y) {}
 
 		Vec2f operator+(const Vec2f& other) const { return Vec2f(x + other.x, y + other.y); }
 		Vec2f operator+(float other) const { return Vec2f(x + other, y + other); }
@@ -193,13 +193,13 @@ namespace Math {
 			Vec2f xy;
 		};
 
-		Vec3f() : x(0), y(0), z(0) {}
-		Vec3f(float x) : x(x), y(x), z(x) {}
-		Vec3f(float x, float y, float z) : x(x), y(y), z(z) {}
-		Vec3f(const Vec2f& xy, float z) : x(xy.x), y(xy.y), z(z) {}
-		Vec3f(const Vec3f& xyz) : x(xyz.x), y(xyz.y), z(xyz.z) {}
+		constexpr Vec3f() : x(0), y(0), z(0) {}
+		constexpr Vec3f(float x) : x(x), y(x), z(x) {}
+		constexpr Vec3f(float x, float y, float z) : x(x), y(y), z(z) {}
+		constexpr Vec3f(const Vec2f& xy, float z) : x(xy.x), y(xy.y), z(z) {}
+		constexpr Vec3f(const Vec3f& xyz) : x(xyz.x), y(xyz.y), z(xyz.z) {}
 
-		template<typename T> explicit Vec3f(const T& xyz) : x((float)xyz.x), y((float)xyz.y), z((float)xyz.z) {}
+		template<typename T> explicit constexpr Vec3f(const T& xyz) : x((float)xyz.x), y((float)xyz.y), z((float)xyz.z) {}
 
 		Vec3f operator+(const Vec3f& other) const { return Vec3f(x + other.x, y + other.y, z + other.z); }
 		Vec3f operator+(float other) const { return Vec3f(x + other, y + other, z + other); }
@@ -238,15 +238,15 @@ namespace Math {
 			Vec3f xyz;
 		};
 
-		Vec4f() : x(0), y(0), z(0), w(0) {}
-		Vec4f(float x) : x(x), y(x), z(x), w(x) {}
-		Vec4f(float x, float y, float z, float w) : x(x), y(y), z(z), w(w) {}
-		Vec4f(const Vec2f& xy, float z, float w) : x(xy.x), y(xy.y), z(z), w(w) {}
-		Vec4f(const Vec2f& xy, const Vec2f& zw) : x(xy.x), y(xy.y), z(zw.x), w(zw.y) {}
-		Vec4f(const Vec3f& xyz, float w) : x(xyz.x), y(xyz.y), z(xyz.z), w(w) {}
-		Vec4f(const Vec4f& xyzw) : x(xyzw.x), y(xyzw.y), z(xyzw.z), w(xyzw.w) {}
+		constexpr Vec4f() : x(0), y(0), z(0), w(0) {}
+		constexpr Vec4f(float x) : x(x), y(x), z(x), w(x) {}
+		constexpr Vec4f(float x, float y, float z, float w) : x(x), y(y), z(z), w(w) {}
+		constexpr Vec4f(const Vec2f& xy, float z, float w) : x(xy.x), y(xy.y), z(z), w(w) {}
+		constexpr Vec4f(const Vec2f& xy, const Vec2f& zw) : x(xy.x), y(xy.y), z(zw.x), w(zw.y) {}
+		constexpr Vec4f(const Vec3f& xyz, float w) : x(xyz.x), y(xyz.y), z(xyz.z), w(w) {}
+		constexpr Vec4f(const Vec4f& xyzw) : x(xyzw.x), y(xyzw.y), z(xyzw.z), w(xyzw.w) {}
 
-		template<typename T> explicit Vec4f(const T& xyzw) : x((float)xyzw.x), y((float)xyzw.y), z((float)xyzw.z), w((float)xyzw.w) {}
+		template<typename T> explicit constexpr Vec4f(const T& xyzw) : x((float)xyzw.x), y((float)xyzw.y), z((float)xyzw.z), w((float)xyzw.w) {}
 
 		Vec4f operator+(const Vec4f& other) const { return Vec4f(x + other.x, y + other.y, z + other.z, w + other.w); }
 		Vec4f operator+(float other) const { return Vec4f(x + other, y + other, z + other, w + other); }

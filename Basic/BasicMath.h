@@ -26,6 +26,12 @@ inline u64 AlignUp(u64 size, u64 alignment) {
 
 inline u64 Min(u64 lh, u64 rh) { return lh < rh ? lh : rh; }
 inline u64 Max(u64 lh, u64 rh) { return lh > rh ? lh : rh; }
+inline u32 Min(u32 lh, u32 rh) { return lh < rh ? lh : rh; }
+inline u32 Max(u32 lh, u32 rh) { return lh > rh ? lh : rh; }
+inline u16 Min(u16 lh, u16 rh) { return lh < rh ? lh : rh; }
+inline u16 Max(u16 lh, u16 rh) { return lh > rh ? lh : rh; }
+inline u8  Min(u8  lh, u8  rh) { return lh < rh ? lh : rh; }
+inline u8  Max(u8  lh, u8  rh) { return lh > rh ? lh : rh; }
 
 template<typename T, T(FirstBitLowT)(T)>
 struct BitScanLowT {
@@ -58,4 +64,9 @@ using uint2 = Math::Vec2u32;
 using float4x4 = Math::Mat4x4f;
 using float3x4 = Math::Mat3x4f;
 using float3x3 = Math::Mat3x3f;
+
+
+inline uint2 DivideAndRoundUp(uint2 numerator, u32 denominator) { return (numerator + (denominator - 1)) / denominator; }
+inline uint3 DivideAndRoundUp(uint3 numerator, u32 denominator) { return (numerator + (denominator - 1)) / denominator; }
+inline uint4 DivideAndRoundUp(uint4 numerator, u32 denominator) { return (numerator + (denominator - 1)) / denominator; }
 

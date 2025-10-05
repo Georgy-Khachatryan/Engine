@@ -6,6 +6,7 @@
 #include "SystemWindow.h"
 #include "RenderPasses.h"
 #include "GraphicsApi/GraphicsApi.h"
+#include "GraphicsApi/RecordContext.h"
 
 #include <SDK/imgui/imgui.h>
 #include <SDK/imgui/backends/imgui_impl_win32.h>
@@ -326,6 +327,17 @@ s32 main() {
 	
 	ImGui::StyleColorsDark();
 	
+	VirtualResourceTable resource_table;
+	ArrayResizeMemset(resource_table.virtual_resources, &alloc, (u64)VirtualResourceID::Count);
+	{
+		using ResourceID = VirtualResourceID;
+		
+		auto& table = resource_table;
+		table.Set(ResourceID::TransmittanceLut,      TextureSize(TextureFormat::R16G16B16A16_FLOAT, AtmosphereParameters::transmittance_lut_size));
+		table.Set(ResourceID::MultipleScatteringLut, TextureSize(TextureFormat::R16G16B16A16_FLOAT, AtmosphereParameters::multiple_scattering_lut_size));
+		table.Set(ResourceID::SkyPanoramaLut,        TextureSize(TextureFormat::R16G16B16A16_FLOAT, AtmosphereParameters::sky_panorama_lut_size));
+	}
+	
 	u64 frame_allocation_size = 0;
 	while (window->should_close == false) {
 		TempAllocationScopeNamed(frame_initial_size, &alloc);
@@ -350,7 +362,16 @@ s32 main() {
 			window->should_close = true;
 		}
 		
-		WindowSwapChainEndFrame(swap_chain, graphics_context, &alloc);
+		RecordContext record_context;
+		record_context.alloc   = &alloc;
+		record_context.context = graphics_context;
+		record_context.resource_table = &resource_table;
+		
+		TransmittanceLutRenderPass{}.RecordPass(&record_context);
+		MultipleScatteringLutRenderPass{}.RecordPass(&record_context);
+		SkyPanoramaLutRenderPass{}.RecordPass(&record_context);
+		
+		WindowSwapChainEndFrame(swap_chain, graphics_context, &alloc, record_context);
 		
 		frame_allocation_size = (alloc.total_allocated_size - frame_initial_size);
 	}

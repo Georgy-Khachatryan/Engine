@@ -13,11 +13,11 @@ static void GenerateVectorType(StringBuilder& builder, u32 count, String type, S
 	if (count == 2) {
 		builder.Append("%s x; %s y;\n\n", type.data, type.data);
 		
-		builder.Append("Vec2%s() : x(0), y(0) {}\n", suffix.data);
-		builder.Append("Vec2%s(%s x) : x(x), y(x) {}\n", suffix.data, type.data);
-		builder.Append("Vec2%s(%s x, %s y) : x(x), y(y) {}\n", suffix.data, type.data, type.data);
-		builder.Append("Vec2%s(const Vec2%s& xy) : x(xy.x), y(xy.y) {}\n\n", suffix.data, suffix.data);
-		builder.Append("template<typename T> explicit Vec2%s(const T& xy) : x((%s)xy.x), y((%s)xy.y) {}\n\n", suffix.data, type.data, type.data, type.data);
+		builder.Append("constexpr Vec2%s() : x(0), y(0) {}\n", suffix.data);
+		builder.Append("constexpr Vec2%s(%s x) : x(x), y(x) {}\n", suffix.data, type.data);
+		builder.Append("constexpr Vec2%s(%s x, %s y) : x(x), y(y) {}\n", suffix.data, type.data, type.data);
+		builder.Append("constexpr Vec2%s(const Vec2%s& xy) : x(xy.x), y(xy.y) {}\n\n", suffix.data, suffix.data);
+		builder.Append("template<typename T> explicit constexpr Vec2%s(const T& xy) : x((%s)xy.x), y((%s)xy.y) {}\n\n", suffix.data, type.data, type.data, type.data);
 	} else if (count == 3) {
 		builder.Append("union {\n");
 		builder.Indent();
@@ -28,12 +28,12 @@ static void GenerateVectorType(StringBuilder& builder, u32 count, String type, S
 		builder.Unindent();
 		builder.AppendUnformatted("};\n\n"_sl);
 		
-		builder.Append("Vec3%s() : x(0), y(0), z(0) {}\n", suffix.data);
-		builder.Append("Vec3%s(%s x) : x(x), y(x), z(x) {}\n", suffix.data, type.data);
-		builder.Append("Vec3%s(%s x, %s y, %s z) : x(x), y(y), z(z) {}\n", suffix.data, type.data, type.data, type.data);
-		builder.Append("Vec3%s(const Vec2%s& xy, %s z) : x(xy.x), y(xy.y), z(z) {}\n", suffix.data, suffix.data, type.data);
-		builder.Append("Vec3%s(const Vec3%s& xyz) : x(xyz.x), y(xyz.y), z(xyz.z) {}\n\n", suffix.data, suffix.data);
-		builder.Append("template<typename T> explicit Vec3%s(const T& xyz) : x((%s)xyz.x), y((%s)xyz.y), z((%s)xyz.z) {}\n\n", suffix.data, type.data, type.data, type.data);
+		builder.Append("constexpr Vec3%s() : x(0), y(0), z(0) {}\n", suffix.data);
+		builder.Append("constexpr Vec3%s(%s x) : x(x), y(x), z(x) {}\n", suffix.data, type.data);
+		builder.Append("constexpr Vec3%s(%s x, %s y, %s z) : x(x), y(y), z(z) {}\n", suffix.data, type.data, type.data, type.data);
+		builder.Append("constexpr Vec3%s(const Vec2%s& xy, %s z) : x(xy.x), y(xy.y), z(z) {}\n", suffix.data, suffix.data, type.data);
+		builder.Append("constexpr Vec3%s(const Vec3%s& xyz) : x(xyz.x), y(xyz.y), z(xyz.z) {}\n\n", suffix.data, suffix.data);
+		builder.Append("template<typename T> explicit constexpr Vec3%s(const T& xyz) : x((%s)xyz.x), y((%s)xyz.y), z((%s)xyz.z) {}\n\n", suffix.data, type.data, type.data, type.data);
 	} else if (count == 4) {
 		builder.Append("union {\n");
 		builder.Indent();
@@ -45,14 +45,14 @@ static void GenerateVectorType(StringBuilder& builder, u32 count, String type, S
 		builder.Unindent();
 		builder.AppendUnformatted("};\n\n"_sl);
 		
-		builder.Append("Vec4%s() : x(0), y(0), z(0), w(0) {}\n", suffix.data);
-		builder.Append("Vec4%s(%s x) : x(x), y(x), z(x), w(x) {}\n", suffix.data, type.data);
-		builder.Append("Vec4%s(%s x, %s y, %s z, %s w) : x(x), y(y), z(z), w(w) {}\n", suffix.data, type.data, type.data, type.data, type.data);
-		builder.Append("Vec4%s(const Vec2%s& xy, %s z, %s w) : x(xy.x), y(xy.y), z(z), w(w) {}\n", suffix.data, suffix.data, type.data, type.data);
-		builder.Append("Vec4%s(const Vec2%s& xy, const Vec2%s& zw) : x(xy.x), y(xy.y), z(zw.x), w(zw.y) {}\n", suffix.data, suffix.data, suffix.data);
-		builder.Append("Vec4%s(const Vec3%s& xyz, %s w) : x(xyz.x), y(xyz.y), z(xyz.z), w(w) {}\n", suffix.data, suffix.data, type.data);
-		builder.Append("Vec4%s(const Vec4%s& xyzw) : x(xyzw.x), y(xyzw.y), z(xyzw.z), w(xyzw.w) {}\n\n", suffix.data, suffix.data);
-		builder.Append("template<typename T> explicit Vec4%s(const T& xyzw) : x((%s)xyzw.x), y((%s)xyzw.y), z((%s)xyzw.z), w((%s)xyzw.w) {}\n\n", suffix.data, type.data, type.data, type.data, type.data);
+		builder.Append("constexpr Vec4%s() : x(0), y(0), z(0), w(0) {}\n", suffix.data);
+		builder.Append("constexpr Vec4%s(%s x) : x(x), y(x), z(x), w(x) {}\n", suffix.data, type.data);
+		builder.Append("constexpr Vec4%s(%s x, %s y, %s z, %s w) : x(x), y(y), z(z), w(w) {}\n", suffix.data, type.data, type.data, type.data, type.data);
+		builder.Append("constexpr Vec4%s(const Vec2%s& xy, %s z, %s w) : x(xy.x), y(xy.y), z(z), w(w) {}\n", suffix.data, suffix.data, type.data, type.data);
+		builder.Append("constexpr Vec4%s(const Vec2%s& xy, const Vec2%s& zw) : x(xy.x), y(xy.y), z(zw.x), w(zw.y) {}\n", suffix.data, suffix.data, suffix.data);
+		builder.Append("constexpr Vec4%s(const Vec3%s& xyz, %s w) : x(xyz.x), y(xyz.y), z(xyz.z), w(w) {}\n", suffix.data, suffix.data, type.data);
+		builder.Append("constexpr Vec4%s(const Vec4%s& xyzw) : x(xyzw.x), y(xyzw.y), z(xyzw.z), w(xyzw.w) {}\n\n", suffix.data, suffix.data);
+		builder.Append("template<typename T> explicit constexpr Vec4%s(const T& xyzw) : x((%s)xyzw.x), y((%s)xyzw.y), z((%s)xyzw.z), w((%s)xyzw.w) {}\n\n", suffix.data, type.data, type.data, type.data, type.data);
 	}
 	
 	for (u64 i = 0; i < ops.count; i += 1) {

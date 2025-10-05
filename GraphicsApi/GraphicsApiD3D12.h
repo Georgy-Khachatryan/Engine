@@ -51,7 +51,7 @@ struct GraphicsContextD3D12 : GraphicsContext {
 	u64 frame_index = 0;
 	
 	ID3D12GraphicsCommandList7* command_list = nullptr;
-	ID3D12CommandAllocator* command_allocators[number_of_frames_in_flight] = {};
+	FixedCountArray<ID3D12CommandAllocator*, number_of_frames_in_flight> command_allocators = {};
 	
 	Array<u16> srv_heap_free_indices;
 	u32 srv_heap_offset = 0;
@@ -59,7 +59,5 @@ struct GraphicsContextD3D12 : GraphicsContext {
 	Array<ID3D12RootSignature*> root_signature_table;
 	Array<ID3D12PipelineState*> pipeline_state_table;
 	ArrayView<PipelineDefinition> pipeline_definitions;
-	
-	Array<ID3D12Resource*> resource_table;
 };
 

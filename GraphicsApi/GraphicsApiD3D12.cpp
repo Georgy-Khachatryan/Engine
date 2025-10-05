@@ -193,8 +193,6 @@ GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
 		CreateTestPipelines(context, alloc);
 		GatherPipelineDefinitions(context, alloc);
 		BuildPipelineStates(context, alloc);
-		
-		ArrayReserve(context->resource_table, alloc, (u64)VirtualResourceID::Count);
 	}
 	
 	return context;
@@ -325,7 +323,6 @@ static void GatherPipelineDefinitions(GraphicsContextD3D12* context, StackAlloca
 	
 	context->pipeline_definitions = lib.pipeline_definitions;
 	ArrayResize(context->pipeline_state_table, alloc, context->pipeline_definitions.count);
-	memset(context->pipeline_state_table.data, 0, context->pipeline_state_table.count * sizeof(ID3D12PipelineState*));
 }
 
 static void BuildPipelineStates(GraphicsContextD3D12* context, StackAllocator* alloc) {
@@ -353,7 +350,7 @@ void ReleaseGraphicsContext(GraphicsContext* api_context) {
 	SafeRelease(context->device);
 }
 
-static NativeTextureResource CreateTextureResource(GraphicsContext* api_context, uint2 size, DXGI_FORMAT format) {
+static NativeTextureResource CreateTextureResource(GraphicsContext* api_context, TextureSize size) {
 	auto* context = (GraphicsContextD3D12*)api_context;
 	
 	D3D12_HEAP_PROPERTIES heap_properties = {};
@@ -364,13 +361,13 @@ static NativeTextureResource CreateTextureResource(GraphicsContext* api_context,
 	heap_properties.VisibleNodeMask      = 0;
 	
 	D3D12_RESOURCE_DESC1 resource_desc = {};
-	resource_desc.Dimension        = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+	resource_desc.Dimension        = size.type == TextureSize::Type::Texture3D ? D3D12_RESOURCE_DIMENSION_TEXTURE3D : D3D12_RESOURCE_DIMENSION_TEXTURE2D;
 	resource_desc.Alignment        = 0;
 	resource_desc.Width            = size.x;
 	resource_desc.Height           = size.y;
-	resource_desc.DepthOrArraySize = 1;
-	resource_desc.MipLevels        = 1;
-	resource_desc.Format           = format;
+	resource_desc.DepthOrArraySize = size.z;
+	resource_desc.MipLevels        = size.mips;
+	resource_desc.Format           = dxgi_texture_format_map[(u32)size.format];
 	resource_desc.SampleDesc       = { 1, 0 };
 	resource_desc.Layout           = D3D12_TEXTURE_LAYOUT_UNKNOWN;
 	resource_desc.Flags            = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
@@ -525,7 +522,7 @@ void WindowSwapChainBeginFrame(WindowSwapChain* api_swap_chain, GraphicsContext*
 	ImGui_ImplDX12_NewFrame();
 }
 
-void WindowSwapChainEndFrame(WindowSwapChain* api_swap_chain, GraphicsContext* api_context, StackAllocator* alloc) {
+void WindowSwapChainEndFrame(WindowSwapChain* api_swap_chain, GraphicsContext* api_context, StackAllocator* alloc, RecordContext& record_context) {
 	auto* swap_chain = (WindowSwapChainD3D12*)api_swap_chain;
 	auto* context = (GraphicsContextD3D12*)api_context;
 	
@@ -550,10 +547,6 @@ void WindowSwapChainEndFrame(WindowSwapChain* api_swap_chain, GraphicsContext* a
 	auto* command_list = context->command_list;
 	command_list->Barrier(1, &barrier_group);
 	
-	RecordContext record_context;
-	record_context.alloc = alloc;
-	record_context.context = context;
-	
 	command_list->SetGraphicsRootSignature(context->root_signature_table[DrawTriangleRenderPass::root_signature.root_signature_index]);
 	command_list->SetPipelineState(debug_draw_triangle.pipeline_state[(context->frame_index / 128) % 3]);
 	
@@ -562,18 +555,13 @@ void WindowSwapChainEndFrame(WindowSwapChain* api_swap_chain, GraphicsContext* a
 	CmdSetViewportAndScissor(&record_context, swap_chain->size);
 	CmdDrawInstanced(&record_context, 3);
 	
-	if (context->resource_table.count == 0) {
-		context->resource_table.count = context->resource_table.capacity;
-		
-		using ID = VirtualResourceID;
-		context->resource_table[(u32)ID::TransmittanceLut]      = CreateTextureResource(context, uint2(256, 64),  DXGI_FORMAT_R16G16B16A16_FLOAT).d3d12;
-		context->resource_table[(u32)ID::MultipleScatteringLut] = CreateTextureResource(context, uint2(32,  32),  DXGI_FORMAT_R16G16B16A16_FLOAT).d3d12;
-		context->resource_table[(u32)ID::SkyPanoramaLut]        = CreateTextureResource(context, uint2(192, 128), DXGI_FORMAT_R16G16B16A16_FLOAT).d3d12;
+	auto& resource_table = record_context.resource_table->virtual_resources;
+	for (auto& resource : resource_table) {
+		if (resource.type == VirtualResource::Type::VirtualTexture && resource.texture.size != resource.texture.allocated_size) {
+			resource.texture.resource = CreateTextureResource(context, resource.texture.size);
+			resource.texture.allocated_size = resource.texture.size;
+		}
 	}
-	
-	TransmittanceLutRenderPass{}.RecordPass(&record_context);
-	MultipleScatteringLutRenderPass{}.RecordPass(&record_context);
-	SkyPanoramaLutRenderPass{}.RecordPass(&record_context);
 	
 	struct ImGuiDescriptorTable : HLSL::BaseDescriptorTable {
 		HLSL::Texture2D<float4> transmittance_lut       = VirtualResourceID::TransmittanceLut;
@@ -588,22 +576,25 @@ void WindowSwapChainEndFrame(WindowSwapChain* api_swap_chain, GraphicsContext* a
 	
 	auto gpu_base_handle = context->gpu_base_handles[(u32)DescriptorHeapType::SRV];
 	auto descriptor_size = context->descriptor_sizes[(u32)DescriptorHeapType::SRV];
-		
+	
 	{
 		ImGui::Begin("Transmittance LUT");
-		ImGui::Image(gpu_base_handle.ptr + (descriptor_table.descriptor_heap_offset + 0) * descriptor_size, ImVec2(256.f, 64.f));
+		auto size = resource_table[(u32)VirtualResourceID::TransmittanceLut].texture.size;
+		ImGui::Image(gpu_base_handle.ptr + (descriptor_table.descriptor_heap_offset + 0) * descriptor_size, ImVec2(size.x, size.y));
 		ImGui::End();
 	}
 	
 	{
 		ImGui::Begin("Multiple Scattering LUT");
-		ImGui::Image(gpu_base_handle.ptr + (descriptor_table.descriptor_heap_offset + 1) * descriptor_size, ImVec2(32.f, 32.f));
+		auto size = resource_table[(u32)VirtualResourceID::MultipleScatteringLut].texture.size;
+		ImGui::Image(gpu_base_handle.ptr + (descriptor_table.descriptor_heap_offset + 1) * descriptor_size, ImVec2(size.x, size.y));
 		ImGui::End();
 	}
 	
 	{
 		ImGui::Begin("Sky Panorma LUT");
-		ImGui::Image(gpu_base_handle.ptr + (descriptor_table.descriptor_heap_offset + 2) * descriptor_size, ImVec2(192.f, 128.f) * 4.f);
+		auto size = resource_table[(u32)VirtualResourceID::SkyPanoramaLut].texture.size;
+		ImGui::Image(gpu_base_handle.ptr + (descriptor_table.descriptor_heap_offset + 2) * descriptor_size, ImVec2(size.x, size.y) * 4.f);
 		ImGui::End();
 	}
 	

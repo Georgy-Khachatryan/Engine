@@ -5,6 +5,8 @@
 #include "GraphicsApiTypes.h"
 
 struct GraphicsContext;
+struct VirtualResourceTable;
+
 namespace HLSL {
 	struct BaseDescriptorTable;
 	struct BaseRootSignature;
@@ -21,9 +23,13 @@ struct RecordContext {
 	u8* command_memory_base = nullptr;
 	
 	Array<HLSL::BaseDescriptorTable*> descriptor_tables;
+	
+	VirtualResourceTable* resource_table = nullptr;
 };
 
 void CmdDispatch(RecordContext* record_context, u32 group_count_x = 1, u32 group_count_y = 1, u32 group_count_z = 1);
+void CmdDispatch(RecordContext* record_context, uint2 group_count_xy, u32 group_count_z = 1);
+void CmdDispatch(RecordContext* record_context, const uint3& group_count_xyz);
 void CmdDrawInstanced(RecordContext* record_context, u32 vertex_count_per_instance, u32 instance_count = 1, u32 start_vertex_location = 0, u32 start_instance_location = 0);
 void CmdDrawIndexedInstanced(RecordContext* record_context, u32 index_count_per_instance, u32 instance_count = 1, u32 start_index_location = 0, u32 base_vertex_location = 0, u32 start_instance_location = 0);
 void CmdClearRenderTarget(RecordContext* record_context, u64 rtv_heap_index);

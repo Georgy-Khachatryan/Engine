@@ -6,7 +6,7 @@
 #include "RecordContextCommands.h"
 
 
-static void FillDescriptorTables(GraphicsContextD3D12* context, ArrayView<HLSL::BaseDescriptorTable*> descriptor_tables, ArrayView<ID3D12Resource*> resources) {
+static void FillDescriptorTables(GraphicsContextD3D12* context, ArrayView<HLSL::BaseDescriptorTable*> descriptor_tables, Array<VirtualResource> resources) {
 	auto cpu_base_handle = context->cpu_base_handles[(u32)DescriptorHeapType::SRV];
 	auto descriptor_size = context->descriptor_sizes[(u32)DescriptorHeapType::SRV];
 	auto* device = context->device;
@@ -17,30 +17,29 @@ static void FillDescriptorTables(GraphicsContextD3D12* context, ArrayView<HLSL::
 		descriptor_table_handle.ptr += descriptor_table->descriptor_heap_offset * descriptor_size;
 		
 		for (auto& descriptor : descriptors) {
-			auto* resource = resources[(u32)descriptor.resource_id];
-			auto resource_desc = resource->GetDesc();
+			auto& resource = resources[(u32)descriptor.resource_id];
 			
 			switch (descriptor.common.type) {
 			case HLSL::ResourceDescriptorType::Texture2D: {
 				D3D12_SHADER_RESOURCE_VIEW_DESC desc = {};
-				desc.Format                        = resource_desc.Format;
+				desc.Format                        = dxgi_texture_format_map[(u32)resource.texture.size.format];
 				desc.ViewDimension                 = D3D12_SRV_DIMENSION_TEXTURE2D;
 				desc.Shader4ComponentMapping       = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 				desc.Texture2D.MostDetailedMip     = descriptor.texture.mip_index;
-				desc.Texture2D.MipLevels           = (u32)Min((u64)descriptor.texture.mip_count, (u64)resource_desc.MipLevels - (u64)descriptor.texture.mip_index);
+				desc.Texture2D.MipLevels           = Min(descriptor.texture.mip_count, resource.texture.size.mips - descriptor.texture.mip_index);
 				desc.Texture2D.PlaneSlice          = 0;
 				desc.Texture2D.ResourceMinLODClamp = 0.f;
 				
-				device->CreateShaderResourceView(resource, &desc, descriptor_table_handle);
+				device->CreateShaderResourceView(resource.texture.resource.d3d12, &desc, descriptor_table_handle);
 				break;
 			} case HLSL::ResourceDescriptorType::RWTexture2D: {
 				D3D12_UNORDERED_ACCESS_VIEW_DESC desc = {};
-				desc.Format               = resource_desc.Format;
+				desc.Format               = dxgi_texture_format_map[(u32)resource.texture.size.format];
 				desc.ViewDimension        = D3D12_UAV_DIMENSION_TEXTURE2D;
 				desc.Texture2D.MipSlice   = descriptor.texture.mip_index;
 				desc.Texture2D.PlaneSlice = 0;
 				
-				device->CreateUnorderedAccessView(resource, nullptr, &desc, descriptor_table_handle);
+				device->CreateUnorderedAccessView(resource.texture.resource.d3d12, nullptr, &desc, descriptor_table_handle);
 				break;
 			} case HLSL::ResourceDescriptorType::RegularBuffer: {
 				D3D12_SHADER_RESOURCE_VIEW_DESC desc = {};
@@ -48,23 +47,23 @@ static void FillDescriptorTables(GraphicsContextD3D12* context, ArrayView<HLSL::
 				desc.ViewDimension              = D3D12_SRV_DIMENSION_BUFFER;
 				desc.Shader4ComponentMapping    = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 				desc.Buffer.FirstElement        = descriptor.buffer.offset / descriptor.buffer.stride;
-				desc.Buffer.NumElements         = descriptor.buffer.size   / descriptor.buffer.stride;
+				desc.Buffer.NumElements         = Min(descriptor.buffer.size, resource.buffer.size - descriptor.buffer.offset) / descriptor.buffer.stride;
 				desc.Buffer.StructureByteStride = descriptor.buffer.stride;
 				desc.Buffer.Flags               = D3D12_BUFFER_SRV_FLAG_NONE;
 				
-				device->CreateShaderResourceView(resource, &desc, descriptor_table_handle);
+				device->CreateShaderResourceView(resource.buffer.resource.d3d12, &desc, descriptor_table_handle);
 				break;
 			} case HLSL::ResourceDescriptorType::RWRegularBuffer: {
 				D3D12_UNORDERED_ACCESS_VIEW_DESC desc = {};
 				desc.Format                      = DXGI_FORMAT_UNKNOWN;
 				desc.ViewDimension               = D3D12_UAV_DIMENSION_BUFFER;
 				desc.Buffer.FirstElement         = descriptor.buffer.offset / descriptor.buffer.stride;
-				desc.Buffer.NumElements          = descriptor.buffer.size   / descriptor.buffer.stride;
+				desc.Buffer.NumElements          = Min(descriptor.buffer.size, resource.buffer.size - descriptor.buffer.offset) / descriptor.buffer.stride;
 				desc.Buffer.StructureByteStride  = descriptor.buffer.stride;
 				desc.Buffer.CounterOffsetInBytes = 0;
 				desc.Buffer.Flags                = D3D12_BUFFER_UAV_FLAG_NONE;
 				
-				device->CreateUnorderedAccessView(resource, nullptr, &desc, descriptor_table_handle);
+				device->CreateUnorderedAccessView(resource.buffer.resource.d3d12, nullptr, &desc, descriptor_table_handle);
 				break;
 			} default: {
 				DebugAssertAlways("Unhandled ResourceDescriptorType '%u'.", (u32)descriptor.common.type);
@@ -139,7 +138,7 @@ static void CmdSetPipelineStateD3D12(CmdSetPipelineStatePacket* packet, ID3D12Gr
 
 void ReplayRecordContext(GraphicsContext* api_context, RecordContext* record_context) {
 	auto* context = (GraphicsContextD3D12*)api_context;
-	FillDescriptorTables(context, record_context->descriptor_tables, context->resource_table);
+	FillDescriptorTables(context, record_context->descriptor_tables, record_context->resource_table->virtual_resources);
 	
 	auto* command_list = context->command_list;
 	

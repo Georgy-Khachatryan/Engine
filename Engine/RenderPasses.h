@@ -72,20 +72,20 @@ namespace HLSL {
 	static_assert(sizeof(ResourceDescriptor) == 16, "Incorrect ResourceDescriptor size.");
 	
 	NOTES() template<typename T> struct Texture2D : ResourceDescriptor {
-		Texture2D(VirtualResourceID resource = (VirtualResourceID)0, u32 mip_offset = 0, u32 mip_count = u32_max, u32 array_index = 0) { Bind(resource, mip_offset, mip_count, array_index); }
+		Texture2D(VirtualResourceID resource = (VirtualResourceID)0, u32 mip_offset = 0, u32 mip_count = u32_max) { Bind(resource, mip_offset, mip_count); }
 		
-		void Bind(VirtualResourceID resource, u32 mip_offset = 0, u32 mip_count = u32_max, u32 array_index = 0) {
+		void Bind(VirtualResourceID resource, u32 mip_offset = 0, u32 mip_count = u32_max) {
 			resource_id = resource;
-			texture = { Type::Texture2D, (u8)mip_offset, (u8)mip_count, (u16)array_index, 1, 0 };
+			texture = { Type::Texture2D, (u8)mip_offset, (u8)mip_count, 0, 1, 0 };
 		}
 	};
 	
 	NOTES() template<typename T> struct RWTexture2D : ResourceDescriptor {
-		RWTexture2D(VirtualResourceID resource = (VirtualResourceID)0, u32 mip_index = 0, u32 array_index = 0) { Bind(resource, mip_index, array_index); }
+		RWTexture2D(VirtualResourceID resource = (VirtualResourceID)0, u32 mip_index = 0) { Bind(resource, mip_index); }
 		
-		void Bind(VirtualResourceID resource, u32 mip_index = 0, u32 array_index = 0) {
+		void Bind(VirtualResourceID resource, u32 mip_index = 0) {
 			resource_id = resource;
-			texture = { Type::RWTexture2D, (u8)mip_index, 1, (u16)array_index, 1, 0 };
+			texture = { Type::RWTexture2D, (u8)mip_index, 1, 0, 1, 0 };
 		}
 	};
 	
@@ -117,7 +117,9 @@ namespace HLSL {
 
 NOTES(Meta::HlslFile{ "AtmosphereData.hlsl"_sl })
 struct AtmosphereParameters {
-	compile_const u32 transmittance_lut_width = 256;
+	compile_const uint2 transmittance_lut_size       = uint2(256, 64);
+	compile_const uint2 multiple_scattering_lut_size = uint2(32, 32);
+	compile_const uint2 sky_panorama_lut_size        = uint2(192, 128);
 	
 	float bottom_radius = 6360.f; // Radius of the planet (center to ground).
 	float top_radius    = 6460.f; // Maximum considered atmosphere height (center to atmosphere top).

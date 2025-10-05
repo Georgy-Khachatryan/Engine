@@ -2,7 +2,7 @@
 #include "Basic/Basic.h"
 #include "Basic/BasicArray.h"
 #include "Basic/BasicString.h"
-
+#include "TextureFormat.h"
 
 union NativeBufferResource {
 	struct ID3D12Resource* d3d12 = nullptr;

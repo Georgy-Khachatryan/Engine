@@ -13,7 +13,7 @@ void TransmittanceLutRenderPass::RecordPass(RecordContext* record_context) {
 	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
 	CmdSetPipelineState(record_context, pipeline_id);
 	
-	CmdDispatch(record_context, 16, 4, 1);
+	CmdDispatch(record_context, DivideAndRoundUp(AtmosphereParameters::transmittance_lut_size, 16));
 }
 
 void MultipleScatteringLutRenderPass::CreatePipelines(PipelineLibrary* lib) {
@@ -27,7 +27,7 @@ void MultipleScatteringLutRenderPass::RecordPass(RecordContext* record_context) 
 	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
 	CmdSetPipelineState(record_context, pipeline_id);
 	
-	CmdDispatch(record_context, 32, 32, 1);
+	CmdDispatch(record_context, AtmosphereParameters::multiple_scattering_lut_size);
 }
 
 void SkyPanoramaLutRenderPass::CreatePipelines(PipelineLibrary* lib) {
@@ -41,5 +41,5 @@ void SkyPanoramaLutRenderPass::RecordPass(RecordContext* record_context) {
 	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
 	CmdSetPipelineState(record_context, pipeline_id);
 	
-	CmdDispatch(record_context, 12, 8, 1);
+	CmdDispatch(record_context, DivideAndRoundUp(AtmosphereParameters::sky_panorama_lut_size, 16));
 }

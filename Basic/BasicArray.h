@@ -90,6 +90,16 @@ void ArrayReserve(Array<T>& array, AllocatorT* alloc, u64 new_capacity) {
 template<typename T, typename AllocatorT>
 void ArrayResize(Array<T>& array, AllocatorT* alloc, u64 new_count) {
 	ArrayReserve(array, alloc, new_count);
+	for (u64 i = array.count; i < new_count; i += 1) {
+		NewInPlace(array.data + i, T{});
+	}
+	array.count = new_count;
+}
+
+template<typename T, typename AllocatorT>
+void ArrayResizeMemset(Array<T>& array, AllocatorT* alloc, u64 new_count, u8 pattern = 0) {
+	ArrayReserve(array, alloc, new_count);
+	if (new_count > array.count) memset(array.data + array.count, pattern, new_count - array.count);
 	array.count = new_count;
 }
 
