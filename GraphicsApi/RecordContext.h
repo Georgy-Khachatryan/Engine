@@ -23,8 +23,13 @@ struct RecordContext {
 	u8* command_memory_base = nullptr;
 	
 	Array<HLSL::BaseDescriptorTable*> descriptor_tables;
-	
 	VirtualResourceTable* resource_table = nullptr;
+	
+	Array<ArrayView<ResourceAccessDefinition>> resource_accesses;
+	Array<u32> resource_access_command_prefix_sum;
+	
+	Array<HLSL::BaseDescriptorTable*> resource_bindings;
+	bool resource_bindings_dirty = false;
 };
 
 void CmdDispatch(RecordContext* record_context, u32 group_count_x = 1, u32 group_count_y = 1, u32 group_count_z = 1);

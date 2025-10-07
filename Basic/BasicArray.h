@@ -99,7 +99,7 @@ void ArrayResize(Array<T>& array, AllocatorT* alloc, u64 new_count) {
 template<typename T, typename AllocatorT>
 void ArrayResizeMemset(Array<T>& array, AllocatorT* alloc, u64 new_count, u8 pattern = 0) {
 	ArrayReserve(array, alloc, new_count);
-	if (new_count > array.count) memset(array.data + array.count, pattern, new_count - array.count);
+	if (new_count > array.count) memset(array.data + array.count, pattern, (new_count - array.count) * sizeof(T));
 	array.count = new_count;
 }
 

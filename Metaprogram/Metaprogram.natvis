@@ -8,6 +8,7 @@
 			<ExpandedItem Condition="type == AstNodeType::CodeBlock">*(AstNodeCodeBlock*)this,na</ExpandedItem>
 			<ExpandedItem Condition="type == AstNodeType::Declaration">*(AstNodeDeclaration*)this,na</ExpandedItem>
 			<ExpandedItem Condition="type == AstNodeType::Struct">*(AstNodeStruct*)this,na</ExpandedItem>
+			<ExpandedItem Condition="type == AstNodeType::Enum">*(AstNodeEnum*)this,na</ExpandedItem>
 		</Expand>
 	</Type>
 	
@@ -17,6 +18,7 @@
 			<ExpandedItem Condition="info_type == TypeInfoType::Integer">*(TypeInfoInteger*)this,na</ExpandedItem>
 			<ExpandedItem Condition="info_type == TypeInfoType::Float">*(TypeInfoFloat*)this,na</ExpandedItem>
 			<ExpandedItem Condition="info_type == TypeInfoType::Struct">*(TypeInfoStruct*)this,na</ExpandedItem>
+			<ExpandedItem Condition="info_type == TypeInfoType::Enum">*(TypeInfoEnum*)this,na</ExpandedItem>
 		</Expand>
 	</Type>
 	

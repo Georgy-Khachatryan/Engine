@@ -303,6 +303,7 @@ static void GenerateCodeForRenderPass(StackAllocator* alloc, String filename, Hl
 	auto name = ExtractNameWithoutNamespace(type_info_struct->name);
 	
 	HashTable<String, u32> dependent_types;
+	u32 root_parameter_count = 0;
 	
 	TypeInfoStruct* root_signature_type = nullptr;
 	for (auto& field : type_info_struct->fields) {
@@ -321,10 +322,12 @@ static void GenerateCodeForRenderPass(StackAllocator* alloc, String filename, Hl
 							HashTableAddOrFind(dependent_types, alloc, note->filename, 0u);
 						}
 					}
+					root_parameter_count += 1;
 				} else if (type_name == "HLSL::ConstantBuffer<T>"_sl) {
 					if (auto* note = FindNote<Meta::HlslFile>(template_type)) {
 						HashTableAddOrFind(dependent_types, alloc, note->filename, 0u);
 					}
+					root_parameter_count += 1;
 				}
 			}
 		}
@@ -355,7 +358,7 @@ static void GenerateCodeForRenderPass(StackAllocator* alloc, String filename, Hl
 	cpp_builder.Append("%.*s::RootSignature %.*s::root_signature = {\n", (s32)name.count, name.data, (s32)name.count, name.data);
 	cpp_builder.Indent();
 	
-	cpp_builder.Append("%u,\n", (u32)root_signature_file.root_signatures.count);
+	cpp_builder.Append("%u, %u,\n", (u32)root_signature_file.root_signatures.count, root_parameter_count);
 	
 	Array<D3D12_ROOT_PARAMETER1> root_parameters; 
 	

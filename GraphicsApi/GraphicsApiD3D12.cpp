@@ -17,12 +17,12 @@ static struct {
 static ShaderCompiler* shader_compiler = nullptr;
 
 static void WaitForLastFrame(GraphicsContextD3D12* context) {
-	if (context->frame_index < 1) return;
+	if (context->frame_index <= 1) return;
 	context->frame_sync_fence->SetEventOnCompletion(context->frame_index - 1, nullptr);
 }
 
 static void WaitForNextFrame(GraphicsContextD3D12* context) {
-	if (context->frame_index < number_of_frames_in_flight) return;
+	if (context->frame_index <= number_of_frames_in_flight) return;
 	context->frame_sync_fence->SetEventOnCompletion(context->frame_index - number_of_frames_in_flight, nullptr);
 }
 
@@ -33,12 +33,28 @@ static void BuildPipelineStates(GraphicsContextD3D12* context, StackAllocator* a
 GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
 	auto* context = NewFromAlloc(alloc, GraphicsContextD3D12);
 	
+	ID3D12Debug* debug = nullptr;
+	if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debug)))) {
+		debug->EnableDebugLayer();
+	}
+	
 	ID3D12Device10* device = nullptr;
 	if (FAILED(D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_12_1, IID_PPV_ARGS(&device)))) {
 		DebugAssertAlways("D3D12CreateDevice failed.");
 		return nullptr;
 	}
 	context->device = device;
+	
+	if (debug != nullptr) {
+		ID3D12InfoQueue* info_queue = nullptr;
+		if (SUCCEEDED(device->QueryInterface(IID_PPV_ARGS(&info_queue)))) {
+			info_queue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR, true);
+			info_queue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_CORRUPTION, true);
+			info_queue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_WARNING, true);
+			info_queue->Release();
+		}
+		debug->Release();
+	}
 	
 	
 	for (u32 i = 0; i < (u32)DescriptorHeapType::Count; i += 1) {
@@ -54,10 +70,12 @@ GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
 			dsv_descriptor_count,
 		};
 		
+		bool is_shader_visible_heap = (i == (u32)DescriptorHeapType::SRV);
+		
 		D3D12_DESCRIPTOR_HEAP_DESC heap_desc = {};
 		heap_desc.Type           = heap_type_map[i];
 		heap_desc.NumDescriptors = descriptor_heap_size_map[i];
-		heap_desc.Flags          = (heap_desc.Type == D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV) ? D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE : D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+		heap_desc.Flags          = is_shader_visible_heap ? D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE : D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
 		heap_desc.NodeMask       = 0;
 		
 		ID3D12DescriptorHeap* descriptor_heap = nullptr;
@@ -69,7 +87,7 @@ GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
 		context->descriptor_heaps[i] = descriptor_heap;
 		context->descriptor_sizes[i] = device->GetDescriptorHandleIncrementSize(heap_desc.Type);
 		context->cpu_base_handles[i] = descriptor_heap->GetCPUDescriptorHandleForHeapStart();
-		context->gpu_base_handles[i] = descriptor_heap->GetGPUDescriptorHandleForHeapStart();
+		context->gpu_base_handles[i] = is_shader_visible_heap ? descriptor_heap->GetGPUDescriptorHandleForHeapStart() : D3D12_GPU_DESCRIPTOR_HANDLE{ 0 };
 	}
 	
 	
@@ -547,13 +565,8 @@ void WindowSwapChainEndFrame(WindowSwapChain* api_swap_chain, GraphicsContext* a
 	auto* command_list = context->command_list;
 	command_list->Barrier(1, &barrier_group);
 	
-	command_list->SetGraphicsRootSignature(context->root_signature_table[DrawTriangleRenderPass::root_signature.root_signature_index]);
-	command_list->SetPipelineState(debug_draw_triangle.pipeline_state[(context->frame_index / 128) % 3]);
-	
-	CmdClearRenderTarget(&record_context, back_buffer.descriptor.ptr);
-	CmdSetRenderTargets(&record_context, { &back_buffer.descriptor.ptr, 1 });
-	CmdSetViewportAndScissor(&record_context, swap_chain->size);
-	CmdDrawInstanced(&record_context, 3);
+	// command_list->SetGraphicsRootSignature(context->root_signature_table[DrawTriangleRenderPass::root_signature.root_signature_index]);
+	// command_list->SetPipelineState(debug_draw_triangle.pipeline_state[(context->frame_index / 128) % 3]);
 	
 	auto& resource_table = record_context.resource_table->virtual_resources;
 	for (auto& resource : resource_table) {
@@ -572,7 +585,16 @@ void WindowSwapChainEndFrame(WindowSwapChain* api_swap_chain, GraphicsContext* a
 	
 	auto& descriptor_table = AllocateDescriptorTable(&record_context, root_descriptor_table);
 	
+	// CmdClearRenderTarget(&record_context, back_buffer.descriptor.ptr);
+	// CmdSetRenderTargets(&record_context, { &back_buffer.descriptor.ptr, 1 });
+	// CmdSetViewportAndScissor(&record_context, swap_chain->size);
+	// CmdDrawInstanced(&record_context, 3);
+	
 	ReplayRecordContext(context, &record_context);
+	
+	float clear_color[4] = { 0.f, 0.f, 0.f, 0.f };
+	command_list->ClearRenderTargetView(back_buffer.descriptor, clear_color, 0, nullptr);
+	command_list->OMSetRenderTargets(1, &back_buffer.descriptor, false, nullptr);
 	
 	auto gpu_base_handle = context->gpu_base_handles[(u32)DescriptorHeapType::SRV];
 	auto descriptor_size = context->descriptor_sizes[(u32)DescriptorHeapType::SRV];

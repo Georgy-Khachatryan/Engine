@@ -30,13 +30,19 @@ enum struct VirtualResourceID : u32;
 
 namespace HLSL {
 	enum struct ResourceDescriptorType : u16 {
-		None            = 0,
-		Texture2D       = 1,
-		RWTexture2D     = 2,
-		RegularBuffer   = 3,
-		RWRegularBuffer = 4,
-		ByteBuffer      = 5,
-		RWByteBuffer    = 6,
+		None = 0,
+		
+		AnyTexture  = 1u << 0,
+		AnyBuffer   = 1u << 1,
+		AnySRV      = 1u << 2,
+		AnyUAV      = 1u << 3,
+		
+		Texture2D       = (0u << 4) | AnyTexture | AnySRV,
+		RWTexture2D     = (1u << 4) | AnyTexture | AnyUAV,
+		RegularBuffer   = (2u << 4) | AnyBuffer  | AnySRV,
+		RWRegularBuffer = (3u << 4) | AnyBuffer  | AnyUAV,
+		ByteBuffer      = (4u << 4) | AnyBuffer  | AnySRV,
+		RWByteBuffer    = (5u << 4) | AnyBuffer  | AnyUAV,
 	};
 	
 	struct ResourceDescriptor {
@@ -110,7 +116,7 @@ namespace HLSL {
 	NOTES() template<typename T> struct DescriptorTable { u32 offset = 0; u32 descriptor_count = 0; };
 	NOTES() template<typename T> struct ConstantBuffer  { u32 offset = 0; };
 	
-	NOTES() struct BaseRootSignature   { u32 root_signature_index = 0; };
+	NOTES() struct BaseRootSignature   { u32 root_signature_index = 0; u32 root_parameter_count = 0; };
 	NOTES() struct BaseDescriptorTable { u32 descriptor_heap_offset = 0; u32 descriptor_count = 0; };
 };
 
