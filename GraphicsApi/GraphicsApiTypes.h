@@ -47,13 +47,18 @@ enum struct PipelineStagesMask : u16 {
 	ComputeShader = 1u << 0,
 	VertexShader  = 1u << 1,
 	PixelShader   = 1u << 2,
+	Copy          = 1u << 3,
+	RenderTarget  = 1u << 4,
 };
 ENUM_FLAGS_OPERATORS(PipelineStagesMask);
 
 enum struct ResourceAccessMask : u16 {
-	None = 0,
-	SRV  = 1u << 0,
-	UAV  = 1u << 1,
+	None         = 0,
+	SRV          = 1u << 0,
+	UAV          = 1u << 1,
+	CopySrc      = 1u << 2,
+	CopyDst      = 1u << 3,
+	RenderTarget = 1u << 4,
 };
 ENUM_FLAGS_OPERATORS(ResourceAccessMask);
 

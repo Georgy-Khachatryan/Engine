@@ -5,8 +5,6 @@
 #include "Engine/ShaderCompiler.h"
 #include "Engine/RenderPasses.h"
 
-#include <SDK/imgui/backends/imgui_impl_dx12.h>
-
 extern "C" __declspec(dllexport) extern const UINT  D3D12SDKVersion = 618;
 extern "C" __declspec(dllexport) extern const char* D3D12SDKPath    = u8".\\D3D12\\";
 
@@ -140,44 +138,6 @@ GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
 	}
 	
 	{
-		ImGui_ImplDX12_InitInfo init_info = {};
-		init_info.Device            = device;
-		init_info.CommandQueue      = context->graphics_command_queue;
-		init_info.NumFramesInFlight = number_of_frames_in_flight;
-		init_info.RTVFormat         = DXGI_FORMAT_R8G8B8A8_UNORM;
-		init_info.DSVFormat         = DXGI_FORMAT_UNKNOWN;
-		init_info.UserData          = context;
-		init_info.SrvDescriptorHeap = context->descriptor_heaps[(u32)DescriptorHeapType::SRV];
-		
-		init_info.SrvDescriptorAllocFn = [](ImGui_ImplDX12_InitInfo* init_info, D3D12_CPU_DESCRIPTOR_HANDLE* out_cpu_desc_handle, D3D12_GPU_DESCRIPTOR_HANDLE* out_gpu_desc_handle) {
-			auto* context = (GraphicsContextD3D12*)init_info->UserData;
-			
-			DebugAssert(context->srv_heap_free_indices.count != 0, "Resource descriptor heap is exhausted.");
-			u64 index = ArrayPopLast(context->srv_heap_free_indices);
-			
-			auto cpu_base_handle = context->cpu_base_handles[(u32)DescriptorHeapType::SRV].ptr;
-			auto gpu_base_handle = context->gpu_base_handles[(u32)DescriptorHeapType::SRV].ptr;
-			auto descriptor_size = context->descriptor_sizes[(u32)DescriptorHeapType::SRV];
-			
-			out_cpu_desc_handle->ptr = cpu_base_handle + index * descriptor_size;
-			out_gpu_desc_handle->ptr = gpu_base_handle + index * descriptor_size;
-		};
-		
-		init_info.SrvDescriptorFreeFn = [](ImGui_ImplDX12_InitInfo* init_info, D3D12_CPU_DESCRIPTOR_HANDLE cpu_desc_handle, D3D12_GPU_DESCRIPTOR_HANDLE) {
-			auto* context = (GraphicsContextD3D12*)init_info->UserData;
-			
-			auto cpu_base_handle = context->cpu_base_handles[(u32)DescriptorHeapType::SRV].ptr;
-			auto descriptor_size = context->descriptor_sizes[(u32)DescriptorHeapType::SRV];
-			
-			u64 index = (cpu_desc_handle.ptr - cpu_base_handle) / descriptor_size;
-			DebugAssert(index < persistent_srv_descriptor_count, "Deallocated SRV index is out of bounds.");
-			
-			ArrayAppend(context->srv_heap_free_indices, (u16)index);
-		};
-		ImGui_ImplDX12_Init(&init_info);
-	}
-	
-	{
 		shader_compiler = CreateShaderCompiler(alloc);
 		
 		auto filepath = "./Build/RootSignature.bin"_sl;
@@ -241,14 +201,14 @@ static void CreateGraphicsPipelineState(GraphicsContextD3D12* context, const Sha
 	desc.BlendState.RenderTarget[0].SrcBlend       = D3D12_BLEND_SRC_ALPHA;
 	desc.BlendState.RenderTarget[0].DestBlend      = D3D12_BLEND_INV_SRC_ALPHA;
 	desc.BlendState.RenderTarget[0].BlendOp        = D3D12_BLEND_OP_ADD;
-	desc.BlendState.RenderTarget[0].SrcBlendAlpha  = D3D12_BLEND_SRC_ALPHA;
+	desc.BlendState.RenderTarget[0].SrcBlendAlpha  = D3D12_BLEND_ONE;
 	desc.BlendState.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_INV_SRC_ALPHA;
 	desc.BlendState.RenderTarget[0].BlendOpAlpha   = D3D12_BLEND_OP_ADD;
 	desc.BlendState.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
 	desc.SampleMask                                = u32_max;
 	desc.RasterizerState.FillMode                  = D3D12_FILL_MODE_SOLID;
-	desc.RasterizerState.CullMode                  = D3D12_CULL_MODE_BACK;
-	desc.RasterizerState.FrontCounterClockwise     = true;
+	desc.RasterizerState.CullMode                  = D3D12_CULL_MODE_NONE;
+	desc.RasterizerState.FrontCounterClockwise     = false;
 	desc.RasterizerState.DepthBias                 = 0;
 	desc.RasterizerState.DepthBiasClamp            = 0.f;
 	desc.RasterizerState.SlopeScaledDepthBias      = 0.f;
@@ -310,8 +270,6 @@ static void BuildPipelineStates(GraphicsContextD3D12* context, StackAllocator* a
 void ReleaseGraphicsContext(GraphicsContext* api_context) {
 	auto* context = (GraphicsContextD3D12*)api_context;
 	
-	ImGui_ImplDX12_Shutdown();
-	
 	ReleaseShaderCompiler(shader_compiler);
 	
 	SafeRelease(context->command_list);
@@ -322,7 +280,7 @@ void ReleaseGraphicsContext(GraphicsContext* api_context) {
 	SafeRelease(context->device);
 }
 
-static NativeTextureResource CreateTextureResource(GraphicsContext* api_context, TextureSize size) {
+NativeTextureResource CreateTextureResource(GraphicsContext* api_context, TextureSize size) {
 	auto* context = (GraphicsContextD3D12*)api_context;
 	
 	D3D12_HEAP_PROPERTIES heap_properties = {};
@@ -358,6 +316,50 @@ static NativeTextureResource CreateTextureResource(GraphicsContext* api_context,
 		IID_PPV_ARGS(&resource.d3d12)
 	);
 	DebugAssert(SUCCEEDED(result), "Failed to create texture resource.");
+	
+	return resource;
+}
+
+NativeBufferResource CreateBufferResource(GraphicsContext* api_context, u32 size, u8** cpu_address) {
+	auto* context = (GraphicsContextD3D12*)api_context;
+	
+	D3D12_HEAP_PROPERTIES heap_properties = {};
+	heap_properties.Type                 = D3D12_HEAP_TYPE_UPLOAD;
+	heap_properties.CPUPageProperty      = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
+	heap_properties.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
+	heap_properties.CreationNodeMask     = 0;
+	heap_properties.VisibleNodeMask      = 0;
+	
+	D3D12_RESOURCE_DESC1 resource_desc = {};
+	resource_desc.Dimension        = D3D12_RESOURCE_DIMENSION_BUFFER;
+	resource_desc.Alignment        = 0;
+	resource_desc.Width            = size;
+	resource_desc.Height           = 1;
+	resource_desc.DepthOrArraySize = 1;
+	resource_desc.MipLevels        = 1;
+	resource_desc.Format           = DXGI_FORMAT_UNKNOWN;
+	resource_desc.SampleDesc       = { 1, 0 };
+	resource_desc.Layout           = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+	resource_desc.Flags            = D3D12_RESOURCE_FLAG_NONE;
+	resource_desc.SamplerFeedbackMipRegion = { 0, 0, 0 };
+	
+	NativeBufferResource resource = {};
+	auto result = context->device->CreateCommittedResource3( 
+		&heap_properties,
+		D3D12_HEAP_FLAG_NONE,
+		&resource_desc,
+		D3D12_BARRIER_LAYOUT_UNDEFINED,
+		nullptr,
+		nullptr,
+		0,
+		nullptr,
+		IID_PPV_ARGS(&resource.d3d12)
+	);
+	DebugAssert(SUCCEEDED(result), "Failed to create buffer resource.");
+	
+	if (cpu_address) {
+		resource.d3d12->Map(0, nullptr, (void**)cpu_address);
+	}
 	
 	return resource;
 }
@@ -495,8 +497,6 @@ void WindowSwapChainBeginFrame(WindowSwapChain* api_swap_chain, GraphicsContext*
 	command_list->Reset(command_allocator, nullptr);
 	command_list->SetDescriptorHeaps(1, &context->descriptor_heaps[(u32)DescriptorHeapType::SRV]);
 	command_list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-	
-	ImGui_ImplDX12_NewFrame();
 }
 
 void WindowSwapChainEndFrame(WindowSwapChain* api_swap_chain, GraphicsContext* api_context, StackAllocator* alloc, RecordContext& record_context) {
@@ -504,25 +504,7 @@ void WindowSwapChainEndFrame(WindowSwapChain* api_swap_chain, GraphicsContext* a
 	auto* context = (GraphicsContextD3D12*)api_context;
 	
 	auto& back_buffer = swap_chain->back_buffers[swap_chain->dxgi_swap_chain->GetCurrentBackBufferIndex()];
-	
-	D3D12_TEXTURE_BARRIER barrier = {};
-	barrier.SyncBefore   = D3D12_BARRIER_SYNC_NONE;
-	barrier.SyncAfter    = D3D12_BARRIER_SYNC_RENDER_TARGET;
-	barrier.AccessBefore = D3D12_BARRIER_ACCESS_NO_ACCESS;
-	barrier.AccessAfter  = D3D12_BARRIER_ACCESS_RENDER_TARGET;
-	barrier.LayoutBefore = D3D12_BARRIER_LAYOUT_COMMON;
-	barrier.LayoutAfter  = D3D12_BARRIER_LAYOUT_RENDER_TARGET;
-	barrier.pResource    = back_buffer.resource.d3d12;
-	barrier.Subresources = {};
-	barrier.Flags        = D3D12_TEXTURE_BARRIER_FLAG_NONE;
-	
-	D3D12_BARRIER_GROUP barrier_group = {};
-	barrier_group.Type             = D3D12_BARRIER_TYPE_TEXTURE;
-	barrier_group.NumBarriers      = 1;
-	barrier_group.pTextureBarriers = &barrier;
-	
 	auto* command_list = context->command_list;
-	command_list->Barrier(1, &barrier_group);
 	
 	auto& resource_table = record_context.resource_table->virtual_resources;
 	for (auto& resource : resource_table) {
@@ -532,52 +514,7 @@ void WindowSwapChainEndFrame(WindowSwapChain* api_swap_chain, GraphicsContext* a
 		}
 	}
 	
-	struct ImGuiDescriptorTable : HLSL::BaseDescriptorTable {
-		HLSL::Texture2D<float4> transmittance_lut       = VirtualResourceID::TransmittanceLut;
-		HLSL::Texture2D<float4> multiple_scattering_lut = VirtualResourceID::MultipleScatteringLut;
-		HLSL::Texture2D<float4> sky_panorama_lut        = VirtualResourceID::SkyPanoramaLut;
-	};
-	HLSL::DescriptorTable<ImGuiDescriptorTable> root_descriptor_table = { 0, 3 };
-	
-	auto& descriptor_table = AllocateDescriptorTable(&record_context, root_descriptor_table);
-	
 	ReplayRecordContext(context, &record_context);
-	
-	auto gpu_base_handle = context->gpu_base_handles[(u32)DescriptorHeapType::SRV];
-	auto descriptor_size = context->descriptor_sizes[(u32)DescriptorHeapType::SRV];
-	
-	{
-		ImGui::Begin("Transmittance LUT");
-		auto size = resource_table[(u32)VirtualResourceID::TransmittanceLut].texture.size;
-		ImGui::Image(gpu_base_handle.ptr + (descriptor_table.descriptor_heap_offset + 0) * descriptor_size, ImVec2(size.x, size.y));
-		ImGui::End();
-	}
-	
-	{
-		ImGui::Begin("Multiple Scattering LUT");
-		auto size = resource_table[(u32)VirtualResourceID::MultipleScatteringLut].texture.size;
-		ImGui::Image(gpu_base_handle.ptr + (descriptor_table.descriptor_heap_offset + 1) * descriptor_size, ImVec2(size.x, size.y));
-		ImGui::End();
-	}
-	
-	{
-		ImGui::Begin("Sky Panorma LUT");
-		auto size = resource_table[(u32)VirtualResourceID::SkyPanoramaLut].texture.size;
-		ImGui::Image(gpu_base_handle.ptr + (descriptor_table.descriptor_heap_offset + 2) * descriptor_size, ImVec2(size.x, size.y) * 4.f);
-		ImGui::End();
-	}
-	
-	ImGui::Render();
-	
-	ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), context->command_list);
-	
-	barrier.SyncBefore   = D3D12_BARRIER_SYNC_RENDER_TARGET;
-	barrier.SyncAfter    = D3D12_BARRIER_SYNC_NONE;
-	barrier.AccessBefore = D3D12_BARRIER_ACCESS_RENDER_TARGET;
-	barrier.AccessAfter  = D3D12_BARRIER_ACCESS_NO_ACCESS;
-	barrier.LayoutBefore = D3D12_BARRIER_LAYOUT_RENDER_TARGET;
-	barrier.LayoutAfter  = D3D12_BARRIER_LAYOUT_COMMON;
-	command_list->Barrier(1, &barrier_group);
 	
 	command_list->Close();
 	

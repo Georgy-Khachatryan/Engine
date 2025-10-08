@@ -110,7 +110,7 @@ static void CmdSetRenderTargetsD3D12(CmdSetRenderTargetsPacket* packet, ID3D12Gr
 	command_list->OMSetRenderTargets((u32)packet->resource_ids.count, &base_descriptor_handle, true, nullptr);
 }
 
-static void CmdSetViewportAndScissorD3D12(CmdSetViewportAndScissorPacket* packet, ID3D12GraphicsCommandList7* command_list) {
+static void CmdSetViewportD3D12(CmdSetViewportAndScissorPacket* packet, ID3D12GraphicsCommandList7* command_list) {
 	D3D12_VIEWPORT viewport = {};
 	viewport.TopLeftX = (float)packet->min.x;
 	viewport.TopLeftY = (float)packet->min.y;
@@ -119,13 +119,25 @@ static void CmdSetViewportAndScissorD3D12(CmdSetViewportAndScissorPacket* packet
 	viewport.MinDepth = 0.f;
 	viewport.MaxDepth = 1.f;
 	command_list->RSSetViewports(1, &viewport);
-	
+}
+
+static void CmdSetScissorD3D12(CmdSetViewportAndScissorPacket* packet, ID3D12GraphicsCommandList7* command_list) {
 	D3D12_RECT scissor = {};
 	scissor.left   = (s32)packet->min.x;
 	scissor.top    = (s32)packet->min.y;
 	scissor.right  = (s32)packet->max.x;
 	scissor.bottom = (s32)packet->max.y;
 	command_list->RSSetScissorRects(1, &scissor);
+}
+
+static void CmdSetIndexBufferViewD3D12(CmdSetIndexBufferViewPacket* packet, ID3D12GraphicsCommandList7* command_list, ArrayView<VirtualResource> resources) {
+	auto& resource = resources[(u32)packet->resource_id];
+	
+	D3D12_INDEX_BUFFER_VIEW index_buffer_view = {};
+	index_buffer_view.BufferLocation = resource.buffer.resource.d3d12->GetGPUVirtualAddress() + packet->offset;
+	index_buffer_view.SizeInBytes    = packet->size;
+	index_buffer_view.Format         = dxgi_texture_format_map[(u32)packet->format];
+	command_list->IASetIndexBuffer(&index_buffer_view);
 }
 
 static void CmdDispatchD3D12(CmdDispatchPacket* packet, ID3D12GraphicsCommandList7* command_list) {
@@ -140,6 +152,27 @@ static void CmdDrawIndexedInstancedD3D12(CmdDrawIndexedInstancedPacket* packet, 
 	command_list->DrawIndexedInstanced(packet->index_count_per_instance, packet->instance_count, packet->start_index_location, packet->base_vertex_location, packet->start_instance_location);
 }
 
+static void CmdCopyBufferToTextureD3D12(CmdCopyBufferToTexturePacket* packet, ID3D12GraphicsCommandList7* command_list, ArrayView<VirtualResource> resources) {
+	auto& src_resource = resources[(u32)packet->src_buffer_resource_id];
+	auto& dst_resource = resources[(u32)packet->dst_texture_resource_id];
+	
+	D3D12_TEXTURE_COPY_LOCATION src = {};
+	src.pResource                          = src_resource.buffer.resource.d3d12;
+	src.Type                               = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+	src.PlacedFootprint.Offset             = packet->src_buffer_offset;
+	src.PlacedFootprint.Footprint.Format   = dxgi_texture_format_map[(u32)dst_resource.texture.size.format];
+	src.PlacedFootprint.Footprint.Width    = packet->src_size.x;
+	src.PlacedFootprint.Footprint.Height   = packet->src_size.y;
+	src.PlacedFootprint.Footprint.Depth    = packet->src_size.z;
+	src.PlacedFootprint.Footprint.RowPitch = packet->src_row_pitch;
+	
+	D3D12_TEXTURE_COPY_LOCATION dst = {};
+	dst.pResource        = dst_resource.texture.resource.d3d12;
+	dst.Type             = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+	dst.SubresourceIndex = packet->dst_subresource_index;
+	
+	command_list->CopyTextureRegion(&dst, packet->dst_offset.x, packet->dst_offset.y, packet->dst_offset.z, &src, nullptr);
+}
 
 static void CmdSetRootSignatureD3D12(CmdSetRootSignaturePacket* packet, ID3D12GraphicsCommandList7* command_list, GraphicsContextD3D12* context) {
 	if (packet->pass_type == RenderPassType::Compute) {
@@ -181,6 +214,8 @@ static void ResolveTextureAccess(D3D12_BARRIER_SYNC& sync, D3D12_BARRIER_ACCESS&
 	if (stages_mask & (u32)PipelineStagesMask::ComputeShader) sync |= D3D12_BARRIER_SYNC_COMPUTE_SHADING;
 	if (stages_mask & (u32)PipelineStagesMask::PixelShader)   sync |= D3D12_BARRIER_SYNC_PIXEL_SHADING;
 	if (stages_mask & (u32)PipelineStagesMask::VertexShader)  sync |= D3D12_BARRIER_SYNC_VERTEX_SHADING;
+	if (stages_mask & (u32)PipelineStagesMask::Copy)          sync |= D3D12_BARRIER_SYNC_COPY;
+	if (stages_mask & (u32)PipelineStagesMask::RenderTarget)  sync |= D3D12_BARRIER_SYNC_RENDER_TARGET;
 	
 	if (access_mask & (u32)ResourceAccessMask::SRV) {
 		access = D3D12_BARRIER_ACCESS_SHADER_RESOURCE;
@@ -191,6 +226,24 @@ static void ResolveTextureAccess(D3D12_BARRIER_SYNC& sync, D3D12_BARRIER_ACCESS&
 	if (access_mask & (u32)ResourceAccessMask::UAV) {
 		access = D3D12_BARRIER_ACCESS_UNORDERED_ACCESS;
 		layout = D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS;
+		return;
+	}
+	
+	if (access_mask & (u32)ResourceAccessMask::CopySrc) {
+		access = D3D12_BARRIER_ACCESS_COPY_SOURCE;
+		layout = D3D12_BARRIER_LAYOUT_COPY_SOURCE;
+		return;
+	}
+	
+	if (access_mask & (u32)ResourceAccessMask::CopyDst) {
+		access = D3D12_BARRIER_ACCESS_COPY_DEST;
+		layout = D3D12_BARRIER_LAYOUT_COPY_DEST;
+		return;
+	}
+	
+	if (access_mask & (u32)ResourceAccessMask::RenderTarget) {
+		access = D3D12_BARRIER_ACCESS_RENDER_TARGET;
+		layout = D3D12_BARRIER_LAYOUT_RENDER_TARGET;
 		return;
 	}
 	
@@ -300,9 +353,12 @@ void ReplayRecordContext(GraphicsContext* api_context, RecordContext* record_con
 			case CommandType::Dispatch:              CmdDispatchD3D12((CmdDispatchPacket*)packet, command_list); break;
 			case CommandType::DrawInstanced:         CmdDrawInstancedD3D12((CmdDrawInstancedPacket*)packet, command_list); break;
 			case CommandType::DrawIndexedInstanced:  CmdDrawIndexedInstancedD3D12((CmdDrawIndexedInstancedPacket*)packet, command_list); break;
+			case CommandType::CopyBufferToTexture:   CmdCopyBufferToTextureD3D12((CmdCopyBufferToTexturePacket*)packet, command_list, resources); break;
 			case CommandType::ClearRenderTarget:     CmdClearRenderTargetD3D12((CmdClearRenderTargetPacket*)packet, command_list, context, resources); break;
 			case CommandType::SetRenderTargets:      CmdSetRenderTargetsD3D12((CmdSetRenderTargetsPacket*)packet, command_list, context, resources); break;
-			case CommandType::SetViewportAndScissor: CmdSetViewportAndScissorD3D12((CmdSetViewportAndScissorPacket*)packet, command_list); break;
+			case CommandType::SetViewport:           CmdSetViewportD3D12((CmdSetViewportAndScissorPacket*)packet, command_list); break;
+			case CommandType::SetScissor:            CmdSetScissorD3D12((CmdSetViewportAndScissorPacket*)packet, command_list); break;
+			case CommandType::SetIndexBufferView:    CmdSetIndexBufferViewD3D12((CmdSetIndexBufferViewPacket*)packet, command_list, resources); break;
 			case CommandType::SetRootSignature:      CmdSetRootSignatureD3D12((CmdSetRootSignaturePacket*)packet, command_list, context); break;
 			case CommandType::SetDescriptorTable:    CmdSetDescriptorTableD3D12((CmdSetDescriptorTablePacket*)packet, command_list, context); break;
 			case CommandType::SetPushConstants:      CmdSetPushConstantsD3D12((CmdSetPushConstantsPacket*)packet, command_list); break;

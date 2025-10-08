@@ -36,6 +36,13 @@ static CommandPacketT& AppendPacket(RecordContext* record_context) {
 	return *packet;
 }
 
+static void AppendResourceAccesses(RecordContext* record_context, ArrayView<ResourceAccessDefinition> resource_accesses) {
+	record_context->resource_bindings_dirty = true;
+
+	ArrayAppend(record_context->resource_accesses, record_context->alloc, ArrayCopy(resource_accesses, record_context->alloc));
+	ArrayAppend(record_context->resource_access_command_prefix_sum, record_context->alloc, record_context->command_count);
+}
+
 static void AppendResourceBindings(RecordContext* record_context, PipelineStagesMask stages_mask) {
 	if (record_context->resource_bindings_dirty == false) {
 		ArrayLastElement(record_context->resource_access_command_prefix_sum) = record_context->command_count;
@@ -120,10 +127,52 @@ void CmdDrawIndexedInstanced(RecordContext* record_context, u32 index_count_per_
 	AppendResourceBindings(record_context, PipelineStagesMask::VertexShader | PipelineStagesMask::PixelShader);
 }
 
+void CmdCopyBufferToTexture(RecordContext* record_context, VirtualResourceID src_buffer_resource_id, VirtualResourceID dst_texture_resource_id, u32 src_buffer_offset, u32 src_row_pitch, uint3 src_size, u32 dst_subresource_index, uint3 dst_offset) {
+	auto& packet = AppendPacket<CmdCopyBufferToTexturePacket>(record_context);
+	packet.src_buffer_resource_id  = src_buffer_resource_id;
+	packet.dst_texture_resource_id = dst_texture_resource_id;
+	packet.src_buffer_offset       = src_buffer_offset;
+	packet.src_row_pitch           = src_row_pitch;
+	packet.src_size                = src_size;
+	packet.dst_subresource_index   = dst_subresource_index;
+	packet.dst_offset              = dst_offset;
+	
+	FixedCountArray<ResourceAccessDefinition, 2> resource_accesses;
+	resource_accesses[0].resource_id = src_buffer_resource_id;
+	resource_accesses[0].is_texture  = false;
+	resource_accesses[0].stages_mask = PipelineStagesMask::Copy;
+	resource_accesses[0].access_mask = ResourceAccessMask::CopySrc;
+	
+	resource_accesses[1].resource_id = dst_texture_resource_id;
+	resource_accesses[1].is_texture  = true;
+	resource_accesses[1].stages_mask = PipelineStagesMask::Copy;
+	resource_accesses[1].access_mask = ResourceAccessMask::CopyDst;
+	
+	DebugAssert(dst_subresource_index == 0, "TODO: Add support for subresources.");
+	resource_accesses[1].mip_index   = 0;
+	resource_accesses[1].mip_count   = 0;
+	resource_accesses[1].array_index = 0;
+	resource_accesses[1].array_count = 0;
+	
+	AppendResourceAccesses(record_context, resource_accesses);
+}
+
 
 void CmdClearRenderTarget(RecordContext* record_context, VirtualResourceID resource_id) {
 	auto& packet = AppendPacket<CmdClearRenderTargetPacket>(record_context);
 	packet.resource_id = resource_id;
+	
+	FixedCountArray<ResourceAccessDefinition, 1> resource_accesses;
+	resource_accesses[0].resource_id = resource_id;
+	resource_accesses[0].is_texture  = true;
+	resource_accesses[0].stages_mask = PipelineStagesMask::RenderTarget;
+	resource_accesses[0].access_mask = ResourceAccessMask::RenderTarget;
+	resource_accesses[0].mip_index   = 0;
+	resource_accesses[0].mip_count   = 0;
+	resource_accesses[0].array_index = 0;
+	resource_accesses[0].array_count = 0;
+	
+	AppendResourceAccesses(record_context, resource_accesses);
 }
 
 void CmdSetRenderTargets(RecordContext* record_context, ArrayView<VirtualResourceID> resource_ids) {
@@ -132,11 +181,31 @@ void CmdSetRenderTargets(RecordContext* record_context, ArrayView<VirtualResourc
 }
 
 void CmdSetViewportAndScissor(RecordContext* record_context, uint2 max, uint2 min) {
+	CmdSetViewport(record_context, max, min);
+	CmdSetScissor(record_context, max, min);
+}
+
+void CmdSetViewport(RecordContext* record_context, uint2 max, uint2 min) {
 	auto& packet = AppendPacket<CmdSetViewportAndScissorPacket>(record_context);
+	packet.packet_type = CommandType::SetViewport;
 	packet.min = min;
 	packet.max = max;
 }
 
+void CmdSetScissor(RecordContext* record_context, uint2 max, uint2 min) {
+	auto& packet = AppendPacket<CmdSetViewportAndScissorPacket>(record_context);
+	packet.packet_type = CommandType::SetScissor;
+	packet.min = min;
+	packet.max = max;
+}
+
+void CmdSetIndexBufferView(RecordContext* record_context, VirtualResourceID resource_id, u32 offset, u32 size, TextureFormat format) {
+	auto& packet = AppendPacket<CmdSetIndexBufferViewPacket>(record_context);
+	packet.resource_id = resource_id;
+	packet.offset      = offset;
+	packet.size        = size;
+	packet.format      = format;
+}
 
 void CmdSetRootSignature(RecordContext* record_context, const HLSL::BaseRootSignature& root_signature) {
 	auto& packet = AppendPacket<CmdSetRootSignaturePacket>(record_context);

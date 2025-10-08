@@ -8,13 +8,16 @@ enum struct CommandType : u16 {
 	Dispatch              = 2,
 	DrawInstanced         = 3,
 	DrawIndexedInstanced  = 4,
-	ClearRenderTarget     = 5,
-	SetRenderTargets      = 6,
-	SetViewportAndScissor = 7,
-	SetRootSignature      = 8,
-	SetDescriptorTable    = 9,
-	SetPushConstants      = 10,
-	SetPipelineState      = 11,
+	CopyBufferToTexture   = 5,
+	ClearRenderTarget     = 6,
+	SetRenderTargets      = 7,
+	SetViewport           = 8,
+	SetScissor            = 9,
+	SetIndexBufferView    = 10,
+	SetRootSignature      = 11,
+	SetDescriptorTable    = 12,
+	SetPushConstants      = 13,
+	SetPipelineState      = 14,
 	
 	Count
 };
@@ -55,6 +58,20 @@ struct CmdDrawIndexedInstancedPacket : RecordContextCommandPacket {
 	u32 start_instance_location  = 0;
 };
 
+struct CmdCopyBufferToTexturePacket : RecordContextCommandPacket {
+	compile_const CommandType my_type = CommandType::CopyBufferToTexture;
+	
+	VirtualResourceID src_buffer_resource_id = {};
+	VirtualResourceID dst_texture_resource_id = {};
+
+	u32 src_buffer_offset = 0;
+	u32 src_row_pitch = 0;
+	uint3 src_size = 0;
+	
+	u32 dst_subresource_index = 0;
+	uint3 dst_offset = 0;
+};
+
 struct CmdClearRenderTargetPacket : RecordContextCommandPacket {
 	compile_const CommandType my_type = CommandType::ClearRenderTarget;
 	
@@ -68,10 +85,19 @@ struct CmdSetRenderTargetsPacket : RecordContextCommandPacket {
 };
 
 struct CmdSetViewportAndScissorPacket : RecordContextCommandPacket {
-	compile_const CommandType my_type = CommandType::SetViewportAndScissor;
+	compile_const CommandType my_type = CommandType::None;
 	
 	uint2 min = 0;
 	uint2 max = 0;
+};
+
+struct CmdSetIndexBufferViewPacket : RecordContextCommandPacket {
+	compile_const CommandType my_type = CommandType::SetIndexBufferView;
+	
+	VirtualResourceID resource_id = {};
+	u32 offset = 0;
+	u32 size = 0;
+	TextureFormat format {};
 };
 
 struct CmdSetRootSignaturePacket : RecordContextCommandPacket {

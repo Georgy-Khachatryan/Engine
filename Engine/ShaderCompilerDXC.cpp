@@ -50,9 +50,9 @@ static void SafeReleaseDXC(ResourceT*& resource) {
 }
 
 compile_const wchar_t* target_profiles[(u32)ShaderType::Count] = {
-	L"cs_6_6",
-	L"vs_6_6",
-	L"ps_6_6",
+	L"cs_6_8",
+	L"vs_6_8",
+	L"ps_6_8",
 };
 
 compile_const wchar_t* entry_point_names[(u32)ShaderType::Count] = {

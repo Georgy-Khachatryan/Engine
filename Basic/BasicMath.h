@@ -24,6 +24,10 @@ inline u64 AlignUp(u64 size, u64 alignment) {
 	return (size + alignment - 1) & ~(alignment - 1);
 }
 
+inline u64 RoundUp(u64 size, u64 alignment) {
+	return ((size + alignment - 1) / alignment) * alignment;
+}
+
 inline u64 Min(u64 lh, u64 rh) { return lh < rh ? lh : rh; }
 inline u64 Max(u64 lh, u64 rh) { return lh > rh ? lh : rh; }
 inline u32 Min(u32 lh, u32 rh) { return lh < rh ? lh : rh; }

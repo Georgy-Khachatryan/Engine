@@ -23,6 +23,9 @@ struct WindowSwapChain {
 GraphicsContext* CreateGraphicsContext(StackAllocator* alloc);
 void ReleaseGraphicsContext(GraphicsContext* context);
 
+NativeTextureResource CreateTextureResource(GraphicsContext* context, TextureSize size);
+NativeBufferResource CreateBufferResource(GraphicsContext* context, u32 size, u8** cpu_address);
+
 WindowSwapChain* CreateWindowSwapChain(StackAllocator* alloc, GraphicsContext* context, void* hwnd);
 void ReleaseWindowSwapChain(WindowSwapChain* swap_chain, GraphicsContext* context);
 void ResizeWindowSwapChain(WindowSwapChain* swap_chain, GraphicsContext* context, uint2 size);
@@ -83,6 +86,7 @@ struct VirtualResource {
 		
 		struct {
 			NativeBufferResource resource;
+			u8* cpu_address;
 			u32 size;
 			u32 allocated_size;
 		} buffer;
@@ -108,17 +112,18 @@ struct VirtualResourceTable {
 	void Set(VirtualResourceID resource_id, NativeTextureResource native_resource, TextureSize size) {
 		auto& resource = virtual_resources[(u32)resource_id];
 		resource.type = VirtualResource::Type::NativeTexture;
-		resource.texture.resource = native_resource;
-		resource.texture.size = size;
+		resource.texture.resource       = native_resource;
+		resource.texture.size           = size;
 		resource.texture.allocated_size = size;
 	}
 	
-	void Set(VirtualResourceID resource_id, NativeBufferResource native_resource, u32 size) {
+	void Set(VirtualResourceID resource_id, NativeBufferResource native_resource, u32 size, u8* cpu_address = nullptr) {
 		auto& resource = virtual_resources[(u32)resource_id];
 		resource.type = VirtualResource::Type::NativeBuffer;
-		resource.buffer.resource = native_resource;
-		resource.buffer.size = size;
+		resource.buffer.resource       = native_resource;
+		resource.buffer.size           = size;
 		resource.buffer.allocated_size = size;
+		resource.buffer.cpu_address    = cpu_address;
 	}
 };
 

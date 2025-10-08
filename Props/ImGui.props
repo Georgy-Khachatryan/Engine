@@ -17,7 +17,6 @@
   </ItemDefinitionGroup>
   
   <ItemGroup>
-    <ClCompile Include="$(SdkDir)imgui/backends/imgui_impl_dx12.cpp" />
     <ClCompile Include="$(SdkDir)imgui/backends/imgui_impl_win32.cpp" />
     <ClCompile Include="$(SdkDir)imgui/imgui.cpp" />
     <ClCompile Include="$(SdkDir)imgui/imgui_demo.cpp" />

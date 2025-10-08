@@ -163,6 +163,8 @@ enum struct VirtualResourceID : u32 {
 	TransmittanceLut,
 	MultipleScatteringLut,
 	SkyPanoramaLut,
+	ImGuiUploadBuffer,
+	ImGuiFontTexture,
 	
 	Count
 };
@@ -255,7 +257,8 @@ struct ImGuiRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
-		HLSL::RegularBuffer<ImGuiVertex> vertices;
+		HLSL::RegularBuffer<ImGuiVertex> vertices = VirtualResourceID::ImGuiUploadBuffer;
+		HLSL::Texture2D<float4>      font_texture = VirtualResourceID::ImGuiFontTexture;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {

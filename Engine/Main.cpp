@@ -311,6 +311,7 @@ s32 main() {
 	auto& io = ImGui::GetIO();
 	io.IniFilename = "./Build/ImGuiSettings.ini";
 	io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+	io.BackendFlags |= ImGuiBackendFlags_RendererHasVtxOffset | ImGuiBackendFlags_RendererHasTextures;
 	io.Fonts->AddFontFromFileTTF("./Assets/OpenSans-Regular.ttf", 18.f, &font_config);
 	
 	auto* window = SystemCreateWindow(&alloc, L"Engine");
@@ -326,6 +327,15 @@ s32 main() {
 	defer{ ReleaseWindowSwapChain(swap_chain, graphics_context); };
 	
 	ImGui::StyleColorsDark();
+	
+	FixedCountArray<NativeBufferResource, number_of_frames_in_flight> upload_buffers;
+	FixedCountArray<u8*, number_of_frames_in_flight> upload_buffer_cpu_addresses;
+	compile_const u32 imgui_upload_buffer_size = 8 * 1024 * 1024;
+	
+	for (u32 i = 0; i < number_of_frames_in_flight; i += 1) {
+		upload_buffers[i] = CreateBufferResource(graphics_context, imgui_upload_buffer_size, &upload_buffer_cpu_addresses[i]);
+	}
+	u32 upload_buffer_index = 0;
 	
 	VirtualResourceTable resource_table;
 	ArrayResizeMemset(resource_table.virtual_resources, &alloc, (u64)VirtualResourceID::Count);
@@ -351,6 +361,8 @@ s32 main() {
 		ImGui::NewFrame();
 		
 		resource_table.Set(VirtualResourceID::CurrentBackBuffer, WindowSwapGetCurrentBackBuffer(swap_chain), TextureSize(TextureFormat::R8G8B8A8_UNORM, swap_chain->size));
+		resource_table.Set(VirtualResourceID::ImGuiUploadBuffer, upload_buffers[upload_buffer_index], imgui_upload_buffer_size, upload_buffer_cpu_addresses[upload_buffer_index]);
+		upload_buffer_index = (upload_buffer_index + 1) % number_of_frames_in_flight;
 		
 		ImGui::ShowDemoWindow(nullptr);
 		

@@ -40,9 +40,13 @@ void CmdDispatch(RecordContext* record_context, uint2 group_count_xy, u32 group_
 void CmdDispatch(RecordContext* record_context, const uint3& group_count_xyz);
 void CmdDrawInstanced(RecordContext* record_context, u32 vertex_count_per_instance, u32 instance_count = 1, u32 start_vertex_location = 0, u32 start_instance_location = 0);
 void CmdDrawIndexedInstanced(RecordContext* record_context, u32 index_count_per_instance, u32 instance_count = 1, u32 start_index_location = 0, u32 base_vertex_location = 0, u32 start_instance_location = 0);
+void CmdCopyBufferToTexture(RecordContext* record_context, VirtualResourceID src_buffer_resource_id, VirtualResourceID dst_texture_resource_id, u32 src_buffer_offset, u32 src_row_pitch, uint3 src_size, u32 dst_subresource_index = 0, uint3 dst_offset = 0);
 void CmdClearRenderTarget(RecordContext* record_context, VirtualResourceID resource_id);
 void CmdSetRenderTargets(RecordContext* record_context, ArrayView<VirtualResourceID> resource_ids);
 void CmdSetViewportAndScissor(RecordContext* record_context, uint2 max, uint2 min = 0);
+void CmdSetViewport(RecordContext* record_context, uint2 max, uint2 min = 0);
+void CmdSetScissor(RecordContext* record_context, uint2 max, uint2 min = 0);
+void CmdSetIndexBufferView(RecordContext* record_context, VirtualResourceID resource_id, u32 offset, u32 size, TextureFormat forma);
 
 void CmdSetRootSignature(RecordContext* record_context, const HLSL::BaseRootSignature& root_signature);
 void CmdSetDescriptorTable(RecordContext* record_context, u32 offset, HLSL::BaseDescriptorTable& descriptor_table);
