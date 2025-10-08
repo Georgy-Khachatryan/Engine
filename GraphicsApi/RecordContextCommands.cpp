@@ -121,14 +121,14 @@ void CmdDrawIndexedInstanced(RecordContext* record_context, u32 index_count_per_
 }
 
 
-void CmdClearRenderTarget(RecordContext* record_context, u64 rtv_heap_index) {
+void CmdClearRenderTarget(RecordContext* record_context, VirtualResourceID resource_id) {
 	auto& packet = AppendPacket<CmdClearRenderTargetPacket>(record_context);
-	packet.rtv_heap_index = rtv_heap_index;
+	packet.resource_id = resource_id;
 }
 
-void CmdSetRenderTargets(RecordContext* record_context, ArrayView<u64> rtv_heap_indices) {
+void CmdSetRenderTargets(RecordContext* record_context, ArrayView<VirtualResourceID> resource_ids) {
 	auto& packet = AppendPacket<CmdSetRenderTargetsPacket>(record_context);
-	packet.rtv_heap_indices = ArrayCopy(rtv_heap_indices, record_context->alloc);
+	packet.resource_ids = ArrayCopy(resource_ids, record_context->alloc);
 }
 
 void CmdSetViewportAndScissor(RecordContext* record_context, uint2 max, uint2 min) {
@@ -141,7 +141,9 @@ void CmdSetViewportAndScissor(RecordContext* record_context, uint2 max, uint2 mi
 void CmdSetRootSignature(RecordContext* record_context, const HLSL::BaseRootSignature& root_signature) {
 	auto& packet = AppendPacket<CmdSetRootSignaturePacket>(record_context);
 	packet.root_signature_index = root_signature.root_signature_index;
+	packet.pass_type            = root_signature.pass_type;
 	
+	record_context->current_render_pass_type = root_signature.pass_type;
 	record_context->resource_bindings.count = 0;
 	record_context->resource_bindings_dirty = true;
 	ArrayResizeMemset(record_context->resource_bindings, record_context->alloc, root_signature.root_parameter_count);
@@ -151,9 +153,17 @@ void CmdSetDescriptorTable(RecordContext* record_context, u32 offset, HLSL::Base
 	auto& packet = AppendPacket<CmdSetDescriptorTablePacket>(record_context);
 	packet.offset                 = offset;
 	packet.descriptor_heap_offset = descriptor_table.descriptor_heap_offset;
+	packet.pass_type              = record_context->current_render_pass_type;
 	
 	record_context->resource_bindings[offset] = &descriptor_table;
 	record_context->resource_bindings_dirty = true;
+}
+
+void CmdSetPushConstants(RecordContext* record_context, u32 offset, ArrayView<u32> push_constants) {
+	auto& packet = AppendPacket<CmdSetPushConstantsPacket>(record_context);
+	packet.offset         = offset;
+	packet.pass_type      = record_context->current_render_pass_type;
+	packet.push_constants = ArrayCopy(push_constants, record_context->alloc);
 }
 
 void CmdSetPipelineState(RecordContext* record_context, PipelineID pipeline_id) {

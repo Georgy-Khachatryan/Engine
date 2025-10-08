@@ -20,7 +20,7 @@ enum struct DescriptorHeapType : u32 {
 
 
 struct SwapChainBackBuffer {
-	ID3D12Resource* resource = nullptr;
+	NativeTextureResource resource = {};
 	D3D12_CPU_DESCRIPTOR_HANDLE descriptor = {};
 };
 

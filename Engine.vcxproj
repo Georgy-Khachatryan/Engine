@@ -38,6 +38,7 @@
     <ClCompile Include="Engine/ShaderCompilerDXC.cpp" />
     <ClCompile Include="Engine/SystemWindowWin32.cpp" />
     <ClCompile Include="Engine/AtmosphereRenderPasses.cpp" />
+    <ClCompile Include="Engine/ImGuiRenderPass.cpp" />
     <ClCompile Include="Engine/Generated/RootSignature.cpp" />
     <ClCompile Include="Engine/Generated/ShaderDefinitions.cpp" />
     

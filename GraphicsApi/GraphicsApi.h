@@ -26,6 +26,7 @@ void ReleaseGraphicsContext(GraphicsContext* context);
 WindowSwapChain* CreateWindowSwapChain(StackAllocator* alloc, GraphicsContext* context, void* hwnd);
 void ReleaseWindowSwapChain(WindowSwapChain* swap_chain, GraphicsContext* context);
 void ResizeWindowSwapChain(WindowSwapChain* swap_chain, GraphicsContext* context, uint2 size);
+NativeTextureResource WindowSwapGetCurrentBackBuffer(WindowSwapChain* swap_chain);
 void WindowSwapChainBeginFrame(WindowSwapChain* swap_chain, GraphicsContext* context, StackAllocator* alloc);
 void WindowSwapChainEndFrame(WindowSwapChain* swap_chain, GraphicsContext* context, StackAllocator* alloc, RecordContext& record_context);
 
@@ -46,10 +47,16 @@ struct PipelineLibrary {
 };
 
 PipelineID CreateComputePipeline(PipelineLibrary* lib, ShaderID shader_id, u64 permutation = 0);
+PipelineID CreateGraphicsPipeline(PipelineLibrary* lib, ShaderID shader_id, u64 permutation = 0, ShaderTypeMask shader_type_mask = ShaderTypeMask::VertexShader | ShaderTypeMask::PixelShader);
 
 template<typename ShadersEnumT>
 PipelineID CreateComputePipeline(PipelineLibrary* lib, ShaderID shader_id, ShadersEnumT permutation) {
 	return CreateComputePipeline(lib, shader_id, (u64)permutation);
+}
+
+template<typename ShadersEnumT>
+PipelineID CreateGraphicsPipeline(PipelineLibrary* lib, ShaderID shader_id, ShadersEnumT permutation, ShaderTypeMask shader_type_mask = ShaderTypeMask::VertexShader | ShaderTypeMask::PixelShader) {
+	return CreateComputePipeline(lib, shader_id, (u64)permutation, shader_type_mask);
 }
 
 

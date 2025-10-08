@@ -92,6 +92,29 @@ struct ShaderDefinitionFileData {
 	Array<String> shader_names;
 };
 
+static u32 ComputeTypeSize(TypeInfo* type_info) {
+	switch (type_info ? type_info->info_type : TypeInfoType::None) {
+	case TypeInfoType::Integer: {
+		auto* type_info_integer = (TypeInfoInteger*)type_info;
+		return DivideAndRoundUp(type_info_integer->bit_width, 8u);
+	} case TypeInfoType::Float: {
+		auto* type_info_float = (TypeInfoFloat*)type_info;
+		return DivideAndRoundUp(type_info_float->bit_width, 8u);
+	} case TypeInfoType::Struct: {
+		auto* type_info_struct = (TypeInfoStruct*)type_info;
+		return (u32)type_info_struct->size;
+	} case TypeInfoType::Enum: {
+		auto* type_info_enum = (TypeInfoEnum*)type_info;
+		return ComputeTypeSize(type_info_enum->underlying_type);
+	} case TypeInfoType::String: {
+		return sizeof(String);
+	} default: {
+		DebugAssertAlways("Unhandled TypeInfoType.");
+		return 0;
+	}
+	}
+}
+
 static String PrintTypeName(TypeInfo* type_info) {
 	switch (type_info ? type_info->info_type : TypeInfoType::None) {
 	case TypeInfoType::Integer: {
@@ -297,7 +320,7 @@ static void WriteHlslFilesToDisk(StackAllocator* alloc, HashTable<String, HlslFi
 	}
 }
 
-static void GenerateCodeForRenderPass(StackAllocator* alloc, String filename, HlslFileData& hlsl_bindings_file, RootSignatureFileData& root_signature_file, TypeInfo* type_info) {
+static void GenerateCodeForRenderPass(StackAllocator* alloc, String filename, HlslFileData& hlsl_bindings_file, RootSignatureFileData& root_signature_file, TypeInfo* type_info, Meta::RenderPass* render_pass_note) {
 	auto* type_info_struct = (TypeInfoStruct*)type_info;
 	auto& builder = hlsl_bindings_file.builder;
 	
@@ -325,6 +348,11 @@ static void GenerateCodeForRenderPass(StackAllocator* alloc, String filename, Hl
 					}
 					root_parameter_count += 1;
 				} else if (type_name == "HLSL::ConstantBuffer<T>"_sl) {
+					if (auto* note = FindNote<Meta::HlslFile>(template_type)) {
+						HashTableAddOrFind(dependent_types, alloc, note->filename, 0u);
+					}
+					root_parameter_count += 1;
+				} else if (type_name == "HLSL::PushConstantBuffer<T>"_sl) {
 					if (auto* note = FindNote<Meta::HlslFile>(template_type)) {
 						HashTableAddOrFind(dependent_types, alloc, note->filename, 0u);
 					}
@@ -359,7 +387,7 @@ static void GenerateCodeForRenderPass(StackAllocator* alloc, String filename, Hl
 	cpp_builder.Append("%.*s::RootSignature %.*s::root_signature = {\n", (s32)name.count, name.data, (s32)name.count, name.data);
 	cpp_builder.Indent();
 	
-	cpp_builder.Append("%u, %u,\n", (u32)root_signature_file.root_signatures.count, root_parameter_count);
+	cpp_builder.Append("%u, %u, (RenderPassType)%u,\n", (u32)root_signature_file.root_signatures.count, root_parameter_count, (u32)render_pass_note->pass_type);
 	
 	Array<D3D12_ROOT_PARAMETER1> root_parameters; 
 	
@@ -440,6 +468,22 @@ static void GenerateCodeForRenderPass(StackAllocator* alloc, String filename, Hl
 			
 			cpp_builder.Append("{ %u },\n", root_parameter_index);
 			root_parameter_index += 1;
+		} else if (type_name == "HLSL::PushConstantBuffer<T>"_sl) {
+			auto template_type_name = PrintTypeName(template_type);
+			
+			builder.Append("ConstantBuffer<%.*s> %.*s : register(b%u);\n", (s32)template_type_name.count, template_type_name.data, (s32)field.name.count, field.name.data, cbv_index);
+			
+			auto& root_parameter = ArrayEmplace(root_parameters, alloc); 
+			root_parameter.ParameterType            = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
+			root_parameter.Constants.ShaderRegister = cbv_index;
+			root_parameter.Constants.RegisterSpace  = 0;
+			root_parameter.Constants.Num32BitValues = DivideAndRoundUp(ComputeTypeSize(template_type), sizeof(u32));
+			root_parameter.ShaderVisibility         = D3D12_SHADER_VISIBILITY_ALL;
+			
+			cbv_index += 1;
+			
+			cpp_builder.Append("{ %u },\n", root_parameter_index);
+			root_parameter_index += 1;
 		} else if (field.type != &type_info_type) {
 			DebugAssertAlways("Unexpected field '%.*s' of type '%.*s' used in a root signature of pass '%.*s'. Only root arguments are allowed.", (s32)field.name.count, field.name.data, (s32)type_name.count, type_name.data, (s32)name.count, name.data);
 		}
@@ -505,7 +549,7 @@ static void GenerateCodeForRenderPass(StackAllocator* alloc, HashTable<String, H
 	
 	auto& hlsl_file = AddOrFindHlslFile(alloc, hlsl_bindings_files, filename);
 	
-	GenerateCodeForRenderPass(alloc, filename, hlsl_file, root_signature_file, type_info);
+	GenerateCodeForRenderPass(alloc, filename, hlsl_file, root_signature_file, type_info, render_pass_note);
 }
 
 static void GenerateCodeForShaderDefinition(StackAllocator* alloc, ShaderDefinitionFileData& shader_definition_file, TypeInfo* type_info, Meta::ShaderName* note) {
@@ -513,50 +557,56 @@ static void GenerateCodeForShaderDefinition(StackAllocator* alloc, ShaderDefinit
 	auto name = type_info_enum->name;
 	
 	auto& builder = shader_definition_file.builder;
-	builder.Append("static String shader_defines_%.*s[] = {\n", (s32)name.count, name.data);
-	builder.Indent();
-	
 	u32 define_count = 0;
-	for (auto& field : type_info_enum->fields) {
-		if (CountSetBits(field.value) != 1) continue;
+	if (type_info_enum->fields.count != 0) {
+		builder.Append("static String shader_defines_%.*s[] = {\n", (s32)name.count, name.data);
+		builder.Indent();
 		
-		DebugAssert(FirstBitLow(field.value) == define_count, "Out of order shader definition '%.*s' in shader '%.*s'. Position in enum: '%u', Value: '1u << %u'.", (s32)field.name.count, field.name.data, (s32)name.count, name.data, define_count, FirstBitLow(field.value));
-		
-		u64 underscore_count = 0;
-		for (u64 i = 0; i < field.name.count - 1; i += 1) {
-			char c0 = field.name[i + 0];
-			char c1 = field.name[i + 1];
+		for (auto& field : type_info_enum->fields) {
+			if (CountSetBits(field.value) != 1) continue;
 			
-			if (CharIsLowerCase(c0) && CharIsUpperCase(c1)) {
-				underscore_count += 1;
+			DebugAssert(FirstBitLow(field.value) == define_count, "Out of order shader definition '%.*s' in shader '%.*s'. Position in enum: '%u', Value: '1u << %u'.", (s32)field.name.count, field.name.data, (s32)name.count, name.data, define_count, FirstBitLow(field.value));
+			
+			u64 underscore_count = 0;
+			for (u64 i = 0; i < field.name.count - 1; i += 1) {
+				char c0 = field.name[i + 0];
+				char c1 = field.name[i + 1];
+				
+				if (CharIsLowerCase(c0) && CharIsUpperCase(c1)) {
+					underscore_count += 1;
+				}
 			}
+			
+			auto string = StringAllocate(alloc, field.name.count + underscore_count);
+			
+			u64 offset = 0;
+			for (u64 i = 0; i < field.name.count; i += 1) {
+				char c0 = field.name[i + 0];
+				string[offset++] = CharToUpperCase(c0);
+				
+				if (i + 1 < field.name.count && CharIsLowerCase(c0) && CharIsUpperCase(field.name[i + 1])) {
+					string[offset++] = '_';
+				}
+			}
+			
+			builder.Append("\"%.*s\"_sl,\n", (s32)string.count, string.data);
+			define_count += 1;
 		}
 		
-		auto string = StringAllocate(alloc, field.name.count + underscore_count);
-		
-		u64 offset = 0;
-		for (u64 i = 0; i < field.name.count; i += 1) {
-			char c0 = field.name[i + 0];
-			string[offset++] = CharToUpperCase(c0);
-			
-			if (i + 1 < field.name.count && CharIsLowerCase(c0) && CharIsUpperCase(field.name[i + 1])) {
-				string[offset++] = '_';
-			}
-		}
-		
-		builder.Append("\"%.*s\"_sl,\n", (s32)string.count, string.data);
-		define_count += 1;
+		builder.Unindent();
+		builder.AppendUnformatted("};\n\n"_sl);
 	}
-	
-	builder.Unindent();
-	builder.AppendUnformatted("};\n\n"_sl);
 	
 	{
 		builder.Append("static ShaderDefinition shader_definition_%.*s = {\n", (s32)name.count, name.data);
 		builder.Indent();
 		
 		builder.Append("\"%.*s\"_sl,\n", (s32)note->filename.count, note->filename.data);
-		builder.Append("ArrayView<String>{ shader_defines_%.*s, %u },\n", (s32)name.count, name.data, define_count);
+		if (define_count != 0) {
+			builder.Append("ArrayView<String>{ shader_defines_%.*s, %u },\n", (s32)name.count, name.data, define_count);
+		} else {
+			builder.AppendUnformatted("ArrayView<String>{},\n"_sl);
+		}
 		
 		builder.Unindent();
 		builder.AppendUnformatted("};\n\n"_sl);

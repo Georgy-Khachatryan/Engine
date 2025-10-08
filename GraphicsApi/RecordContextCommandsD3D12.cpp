@@ -78,13 +78,36 @@ static void FillDescriptorTables(GraphicsContextD3D12* context, ArrayView<HLSL::
 }
 
 
-static void CmdClearRenderTargetD3D12(CmdClearRenderTargetPacket* packet, ID3D12GraphicsCommandList7* command_list) {
+static void CmdClearRenderTargetD3D12(CmdClearRenderTargetPacket* packet, ID3D12GraphicsCommandList7* command_list, GraphicsContextD3D12* context, ArrayView<VirtualResource> resources) {
+	auto cpu_base_handle = context->cpu_base_handles[(u32)DescriptorHeapType::RTV].ptr;
+	auto descriptor_size = context->descriptor_sizes[(u32)DescriptorHeapType::RTV];
+	
+	u32 index = 4;
+	auto descriptor_handle = D3D12_CPU_DESCRIPTOR_HANDLE{ cpu_base_handle + index * descriptor_size };
+	
+	auto& resource = resources[(u32)packet->resource_id];
+	context->device->CreateRenderTargetView(resource.texture.resource.d3d12, nullptr, descriptor_handle);
+	
 	float clear_color[4] = { 0.f, 0.f, 0.f, 0.f };
-	command_list->ClearRenderTargetView({ packet->rtv_heap_index }, clear_color, 0, nullptr);
+	command_list->ClearRenderTargetView(descriptor_handle, clear_color, 0, nullptr);
 }
 
-static void CmdSetRenderTargetsD3D12(CmdSetRenderTargetsPacket* packet, ID3D12GraphicsCommandList7* command_list) {
-	command_list->OMSetRenderTargets((u32)packet->rtv_heap_indices.count, (D3D12_CPU_DESCRIPTOR_HANDLE*)packet->rtv_heap_indices.data, false, nullptr);
+static void CmdSetRenderTargetsD3D12(CmdSetRenderTargetsPacket* packet, ID3D12GraphicsCommandList7* command_list, GraphicsContextD3D12* context, ArrayView<VirtualResource> resources) {
+	auto cpu_base_handle = context->cpu_base_handles[(u32)DescriptorHeapType::RTV].ptr;
+	auto descriptor_size = context->descriptor_sizes[(u32)DescriptorHeapType::RTV];
+	
+	u32 index = 4;
+	auto base_descriptor_handle = D3D12_CPU_DESCRIPTOR_HANDLE{ cpu_base_handle + index * descriptor_size };
+	
+	for (auto resource_id : packet->resource_ids) {
+		auto descriptor_handle = D3D12_CPU_DESCRIPTOR_HANDLE{ cpu_base_handle + index * descriptor_size };
+		index += 1;
+		
+		auto& resource = resources[(u32)resource_id];
+		context->device->CreateRenderTargetView(resource.texture.resource.d3d12, nullptr, descriptor_handle);
+	}
+	
+	command_list->OMSetRenderTargets((u32)packet->resource_ids.count, &base_descriptor_handle, true, nullptr);
 }
 
 static void CmdSetViewportAndScissorD3D12(CmdSetViewportAndScissorPacket* packet, ID3D12GraphicsCommandList7* command_list) {
@@ -119,7 +142,11 @@ static void CmdDrawIndexedInstancedD3D12(CmdDrawIndexedInstancedPacket* packet, 
 
 
 static void CmdSetRootSignatureD3D12(CmdSetRootSignaturePacket* packet, ID3D12GraphicsCommandList7* command_list, GraphicsContextD3D12* context) {
-	command_list->SetComputeRootSignature(context->root_signature_table[packet->root_signature_index]);
+	if (packet->pass_type == RenderPassType::Compute) {
+		command_list->SetComputeRootSignature(context->root_signature_table[packet->root_signature_index]);
+	} else {
+		command_list->SetGraphicsRootSignature(context->root_signature_table[packet->root_signature_index]);
+	}
 }
 
 static void CmdSetDescriptorTableD3D12(CmdSetDescriptorTablePacket* packet, ID3D12GraphicsCommandList7* command_list, GraphicsContextD3D12* context) {
@@ -127,7 +154,19 @@ static void CmdSetDescriptorTableD3D12(CmdSetDescriptorTablePacket* packet, ID3D
 	auto descriptor_size = context->descriptor_sizes[(u32)DescriptorHeapType::SRV];
 	u64  descriptor_table = gpu_base_handle + packet->descriptor_heap_offset * descriptor_size;
 	
-	command_list->SetComputeRootDescriptorTable(packet->offset, { descriptor_table });
+	if (packet->pass_type == RenderPassType::Compute) {
+		command_list->SetComputeRootDescriptorTable(packet->offset, { descriptor_table });
+	} else {
+		command_list->SetGraphicsRootDescriptorTable(packet->offset, { descriptor_table });
+	}
+}
+
+static void CmdSetPushConstantsD3D12(CmdSetPushConstantsPacket* packet, ID3D12GraphicsCommandList7* command_list) {
+	if (packet->pass_type == RenderPassType::Compute) {
+		command_list->SetComputeRoot32BitConstants(packet->offset, (u32)packet->push_constants.count, packet->push_constants.data, 0);
+	} else {
+		command_list->SetGraphicsRoot32BitConstants(packet->offset, (u32)packet->push_constants.count, packet->push_constants.data, 0);
+	}
 }
 
 static void CmdSetPipelineStateD3D12(CmdSetPipelineStatePacket* packet, ID3D12GraphicsCommandList7* command_list, GraphicsContextD3D12* context) {
@@ -261,11 +300,12 @@ void ReplayRecordContext(GraphicsContext* api_context, RecordContext* record_con
 			case CommandType::Dispatch:              CmdDispatchD3D12((CmdDispatchPacket*)packet, command_list); break;
 			case CommandType::DrawInstanced:         CmdDrawInstancedD3D12((CmdDrawInstancedPacket*)packet, command_list); break;
 			case CommandType::DrawIndexedInstanced:  CmdDrawIndexedInstancedD3D12((CmdDrawIndexedInstancedPacket*)packet, command_list); break;
-			case CommandType::ClearRenderTarget:     CmdClearRenderTargetD3D12((CmdClearRenderTargetPacket*)packet, command_list); break;
-			case CommandType::SetRenderTargets:      CmdSetRenderTargetsD3D12((CmdSetRenderTargetsPacket*)packet, command_list); break;
+			case CommandType::ClearRenderTarget:     CmdClearRenderTargetD3D12((CmdClearRenderTargetPacket*)packet, command_list, context, resources); break;
+			case CommandType::SetRenderTargets:      CmdSetRenderTargetsD3D12((CmdSetRenderTargetsPacket*)packet, command_list, context, resources); break;
 			case CommandType::SetViewportAndScissor: CmdSetViewportAndScissorD3D12((CmdSetViewportAndScissorPacket*)packet, command_list); break;
 			case CommandType::SetRootSignature:      CmdSetRootSignatureD3D12((CmdSetRootSignaturePacket*)packet, command_list, context); break;
 			case CommandType::SetDescriptorTable:    CmdSetDescriptorTableD3D12((CmdSetDescriptorTablePacket*)packet, command_list, context); break;
+			case CommandType::SetPushConstants:      CmdSetPushConstantsD3D12((CmdSetPushConstantsPacket*)packet, command_list); break;
 			case CommandType::SetPipelineState:      CmdSetPipelineStateD3D12((CmdSetPipelineStatePacket*)packet, command_list, context); break;
 			default: DebugAssertAlways("Unhandled command packet type '%u'.", (u32)packet->packet_type); command_index = command_count; break;
 			}

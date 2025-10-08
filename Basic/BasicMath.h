@@ -66,6 +66,7 @@ using float3x4 = Math::Mat3x4f;
 using float3x3 = Math::Mat3x3f;
 
 
+inline u32   DivideAndRoundUp(u32   numerator, u32 denominator) { return (numerator + (denominator - 1)) / denominator; }
 inline uint2 DivideAndRoundUp(uint2 numerator, u32 denominator) { return (numerator + (denominator - 1)) / denominator; }
 inline uint3 DivideAndRoundUp(uint3 numerator, u32 denominator) { return (numerator + (denominator - 1)) / denominator; }
 inline uint4 DivideAndRoundUp(uint4 numerator, u32 denominator) { return (numerator + (denominator - 1)) / denominator; }

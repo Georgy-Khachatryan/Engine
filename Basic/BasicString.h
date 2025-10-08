@@ -5,8 +5,8 @@
 #include <stdarg.h>
 
 struct String {
-	char* data  = nullptr;
-	u64 count = 0;
+	char* data = nullptr;
+	u64  count = 0;
 	
 	bool operator== (String other) const;
 	bool operator!= (String other) const;

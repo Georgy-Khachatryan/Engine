@@ -1,6 +1,6 @@
 #pragma once
 #include "Basic/Basic.h"
-
+#include "Engine/RenderPasses.h"
 
 enum struct CommandType : u16 {
 	None                  = 0,
@@ -13,7 +13,8 @@ enum struct CommandType : u16 {
 	SetViewportAndScissor = 7,
 	SetRootSignature      = 8,
 	SetDescriptorTable    = 9,
-	SetPipelineState      = 10,
+	SetPushConstants      = 10,
+	SetPipelineState      = 11,
 	
 	Count
 };
@@ -57,13 +58,13 @@ struct CmdDrawIndexedInstancedPacket : RecordContextCommandPacket {
 struct CmdClearRenderTargetPacket : RecordContextCommandPacket {
 	compile_const CommandType my_type = CommandType::ClearRenderTarget;
 	
-	u64 rtv_heap_index = 0;
+	VirtualResourceID resource_id = {};
 };
 
 struct CmdSetRenderTargetsPacket : RecordContextCommandPacket {
 	compile_const CommandType my_type = CommandType::SetRenderTargets;
 	
-	ArrayView<u64> rtv_heap_indices;
+	ArrayView<VirtualResourceID> resource_ids;
 };
 
 struct CmdSetViewportAndScissorPacket : RecordContextCommandPacket {
@@ -77,6 +78,7 @@ struct CmdSetRootSignaturePacket : RecordContextCommandPacket {
 	compile_const CommandType my_type = CommandType::SetRootSignature;
 	
 	u32 root_signature_index = 0;
+	RenderPassType pass_type = RenderPassType::Graphics;
 };
 
 struct CmdSetDescriptorTablePacket : RecordContextCommandPacket {
@@ -84,6 +86,15 @@ struct CmdSetDescriptorTablePacket : RecordContextCommandPacket {
 	
 	u32 offset = 0;
 	u32 descriptor_heap_offset = 0;
+	RenderPassType pass_type = RenderPassType::Graphics;
+};
+
+struct CmdSetPushConstantsPacket : RecordContextCommandPacket {
+	compile_const CommandType my_type = CommandType::SetPushConstants;
+	
+	u32 offset = 0;
+	RenderPassType pass_type = RenderPassType::Graphics;
+	ArrayView<u32> push_constants;
 };
 
 struct CmdSetPipelineStatePacket : RecordContextCommandPacket {

@@ -6,11 +6,13 @@
 
 struct GraphicsContext;
 struct VirtualResourceTable;
+enum struct RenderPassType : u32;
 
 namespace HLSL {
 	struct BaseDescriptorTable;
 	struct BaseRootSignature;
 	template<typename T> struct DescriptorTable;
+	template<typename T> struct PushConstantBuffer;
 }
 
 struct RecordContext {
@@ -28,6 +30,7 @@ struct RecordContext {
 	Array<ArrayView<ResourceAccessDefinition>> resource_accesses;
 	Array<u32> resource_access_command_prefix_sum;
 	
+	RenderPassType current_render_pass_type;
 	Array<HLSL::BaseDescriptorTable*> resource_bindings;
 	bool resource_bindings_dirty = false;
 };
@@ -37,12 +40,13 @@ void CmdDispatch(RecordContext* record_context, uint2 group_count_xy, u32 group_
 void CmdDispatch(RecordContext* record_context, const uint3& group_count_xyz);
 void CmdDrawInstanced(RecordContext* record_context, u32 vertex_count_per_instance, u32 instance_count = 1, u32 start_vertex_location = 0, u32 start_instance_location = 0);
 void CmdDrawIndexedInstanced(RecordContext* record_context, u32 index_count_per_instance, u32 instance_count = 1, u32 start_index_location = 0, u32 base_vertex_location = 0, u32 start_instance_location = 0);
-void CmdClearRenderTarget(RecordContext* record_context, u64 rtv_heap_index);
-void CmdSetRenderTargets(RecordContext* record_context, ArrayView<u64> rtv_heap_indices);
+void CmdClearRenderTarget(RecordContext* record_context, VirtualResourceID resource_id);
+void CmdSetRenderTargets(RecordContext* record_context, ArrayView<VirtualResourceID> resource_ids);
 void CmdSetViewportAndScissor(RecordContext* record_context, uint2 max, uint2 min = 0);
 
 void CmdSetRootSignature(RecordContext* record_context, const HLSL::BaseRootSignature& root_signature);
 void CmdSetDescriptorTable(RecordContext* record_context, u32 offset, HLSL::BaseDescriptorTable& descriptor_table);
+void CmdSetPushConstants(RecordContext* record_context, u32 offset, ArrayView<u32> push_constants);
 void CmdSetPipelineState(RecordContext* record_context, PipelineID pipeline_id);
 
 void ReplayRecordContext(GraphicsContext* context, RecordContext* record_context);
@@ -60,6 +64,11 @@ static T& AllocateDescriptorTable(RecordContext* record_context, const HLSL::Des
 }
 
 template<typename T>
-void CmdSetRootArgument(RecordContext* record_context, const HLSL::DescriptorTable<T>& root_descriptor_table, HLSL::BaseDescriptorTable& descriptor_table) {
+void CmdSetRootArgument(RecordContext* record_context, const HLSL::DescriptorTable<T>& root_descriptor_table, T& descriptor_table) {
 	CmdSetDescriptorTable(record_context, root_descriptor_table.offset, descriptor_table);
+}
+
+template<typename T>
+void CmdSetRootArgument(RecordContext* record_context, const HLSL::PushConstantBuffer<T>& push_constant_buffer, T& push_constants) {
+	CmdSetPushConstants(record_context, push_constant_buffer.offset, { (u32*)&push_constants, sizeof(T) / sizeof(u32) });
 }

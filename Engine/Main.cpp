@@ -350,6 +350,8 @@ s32 main() {
 		ImGui_ImplWin32_NewFrame();
 		ImGui::NewFrame();
 		
+		resource_table.Set(VirtualResourceID::CurrentBackBuffer, WindowSwapGetCurrentBackBuffer(swap_chain), TextureSize(TextureFormat::R8G8B8A8_UNORM, swap_chain->size));
+		
 		ImGui::ShowDemoWindow(nullptr);
 		
 		ImGui::Begin("Stats");
@@ -370,6 +372,7 @@ s32 main() {
 		TransmittanceLutRenderPass{}.RecordPass(&record_context);
 		MultipleScatteringLutRenderPass{}.RecordPass(&record_context);
 		SkyPanoramaLutRenderPass{}.RecordPass(&record_context);
+		ImGuiRenderPass{}.RecordPass(&record_context);
 		
 		WindowSwapChainEndFrame(swap_chain, graphics_context, &alloc, record_context);
 		

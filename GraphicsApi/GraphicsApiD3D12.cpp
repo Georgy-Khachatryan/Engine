@@ -10,10 +10,6 @@
 extern "C" __declspec(dllexport) extern const UINT  D3D12SDKVersion = 618;
 extern "C" __declspec(dllexport) extern const char* D3D12SDKPath    = u8".\\D3D12\\";
 
-static struct {
-	FixedCountArray<ID3D12PipelineState*, 3> pipeline_state = {};
-} debug_draw_triangle;
-
 static ShaderCompiler* shader_compiler = nullptr;
 
 static void WaitForLastFrame(GraphicsContextD3D12* context) {
@@ -26,7 +22,6 @@ static void WaitForNextFrame(GraphicsContextD3D12* context) {
 	context->frame_sync_fence->SetEventOnCompletion(context->frame_index - number_of_frames_in_flight, nullptr);
 }
 
-static void CreateTestPipelines(GraphicsContextD3D12* api_context, StackAllocator* alloc);
 static void BuildPipelineStates(GraphicsContextD3D12* context, StackAllocator* alloc);
 
 GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
@@ -207,8 +202,6 @@ GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
 			context->root_signature_table[i] = root_signature;
 		}
 		
-		CreateTestPipelines(context, alloc);
-		
 		extern Array<PipelineDefinition> GatherPipelineDefinitions(StackAllocator* alloc);
 		context->pipeline_definitions = GatherPipelineDefinitions(alloc);
 		ArrayResize(context->pipeline_state_table, alloc, context->pipeline_definitions.count);
@@ -219,18 +212,29 @@ GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
 	return context;
 }
 
-static void CreateTestPipelines(GraphicsContextD3D12* context, StackAllocator* alloc) {
-	auto* device = context->device;
+static void CreateComputePipelineState(GraphicsContextD3D12* context, const ShaderBytecode& bytecode, u32 root_signature_index, ID3D12PipelineState*& pipeline_state) {
+	D3D12_COMPUTE_PIPELINE_STATE_DESC desc = {};
+	desc.NodeMask  = 0;
+	desc.CachedPSO = {};
+	desc.Flags     = D3D12_PIPELINE_STATE_FLAG_NONE;
 	
-	extern ArrayView<ShaderDefinition*> shader_definition_table;
-	auto* shader = shader_definition_table[DrawTriangleShadersID.index];
+	desc.pRootSignature     = context->root_signature_table[root_signature_index];
+	desc.CS.pShaderBytecode = bytecode[(u32)ShaderType::ComputeShader].data;
+	desc.CS.BytecodeLength  = bytecode[(u32)ShaderType::ComputeShader].count;
 	
-	auto bytecode      = CompileShader(shader_compiler, alloc, shader, (u64)DrawTriangleShaders::None, ShaderTypeMask::PixelShader | ShaderTypeMask::VertexShader, "Basic.hlsl"_sl);
-	auto bytecode_red  = CompileShader(shader_compiler, alloc, shader, (u64)DrawTriangleShaders::RedColor, ShaderTypeMask::PixelShader | ShaderTypeMask::VertexShader, "Basic.hlsl"_sl);
-	auto bytecode_blue = CompileShader(shader_compiler, alloc, shader, (u64)DrawTriangleShaders::BlueColor, ShaderTypeMask::PixelShader | ShaderTypeMask::VertexShader, "Basic.hlsl"_sl);
+	ID3D12PipelineState* new_pipeline_state = nullptr;
+	if (FAILED(context->device->CreateComputePipelineState(&desc, IID_PPV_ARGS(&new_pipeline_state)))) {
+		DebugAssertAlways("Failed to create compute pipeline state.");
+		return;
+	}
 	
+	SafeRelease(pipeline_state);
+	pipeline_state = new_pipeline_state;
+}
+
+static void CreateGraphicsPipelineState(GraphicsContextD3D12* context, const ShaderBytecode& bytecode, u32 root_signature_index, ID3D12PipelineState*& pipeline_state) {
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC desc = {};
-	desc.pRootSignature                            = context->root_signature_table[DrawTriangleRenderPass::root_signature.root_signature_index];
+	desc.pRootSignature                            = context->root_signature_table[root_signature_index];
 	desc.BlendState.AlphaToCoverageEnable          = false;
 	desc.BlendState.IndependentBlendEnable         = false;
 	desc.BlendState.RenderTarget[0].BlendEnable    = true;
@@ -272,56 +276,14 @@ static void CreateTestPipelines(GraphicsContextD3D12* context, StackAllocator* a
 	desc.CachedPSO                                 = {};
 	desc.Flags                                     = D3D12_PIPELINE_STATE_FLAG_NONE;
 	
-	
-	ID3D12PipelineState* pipeline_state = nullptr;
-	
 	desc.VS.pShaderBytecode = bytecode[(u32)ShaderType::VertexShader].data;
 	desc.VS.BytecodeLength  = bytecode[(u32)ShaderType::VertexShader].count;
 	desc.PS.pShaderBytecode = bytecode[(u32)ShaderType::PixelShader].data;
 	desc.PS.BytecodeLength  = bytecode[(u32)ShaderType::PixelShader].count;
-	if (FAILED(device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(&pipeline_state)))) {
-		DebugAssertAlways("Failed to create graphics pipeline state.");
-		return;
-	}
-	SafeRelease(debug_draw_triangle.pipeline_state[0]);
-	debug_draw_triangle.pipeline_state[0] = pipeline_state;
-	
-	desc.VS.pShaderBytecode = bytecode_red[(u32)ShaderType::VertexShader].data;
-	desc.VS.BytecodeLength  = bytecode_red[(u32)ShaderType::VertexShader].count;
-	desc.PS.pShaderBytecode = bytecode_red[(u32)ShaderType::PixelShader].data;
-	desc.PS.BytecodeLength  = bytecode_red[(u32)ShaderType::PixelShader].count;
-	if (FAILED(device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(&pipeline_state)))) {
-		DebugAssertAlways("Failed to create graphics pipeline state.");
-		return;
-	}
-	SafeRelease(debug_draw_triangle.pipeline_state[1]);
-	debug_draw_triangle.pipeline_state[1] = pipeline_state;
-	
-	desc.VS.pShaderBytecode = bytecode_blue[(u32)ShaderType::VertexShader].data;
-	desc.VS.BytecodeLength  = bytecode_blue[(u32)ShaderType::VertexShader].count;
-	desc.PS.pShaderBytecode = bytecode_blue[(u32)ShaderType::PixelShader].data;
-	desc.PS.BytecodeLength  = bytecode_blue[(u32)ShaderType::PixelShader].count;
-	if (FAILED(device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(&pipeline_state)))) {
-		DebugAssertAlways("Failed to create graphics pipeline state.");
-		return;
-	}
-	SafeRelease(debug_draw_triangle.pipeline_state[2]);
-	debug_draw_triangle.pipeline_state[2] = pipeline_state;
-}
-
-static void CreateComputePipelineState(GraphicsContextD3D12* context, const ShaderBytecode& bytecode, u32 root_signature_index, ID3D12PipelineState*& pipeline_state) {
-	D3D12_COMPUTE_PIPELINE_STATE_DESC desc = {};
-	desc.NodeMask  = 0;
-	desc.CachedPSO = {};
-	desc.Flags     = D3D12_PIPELINE_STATE_FLAG_NONE;
-	
-	desc.pRootSignature     = context->root_signature_table[root_signature_index];
-	desc.CS.pShaderBytecode = bytecode[(u32)ShaderType::ComputeShader].data;
-	desc.CS.BytecodeLength  = bytecode[(u32)ShaderType::ComputeShader].count;
 	
 	ID3D12PipelineState* new_pipeline_state = nullptr;
-	if (FAILED(context->device->CreateComputePipelineState(&desc, IID_PPV_ARGS(&new_pipeline_state)))) {
-		DebugAssertAlways("Failed to create compute pipeline state.");
+	if (FAILED(context->device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(&new_pipeline_state)))) {
+		DebugAssertAlways("Failed to create graphics pipeline state.");
 		return;
 	}
 	
@@ -336,7 +298,11 @@ static void BuildPipelineStates(GraphicsContextD3D12* context, StackAllocator* a
 		auto& definition = context->pipeline_definitions[i];
 		
 		auto bytecode = CompileShader(shader_compiler, alloc, definition.shader_definition, definition.permutation, definition.shader_type_mask, root_signature_include_filenames[definition.root_signature_index]);
-		CreateComputePipelineState(context, bytecode, definition.root_signature_index, context->pipeline_state_table[i]);
+		if (definition.shader_type_mask == ShaderTypeMask::ComputeShader) {
+			CreateComputePipelineState(context, bytecode, definition.root_signature_index, context->pipeline_state_table[i]);
+		} else {
+			CreateGraphicsPipelineState(context, bytecode, definition.root_signature_index, context->pipeline_state_table[i]);
+		}
 	}
 }
 
@@ -417,7 +383,7 @@ static void CreateSwapChainBackBuffers(WindowSwapChainD3D12* swap_chain, Graphic
 	
 	for (u32 index = 0; index < number_of_back_buffers; index += 1) {
 		auto& back_buffer = swap_chain->back_buffers[index];
-		dxgi_swap_chain->GetBuffer(index, IID_PPV_ARGS(&back_buffer.resource));
+		dxgi_swap_chain->GetBuffer(index, IID_PPV_ARGS(&back_buffer.resource.d3d12));
 		back_buffer.descriptor.ptr = cpu_base_handle + index * descriptor_size;
 		
 		D3D12_RENDER_TARGET_VIEW_DESC desc = {};
@@ -425,13 +391,13 @@ static void CreateSwapChainBackBuffers(WindowSwapChainD3D12* swap_chain, Graphic
 		desc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
 		desc.Texture2D.MipSlice   = 0;
 		desc.Texture2D.PlaneSlice = 0;
-		device->CreateRenderTargetView(back_buffer.resource, &desc, back_buffer.descriptor);
+		device->CreateRenderTargetView(back_buffer.resource.d3d12, &desc, back_buffer.descriptor);
 	}
 }
 
 static void ReleaseSwapChainBackBuffers(WindowSwapChainD3D12* swap_chain) {
 	for (auto& back_buffer : swap_chain->back_buffers) {
-		SafeRelease(back_buffer.resource);
+		SafeRelease(back_buffer.resource.d3d12);
 	}
 }
 
@@ -508,13 +474,17 @@ void ResizeWindowSwapChain(WindowSwapChain* api_swap_chain, GraphicsContext* api
 	CreateSwapChainBackBuffers(swap_chain, context);
 }
 
+NativeTextureResource WindowSwapGetCurrentBackBuffer(WindowSwapChain* api_swap_chain) {
+	auto* swap_chain = (WindowSwapChainD3D12*)api_swap_chain;
+	return swap_chain->back_buffers[swap_chain->dxgi_swap_chain->GetCurrentBackBufferIndex()].resource;
+}
+
 void WindowSwapChainBeginFrame(WindowSwapChain* api_swap_chain, GraphicsContext* api_context, StackAllocator* alloc) {
 	auto* context = (GraphicsContextD3D12*)api_context;
 	WaitForNextFrame(context);
 	
 	if (CheckShaderFileChanges(shader_compiler, alloc)) {
 		WaitForLastFrame(context);
-		CreateTestPipelines(context, alloc);
 		BuildPipelineStates(context, alloc);
 	}
 	
@@ -524,6 +494,7 @@ void WindowSwapChainBeginFrame(WindowSwapChain* api_swap_chain, GraphicsContext*
 	command_allocator->Reset();
 	command_list->Reset(command_allocator, nullptr);
 	command_list->SetDescriptorHeaps(1, &context->descriptor_heaps[(u32)DescriptorHeapType::SRV]);
+	command_list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	
 	ImGui_ImplDX12_NewFrame();
 }
@@ -541,7 +512,7 @@ void WindowSwapChainEndFrame(WindowSwapChain* api_swap_chain, GraphicsContext* a
 	barrier.AccessAfter  = D3D12_BARRIER_ACCESS_RENDER_TARGET;
 	barrier.LayoutBefore = D3D12_BARRIER_LAYOUT_COMMON;
 	barrier.LayoutAfter  = D3D12_BARRIER_LAYOUT_RENDER_TARGET;
-	barrier.pResource    = back_buffer.resource;
+	barrier.pResource    = back_buffer.resource.d3d12;
 	barrier.Subresources = {};
 	barrier.Flags        = D3D12_TEXTURE_BARRIER_FLAG_NONE;
 	
@@ -552,9 +523,6 @@ void WindowSwapChainEndFrame(WindowSwapChain* api_swap_chain, GraphicsContext* a
 	
 	auto* command_list = context->command_list;
 	command_list->Barrier(1, &barrier_group);
-	
-	// command_list->SetGraphicsRootSignature(context->root_signature_table[DrawTriangleRenderPass::root_signature.root_signature_index]);
-	// command_list->SetPipelineState(debug_draw_triangle.pipeline_state[(context->frame_index / 128) % 3]);
 	
 	auto& resource_table = record_context.resource_table->virtual_resources;
 	for (auto& resource : resource_table) {
@@ -573,16 +541,7 @@ void WindowSwapChainEndFrame(WindowSwapChain* api_swap_chain, GraphicsContext* a
 	
 	auto& descriptor_table = AllocateDescriptorTable(&record_context, root_descriptor_table);
 	
-	// CmdClearRenderTarget(&record_context, back_buffer.descriptor.ptr);
-	// CmdSetRenderTargets(&record_context, { &back_buffer.descriptor.ptr, 1 });
-	// CmdSetViewportAndScissor(&record_context, swap_chain->size);
-	// CmdDrawInstanced(&record_context, 3);
-	
 	ReplayRecordContext(context, &record_context);
-	
-	float clear_color[4] = { 0.f, 0.f, 0.f, 0.f };
-	command_list->ClearRenderTargetView(back_buffer.descriptor, clear_color, 0, nullptr);
-	command_list->OMSetRenderTargets(1, &back_buffer.descriptor, false, nullptr);
 	
 	auto gpu_base_handle = context->gpu_base_handles[(u32)DescriptorHeapType::SRV];
 	auto descriptor_size = context->descriptor_sizes[(u32)DescriptorHeapType::SRV];

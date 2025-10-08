@@ -18,9 +18,17 @@ struct PipelineLibrary;
 	ENUM_FLAGS_OPERATORS(name)
 
 
+NOTES()
+enum struct RenderPassType : u32 {
+	Graphics = 0,
+	Compute  = 1,
+	
+	Count
+};
+
 namespace Meta {
 	NOTES() struct RenderGraphSystem {};
-	NOTES() struct RenderPass {};
+	NOTES() struct RenderPass { RenderPassType pass_type = RenderPassType::Compute; };
 	NOTES() struct HlslFile { String filename; };
 	NOTES() struct ShaderName { String filename; };
 };
@@ -96,7 +104,7 @@ namespace HLSL {
 	};
 	
 	NOTES() template<typename T> struct RegularBuffer : ResourceDescriptor {
-		RegularBuffer(VirtualResourceID resource, u32 offset = 0, u32 size = u32_max) { Bind(resource, offset, size); }
+		RegularBuffer(VirtualResourceID resource = (VirtualResourceID)0, u32 offset = 0, u32 size = u32_max) { Bind(resource, offset, size); }
 		
 		void Bind(VirtualResourceID resource, u32 offset = 0, u32 size = u32_max) {
 			resource_id = resource;
@@ -105,7 +113,7 @@ namespace HLSL {
 	};
 	
 	NOTES() template<typename T> struct RWRegularBuffer : ResourceDescriptor {
-		RWRegularBuffer(VirtualResourceID resource, u32 offset = 0, u32 size = u32_max) { Bind(resource, offset, size); }
+		RWRegularBuffer(VirtualResourceID resource = (VirtualResourceID)0, u32 offset = 0, u32 size = u32_max) { Bind(resource, offset, size); }
 		
 		void Bind(VirtualResourceID resource, u32 offset = 0, u32 size = u32_max) {
 			resource_id = resource;
@@ -115,8 +123,9 @@ namespace HLSL {
 	
 	NOTES() template<typename T> struct DescriptorTable { u32 offset = 0; u32 descriptor_count = 0; };
 	NOTES() template<typename T> struct ConstantBuffer  { u32 offset = 0; };
+	NOTES() template<typename T> struct PushConstantBuffer { u32 offset = 0; };
 	
-	NOTES() struct BaseRootSignature   { u32 root_signature_index = 0; u32 root_parameter_count = 0; };
+	NOTES() struct BaseRootSignature   { u32 root_signature_index = 0; u32 root_parameter_count = 0; RenderPassType pass_type = RenderPassType::Graphics; };
 	NOTES() struct BaseDescriptorTable { u32 descriptor_heap_offset = 0; u32 descriptor_count = 0; };
 };
 
@@ -149,6 +158,8 @@ struct AtmosphereParameters {
 
 
 enum struct VirtualResourceID : u32 {
+	None = 0,
+	CurrentBackBuffer,
 	TransmittanceLut,
 	MultipleScatteringLut,
 	SkyPanoramaLut,
@@ -222,18 +233,36 @@ struct SkyPanoramaLutRenderPass {
 };
 
 
-NOTES(Meta::ShaderName{ "DrawTriangle.hlsl"_sl })
-enum struct DrawTriangleShaders : u32 {
-	None      = 0,
-	RedColor  = 1u << 0,
-	BlueColor = 1u << 1,
-};
-SHADER_DEFINITION_GENERATED_CODE(DrawTriangleShaders);
+NOTES(Meta::ShaderName{ "ImGui.hlsl"_sl })
+enum struct ImGuiShaders : u32 {};
+SHADER_DEFINITION_GENERATED_CODE(ImGuiShaders);
 
-NOTES(Meta::RenderPass{})
-struct DrawTriangleRenderPass {
+
+NOTES(Meta::HlslFile{ "ImGuiData.hlsl"_sl })
+struct ImGuiVertex {
+	float2 position;
+	float2 texcoord;
+	u32    color;
+};
+
+NOTES(Meta::HlslFile{ "ImGuiData.hlsl"_sl })
+struct ImGuiPushConstants {
+	float4 view_to_clip_coef;
+};
+
+NOTES(Meta::RenderPass{ RenderPassType::Graphics })
+struct ImGuiRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
-	struct RootSignature : HLSL::BaseRootSignature {
+	struct Descriptors : HLSL::BaseDescriptorTable {
+		HLSL::RegularBuffer<ImGuiVertex> vertices;
 	};
+	
+	struct RootSignature : HLSL::BaseRootSignature {
+		HLSL::PushConstantBuffer<ImGuiPushConstants> constants;
+		HLSL::DescriptorTable<Descriptors> descriptor_table;
+	};
+	
+	inline static PipelineID pipeline_id;
 };
+
