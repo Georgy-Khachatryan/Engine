@@ -122,7 +122,7 @@ struct IncludeHandler : IDxcIncludeHandler {
 	ULONG Release() { return 0; }
 };
 
-static bool CompileShaderToBlob(ShaderCompiler* compiler, StackAllocator* alloc, ShaderDefinition* definition, u64 permutation, ShaderType shader_type, ShaderPermutation* shader_permutation) {
+static bool CompileShaderToBlob(ShaderCompiler* compiler, StackAllocator* alloc, ShaderDefinition* definition, u64 permutation, ShaderType shader_type, ShaderPermutation* shader_permutation, String root_signature_filepath) {
 	TempAllocationScope(alloc);
 	
 	auto filename = definition->filename;
@@ -141,14 +141,16 @@ static bool CompileShaderToBlob(ShaderCompiler* compiler, StackAllocator* alloc,
 	ArrayReserve(include_handler.hashed_source_files, alloc, 16);
 	ArrayAppend(include_handler.hashed_source_files, { filename, shader_file.hash });
 	
+	auto root_signature_include = StringFormat(alloc, "ROOT_SIGNATURE_FILEPATH=\"Generated/%.*s\"", (s32)root_signature_filepath.count, root_signature_filepath.data);
 	
 	Array<const wchar_t*> arguments;
-	ArrayReserve(arguments, alloc, 10 + CountSetBits(permutation) * 2);
+	ArrayReserve(arguments, alloc, 12 + CountSetBits(permutation) * 2);
 	
 	ArrayAppend(arguments, (wchar_t*)StringUtf8ToUtf16(alloc, filename).data);
 	ArrayAppend(arguments, L"-E"); ArrayAppend(arguments, entry_point_names[(u32)shader_type]);
 	ArrayAppend(arguments, L"-T"); ArrayAppend(arguments, target_profiles[(u32)shader_type]);
 	ArrayAppend(arguments, L"-D"); ArrayAppend(arguments, shader_type_defines[(u32)shader_type]);
+	ArrayAppend(arguments, L"-D"); ArrayAppend(arguments, (wchar_t*)StringUtf8ToUtf16(alloc, root_signature_include).data);
 	ArrayAppend(arguments, L"-Zpr");
 	ArrayAppend(arguments, L"-Qstrip_reflect");
 	ArrayAppend(arguments, L"-enable-16bit-types");
@@ -254,7 +256,7 @@ static ShaderPermutation* FindShaderPermutation(ShaderCompiler* compiler, Shader
 	return shader_permutation;
 }
 
-ShaderBytecode CompileShader(ShaderCompiler* compiler, StackAllocator* alloc, ShaderDefinition* definition, u64 permutation, ShaderTypeMask shader_type_mask) {
+ShaderBytecode CompileShader(ShaderCompiler* compiler, StackAllocator* alloc, ShaderDefinition* definition, u64 permutation, ShaderTypeMask shader_type_mask, String root_signature_filepath) {
 	ShaderBytecode result;
 	
 	for (u32 i : BitScanLow32((u32)shader_type_mask)) {
@@ -262,7 +264,7 @@ ShaderBytecode CompileShader(ShaderCompiler* compiler, StackAllocator* alloc, Sh
 		
 		bool should_recompile = shader->shader_dirty;
 		while (should_recompile) {
-			if (CompileShaderToBlob(compiler, alloc, definition, permutation, (ShaderType)i, shader) || shader->bytecode_blob.data != nullptr) {
+			if (CompileShaderToBlob(compiler, alloc, definition, permutation, (ShaderType)i, shader, root_signature_filepath) || shader->bytecode_blob.data != nullptr) {
 				should_recompile = false;
 			} else {
 				SystemWriteToConsole("Press enter to recompile.\n"_sl);

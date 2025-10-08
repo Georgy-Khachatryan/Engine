@@ -43,3 +43,7 @@ void SkyPanoramaLutRenderPass::RecordPass(RecordContext* record_context) {
 	
 	CmdDispatch(record_context, DivideAndRoundUp(AtmosphereParameters::sky_panorama_lut_size, 16));
 }
+
+void DrawTriangleRenderPass::CreatePipelines(PipelineLibrary* lib) {
+	
+}

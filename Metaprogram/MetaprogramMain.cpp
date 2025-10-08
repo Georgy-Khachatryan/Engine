@@ -79,6 +79,7 @@ struct HlslFileData {
 struct RootSignaturePassData {
 	ArrayView<u8> blob;
 	String include_file_name;
+	String render_pass_name;
 };
 
 struct RootSignatureFileData {
@@ -490,6 +491,7 @@ static void GenerateCodeForRenderPass(StackAllocator* alloc, String filename, Hl
 	root_signature.blob.data  = (u8*)root_signature_blob->GetBufferPointer();
 	root_signature.blob.count = root_signature_blob->GetBufferSize();
 	root_signature.include_file_name = filename;
+	root_signature.render_pass_name  = name;
 	ArrayAppend(root_signature_file.root_signatures, alloc, root_signature);
 	
 	cpp_builder.Unindent();
@@ -581,7 +583,8 @@ s32 main(s32 argument_count, const char* arguments[]) {
 	RootSignatureFileData root_signature_file;
 	root_signature_file.builder.alloc = &alloc;
 	root_signature_file.builder.AppendUnformatted("#include \"Basic/Basic.h\"\n"_sl);
-	root_signature_file.builder.AppendUnformatted("#include \"Engine/RenderPasses.h\"\n\n"_sl);
+	root_signature_file.builder.AppendUnformatted("#include \"Engine/RenderPasses.h\"\n"_sl);
+	root_signature_file.builder.AppendUnformatted("#include \"GraphicsApi/GraphicsApi.h\"\n\n"_sl);
 	
 	ShaderDefinitionFileData shader_definition_file;
 	shader_definition_file.builder.alloc = &alloc;
@@ -615,6 +618,24 @@ s32 main(s32 argument_count, const char* arguments[]) {
 		for (auto& root_signature : root_signature_file.root_signatures) {
 			builder.Append("\"%.*s\"_sl,\n", (s32)root_signature.include_file_name.count, root_signature.include_file_name.data);
 		}
+		
+		builder.Unindent();
+		builder.AppendUnformatted("};\n\n"_sl);
+		
+		builder.AppendUnformatted("Array<PipelineDefinition> GatherPipelineDefinitions(StackAllocator* alloc) {\n"_sl);
+		builder.Indent();
+		
+		builder.AppendUnformatted("PipelineLibrary lib;\n"_sl);
+		builder.AppendUnformatted("lib.alloc = alloc;\n\n"_sl);
+		
+		for (auto& root_signature : root_signature_file.root_signatures) {
+			auto name = root_signature.render_pass_name;
+			
+			builder.Append("lib.current_pass_root_signature_index = %.*s::root_signature.root_signature_index;\n", (s32)name.count, name.data);
+			builder.Append("%.*s::CreatePipelines(&lib);\n\n", (s32)name.count, name.data);
+		}
+		
+		builder.AppendUnformatted("return lib.pipeline_definitions;\n"_sl);
 		
 		builder.Unindent();
 		builder.AppendUnformatted("};\n\n"_sl);

@@ -20,6 +20,9 @@ using s32 = int32_t;
 using u64 = uint64_t;
 using s64 = int64_t;
 
+#include ROOT_SIGNATURE_FILEPATH
+
+
 compile_const float PI = 3.1415927;
 
 float  Pow2(float  value) { return value * value; }

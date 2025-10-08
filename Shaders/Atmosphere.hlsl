@@ -1,5 +1,4 @@
 #include "Basic.hlsl"
-#include "Generated/AtmosphereData.hlsl"
 
 //
 // Sebastien Hillaire. 2020. A Scalable and Production Ready Sky and Atmosphere Rendering Technique.
@@ -190,8 +189,6 @@ float3 ComputeScatteringIntegral(float3 slice_scattering, float3 slice_transmitt
 
 
 #if defined(TRANSMITTANCE_LUT)
-#include "Generated/TransittanceLutRenderPass.hlsl"
-
 float3 IntegrateTransmittance(AtmosphereParameters atmosphere, float3 planet_space_position, float3 planet_space_direction) {
 	float t_max = RaySphereIntersect(planet_space_position, planet_space_direction, atmosphere.top_radius);
 	
@@ -229,12 +226,9 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	float3 transmittance = IntegrateTransmittance(default_atmosphere, planet_space_position, planet_space_direction);
 	transmittance_lut[thread_id] = float4(transmittance, 1.0);
 }
-
 #endif // defined(TRANSMITTANCE_LUT)
 
 #if defined(MULTIPLE_SCATTERING_LUT)
-#include "Generated/MultipleScatteringLutRenderPass.hlsl"
-
 struct MultipleScatteringValues {
 	float3 multiple_scattering;
 	float3 scattered_luminance;
@@ -359,8 +353,6 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 
 
 #if defined(SKY_PANORAMA_LUT)
-#include "Generated/SkyPanoramaLutRenderPass.hlsl"
-
 float RayleighPhase(float cos_theta) {
 	float factor = 3.0 / (16.0 * PI);
 	return factor * (1.0 + cos_theta * cos_theta);

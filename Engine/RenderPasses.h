@@ -199,7 +199,7 @@ struct MultipleScatteringLutRenderPass {
 		HLSL::DescriptorTable<Descriptors> descriptor_table;
 		HLSL::ConstantBuffer<AtmosphereParameters> atmosphere;
 	};
-
+	
 	inline static PipelineID pipeline_id;
 };
 
@@ -217,7 +217,7 @@ struct SkyPanoramaLutRenderPass {
 		HLSL::DescriptorTable<Descriptors> descriptor_table;
 		HLSL::ConstantBuffer<AtmosphereParameters> atmosphere;
 	};
-
+	
 	inline static PipelineID pipeline_id;
 };
 

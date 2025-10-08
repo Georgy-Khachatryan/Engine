@@ -27,7 +27,6 @@ static void WaitForNextFrame(GraphicsContextD3D12* context) {
 }
 
 static void CreateTestPipelines(GraphicsContextD3D12* api_context, StackAllocator* alloc);
-static void GatherPipelineDefinitions(GraphicsContextD3D12* api_context, StackAllocator* alloc);
 static void BuildPipelineStates(GraphicsContextD3D12* context, StackAllocator* alloc);
 
 GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
@@ -209,7 +208,11 @@ GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
 		}
 		
 		CreateTestPipelines(context, alloc);
-		GatherPipelineDefinitions(context, alloc);
+		
+		extern Array<PipelineDefinition> GatherPipelineDefinitions(StackAllocator* alloc);
+		context->pipeline_definitions = GatherPipelineDefinitions(alloc);
+		ArrayResize(context->pipeline_state_table, alloc, context->pipeline_definitions.count);
+		
 		BuildPipelineStates(context, alloc);
 	}
 	
@@ -222,9 +225,9 @@ static void CreateTestPipelines(GraphicsContextD3D12* context, StackAllocator* a
 	extern ArrayView<ShaderDefinition*> shader_definition_table;
 	auto* shader = shader_definition_table[DrawTriangleShadersID.index];
 	
-	auto bytecode      = CompileShader(shader_compiler, alloc, shader, (u64)DrawTriangleShaders::None, ShaderTypeMask::PixelShader | ShaderTypeMask::VertexShader);
-	auto bytecode_red  = CompileShader(shader_compiler, alloc, shader, (u64)DrawTriangleShaders::RedColor, ShaderTypeMask::PixelShader | ShaderTypeMask::VertexShader);
-	auto bytecode_blue = CompileShader(shader_compiler, alloc, shader, (u64)DrawTriangleShaders::BlueColor, ShaderTypeMask::PixelShader | ShaderTypeMask::VertexShader);
+	auto bytecode      = CompileShader(shader_compiler, alloc, shader, (u64)DrawTriangleShaders::None, ShaderTypeMask::PixelShader | ShaderTypeMask::VertexShader, "Basic.hlsl"_sl);
+	auto bytecode_red  = CompileShader(shader_compiler, alloc, shader, (u64)DrawTriangleShaders::RedColor, ShaderTypeMask::PixelShader | ShaderTypeMask::VertexShader, "Basic.hlsl"_sl);
+	auto bytecode_blue = CompileShader(shader_compiler, alloc, shader, (u64)DrawTriangleShaders::BlueColor, ShaderTypeMask::PixelShader | ShaderTypeMask::VertexShader, "Basic.hlsl"_sl);
 	
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC desc = {};
 	desc.pRootSignature                            = context->root_signature_table[DrawTriangleRenderPass::root_signature.root_signature_index];
@@ -326,28 +329,13 @@ static void CreateComputePipelineState(GraphicsContextD3D12* context, const Shad
 	pipeline_state = new_pipeline_state;
 }
 
-static void GatherPipelineDefinitions(GraphicsContextD3D12* context, StackAllocator* alloc) {
-	PipelineLibrary lib;
-	lib.alloc = alloc;
-	
-	lib.current_pass_root_signature_index = TransmittanceLutRenderPass::root_signature.root_signature_index;
-	TransmittanceLutRenderPass::CreatePipelines(&lib);
-	
-	lib.current_pass_root_signature_index = MultipleScatteringLutRenderPass::root_signature.root_signature_index;
-	MultipleScatteringLutRenderPass::CreatePipelines(&lib);
-	
-	lib.current_pass_root_signature_index = SkyPanoramaLutRenderPass::root_signature.root_signature_index;
-	SkyPanoramaLutRenderPass::CreatePipelines(&lib);
-	
-	context->pipeline_definitions = lib.pipeline_definitions;
-	ArrayResize(context->pipeline_state_table, alloc, context->pipeline_definitions.count);
-}
-
 static void BuildPipelineStates(GraphicsContextD3D12* context, StackAllocator* alloc) {
+	extern String root_signature_include_filenames[];
+	
 	for (u64 i = 0; i < context->pipeline_definitions.count; i += 1) {
 		auto& definition = context->pipeline_definitions[i];
 		
-		auto bytecode = CompileShader(shader_compiler, alloc, definition.shader_definition, definition.permutation, definition.shader_type_mask);
+		auto bytecode = CompileShader(shader_compiler, alloc, definition.shader_definition, definition.permutation, definition.shader_type_mask, root_signature_include_filenames[definition.root_signature_index]);
 		CreateComputePipelineState(context, bytecode, definition.root_signature_index, context->pipeline_state_table[i]);
 	}
 }
