@@ -61,10 +61,9 @@ struct CmdDrawIndexedInstancedPacket : RecordContextCommandPacket {
 struct CmdCopyBufferToTexturePacket : RecordContextCommandPacket {
 	compile_const CommandType my_type = CommandType::CopyBufferToTexture;
 	
-	VirtualResourceID src_buffer_resource_id = {};
+	GpuAddress        src_buffer_gpu_address  = {};
 	VirtualResourceID dst_texture_resource_id = {};
 
-	u32 src_buffer_offset = 0;
 	u32 src_row_pitch = 0;
 	uint3 src_size = 0;
 	
@@ -94,8 +93,7 @@ struct CmdSetViewportAndScissorPacket : RecordContextCommandPacket {
 struct CmdSetIndexBufferViewPacket : RecordContextCommandPacket {
 	compile_const CommandType my_type = CommandType::SetIndexBufferView;
 	
-	VirtualResourceID resource_id = {};
-	u32 offset = 0;
+	GpuAddress gpu_address = {};
 	u32 size = 0;
 	TextureFormat format {};
 };
@@ -128,3 +126,4 @@ struct CmdSetPipelineStatePacket : RecordContextCommandPacket {
 	
 	PipelineID pipeline_id;
 };
+

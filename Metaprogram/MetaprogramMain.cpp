@@ -524,6 +524,7 @@ static void GenerateCodeForRenderPass(StackAllocator* alloc, String filename, Hl
 	rs_desc.Desc_1_2.pParameters       = root_parameters.data;
 	rs_desc.Desc_1_2.NumStaticSamplers = (u32)sampler_descs.count;
 	rs_desc.Desc_1_2.pStaticSamplers   = sampler_descs.data;
+	rs_desc.Desc_1_2.Flags             = D3D12_ROOT_SIGNATURE_FLAG_CBV_SRV_UAV_HEAP_DIRECTLY_INDEXED;
 	
 	ID3DBlob* root_signature_blob = nullptr;
 	ID3DBlob* root_signature_error_blob = nullptr;

@@ -305,13 +305,15 @@ s32 main() {
 	ImGui::CreateContext();
 	defer{ ImGui::DestroyContext(); };
 	
-	ImFontConfig font_config = {};
-	font_config.GlyphOffset.y = -1.f;
 	
 	auto& io = ImGui::GetIO();
 	io.IniFilename = "./Build/ImGuiSettings.ini";
 	io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 	io.BackendFlags |= ImGuiBackendFlags_RendererHasVtxOffset | ImGuiBackendFlags_RendererHasTextures;
+	
+	ImFontConfig font_config = {};
+	font_config.GlyphOffset.y = -1.f;
+	io.Fonts->Flags |= ImFontAtlasFlags_NoMouseCursors;
 	io.Fonts->AddFontFromFileTTF("./Assets/OpenSans-Regular.ttf", 18.f, &font_config);
 	
 	auto* window = SystemCreateWindow(&alloc, L"Engine");
@@ -338,6 +340,7 @@ s32 main() {
 	u32 upload_buffer_index = 0;
 	
 	VirtualResourceTable resource_table;
+	ArrayReserve(resource_table.virtual_resources, &alloc, (u64)VirtualResourceID::Count + 16);
 	ArrayResizeMemset(resource_table.virtual_resources, &alloc, (u64)VirtualResourceID::Count);
 	{
 		using ResourceID = VirtualResourceID;
@@ -360,8 +363,9 @@ s32 main() {
 		ImGui_ImplWin32_NewFrame();
 		ImGui::NewFrame();
 		
+		resource_table.virtual_resources.count = (u64)VirtualResourceID::Count;
 		resource_table.Set(VirtualResourceID::CurrentBackBuffer, WindowSwapGetCurrentBackBuffer(swap_chain), TextureSize(TextureFormat::R8G8B8A8_UNORM, swap_chain->size));
-		resource_table.Set(VirtualResourceID::ImGuiUploadBuffer, upload_buffers[upload_buffer_index], imgui_upload_buffer_size, upload_buffer_cpu_addresses[upload_buffer_index]);
+		resource_table.Set(VirtualResourceID::TransientUploadBuffer, upload_buffers[upload_buffer_index], imgui_upload_buffer_size, upload_buffer_cpu_addresses[upload_buffer_index]);
 		upload_buffer_index = (upload_buffer_index + 1) % number_of_frames_in_flight;
 		
 		ImGui::ShowDemoWindow(nullptr);
@@ -369,7 +373,9 @@ s32 main() {
 		ImGui::Begin("Stats");
 		ImGui::Text("Initial Alloc Size: %llu", frame_initial_size);
 		ImGui::Text("Frame Alloc Size: %llu", frame_allocation_size);
+		ImGui::PushFont(nullptr, 36.f);
 		ImGui::Text("ImGui Alloc Size: %llu", imgui_heap.ComputeTotalMemoryUsage());
+		ImGui::PopFont();
 		ImGui::End();
 		
 		if (ImGui::IsKeyChordPressed(ImGuiMod_Alt | ImGuiKey_F4)) {
@@ -389,6 +395,23 @@ s32 main() {
 		WindowSwapChainEndFrame(swap_chain, graphics_context, &alloc, record_context);
 		
 		frame_allocation_size = (alloc.total_allocated_size - frame_initial_size);
+	}
+	WaitForLastFrame(graphics_context);
+	
+	for (auto& resource : resource_table.virtual_resources) {
+		if (resource.type == VirtualResource::Type::VirtualBuffer) {
+			ReleaseBufferResource(graphics_context, resource.buffer.resource);
+		} else if (resource.type == VirtualResource::Type::VirtualTexture) {
+			ReleaseTextureResource(graphics_context, resource.texture.resource);
+		}
+	}
+	
+	for (auto& buffer : upload_buffers) {
+		ReleaseBufferResource(graphics_context, buffer);
+	}
+	
+	for (auto* texture : ImGui::GetPlatformIO().Textures) {
+		ReleaseTextureResource(graphics_context, { texture->BackendUserData });
 	}
 	
 	return 0;

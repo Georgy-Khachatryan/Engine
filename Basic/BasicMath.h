@@ -19,14 +19,10 @@ inline u64 CountLeadingZeros(u64 mask) { return _lzcnt_u64(mask); }
 inline bool IsPowerOfTwo(u64 value) { return CountSetBits(value) == 1; }
 inline u64 RoundUpToPowerOfTwo(u64 value) { return 1llu << (64 - CountLeadingZeros(value - 1)); }
 
-inline u64 AlignUp(u64 size, u64 alignment) {
-	DebugAssert(IsPowerOfTwo(alignment), "Invalid alignment '0x%llX'. Alignment must be a power of 2.", alignment);
-	return (size + alignment - 1) & ~(alignment - 1);
-}
-
-inline u64 RoundUp(u64 size, u64 alignment) {
-	return ((size + alignment - 1) / alignment) * alignment;
-}
+inline u64 AlignUp(u64 size, u64 alignment) { DebugAssert(IsPowerOfTwo(alignment), "Invalid alignment '0x%llX'. Alignment must be a power of 2.", alignment); return (size + alignment - 1) & ~(alignment - 1); }
+inline u32 AlignUp(u32 size, u32 alignment) { DebugAssert(IsPowerOfTwo32(alignment), "Invalid alignment '0x%llX'. Alignment must be a power of 2.", alignment); return (size + alignment - 1) & ~(alignment - 1); }
+inline u64 RoundUp(u64 size, u64 alignment) { return ((size + alignment - 1) / alignment) * alignment; }
+inline u32 RoundUp(u32 size, u32 alignment) { return ((size + alignment - 1) / alignment) * alignment; }
 
 inline u64 Min(u64 lh, u64 rh) { return lh < rh ? lh : rh; }
 inline u64 Max(u64 lh, u64 rh) { return lh > rh ? lh : rh; }

@@ -50,6 +50,7 @@ static void FillDescriptorTables(GraphicsContextD3D12* context, ArrayView<HLSL::
 				desc.Buffer.NumElements         = Min(descriptor.buffer.size, resource.buffer.size - descriptor.buffer.offset) / descriptor.buffer.stride;
 				desc.Buffer.StructureByteStride = descriptor.buffer.stride;
 				desc.Buffer.Flags               = D3D12_BUFFER_SRV_FLAG_NONE;
+				DebugAssert(desc.Buffer.FirstElement * descriptor.buffer.stride == descriptor.buffer.offset, "RegularBuffer offset is not correctly aligned.");
 				
 				device->CreateShaderResourceView(resource.buffer.resource.d3d12, &desc, descriptor_table_handle);
 				break;
@@ -62,6 +63,7 @@ static void FillDescriptorTables(GraphicsContextD3D12* context, ArrayView<HLSL::
 				desc.Buffer.StructureByteStride  = descriptor.buffer.stride;
 				desc.Buffer.CounterOffsetInBytes = 0;
 				desc.Buffer.Flags                = D3D12_BUFFER_UAV_FLAG_NONE;
+				DebugAssert(desc.Buffer.FirstElement * descriptor.buffer.stride == descriptor.buffer.offset, "RWRegularBuffer offset is not correctly aligned.");
 				
 				device->CreateUnorderedAccessView(resource.buffer.resource.d3d12, nullptr, &desc, descriptor_table_handle);
 				break;
@@ -131,10 +133,10 @@ static void CmdSetScissorD3D12(CmdSetViewportAndScissorPacket* packet, ID3D12Gra
 }
 
 static void CmdSetIndexBufferViewD3D12(CmdSetIndexBufferViewPacket* packet, ID3D12GraphicsCommandList7* command_list, ArrayView<VirtualResource> resources) {
-	auto& resource = resources[(u32)packet->resource_id];
+	auto& resource = resources[(u32)packet->gpu_address.resource_id];
 	
 	D3D12_INDEX_BUFFER_VIEW index_buffer_view = {};
-	index_buffer_view.BufferLocation = resource.buffer.resource.d3d12->GetGPUVirtualAddress() + packet->offset;
+	index_buffer_view.BufferLocation = resource.buffer.resource.d3d12->GetGPUVirtualAddress() + packet->gpu_address.offset;
 	index_buffer_view.SizeInBytes    = packet->size;
 	index_buffer_view.Format         = dxgi_texture_format_map[(u32)packet->format];
 	command_list->IASetIndexBuffer(&index_buffer_view);
@@ -153,13 +155,13 @@ static void CmdDrawIndexedInstancedD3D12(CmdDrawIndexedInstancedPacket* packet, 
 }
 
 static void CmdCopyBufferToTextureD3D12(CmdCopyBufferToTexturePacket* packet, ID3D12GraphicsCommandList7* command_list, ArrayView<VirtualResource> resources) {
-	auto& src_resource = resources[(u32)packet->src_buffer_resource_id];
+	auto& src_resource = resources[(u32)packet->src_buffer_gpu_address.resource_id];
 	auto& dst_resource = resources[(u32)packet->dst_texture_resource_id];
 	
 	D3D12_TEXTURE_COPY_LOCATION src = {};
 	src.pResource                          = src_resource.buffer.resource.d3d12;
 	src.Type                               = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
-	src.PlacedFootprint.Offset             = packet->src_buffer_offset;
+	src.PlacedFootprint.Offset             = packet->src_buffer_gpu_address.offset;
 	src.PlacedFootprint.Footprint.Format   = dxgi_texture_format_map[(u32)dst_resource.texture.size.format];
 	src.PlacedFootprint.Footprint.Width    = packet->src_size.x;
 	src.PlacedFootprint.Footprint.Height   = packet->src_size.y;

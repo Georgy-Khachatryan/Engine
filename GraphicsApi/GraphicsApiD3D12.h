@@ -5,6 +5,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <SDK/D3D12/include/d3d12.h>
 #include <dxgi1_4.h>
+#include <dxgidebug.h>
 
 
 compile_const u32 rtv_descriptor_count = 256;

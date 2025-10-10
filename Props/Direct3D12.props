@@ -6,6 +6,7 @@
       <AdditionalDependencies>
         d3d12.lib;
         dxgi.lib;
+        dxguid.lib;
         %(AdditionalDependencies)
       </AdditionalDependencies>
     </Link>

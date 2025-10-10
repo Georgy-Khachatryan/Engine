@@ -56,6 +56,11 @@ static void AppendResourceBindings(RecordContext* record_context, PipelineStages
 		accessed_resource_count += descriptor_table->descriptor_count;
 	}
 	
+	if (HasAnyFlags(stages_mask, PipelineStagesMask::PixelShader)) {
+		accessed_resource_count += (u32)record_context->render_targets.count;
+	}
+	
+	
 	Array<ResourceAccessDefinition> resource_accesses;
 	ArrayReserve(resource_accesses, record_context->alloc, accessed_resource_count);
 	
@@ -86,6 +91,22 @@ static void AppendResourceBindings(RecordContext* record_context, PipelineStages
 				
 				ArrayAppend(resource_accesses, access);
 			}
+		}
+	}
+	
+	if (HasAnyFlags(stages_mask, PipelineStagesMask::PixelShader)) {
+		for (auto render_target : record_context->render_targets) {
+			ResourceAccessDefinition access;
+			access.resource_id = render_target;
+			access.array_index = 0;
+			access.array_count = 1;
+			access.mip_index   = 0;
+			access.mip_count   = 1;
+			access.is_texture  = true;
+			access.stages_mask = PipelineStagesMask::RenderTarget;
+			access.access_mask = ResourceAccessMask::RenderTarget;
+			
+			ArrayAppend(resource_accesses, access);
 		}
 	}
 	
@@ -127,18 +148,17 @@ void CmdDrawIndexedInstanced(RecordContext* record_context, u32 index_count_per_
 	AppendResourceBindings(record_context, PipelineStagesMask::VertexShader | PipelineStagesMask::PixelShader);
 }
 
-void CmdCopyBufferToTexture(RecordContext* record_context, VirtualResourceID src_buffer_resource_id, VirtualResourceID dst_texture_resource_id, u32 src_buffer_offset, u32 src_row_pitch, uint3 src_size, u32 dst_subresource_index, uint3 dst_offset) {
+void CmdCopyBufferToTexture(RecordContext* record_context, GpuAddress src_buffer_gpu_address, VirtualResourceID dst_texture_resource_id, u32 src_row_pitch, uint3 src_size, uint3 dst_offset, u32 dst_subresource_index) {
 	auto& packet = AppendPacket<CmdCopyBufferToTexturePacket>(record_context);
-	packet.src_buffer_resource_id  = src_buffer_resource_id;
+	packet.src_buffer_gpu_address  = src_buffer_gpu_address;
 	packet.dst_texture_resource_id = dst_texture_resource_id;
-	packet.src_buffer_offset       = src_buffer_offset;
 	packet.src_row_pitch           = src_row_pitch;
 	packet.src_size                = src_size;
 	packet.dst_subresource_index   = dst_subresource_index;
 	packet.dst_offset              = dst_offset;
 	
 	FixedCountArray<ResourceAccessDefinition, 2> resource_accesses;
-	resource_accesses[0].resource_id = src_buffer_resource_id;
+	resource_accesses[0].resource_id = src_buffer_gpu_address.resource_id;
 	resource_accesses[0].is_texture  = false;
 	resource_accesses[0].stages_mask = PipelineStagesMask::Copy;
 	resource_accesses[0].access_mask = ResourceAccessMask::CopySrc;
@@ -178,6 +198,14 @@ void CmdClearRenderTarget(RecordContext* record_context, VirtualResourceID resou
 void CmdSetRenderTargets(RecordContext* record_context, ArrayView<VirtualResourceID> resource_ids) {
 	auto& packet = AppendPacket<CmdSetRenderTargetsPacket>(record_context);
 	packet.resource_ids = ArrayCopy(resource_ids, record_context->alloc);
+	
+	DebugAssert(resource_ids.count <= record_context->render_targets.capacity, "Setting too many render targets. %llu/%llu", resource_ids.count, record_context->render_targets.capacity);
+	memcpy(record_context->render_targets.data, resource_ids.data, resource_ids.count * sizeof(VirtualResourceID));
+	record_context->render_targets.count = resource_ids.count;
+}
+
+void CmdSetRenderTargets(RecordContext* record_context, VirtualResourceID resource_id) {
+	CmdSetRenderTargets(record_context, { &resource_id, 1 });
 }
 
 void CmdSetViewportAndScissor(RecordContext* record_context, uint2 max, uint2 min) {
@@ -199,10 +227,9 @@ void CmdSetScissor(RecordContext* record_context, uint2 max, uint2 min) {
 	packet.max = max;
 }
 
-void CmdSetIndexBufferView(RecordContext* record_context, VirtualResourceID resource_id, u32 offset, u32 size, TextureFormat format) {
+void CmdSetIndexBufferView(RecordContext* record_context, GpuAddress gpu_address, u32 size, TextureFormat format) {
 	auto& packet = AppendPacket<CmdSetIndexBufferViewPacket>(record_context);
-	packet.resource_id = resource_id;
-	packet.offset      = offset;
+	packet.gpu_address = gpu_address;
 	packet.size        = size;
 	packet.format      = format;
 }

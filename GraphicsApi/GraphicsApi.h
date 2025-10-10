@@ -22,9 +22,13 @@ struct WindowSwapChain {
 
 GraphicsContext* CreateGraphicsContext(StackAllocator* alloc);
 void ReleaseGraphicsContext(GraphicsContext* context);
+void WaitForLastFrame(GraphicsContext* context);
+void WaitForNextFrame(GraphicsContext* context);
 
 NativeTextureResource CreateTextureResource(GraphicsContext* context, TextureSize size);
 NativeBufferResource CreateBufferResource(GraphicsContext* context, u32 size, u8** cpu_address);
+void ReleaseTextureResource(GraphicsContext* context, NativeTextureResource resource);
+void ReleaseBufferResource(GraphicsContext* context, NativeBufferResource resource);
 
 WindowSwapChain* CreateWindowSwapChain(StackAllocator* alloc, GraphicsContext* context, void* hwnd);
 void ReleaseWindowSwapChain(WindowSwapChain* swap_chain, GraphicsContext* context);
@@ -33,7 +37,9 @@ NativeTextureResource WindowSwapGetCurrentBackBuffer(WindowSwapChain* swap_chain
 void WindowSwapChainBeginFrame(WindowSwapChain* swap_chain, GraphicsContext* context, StackAllocator* alloc);
 void WindowSwapChainEndFrame(WindowSwapChain* swap_chain, GraphicsContext* context, StackAllocator* alloc, RecordContext& record_context);
 
-u32 AllocateTransientSrvDescriptorTable(GraphicsContext* api_context, u32 count);
+u32 AllocateTransientSrvDescriptorTable(GraphicsContext* context, u32 count);
+u32 AllocatePersistentSrvDescriptor(GraphicsContext* context);
+void DeallocatePersistentSrvDescriptor(GraphicsContext* context, u32 heap_index);
 
 
 struct PipelineDefinition {
@@ -124,6 +130,18 @@ struct VirtualResourceTable {
 		resource.buffer.size           = size;
 		resource.buffer.allocated_size = size;
 		resource.buffer.cpu_address    = cpu_address;
+	}
+	
+	VirtualResourceID AddTransient(NativeTextureResource native_resource, TextureSize size) {
+		auto resource_id = (VirtualResourceID)virtual_resources.count;
+		
+		auto& resource = ArrayEmplace(virtual_resources);
+		resource.type = VirtualResource::Type::NativeTexture;
+		resource.texture.resource       = native_resource;
+		resource.texture.size           = size;
+		resource.texture.allocated_size = size;
+		
+		return resource_id;
 	}
 };
 

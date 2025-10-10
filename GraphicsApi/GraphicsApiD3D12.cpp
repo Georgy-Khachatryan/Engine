@@ -10,12 +10,14 @@ extern "C" __declspec(dllexport) extern const char* D3D12SDKPath    = u8".\\D3D1
 
 static ShaderCompiler* shader_compiler = nullptr;
 
-static void WaitForLastFrame(GraphicsContextD3D12* context) {
+void WaitForLastFrame(GraphicsContext* api_context) {
+	auto* context = (GraphicsContextD3D12*)api_context;
 	if (context->frame_index <= 1) return;
 	context->frame_sync_fence->SetEventOnCompletion(context->frame_index - 1, nullptr);
 }
 
-static void WaitForNextFrame(GraphicsContextD3D12* context) {
+void WaitForNextFrame(GraphicsContext* api_context) {
+	auto* context = (GraphicsContextD3D12*)api_context;
 	if (context->frame_index <= number_of_frames_in_flight) return;
 	context->frame_sync_fence->SetEventOnCompletion(context->frame_index - number_of_frames_in_flight, nullptr);
 }
@@ -272,12 +274,21 @@ void ReleaseGraphicsContext(GraphicsContext* api_context) {
 	
 	ReleaseShaderCompiler(shader_compiler);
 	
+	for (auto& root_signature : context->root_signature_table) SafeRelease(root_signature);
+	for (auto& pipeline_state : context->pipeline_state_table) SafeRelease(pipeline_state);
+	
 	SafeRelease(context->command_list);
 	for (auto& command_allocator : context->command_allocators) SafeRelease(command_allocator);
 	SafeRelease(context->frame_sync_fence);
 	for (auto& descriptor_heap : context->descriptor_heaps) SafeRelease(descriptor_heap);
 	SafeRelease(context->graphics_command_queue);
 	SafeRelease(context->device);
+	
+	IDXGIDebug1* debug = nullptr;
+	if (SUCCEEDED(DXGIGetDebugInterface1(0, IID_PPV_ARGS(&debug)))) {
+		debug->ReportLiveObjects(DXGI_DEBUG_ALL, DXGI_DEBUG_RLO_ALL);
+		debug->Release();
+	}
 }
 
 NativeTextureResource CreateTextureResource(GraphicsContext* api_context, TextureSize size) {
@@ -304,7 +315,7 @@ NativeTextureResource CreateTextureResource(GraphicsContext* api_context, Textur
 	resource_desc.SamplerFeedbackMipRegion = { 0, 0, 0 };
 	
 	NativeTextureResource resource = {};
-	auto result = context->device->CreateCommittedResource3( 
+	auto result = context->device->CreateCommittedResource3(
 		&heap_properties,
 		D3D12_HEAP_FLAG_NONE,
 		&resource_desc,
@@ -344,7 +355,7 @@ NativeBufferResource CreateBufferResource(GraphicsContext* api_context, u32 size
 	resource_desc.SamplerFeedbackMipRegion = { 0, 0, 0 };
 	
 	NativeBufferResource resource = {};
-	auto result = context->device->CreateCommittedResource3( 
+	auto result = context->device->CreateCommittedResource3(
 		&heap_properties,
 		D3D12_HEAP_FLAG_NONE,
 		&resource_desc,
@@ -364,6 +375,9 @@ NativeBufferResource CreateBufferResource(GraphicsContext* api_context, u32 size
 	return resource;
 }
 
+void ReleaseTextureResource(GraphicsContext* context, NativeTextureResource resource) { SafeRelease(resource.d3d12); }
+void ReleaseBufferResource(GraphicsContext* context, NativeBufferResource resource)   { SafeRelease(resource.d3d12); }
+
 u32 AllocateTransientSrvDescriptorTable(GraphicsContext* api_context, u32 count) {
 	auto* context = (GraphicsContextD3D12*)api_context;
 	
@@ -375,6 +389,15 @@ u32 AllocateTransientSrvDescriptorTable(GraphicsContext* api_context, u32 count)
 	return offset + persistent_srv_descriptor_count;
 }
 
+u32 AllocatePersistentSrvDescriptor(GraphicsContext* api_context) {
+	auto* context = (GraphicsContextD3D12*)api_context;
+	return ArrayPopLast(context->srv_heap_free_indices);
+}
+
+void DeallocatePersistentSrvDescriptor(GraphicsContext* api_context, u32 heap_index) {
+	auto* context = (GraphicsContextD3D12*)api_context;
+	ArrayAppend(context->srv_heap_free_indices, heap_index);
+}
 
 static void CreateSwapChainBackBuffers(WindowSwapChainD3D12* swap_chain, GraphicsContextD3D12* context) {
 	auto* dxgi_swap_chain = swap_chain->dxgi_swap_chain;

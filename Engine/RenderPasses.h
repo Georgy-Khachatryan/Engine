@@ -86,7 +86,7 @@ namespace HLSL {
 	static_assert(sizeof(ResourceDescriptor) == 16, "Incorrect ResourceDescriptor size.");
 	
 	NOTES() template<typename T> struct Texture2D : ResourceDescriptor {
-		Texture2D(VirtualResourceID resource = (VirtualResourceID)0, u32 mip_offset = 0, u32 mip_count = u32_max) { Bind(resource, mip_offset, mip_count); }
+		Texture2D(VirtualResourceID resource = (VirtualResourceID)0) { Bind(resource); }
 		
 		void Bind(VirtualResourceID resource, u32 mip_offset = 0, u32 mip_count = u32_max) {
 			resource_id = resource;
@@ -95,7 +95,7 @@ namespace HLSL {
 	};
 	
 	NOTES() template<typename T> struct RWTexture2D : ResourceDescriptor {
-		RWTexture2D(VirtualResourceID resource = (VirtualResourceID)0, u32 mip_index = 0) { Bind(resource, mip_index); }
+		RWTexture2D(VirtualResourceID resource = (VirtualResourceID)0) { Bind(resource); }
 		
 		void Bind(VirtualResourceID resource, u32 mip_index = 0) {
 			resource_id = resource;
@@ -104,20 +104,20 @@ namespace HLSL {
 	};
 	
 	NOTES() template<typename T> struct RegularBuffer : ResourceDescriptor {
-		RegularBuffer(VirtualResourceID resource = (VirtualResourceID)0, u32 offset = 0, u32 size = u32_max) { Bind(resource, offset, size); }
+		RegularBuffer(VirtualResourceID resource = (VirtualResourceID)0) { Bind(resource); }
 		
-		void Bind(VirtualResourceID resource, u32 offset = 0, u32 size = u32_max) {
-			resource_id = resource;
-			buffer = { Type::RegularBuffer, (u16)sizeof(T), offset, size };
+		void Bind(GpuAddress gpu_address, u32 size = u32_max) {
+			resource_id = gpu_address.resource_id;
+			buffer = { Type::RegularBuffer, (u16)sizeof(T), gpu_address.offset, size };
 		}
 	};
 	
 	NOTES() template<typename T> struct RWRegularBuffer : ResourceDescriptor {
-		RWRegularBuffer(VirtualResourceID resource = (VirtualResourceID)0, u32 offset = 0, u32 size = u32_max) { Bind(resource, offset, size); }
+		RWRegularBuffer(VirtualResourceID resource = (VirtualResourceID)0) { Bind(resource); }
 		
-		void Bind(VirtualResourceID resource, u32 offset = 0, u32 size = u32_max) {
-			resource_id = resource;
-			buffer = { Type::RWRegularBuffer, (u16)sizeof(T), offset, size };
+		void Bind(GpuAddress gpu_address, u32 size = u32_max) {
+			resource_id = gpu_address.resource_id;
+			buffer = { Type::RWRegularBuffer, (u16)sizeof(T), gpu_address.offset, size };
 		}
 	};
 	
@@ -159,12 +159,12 @@ struct AtmosphereParameters {
 
 enum struct VirtualResourceID : u32 {
 	None = 0,
+	
 	CurrentBackBuffer,
+	TransientUploadBuffer,
 	TransmittanceLut,
 	MultipleScatteringLut,
 	SkyPanoramaLut,
-	ImGuiUploadBuffer,
-	ImGuiFontTexture,
 	
 	Count
 };
@@ -240,28 +240,31 @@ enum struct ImGuiShaders : u32 {};
 SHADER_DEFINITION_GENERATED_CODE(ImGuiShaders);
 
 
-NOTES(Meta::HlslFile{ "ImGuiData.hlsl"_sl })
+compile_const String imgui_data_filename = "ImGuiData.hlsl"_sl;
+
+NOTES(Meta::HlslFile{ imgui_data_filename })
 struct ImGuiVertex {
 	float2 position;
 	float2 texcoord;
 	u32    color;
 };
 
-NOTES(Meta::HlslFile{ "ImGuiData.hlsl"_sl })
-struct ImGuiPushConstants {
-	float4 view_to_clip_coef;
-};
+NOTES(Meta::HlslFile{ imgui_data_filename })
+struct ImGuiPushConstants { float4 view_to_clip_coef; };
+
+NOTES(Meta::HlslFile{ imgui_data_filename })
+struct ImGuiTextureIdPushConstants { u32 index = 0; };
 
 NOTES(Meta::RenderPass{ RenderPassType::Graphics })
 struct ImGuiRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
-		HLSL::RegularBuffer<ImGuiVertex> vertices = VirtualResourceID::ImGuiUploadBuffer;
-		HLSL::Texture2D<float4>      font_texture = VirtualResourceID::ImGuiFontTexture;
+		HLSL::RegularBuffer<ImGuiVertex> vertices;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {
+		HLSL::PushConstantBuffer<ImGuiTextureIdPushConstants> texture_id;
 		HLSL::PushConstantBuffer<ImGuiPushConstants> constants;
 		HLSL::DescriptorTable<Descriptors> descriptor_table;
 	};

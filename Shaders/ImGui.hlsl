@@ -28,6 +28,7 @@ InputPS MainVS(uint start_vertex_location : SV_StartVertexLocation, uint vertex_
 
 #if defined(PIXEL_SHADER)
 float4 MainPS(InputPS input) : SV_Target0  {
-	return input.color * font_texture.Sample(sampler_linear_clamp, input.texcoord);
+	Texture2D<float4> texture = ResourceDescriptorHeap[texture_id.index];
+	return input.color * texture.Sample(sampler_linear_clamp, input.texcoord);
 }
 #endif // defined(PIXEL_SHADER)

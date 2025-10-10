@@ -5,11 +5,13 @@
 #include "TextureFormat.h"
 
 union NativeBufferResource {
-	struct ID3D12Resource* d3d12 = nullptr;
+	void* handle = nullptr;
+	struct ID3D12Resource* d3d12;
 };
 
 union NativeTextureResource {
-	struct ID3D12Resource* d3d12 = nullptr;
+	void* handle = nullptr;
+	struct ID3D12Resource* d3d12;
 };
 
 
@@ -78,3 +80,12 @@ struct ResourceAccessDefinition {
 };
 static_assert(sizeof(ResourceAccessDefinition) == 24, "Incorrect ResourceAccessDefinition size.");
 
+
+struct GpuAddress {
+	VirtualResourceID resource_id = {};
+	u32 offset = 0;
+	
+	GpuAddress() : resource_id{}, offset(0) {}
+	GpuAddress(VirtualResourceID resource_id, u32 offset = 0) : resource_id(resource_id), offset(offset) {}
+	GpuAddress(const GpuAddress& other) = default;
+};
