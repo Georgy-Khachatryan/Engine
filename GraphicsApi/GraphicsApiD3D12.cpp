@@ -401,28 +401,15 @@ void DeallocatePersistentSrvDescriptor(GraphicsContext* api_context, u32 heap_in
 
 static void CreateSwapChainBackBuffers(WindowSwapChainD3D12* swap_chain, GraphicsContextD3D12* context) {
 	auto* dxgi_swap_chain = swap_chain->dxgi_swap_chain;
-	auto* device = context->device;
 	
-	auto cpu_base_handle = context->cpu_base_handles[(u32)DescriptorHeapType::RTV].ptr;
-	auto descriptor_size = context->descriptor_sizes[(u32)DescriptorHeapType::RTV];
-	
-	for (u32 index = 0; index < number_of_back_buffers; index += 1) {
-		auto& back_buffer = swap_chain->back_buffers[index];
-		dxgi_swap_chain->GetBuffer(index, IID_PPV_ARGS(&back_buffer.resource.d3d12));
-		back_buffer.descriptor.ptr = cpu_base_handle + index * descriptor_size;
-		
-		D3D12_RENDER_TARGET_VIEW_DESC desc = {};
-		desc.Format        = DXGI_FORMAT_R8G8B8A8_UNORM;
-		desc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
-		desc.Texture2D.MipSlice   = 0;
-		desc.Texture2D.PlaneSlice = 0;
-		device->CreateRenderTargetView(back_buffer.resource.d3d12, &desc, back_buffer.descriptor);
+	for (u32 index = 0; index < swap_chain->back_buffers.count; index += 1) {
+		dxgi_swap_chain->GetBuffer(index, IID_PPV_ARGS(&swap_chain->back_buffers[index].d3d12));
 	}
 }
 
 static void ReleaseSwapChainBackBuffers(WindowSwapChainD3D12* swap_chain) {
-	for (auto& back_buffer : swap_chain->back_buffers) {
-		SafeRelease(back_buffer.resource.d3d12);
+	for (auto& resource : swap_chain->back_buffers) {
+		SafeRelease(resource.d3d12);
 	}
 }
 
@@ -501,7 +488,7 @@ void ResizeWindowSwapChain(WindowSwapChain* api_swap_chain, GraphicsContext* api
 
 NativeTextureResource WindowSwapGetCurrentBackBuffer(WindowSwapChain* api_swap_chain) {
 	auto* swap_chain = (WindowSwapChainD3D12*)api_swap_chain;
-	return swap_chain->back_buffers[swap_chain->dxgi_swap_chain->GetCurrentBackBufferIndex()].resource;
+	return swap_chain->back_buffers[swap_chain->dxgi_swap_chain->GetCurrentBackBufferIndex()];
 }
 
 void WindowSwapChainBeginFrame(WindowSwapChain* api_swap_chain, GraphicsContext* api_context, StackAllocator* alloc) {

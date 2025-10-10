@@ -81,35 +81,28 @@ static void FillDescriptorTables(GraphicsContextD3D12* context, ArrayView<HLSL::
 
 
 static void CmdClearRenderTargetD3D12(CmdClearRenderTargetPacket* packet, ID3D12GraphicsCommandList7* command_list, GraphicsContextD3D12* context, ArrayView<VirtualResource> resources) {
-	auto cpu_base_handle = context->cpu_base_handles[(u32)DescriptorHeapType::RTV].ptr;
-	auto descriptor_size = context->descriptor_sizes[(u32)DescriptorHeapType::RTV];
-	
-	u32 index = 4;
-	auto descriptor_handle = D3D12_CPU_DESCRIPTOR_HANDLE{ cpu_base_handle + index * descriptor_size };
+	auto cpu_base_handle = context->cpu_base_handles[(u32)DescriptorHeapType::RTV];
 	
 	auto& resource = resources[(u32)packet->resource_id];
-	context->device->CreateRenderTargetView(resource.texture.resource.d3d12, nullptr, descriptor_handle);
+	context->device->CreateRenderTargetView(resource.texture.resource.d3d12, nullptr, cpu_base_handle);
 	
-	float clear_color[4] = { 0.f, 0.f, 0.f, 0.f };
-	command_list->ClearRenderTargetView(descriptor_handle, clear_color, 0, nullptr);
+	auto clear_color = float4(0.f);
+	command_list->ClearRenderTargetView(cpu_base_handle, &clear_color.x, 0, nullptr);
 }
 
 static void CmdSetRenderTargetsD3D12(CmdSetRenderTargetsPacket* packet, ID3D12GraphicsCommandList7* command_list, GraphicsContextD3D12* context, ArrayView<VirtualResource> resources) {
-	auto cpu_base_handle = context->cpu_base_handles[(u32)DescriptorHeapType::RTV].ptr;
+	auto cpu_base_handle = context->cpu_base_handles[(u32)DescriptorHeapType::RTV];
 	auto descriptor_size = context->descriptor_sizes[(u32)DescriptorHeapType::RTV];
 	
-	u32 index = 4;
-	auto base_descriptor_handle = D3D12_CPU_DESCRIPTOR_HANDLE{ cpu_base_handle + index * descriptor_size };
-	
+	auto descriptor_handle = cpu_base_handle;
 	for (auto resource_id : packet->resource_ids) {
-		auto descriptor_handle = D3D12_CPU_DESCRIPTOR_HANDLE{ cpu_base_handle + index * descriptor_size };
-		index += 1;
-		
 		auto& resource = resources[(u32)resource_id];
 		context->device->CreateRenderTargetView(resource.texture.resource.d3d12, nullptr, descriptor_handle);
+		
+		descriptor_handle.ptr += descriptor_size;
 	}
 	
-	command_list->OMSetRenderTargets((u32)packet->resource_ids.count, &base_descriptor_handle, true, nullptr);
+	command_list->OMSetRenderTargets((u32)packet->resource_ids.count, &cpu_base_handle, true, nullptr);
 }
 
 static void CmdSetViewportD3D12(CmdSetViewportAndScissorPacket* packet, ID3D12GraphicsCommandList7* command_list) {
@@ -185,9 +178,9 @@ static void CmdSetRootSignatureD3D12(CmdSetRootSignaturePacket* packet, ID3D12Gr
 }
 
 static void CmdSetDescriptorTableD3D12(CmdSetDescriptorTablePacket* packet, ID3D12GraphicsCommandList7* command_list, GraphicsContextD3D12* context) {
-	auto gpu_base_handle = context->gpu_base_handles[(u32)DescriptorHeapType::SRV].ptr;
+	auto gpu_base_handle = context->gpu_base_handles[(u32)DescriptorHeapType::SRV];
 	auto descriptor_size = context->descriptor_sizes[(u32)DescriptorHeapType::SRV];
-	u64  descriptor_table = gpu_base_handle + packet->descriptor_heap_offset * descriptor_size;
+	u64 descriptor_table = gpu_base_handle.ptr + packet->descriptor_heap_offset * descriptor_size;
 	
 	if (packet->pass_type == RenderPassType::Compute) {
 		command_list->SetComputeRootDescriptorTable(packet->offset, { descriptor_table });

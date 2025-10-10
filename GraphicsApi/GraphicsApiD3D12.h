@@ -20,15 +20,10 @@ enum struct DescriptorHeapType : u32 {
 };
 
 
-struct SwapChainBackBuffer {
-	NativeTextureResource resource = {};
-	D3D12_CPU_DESCRIPTOR_HANDLE descriptor = {};
-};
-
 struct WindowSwapChainD3D12 : WindowSwapChain {
 	IDXGISwapChain3* dxgi_swap_chain = nullptr;
 	
-	FixedCountArray<SwapChainBackBuffer, number_of_back_buffers> back_buffers = {};
+	FixedCountArray<NativeTextureResource, number_of_back_buffers> back_buffers = {};
 };
 
 template<typename ResourceT>
