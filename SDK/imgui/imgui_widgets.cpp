@@ -6164,10 +6164,59 @@ bool ImGui::ColorPicker4(const char* label, float col[4], ImGuiColorEditFlags fl
         ImVec2 trb = wheel_center + ImRotate(triangle_pb, cos_hue_angle, sin_hue_angle);
         ImVec2 trc = wheel_center + ImRotate(triangle_pc, cos_hue_angle, sin_hue_angle);
         ImVec2 uv_white = GetFontTexUvWhitePixel();
+#if defined(IMGUI_ENABLE_CUSTOM_CHANGES)
+        // Approximate blending in SRGB space using linear segments. For a full explanation see the comment below when drawing SV square.
+        const int grid_segment_count = 16;
+        const int grid_vtx_count = (grid_segment_count + 1) * (grid_segment_count + 2) / 2;
+        const int grid_idx_count = (grid_segment_count * grid_segment_count * 3);
+        draw_list->PrimReserve(grid_idx_count, grid_vtx_count);
+
+        unsigned int base_index = draw_list->_VtxCurrentIdx;
+        for (int u = 0; u <= grid_segment_count; ++u)
+        {
+            for (int v = 0; v <= grid_segment_count - u; ++v)
+            {
+                const float uf = u * (1.f / (float)grid_segment_count);
+                const float vf = v * (1.f / (float)grid_segment_count);
+                const float wf = 1.f - uf - vf;
+
+                const ImVec4 color = (hue_color_f * uf + ImVec4(0.f, 0.f, 0.f, hue_color_f.w) * vf + ImVec4(1.f, 1.f, 1.f, hue_color_f.w) * wf);
+                const ImVec2 position = (tra * uf + trb * vf + trc * wf);
+
+                draw_list->PrimWriteVtx(position, uv_white, ColorConvertFloat4ToU32(color));
+            }
+        }
+        
+        unsigned int next_row_base_index = base_index + grid_segment_count + 1;
+        for (int u = 0; u < grid_segment_count; ++u)
+        {
+            const unsigned int i0 = base_index;
+            const unsigned int i1 = next_row_base_index;
+
+            for (int v = 0; v < grid_segment_count - 1 - u; ++v)
+            {
+                draw_list->PrimWriteIdx(i0 + v);
+                draw_list->PrimWriteIdx(i0 + v + 1);
+                draw_list->PrimWriteIdx(i1 + v);
+
+                draw_list->PrimWriteIdx(i0 + v + 1);
+                draw_list->PrimWriteIdx(i1 + v + 1);
+                draw_list->PrimWriteIdx(i1 + v);
+            }
+
+            draw_list->PrimWriteIdx(i0 + grid_segment_count - u - 1);
+            draw_list->PrimWriteIdx(i0 + grid_segment_count - u);
+            draw_list->PrimWriteIdx(i1 + grid_segment_count - u - 1);
+
+            base_index = next_row_base_index;
+            next_row_base_index += grid_segment_count - u;
+        }
+#else // !defined(IMGUI_ENABLE_CUSTOM_CHANGES)
         draw_list->PrimReserve(3, 3);
         draw_list->PrimVtx(tra, uv_white, hue_color32);
         draw_list->PrimVtx(trb, uv_white, col_black);
         draw_list->PrimVtx(trc, uv_white, col_white);
+#endif // !defined(IMGUI_ENABLE_CUSTOM_CHANGES)
         draw_list->AddTriangle(tra, trb, trc, col_midgrey, 1.5f);
         sv_cursor_pos = ImLerp(ImLerp(trc, tra, ImSaturate(S)), trb, ImSaturate(1 - V));
     }
@@ -6186,25 +6235,40 @@ bool ImGui::ColorPicker4(const char* label, float col[4], ImGuiColorEditFlags fl
         // We need to approximate the non linear color interpolation across the quad using linear segments, in this case
         // SV Square is drawn using a 16x16 quad grid.
         //
-        const int grid_quad_count = 16;
-        const float rcp_grid_quad_count = 1.f / (float)grid_quad_count;
-        for (int y = 0; y < grid_quad_count; ++y)
+        const int grid_segment_count = 16;
+        const int grid_vtx_count = (grid_segment_count + 1) * (grid_segment_count + 1);
+        const int grid_idx_count = (grid_segment_count * grid_segment_count * 6);
+
+        draw_list->PrimReserve(grid_idx_count, grid_vtx_count);
+        ImVec2 uv_white = GetFontTexUvWhitePixel();
+
+        unsigned int base_index = draw_list->_VtxCurrentIdx;
+        for (int y = 0; y <= grid_segment_count; ++y)
         {
-            for (int x = 0; x < grid_quad_count; ++x)
+            for (int x = 0; x <= grid_segment_count; ++x)
             {
-                const ImVec2 t0 = ImVec2((float)(x + 0), (float)(y + 0)) * rcp_grid_quad_count;
-                const ImVec2 t1 = ImVec2((float)(x + 1), (float)(y + 1)) * rcp_grid_quad_count;
+                const ImVec2 t = ImVec2((float)x, (float)y) * (1.f / (float)grid_segment_count);
+                const ImVec2 position = ImLerp(picker_pos, picker_pos + ImVec2(sv_picker_size, sv_picker_size), t);
+                const ImVec4 color = ImLerp(ImVec4(1.f, 1.f, 1.f, hue_color_f.w), hue_color_f, t.x);
+                const ImVec4 tint = ImVec4(1.f - t.y, 1.f - t.y, 1.f - t.y, 1.f);
+                draw_list->PrimWriteVtx(position, uv_white, ColorConvertFloat4ToU32(color * tint));
+            }
+        }
+        
+        for (int y = 0; y < grid_segment_count; ++y)
+        {
+            const unsigned int i0 = base_index + y * (grid_segment_count + 1);
+            const unsigned int i1 = i0 + (grid_segment_count + 1);
 
-                const ImVec2 rect_min = ImLerp(picker_pos, picker_pos + ImVec2(sv_picker_size, sv_picker_size), t0);
-                const ImVec2 rect_max = ImLerp(picker_pos, picker_pos + ImVec2(sv_picker_size, sv_picker_size), t1);
+            for (int x = 0; x < grid_segment_count; ++x)
+            {
+                draw_list->PrimWriteIdx(i0 + x);
+                draw_list->PrimWriteIdx(i0 + x + 1);
+                draw_list->PrimWriteIdx(i1 + x);
 
-                const ImVec4 color0 = ImLerp(ImVec4(1.f, 1.f, 1.f, hue_color_f.w), hue_color_f, t0.x);
-                const ImVec4 color1 = ImLerp(ImVec4(1.f, 1.f, 1.f, hue_color_f.w), hue_color_f, t1.x);
-
-                const ImVec4 tint0 = ImVec4(1.f - t0.y, 1.f - t0.y, 1.f - t0.y, 1.f);
-                const ImVec4 tint1 = ImVec4(1.f - t1.y, 1.f - t1.y, 1.f - t1.y, 1.f);
-
-                draw_list->AddRectFilledMultiColor(rect_min, rect_max, ColorConvertFloat4ToU32(color0 * tint0), ColorConvertFloat4ToU32(color1 * tint0), ColorConvertFloat4ToU32(color1 * tint1), ColorConvertFloat4ToU32(color0 * tint1));
+                draw_list->PrimWriteIdx(i0 + x + 1);
+                draw_list->PrimWriteIdx(i1 + x + 1);
+                draw_list->PrimWriteIdx(i1 + x);
             }
         }
 #else // !defined(IMGUI_ENABLE_CUSTOM_CHANGES)
@@ -6216,9 +6280,35 @@ bool ImGui::ColorPicker4(const char* label, float col[4], ImGuiColorEditFlags fl
         sv_cursor_pos.x = ImClamp(IM_ROUND(picker_pos.x + ImSaturate(S)     * sv_picker_size), picker_pos.x + 2, picker_pos.x + sv_picker_size - 2); // Sneakily prevent the circle to stick out too much
         sv_cursor_pos.y = ImClamp(IM_ROUND(picker_pos.y + ImSaturate(1 - V) * sv_picker_size), picker_pos.y + 2, picker_pos.y + sv_picker_size - 2);
 
+#if defined(IMGUI_ENABLE_CUSTOM_CHANGES)
+        // Approximate blending in SRGB space using linear segments. For a full explanation see the comment above when drawing SV square.
+        for (int i = 0; i < 6; ++i)
+        {
+            const ImVec4 color0 = ColorConvertU32ToFloat4(col_hues[i + 0]);
+            const ImVec4 color1 = ColorConvertU32ToFloat4(col_hues[i + 1]);
+
+            const ImVec2 position0 = ImVec2(bar0_pos_x,              picker_pos.y + (i + 0) * (sv_picker_size / 6));
+            const ImVec2 position1 = ImVec2(bar0_pos_x + bars_width, picker_pos.y + (i + 1) * (sv_picker_size / 6));
+
+            for (int y = 0; y < 8; ++y)
+            {
+                const float t0 = (y + 0) * (1.f / 8.f);
+                const float t1 = (y + 1) * (1.f / 8.f);
+
+                const ImU32 col0 = ColorConvertFloat4ToU32(ImLerp(color0, color1, t0));
+                const ImU32 col1 = ColorConvertFloat4ToU32(ImLerp(color0, color1, t1));
+
+                const ImVec2 pos0 = ImVec2(position0.x, ImLerp(position0.y, position1.y, t0));
+                const ImVec2 pos1 = ImVec2(position1.x, ImLerp(position0.y, position1.y, t1));
+
+                draw_list->AddRectFilledMultiColor(pos0, pos1, col0, col0, col1, col1);
+            }
+        }
+#else // !defined(IMGUI_ENABLE_CUSTOM_CHANGES)
         // Render Hue Bar
         for (int i = 0; i < 6; ++i)
             draw_list->AddRectFilledMultiColor(ImVec2(bar0_pos_x, picker_pos.y + i * (sv_picker_size / 6)), ImVec2(bar0_pos_x + bars_width, picker_pos.y + (i + 1) * (sv_picker_size / 6)), col_hues[i], col_hues[i], col_hues[i + 1], col_hues[i + 1]);
+#endif // !defined(IMGUI_ENABLE_CUSTOM_CHANGES)
         float bar0_line_y = IM_ROUND(picker_pos.y + H * sv_picker_size);
         RenderFrameBorder(ImVec2(bar0_pos_x, picker_pos.y), ImVec2(bar0_pos_x + bars_width, picker_pos.y + sv_picker_size), 0.0f);
         RenderArrowsForVerticalBar(draw_list, ImVec2(bar0_pos_x - 1, bar0_line_y), ImVec2(bars_triangles_half_sz + 1, bars_triangles_half_sz), bars_width + 2.0f, style.Alpha);
