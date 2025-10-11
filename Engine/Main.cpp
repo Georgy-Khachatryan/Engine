@@ -364,9 +364,14 @@ s32 main() {
 		ImGui::NewFrame();
 		
 		resource_table.virtual_resources.count = (u64)VirtualResourceID::Count;
-		resource_table.Set(VirtualResourceID::CurrentBackBuffer, WindowSwapGetCurrentBackBuffer(swap_chain), TextureSize(TextureFormat::R8G8B8A8_UNORM, swap_chain->size));
+		resource_table.Set(VirtualResourceID::CurrentBackBuffer, WindowSwapGetCurrentBackBuffer(swap_chain), TextureSize(TextureFormat::R8G8B8A8_UNORM_SRGB, swap_chain->size));
 		resource_table.Set(VirtualResourceID::TransientUploadBuffer, upload_buffers[upload_buffer_index], imgui_upload_buffer_size, upload_buffer_cpu_addresses[upload_buffer_index]);
 		upload_buffer_index = (upload_buffer_index + 1) % number_of_frames_in_flight;
+		
+		RecordContext record_context;
+		record_context.alloc   = &alloc;
+		record_context.context = graphics_context;
+		record_context.resource_table = &resource_table;
 		
 		ImGui::ShowDemoWindow(nullptr);
 		
@@ -378,14 +383,39 @@ s32 main() {
 		ImGui::PopFont();
 		ImGui::End();
 		
+		struct ImGuiDescriptorTable : HLSL::BaseDescriptorTable {
+			HLSL::Texture2D<float4> transmittance_lut       = VirtualResourceID::TransmittanceLut;
+			HLSL::Texture2D<float4> multiple_scattering_lut = VirtualResourceID::MultipleScatteringLut;
+			HLSL::Texture2D<float4> sky_panorama_lut        = VirtualResourceID::SkyPanoramaLut;
+		};
+		HLSL::DescriptorTable<ImGuiDescriptorTable> root_descriptor_table = { 0, 3 };
+		
+		auto& descriptor_table = AllocateDescriptorTable(&record_context, root_descriptor_table);
+		
+		{
+			ImGui::Begin("Transmittance LUT");
+			auto size = resource_table.virtual_resources[(u32)VirtualResourceID::TransmittanceLut].texture.size;
+			ImGui::Image(descriptor_table.descriptor_heap_offset, ImVec2(size.x, size.y));
+			ImGui::End();
+		}
+		
+		{
+			ImGui::Begin("Multiple Scattering LUT");
+			auto size = resource_table.virtual_resources[(u32)VirtualResourceID::MultipleScatteringLut].texture.size;
+			ImGui::Image(descriptor_table.descriptor_heap_offset + 1, ImVec2(size.x, size.y));
+			ImGui::End();
+		}
+		
+		{
+			ImGui::Begin("Sky Panorma LUT");
+			auto size = resource_table.virtual_resources[(u32)VirtualResourceID::SkyPanoramaLut].texture.size;
+			ImGui::Image(descriptor_table.descriptor_heap_offset + 2, ImVec2(size.x, size.y) * 4.f);
+			ImGui::End();
+		}
+		
 		if (ImGui::IsKeyChordPressed(ImGuiMod_Alt | ImGuiKey_F4)) {
 			window->should_close = true;
 		}
-		
-		RecordContext record_context;
-		record_context.alloc   = &alloc;
-		record_context.context = graphics_context;
-		record_context.resource_table = &resource_table;
 		
 		TransmittanceLutRenderPass{}.RecordPass(&record_context);
 		MultipleScatteringLutRenderPass{}.RecordPass(&record_context);

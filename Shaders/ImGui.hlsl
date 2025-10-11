@@ -6,10 +6,6 @@ struct InputPS {
 	float2 texcoord : TEXCOORD;
 };
 
-float4 DecodeR8G8B8A8(uint encoded) {
-	return float4(uint4(encoded >> 0, encoded >> 8, encoded >> 16, encoded >> 24) & 0xFF) * (1.0 / 255.0);
-}
-
 #if defined(VERTEX_SHADER)
 InputPS MainVS(uint start_vertex_location : SV_StartVertexLocation, uint vertex_id : SV_VertexID) {
 	ImGuiVertex vertex = vertices[start_vertex_location + vertex_id];
@@ -19,7 +15,7 @@ InputPS MainVS(uint start_vertex_location : SV_StartVertexLocation, uint vertex_
 	output.position.y = constants.view_to_clip_coef.y * vertex.position.y + constants.view_to_clip_coef.w;
 	output.position.z = 0.5;
 	output.position.w = 1.0;
-	output.color      = DecodeR8G8B8A8(vertex.color);
+	output.color      = DecodeR8G8B8A8_UNORM_SRGB(vertex.color); // Interpolate colors in linear space.
 	output.texcoord   = vertex.texcoord;
 	
 	return output;

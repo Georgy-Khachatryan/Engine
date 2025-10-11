@@ -6173,9 +6173,45 @@ bool ImGui::ColorPicker4(const char* label, float col[4], ImGuiColorEditFlags fl
     }
     else if (flags & ImGuiColorEditFlags_PickerHueBar)
     {
+#if defined(IMGUI_ENABLE_CUSTOM_CHANGES)
+        //
+        // By convention, color pickers are drawn with linearly interpolated SRGB colors, i.e. gray in the center of the color
+        // picker is SRGB=0.5, Linear=0.216. This more uniformly distributes the colors and makes picking darker colors easier.
+        //
+        // By default ImGui assumes that the vertex shader interpolates SRGB colors linearly **and** render target blending
+        // is done linearly using SRGB colors. Our custom backend does all color interpolation in linear space (SRV samples auto
+        // decode SRGB from TextureFormat::XXX_SRGB textures, vertex colors are unpacked and manually decoded from SRGB,
+        // render target blending hardware automatically decodes and encodes SRGB of TextureFormat::XXX_SRGB render targets).
+        // This means we cannot rely on pixel shader and render target blending to draw the color picker using two quads.
+        // We need to approximate the non linear color interpolation across the quad using linear segments, in this case
+        // SV Square is drawn using a 16x16 quad grid.
+        //
+        const int grid_quad_count = 16;
+        const float rcp_grid_quad_count = 1.f / (float)grid_quad_count;
+        for (int y = 0; y < grid_quad_count; ++y)
+        {
+            for (int x = 0; x < grid_quad_count; ++x)
+            {
+                const ImVec2 t0 = ImVec2((float)(x + 0), (float)(y + 0)) * rcp_grid_quad_count;
+                const ImVec2 t1 = ImVec2((float)(x + 1), (float)(y + 1)) * rcp_grid_quad_count;
+
+                const ImVec2 rect_min = ImLerp(picker_pos, picker_pos + ImVec2(sv_picker_size, sv_picker_size), t0);
+                const ImVec2 rect_max = ImLerp(picker_pos, picker_pos + ImVec2(sv_picker_size, sv_picker_size), t1);
+
+                const ImVec4 color0 = ImLerp(ImVec4(1.f, 1.f, 1.f, hue_color_f.w), hue_color_f, t0.x);
+                const ImVec4 color1 = ImLerp(ImVec4(1.f, 1.f, 1.f, hue_color_f.w), hue_color_f, t1.x);
+
+                const ImVec4 tint0 = ImVec4(1.f - t0.y, 1.f - t0.y, 1.f - t0.y, 1.f);
+                const ImVec4 tint1 = ImVec4(1.f - t1.y, 1.f - t1.y, 1.f - t1.y, 1.f);
+
+                draw_list->AddRectFilledMultiColor(rect_min, rect_max, ColorConvertFloat4ToU32(color0 * tint0), ColorConvertFloat4ToU32(color1 * tint0), ColorConvertFloat4ToU32(color1 * tint1), ColorConvertFloat4ToU32(color0 * tint1));
+            }
+        }
+#else // !defined(IMGUI_ENABLE_CUSTOM_CHANGES)
         // Render SV Square
         draw_list->AddRectFilledMultiColor(picker_pos, picker_pos + ImVec2(sv_picker_size, sv_picker_size), col_white, hue_color32, hue_color32, col_white);
         draw_list->AddRectFilledMultiColor(picker_pos, picker_pos + ImVec2(sv_picker_size, sv_picker_size), 0, 0, col_black, col_black);
+#endif // !defined(IMGUI_ENABLE_CUSTOM_CHANGES)
         RenderFrameBorder(picker_pos, picker_pos + ImVec2(sv_picker_size, sv_picker_size), 0.0f);
         sv_cursor_pos.x = ImClamp(IM_ROUND(picker_pos.x + ImSaturate(S)     * sv_picker_size), picker_pos.x + 2, picker_pos.x + sv_picker_size - 2); // Sneakily prevent the circle to stick out too much
         sv_cursor_pos.y = ImClamp(IM_ROUND(picker_pos.y + ImSaturate(1 - V) * sv_picker_size), picker_pos.y + 2, picker_pos.y + sv_picker_size - 2);

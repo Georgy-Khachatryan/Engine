@@ -28,7 +28,7 @@ static TransientBufferAllocation<T> AllocateTransientUploadBuffer(RecordContext*
 
 static void ImGuiUpdateTextures(RecordContext* record_context, u32& upload_buffer_offset, ImVector<ImTextureData*>& textures) {
 	for (auto* texture : textures) {
-		auto size = TextureSize(TextureFormat::R8G8B8A8_UNORM, texture->Width, texture->Height);
+		auto size = TextureSize(TextureFormat::R8G8B8A8_UNORM_SRGB, texture->Width, texture->Height);
 		
 		if (texture->Status == ImTextureStatus_WantCreate) {
 			texture->SetTexID(AllocatePersistentSrvDescriptor(record_context->context));

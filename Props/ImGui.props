@@ -11,6 +11,7 @@
       <PreprocessorDefinitions>
         IMGUI_DEFINE_MATH_OPERATORS;
         IMGUI_DISABLE_OBSOLETE_FUNCTIONS;
+        IMGUI_ENABLE_CUSTOM_CHANGES;
         %(PreprocessorDefinitions)
       </PreprocessorDefinitions>
     </ClCompile>

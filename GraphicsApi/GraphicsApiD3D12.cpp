@@ -231,7 +231,7 @@ static void CreateGraphicsPipelineState(GraphicsContextD3D12* context, const Sha
 	desc.IBStripCutValue                           = D3D12_INDEX_BUFFER_STRIP_CUT_VALUE_DISABLED;
 	desc.PrimitiveTopologyType                     = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
 	desc.NumRenderTargets                          = 1;
-	desc.RTVFormats[0]                             = DXGI_FORMAT_R8G8B8A8_UNORM;
+	desc.RTVFormats[0]                             = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
 	desc.DSVFormat                                 = DXGI_FORMAT_UNKNOWN;
 	desc.SampleDesc                                = { 1, 0 };
 	desc.NodeMask                                  = 0;
@@ -451,6 +451,11 @@ WindowSwapChain* CreateWindowSwapChain(StackAllocator* alloc, GraphicsContext* a
 		return nullptr;
 	}
 	dxgi_swap_chain_1->Release();
+	
+	// No-op in case of R8G8B8A8_UNORM swap chain, RGB_FULL_G22_NONE_P709 is the default color space.
+	if (FAILED(swap_chain->dxgi_swap_chain->SetColorSpace1(DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709))) {
+		DebugAssertAlways("Failed to set swap chain color space.");
+	}
 	
 	CreateSwapChainBackBuffers(swap_chain, context);
 	

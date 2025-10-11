@@ -55,4 +55,12 @@ uint2 MortonDecode(uint code) {
 	return uint2(t, t >> 16) & 0xFF;
 }
 
+float3 DecodeSRGB(float3 x) { return select(x < 0.04045, (x / 12.92), pow((x + 0.055) / 1.055, 2.4)); }
+float3 EncodeSRGB(float3 x) { return select(x < 0.0031308, 12.92 * x, (1.055 * pow(x, 1.0 / 2.4) - 0.055)); }
+float4 DecodeSRGB(float4 x) { return float4(DecodeSRGB(x.xyz), x.w); }
+float4 EncodeSRGB(float4 x) { return float4(EncodeSRGB(x.xyz), x.w); }
+
+float4 DecodeR8G8B8A8_UNORM(uint encoded) { return float4(uint4(encoded >> 0, encoded >> 8, encoded >> 16, encoded >> 24) & 0xFF) * (1.0 / 255.0); }
+float4 DecodeR8G8B8A8_UNORM_SRGB(uint encoded) { return DecodeSRGB(DecodeR8G8B8A8_UNORM(encoded)); }
+
 #endif // BASIC_HLSL

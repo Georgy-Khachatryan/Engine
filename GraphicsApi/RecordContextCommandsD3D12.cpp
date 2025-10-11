@@ -79,12 +79,20 @@ static void FillDescriptorTables(GraphicsContextD3D12* context, ArrayView<HLSL::
 	
 }
 
+static void CreateRenderTargetView(GraphicsContextD3D12* context, VirtualResource& resource, D3D12_CPU_DESCRIPTOR_HANDLE descriptor_handle) {
+	DebugAssert(resource.texture.size.type == TextureSize::Type::Texture2D, "Only 2D texture render targets are implemented.");
+	
+	D3D12_RENDER_TARGET_VIEW_DESC desc = {};
+	desc.Format               = dxgi_texture_format_map[(u32)resource.texture.size.format];
+	desc.ViewDimension        = D3D12_RTV_DIMENSION_TEXTURE2D;
+	desc.Texture2D.MipSlice   = 0;
+	desc.Texture2D.PlaneSlice = 0;
+	context->device->CreateRenderTargetView(resource.texture.resource.d3d12, &desc, descriptor_handle);
+}
 
 static void CmdClearRenderTargetD3D12(CmdClearRenderTargetPacket* packet, ID3D12GraphicsCommandList7* command_list, GraphicsContextD3D12* context, ArrayView<VirtualResource> resources) {
 	auto cpu_base_handle = context->cpu_base_handles[(u32)DescriptorHeapType::RTV];
-	
-	auto& resource = resources[(u32)packet->resource_id];
-	context->device->CreateRenderTargetView(resource.texture.resource.d3d12, nullptr, cpu_base_handle);
+	CreateRenderTargetView(context, resources[(u32)packet->resource_id], cpu_base_handle);
 	
 	auto clear_color = float4(0.f);
 	command_list->ClearRenderTargetView(cpu_base_handle, &clear_color.x, 0, nullptr);
@@ -96,9 +104,7 @@ static void CmdSetRenderTargetsD3D12(CmdSetRenderTargetsPacket* packet, ID3D12Gr
 	
 	auto descriptor_handle = cpu_base_handle;
 	for (auto resource_id : packet->resource_ids) {
-		auto& resource = resources[(u32)resource_id];
-		context->device->CreateRenderTargetView(resource.texture.resource.d3d12, nullptr, descriptor_handle);
-		
+		CreateRenderTargetView(context, resources[(u32)resource_id], descriptor_handle);
 		descriptor_handle.ptr += descriptor_size;
 	}
 	
