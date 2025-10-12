@@ -231,6 +231,7 @@ static void CreateGraphicsPipelineState(GraphicsContextD3D12* context, const Sha
 	desc.IBStripCutValue                           = D3D12_INDEX_BUFFER_STRIP_CUT_VALUE_DISABLED;
 	desc.PrimitiveTopologyType                     = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
 	desc.NumRenderTargets                          = 1;
+	// desc.RTVFormats[0]                             = DXGI_FORMAT_R16G16B16A16_FLOAT;
 	desc.RTVFormats[0]                             = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
 	desc.DSVFormat                                 = DXGI_FORMAT_UNKNOWN;
 	desc.SampleDesc                                = { 1, 0 };
@@ -413,11 +414,11 @@ static void ReleaseSwapChainBackBuffers(WindowSwapChainD3D12* swap_chain) {
 	}
 }
 
-WindowSwapChain* CreateWindowSwapChain(StackAllocator* alloc, GraphicsContext* api_context, void* hwnd) {
+WindowSwapChain* CreateWindowSwapChain(StackAllocator* alloc, GraphicsContext* api_context, void* hwnd, TextureFormat format) {
 	auto* context = (GraphicsContextD3D12*)api_context;
 	
 	auto* swap_chain = NewFromAlloc(alloc, WindowSwapChainD3D12);
-	swap_chain->size = 0;
+	swap_chain->size = TextureSize(format, 0, 0);
 	
 	IDXGIFactory4* dxgi_factory_4 = nullptr;
 	defer{ SafeRelease(dxgi_factory_4); };
@@ -430,7 +431,7 @@ WindowSwapChain* CreateWindowSwapChain(StackAllocator* alloc, GraphicsContext* a
 	DXGI_SWAP_CHAIN_DESC1 swap_chain_desc = {};
 	swap_chain_desc.Width       = 0;
 	swap_chain_desc.Height      = 0;
-	swap_chain_desc.Format      = DXGI_FORMAT_R8G8B8A8_UNORM;
+	swap_chain_desc.Format      = dxgi_texture_format_map[(u32)ToNonSrgbFormat(format)];
 	swap_chain_desc.Stereo      = false;
 	swap_chain_desc.SampleDesc  = { 1, 0 };
 	swap_chain_desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
@@ -453,7 +454,14 @@ WindowSwapChain* CreateWindowSwapChain(StackAllocator* alloc, GraphicsContext* a
 	dxgi_swap_chain_1->Release();
 	
 	// No-op in case of R8G8B8A8_UNORM swap chain, RGB_FULL_G22_NONE_P709 is the default color space.
-	if (FAILED(swap_chain->dxgi_swap_chain->SetColorSpace1(DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709))) {
+	auto color_space = DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709;
+	switch (swap_chain->size.format) {
+	case TextureFormat::R8G8B8A8_UNORM_SRGB: color_space = DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709; break;
+	case TextureFormat::R16G16B16A16_FLOAT:  color_space = DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709; break;
+	default: DebugAssertAlways("Unhandled swap chain format. Using default G22_P709 color space."); break;
+	}
+	
+	if (FAILED(swap_chain->dxgi_swap_chain->SetColorSpace1(color_space))) {
 		DebugAssertAlways("Failed to set swap chain color space.");
 	}
 	
@@ -486,7 +494,8 @@ void ResizeWindowSwapChain(WindowSwapChain* api_swap_chain, GraphicsContext* api
 		return;
 	}
 	
-	swap_chain->size = size;
+	swap_chain->size.x = size.x;
+	swap_chain->size.y = size.y;
 	
 	CreateSwapChainBackBuffers(swap_chain, context);
 }

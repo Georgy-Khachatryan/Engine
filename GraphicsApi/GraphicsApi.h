@@ -16,7 +16,7 @@ struct GraphicsContext {
 };
 
 struct WindowSwapChain {
-	uint2 size = 0;
+	TextureSize size;
 };
 
 
@@ -30,7 +30,7 @@ NativeBufferResource CreateBufferResource(GraphicsContext* context, u32 size, u8
 void ReleaseTextureResource(GraphicsContext* context, NativeTextureResource resource);
 void ReleaseBufferResource(GraphicsContext* context, NativeBufferResource resource);
 
-WindowSwapChain* CreateWindowSwapChain(StackAllocator* alloc, GraphicsContext* context, void* hwnd);
+WindowSwapChain* CreateWindowSwapChain(StackAllocator* alloc, GraphicsContext* context, void* hwnd, TextureFormat format);
 void ReleaseWindowSwapChain(WindowSwapChain* swap_chain, GraphicsContext* context);
 void ResizeWindowSwapChain(WindowSwapChain* swap_chain, GraphicsContext* context, uint2 size);
 NativeTextureResource WindowSwapGetCurrentBackBuffer(WindowSwapChain* swap_chain);

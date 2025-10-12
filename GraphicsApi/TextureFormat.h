@@ -109,6 +109,8 @@ enum struct TextureFormat : u8 {
 	Count
 };
 
+TextureFormat ToNonSrgbFormat(TextureFormat format);
+
 enum DXGI_FORMAT;
 extern ArrayView<DXGI_FORMAT> dxgi_texture_format_map;
 
