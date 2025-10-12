@@ -174,97 +174,130 @@ GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
 	return context;
 }
 
-static void CreateComputePipelineState(GraphicsContextD3D12* context, const ShaderBytecode& bytecode, u32 root_signature_index, ID3D12PipelineState*& pipeline_state) {
-	D3D12_COMPUTE_PIPELINE_STATE_DESC desc = {};
-	desc.NodeMask  = 0;
-	desc.CachedPSO = {};
-	desc.Flags     = D3D12_PIPELINE_STATE_FLAG_NONE;
+template<typename T>
+struct alignas(void*) PipelineSubobjectD3D12 {
+	D3D12_PIPELINE_STATE_SUBOBJECT_TYPE type = {};
+	T data = {};
+};
+
+template<typename T, u64 fixed_stream_capacity>
+static T& AppendSubobject(FixedCapacityArray<u8, fixed_stream_capacity>& stream, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE type) {
+	u64 subobject_size = sizeof(PipelineSubobjectD3D12<T>);
+	DebugAssert(stream.count + subobject_size <= stream.capacity, "Subobject stream overflow.");
 	
-	desc.pRootSignature     = context->root_signature_table[root_signature_index];
-	desc.CS.pShaderBytecode = bytecode[(u32)ShaderType::ComputeShader].data;
-	desc.CS.BytecodeLength  = bytecode[(u32)ShaderType::ComputeShader].count;
+	auto* subobject = NewInPlace(stream.data + stream.count, PipelineSubobjectD3D12<T>);
+	stream.count += subobject_size;
+	subobject->type = type;
+	
+	return subobject->data;
+}
+
+static void CreateComputePipelineState(GraphicsContextD3D12* context, const ShaderBytecode& bytecode, u32 root_signature_index, u32 pipeline_state_index) {
+	FixedCapacityArray<u8, 40> stream;
+	
+	auto& root_signature = AppendSubobject<ID3D12RootSignature*>(stream, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_ROOT_SIGNATURE);
+	root_signature = context->root_signature_table[root_signature_index];
+	
+	auto& cs = AppendSubobject<D3D12_SHADER_BYTECODE>(stream, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_CS);
+	cs.pShaderBytecode = bytecode[(u32)ShaderType::ComputeShader].data;
+	cs.BytecodeLength  = bytecode[(u32)ShaderType::ComputeShader].count;
+	
+	auto desc = D3D12_PIPELINE_STATE_STREAM_DESC{ stream.count, stream.data };
 	
 	ID3D12PipelineState* new_pipeline_state = nullptr;
-	if (FAILED(context->device->CreateComputePipelineState(&desc, IID_PPV_ARGS(&new_pipeline_state)))) {
+	if (FAILED(context->device->CreatePipelineState(&desc, IID_PPV_ARGS(&new_pipeline_state)))) {
 		DebugAssertAlways("Failed to create compute pipeline state.");
 		return;
 	}
 	
-	SafeRelease(pipeline_state);
-	pipeline_state = new_pipeline_state;
+	SafeRelease(context->pipeline_state_table[pipeline_state_index]);
+	context->pipeline_state_table[pipeline_state_index] = new_pipeline_state;
 }
 
-static void CreateGraphicsPipelineState(GraphicsContextD3D12* context, const ShaderBytecode& bytecode, u32 root_signature_index, ID3D12PipelineState*& pipeline_state) {
-	D3D12_GRAPHICS_PIPELINE_STATE_DESC desc = {};
-	desc.pRootSignature                            = context->root_signature_table[root_signature_index];
-	desc.BlendState.AlphaToCoverageEnable          = false;
-	desc.BlendState.IndependentBlendEnable         = false;
-	desc.BlendState.RenderTarget[0].BlendEnable    = true;
-	desc.BlendState.RenderTarget[0].SrcBlend       = D3D12_BLEND_SRC_ALPHA;
-	desc.BlendState.RenderTarget[0].DestBlend      = D3D12_BLEND_INV_SRC_ALPHA;
-	desc.BlendState.RenderTarget[0].BlendOp        = D3D12_BLEND_OP_ADD;
-	desc.BlendState.RenderTarget[0].SrcBlendAlpha  = D3D12_BLEND_ONE;
-	desc.BlendState.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_INV_SRC_ALPHA;
-	desc.BlendState.RenderTarget[0].BlendOpAlpha   = D3D12_BLEND_OP_ADD;
-	desc.BlendState.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
-	desc.SampleMask                                = u32_max;
-	desc.RasterizerState.FillMode                  = D3D12_FILL_MODE_SOLID;
-	desc.RasterizerState.CullMode                  = D3D12_CULL_MODE_NONE;
-	desc.RasterizerState.FrontCounterClockwise     = false;
-	desc.RasterizerState.DepthBias                 = 0;
-	desc.RasterizerState.DepthBiasClamp            = 0.f;
-	desc.RasterizerState.SlopeScaledDepthBias      = 0.f;
-	desc.RasterizerState.DepthClipEnable           = true;
-	desc.RasterizerState.MultisampleEnable         = false;
-	desc.RasterizerState.AntialiasedLineEnable     = false;
-	desc.RasterizerState.ForcedSampleCount         = 0;
-	desc.RasterizerState.ConservativeRaster        = D3D12_CONSERVATIVE_RASTERIZATION_MODE_OFF;
-	desc.DepthStencilState.DepthEnable             = false;
-	desc.DepthStencilState.DepthWriteMask          = D3D12_DEPTH_WRITE_MASK_ZERO;
-	desc.DepthStencilState.DepthFunc               = D3D12_COMPARISON_FUNC_ALWAYS;
-	desc.DepthStencilState.StencilEnable           = false;
-	desc.DepthStencilState.StencilReadMask         = 0;
-	desc.DepthStencilState.StencilWriteMask        = 0;
-	desc.DepthStencilState.FrontFace               = { D3D12_STENCIL_OP_KEEP, D3D12_STENCIL_OP_KEEP, D3D12_STENCIL_OP_KEEP, D3D12_COMPARISON_FUNC_ALWAYS };
-	desc.DepthStencilState.BackFace                = { D3D12_STENCIL_OP_KEEP, D3D12_STENCIL_OP_KEEP, D3D12_STENCIL_OP_KEEP, D3D12_COMPARISON_FUNC_ALWAYS };
-	desc.InputLayout                               = {};
-	desc.IBStripCutValue                           = D3D12_INDEX_BUFFER_STRIP_CUT_VALUE_DISABLED;
-	desc.PrimitiveTopologyType                     = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-	desc.NumRenderTargets                          = 1;
-	// desc.RTVFormats[0]                             = DXGI_FORMAT_R16G16B16A16_FLOAT;
-	desc.RTVFormats[0]                             = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
-	desc.DSVFormat                                 = DXGI_FORMAT_UNKNOWN;
-	desc.SampleDesc                                = { 1, 0 };
-	desc.NodeMask                                  = 0;
-	desc.CachedPSO                                 = {};
-	desc.Flags                                     = D3D12_PIPELINE_STATE_FLAG_NONE;
+static void CreateGraphicsPipelineState(GraphicsContextD3D12* context, const ShaderBytecode& bytecode, u32 root_signature_index, u32 pipeline_state_index) {
+	FixedCapacityArray<u8, 560> stream;
 	
-	desc.VS.pShaderBytecode = bytecode[(u32)ShaderType::VertexShader].data;
-	desc.VS.BytecodeLength  = bytecode[(u32)ShaderType::VertexShader].count;
-	desc.PS.pShaderBytecode = bytecode[(u32)ShaderType::PixelShader].data;
-	desc.PS.BytecodeLength  = bytecode[(u32)ShaderType::PixelShader].count;
+	auto& root_signature = AppendSubobject<ID3D12RootSignature*>(stream, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_ROOT_SIGNATURE);
+	root_signature = context->root_signature_table[root_signature_index];
+	
+	auto& blend_state = AppendSubobject<D3D12_BLEND_DESC>(stream, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_BLEND);
+	blend_state.AlphaToCoverageEnable          = false;
+	blend_state.IndependentBlendEnable         = false;
+	blend_state.RenderTarget[0].BlendEnable    = true;
+	blend_state.RenderTarget[0].SrcBlend       = D3D12_BLEND_SRC_ALPHA;
+	blend_state.RenderTarget[0].DestBlend      = D3D12_BLEND_INV_SRC_ALPHA;
+	blend_state.RenderTarget[0].BlendOp        = D3D12_BLEND_OP_ADD;
+	blend_state.RenderTarget[0].SrcBlendAlpha  = D3D12_BLEND_ONE;
+	blend_state.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_INV_SRC_ALPHA;
+	blend_state.RenderTarget[0].BlendOpAlpha   = D3D12_BLEND_OP_ADD;
+	blend_state.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+	
+	auto& rasterizer_state = AppendSubobject<D3D12_RASTERIZER_DESC>(stream, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_RASTERIZER);
+	rasterizer_state.FillMode              = D3D12_FILL_MODE_SOLID;
+	rasterizer_state.CullMode              = D3D12_CULL_MODE_NONE;
+	rasterizer_state.FrontCounterClockwise = false;
+	rasterizer_state.DepthBias             = 0;
+	rasterizer_state.DepthBiasClamp        = 0.f;
+	rasterizer_state.SlopeScaledDepthBias  = 0.f;
+	rasterizer_state.DepthClipEnable       = true;
+	rasterizer_state.MultisampleEnable     = false;
+	rasterizer_state.AntialiasedLineEnable = false;
+	rasterizer_state.ForcedSampleCount     = 0;
+	rasterizer_state.ConservativeRaster    = D3D12_CONSERVATIVE_RASTERIZATION_MODE_OFF;
+	
+	auto& depth_stencil_state = AppendSubobject<D3D12_DEPTH_STENCIL_DESC>(stream, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_DEPTH_STENCIL);
+	depth_stencil_state.DepthEnable      = false;
+	depth_stencil_state.DepthWriteMask   = D3D12_DEPTH_WRITE_MASK_ZERO;
+	depth_stencil_state.DepthFunc        = D3D12_COMPARISON_FUNC_ALWAYS;
+	depth_stencil_state.StencilEnable    = false;
+	depth_stencil_state.StencilReadMask  = 0;
+	depth_stencil_state.StencilWriteMask = 0;
+	depth_stencil_state.FrontFace        = { D3D12_STENCIL_OP_KEEP, D3D12_STENCIL_OP_KEEP, D3D12_STENCIL_OP_KEEP, D3D12_COMPARISON_FUNC_ALWAYS };
+	depth_stencil_state.BackFace         = { D3D12_STENCIL_OP_KEEP, D3D12_STENCIL_OP_KEEP, D3D12_STENCIL_OP_KEEP, D3D12_COMPARISON_FUNC_ALWAYS };
+	
+	auto& primitive_topology = AppendSubobject<D3D12_PRIMITIVE_TOPOLOGY_TYPE>(stream, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_PRIMITIVE_TOPOLOGY);
+	primitive_topology = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+	
+	auto& render_targets = AppendSubobject<D3D12_RT_FORMAT_ARRAY>(stream, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_RENDER_TARGET_FORMATS);
+	render_targets.NumRenderTargets = 1;
+	// render_targets.RTFormats[0]     = DXGI_FORMAT_R16G16B16A16_FLOAT;
+	render_targets.RTFormats[0]     = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+	
+	auto& depth_format = AppendSubobject<DXGI_FORMAT>(stream, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_DEPTH_STENCIL_FORMAT);
+	depth_format = DXGI_FORMAT_UNKNOWN;
+	
+	auto& vs = AppendSubobject<D3D12_SHADER_BYTECODE>(stream, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_VS);
+	vs.pShaderBytecode = bytecode[(u32)ShaderType::VertexShader].data;
+	vs.BytecodeLength  = bytecode[(u32)ShaderType::VertexShader].count;
+	
+	auto& ps = AppendSubobject<D3D12_SHADER_BYTECODE>(stream, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_PS);
+	ps.pShaderBytecode = bytecode[(u32)ShaderType::PixelShader].data;
+	ps.BytecodeLength  = bytecode[(u32)ShaderType::PixelShader].count;
+	
+	auto desc = D3D12_PIPELINE_STATE_STREAM_DESC{ stream.count, stream.data };
 	
 	ID3D12PipelineState* new_pipeline_state = nullptr;
-	if (FAILED(context->device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(&new_pipeline_state)))) {
+	if (FAILED(context->device->CreatePipelineState(&desc, IID_PPV_ARGS(&new_pipeline_state)))) {
 		DebugAssertAlways("Failed to create graphics pipeline state.");
 		return;
 	}
 	
-	SafeRelease(pipeline_state);
-	pipeline_state = new_pipeline_state;
+	SafeRelease(context->pipeline_state_table[pipeline_state_index]);
+	context->pipeline_state_table[pipeline_state_index] = new_pipeline_state;
 }
 
 static void BuildPipelineStates(GraphicsContextD3D12* context, StackAllocator* alloc) {
 	extern String root_signature_include_filenames[];
 	
-	for (u64 i = 0; i < context->pipeline_definitions.count; i += 1) {
+	for (u32 i = 0; i < context->pipeline_definitions.count; i += 1) {
 		auto& definition = context->pipeline_definitions[i];
 		
 		auto bytecode = CompileShader(shader_compiler, alloc, definition.shader_definition, definition.permutation, definition.shader_type_mask, root_signature_include_filenames[definition.root_signature_index]);
-		if (definition.shader_type_mask == ShaderTypeMask::ComputeShader) {
-			CreateComputePipelineState(context, bytecode, definition.root_signature_index, context->pipeline_state_table[i]);
+		
+		if (HasAnyFlags(definition.shader_type_mask, ShaderTypeMask::ComputeShader)) {
+			CreateComputePipelineState(context, bytecode, definition.root_signature_index, i);
 		} else {
-			CreateGraphicsPipelineState(context, bytecode, definition.root_signature_index, context->pipeline_state_table[i]);
+			CreateGraphicsPipelineState(context, bytecode, definition.root_signature_index, i);
 		}
 	}
 }
