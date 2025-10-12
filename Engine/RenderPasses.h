@@ -269,6 +269,7 @@ struct ImGuiRenderPass {
 		HLSL::DescriptorTable<Descriptors> descriptor_table;
 	};
 	
-	inline static PipelineID pipeline_id;
+	inline static PipelineID sdr_pipeline_id;
+	inline static PipelineID hdr_pipeline_id;
 };
 

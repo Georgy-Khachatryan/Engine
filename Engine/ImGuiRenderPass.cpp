@@ -70,7 +70,23 @@ static void ImGuiUpdateTextures(RecordContext* record_context, u32& upload_buffe
 }
 
 void ImGuiRenderPass::CreatePipelines(PipelineLibrary* lib) {
-	pipeline_id = CreateGraphicsPipeline(lib, ImGuiShadersID);
+	struct {
+		PipelineBlendState blend;
+		PipelineRenderTarget render_target;
+	} pipeline;
+	
+	pipeline.blend.src_blend_rgb = PipelineBlendState::Blend::SrcAlpha;
+	pipeline.blend.dst_blend_rgb = PipelineBlendState::Blend::InvSrcAlpha;
+	pipeline.blend.blend_op_rgb  = PipelineBlendState::BlendOp::Add;
+	pipeline.blend.src_blend_a   = PipelineBlendState::Blend::One;
+	pipeline.blend.dst_blend_a   = PipelineBlendState::Blend::InvSrcAlpha;
+	pipeline.blend.blend_op_a    = PipelineBlendState::BlendOp::Add;
+
+	pipeline.render_target.format = TextureFormat::R8G8B8A8_UNORM_SRGB;
+	sdr_pipeline_id = CreateGraphicsPipeline(lib, pipeline, ImGuiShadersID);
+	
+	pipeline.render_target.format = TextureFormat::R16G16B16A16_FLOAT;
+	hdr_pipeline_id = CreateGraphicsPipeline(lib, pipeline, ImGuiShadersID);
 }
 
 void ImGuiRenderPass::RecordPass(RecordContext* record_context) {
@@ -94,6 +110,7 @@ void ImGuiRenderPass::RecordPass(RecordContext* record_context) {
 	}
 	
 	
+	auto render_target_size = GetTextureSize(record_context, VirtualResourceID::CurrentBackBuffer);
 	CmdClearRenderTarget(record_context, VirtualResourceID::CurrentBackBuffer);
 	CmdSetRenderTargets(record_context,  VirtualResourceID::CurrentBackBuffer);
 	
@@ -101,7 +118,7 @@ void ImGuiRenderPass::RecordPass(RecordContext* record_context) {
 	descriptor_table.vertices.Bind(vertex_buffer_gpu_address, draw_data->TotalVtxCount * sizeof(ImDrawVert));
 	
 	CmdSetRootSignature(record_context, root_signature);
-	CmdSetPipelineState(record_context, pipeline_id);
+	CmdSetPipelineState(record_context, render_target_size.format == TextureFormat::R8G8B8A8_UNORM_SRGB ? sdr_pipeline_id : hdr_pipeline_id);
 	
 	
 	auto display_min = float2(draw_data->DisplayPos.x, draw_data->DisplayPos.y + draw_data->DisplaySize.y);

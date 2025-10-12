@@ -214,28 +214,93 @@ static void CreateComputePipelineState(GraphicsContextD3D12* context, const Shad
 	context->pipeline_state_table[pipeline_state_index] = new_pipeline_state;
 }
 
-static void CreateGraphicsPipelineState(GraphicsContextD3D12* context, const ShaderBytecode& bytecode, u32 root_signature_index, u32 pipeline_state_index) {
+static D3D12_CULL_MODE cull_mode_map[(u32)PipelineRasterizer::CullMode::Count] = {
+	D3D12_CULL_MODE_NONE,
+	D3D12_CULL_MODE_FRONT,
+	D3D12_CULL_MODE_BACK
+};
+
+static D3D12_BLEND blend_map[(u32)PipelineBlendState::Blend::Count] = {
+	D3D12_BLEND_ZERO,
+	D3D12_BLEND_ONE,
+	D3D12_BLEND_SRC_ALPHA,
+	D3D12_BLEND_INV_SRC_ALPHA,
+	D3D12_BLEND_DEST_ALPHA,
+	D3D12_BLEND_INV_DEST_ALPHA,
+};
+
+static D3D12_BLEND_OP blend_op_map[(u32)PipelineBlendState::BlendOp::Count] = {
+	D3D12_BLEND_OP_ADD,
+	D3D12_BLEND_OP_SUBTRACT,
+	D3D12_BLEND_OP_REV_SUBTRACT,
+	D3D12_BLEND_OP_MIN,
+	D3D12_BLEND_OP_MAX,
+};
+
+static D3D12_COMPARISON_FUNC comparison_function_map[(u32)PipelineDepthStencil::ComparisonMode::Count] = {
+	D3D12_COMPARISON_FUNC_NONE,
+	D3D12_COMPARISON_FUNC_ALWAYS,
+	D3D12_COMPARISON_FUNC_NEVER,
+	D3D12_COMPARISON_FUNC_GREATER,
+	D3D12_COMPARISON_FUNC_LESS,
+	D3D12_COMPARISON_FUNC_GREATER_EQUAL,
+	D3D12_COMPARISON_FUNC_LESS_EQUAL,
+	D3D12_COMPARISON_FUNC_EQUAL,
+	D3D12_COMPARISON_FUNC_NOT_EQUAL,
+};
+
+static D3D12_STENCIL_OP stencil_op_map[(u32)PipelineDepthStencil::StencilOp::Count] = {
+	D3D12_STENCIL_OP_KEEP,
+	D3D12_STENCIL_OP_ZERO,
+	D3D12_STENCIL_OP_REPLACE,
+	D3D12_STENCIL_OP_INVERT,
+	D3D12_STENCIL_OP_INCR,
+	D3D12_STENCIL_OP_DECR,
+	D3D12_STENCIL_OP_INCR_SAT,
+	D3D12_STENCIL_OP_DECR_SAT,
+};
+
+static D3D12_DEPTH_STENCILOP_DESC TranslateStencilFaceOps(PipelineDepthStencil::StencilFaceOps ops) {
+	D3D12_DEPTH_STENCILOP_DESC desc = {};
+	desc.StencilFailOp      = stencil_op_map[(u32)ops.stencil_fail_depth_none];
+	desc.StencilDepthFailOp = stencil_op_map[(u32)ops.stencil_pass_depth_fail];
+	desc.StencilPassOp      = stencil_op_map[(u32)ops.stencil_pass_depth_pass];
+	desc.StencilFunc        = comparison_function_map[(u32)ops.stencil_comparison];
+	return desc;
+}
+
+static void CreateGraphicsPipelineState(GraphicsContextD3D12* context, const PipelineStateDescription& pipeline_state_description, const ShaderBytecode& bytecode, u32 root_signature_index, u32 pipeline_state_index) {
 	FixedCapacityArray<u8, 560> stream;
 	
 	auto& root_signature = AppendSubobject<ID3D12RootSignature*>(stream, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_ROOT_SIGNATURE);
 	root_signature = context->root_signature_table[root_signature_index];
 	
-	auto& blend_state = AppendSubobject<D3D12_BLEND_DESC>(stream, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_BLEND);
-	blend_state.AlphaToCoverageEnable          = false;
-	blend_state.IndependentBlendEnable         = false;
-	blend_state.RenderTarget[0].BlendEnable    = true;
-	blend_state.RenderTarget[0].SrcBlend       = D3D12_BLEND_SRC_ALPHA;
-	blend_state.RenderTarget[0].DestBlend      = D3D12_BLEND_INV_SRC_ALPHA;
-	blend_state.RenderTarget[0].BlendOp        = D3D12_BLEND_OP_ADD;
-	blend_state.RenderTarget[0].SrcBlendAlpha  = D3D12_BLEND_ONE;
-	blend_state.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_INV_SRC_ALPHA;
-	blend_state.RenderTarget[0].BlendOpAlpha   = D3D12_BLEND_OP_ADD;
-	blend_state.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+	if (pipeline_state_description.blend_states.count != 0) {
+		auto& blend_state = AppendSubobject<D3D12_BLEND_DESC>(stream, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_BLEND);
+		blend_state.AlphaToCoverageEnable  = false;
+		blend_state.IndependentBlendEnable = pipeline_state_description.blend_states.count != 1;
+		
+		for (u32 i = 0; i < pipeline_state_description.blend_states.count; i += 1) {
+			auto* src_desc = pipeline_state_description.blend_states[i];
+			auto& dst_desc = blend_state.RenderTarget[i];
+			
+			dst_desc.BlendEnable    = true;
+			dst_desc.LogicOpEnable  = false;
+			dst_desc.SrcBlend       = blend_map[(u32)src_desc->src_blend_rgb];
+			dst_desc.DestBlend      = blend_map[(u32)src_desc->dst_blend_rgb];
+			dst_desc.BlendOp        = blend_op_map[(u32)src_desc->blend_op_rgb];
+			dst_desc.SrcBlendAlpha  = blend_map[(u32)src_desc->src_blend_a];
+			dst_desc.DestBlendAlpha = blend_map[(u32)src_desc->dst_blend_a];
+			dst_desc.BlendOpAlpha   = blend_op_map[(u32)src_desc->blend_op_a];
+			dst_desc.LogicOp        = D3D12_LOGIC_OP_NOOP;
+			dst_desc.RenderTargetWriteMask = (u8)src_desc->write_mask;
+		}
+	}
 	
 	auto& rasterizer_state = AppendSubobject<D3D12_RASTERIZER_DESC>(stream, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_RASTERIZER);
 	rasterizer_state.FillMode              = D3D12_FILL_MODE_SOLID;
-	rasterizer_state.CullMode              = D3D12_CULL_MODE_NONE;
-	rasterizer_state.FrontCounterClockwise = false;
+	rasterizer_state.CullMode              = cull_mode_map[(u32)pipeline_state_description.rasterizer->cull_mode];
+	rasterizer_state.FrontCounterClockwise = pipeline_state_description.rasterizer->front_face_winding == PipelineRasterizer::FrontFaceWinding::CCW;
 	rasterizer_state.DepthBias             = 0;
 	rasterizer_state.DepthBiasClamp        = 0.f;
 	rasterizer_state.SlopeScaledDepthBias  = 0.f;
@@ -245,26 +310,35 @@ static void CreateGraphicsPipelineState(GraphicsContextD3D12* context, const Sha
 	rasterizer_state.ForcedSampleCount     = 0;
 	rasterizer_state.ConservativeRaster    = D3D12_CONSERVATIVE_RASTERIZATION_MODE_OFF;
 	
-	auto& depth_stencil_state = AppendSubobject<D3D12_DEPTH_STENCIL_DESC>(stream, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_DEPTH_STENCIL);
-	depth_stencil_state.DepthEnable      = false;
-	depth_stencil_state.DepthWriteMask   = D3D12_DEPTH_WRITE_MASK_ZERO;
-	depth_stencil_state.DepthFunc        = D3D12_COMPARISON_FUNC_ALWAYS;
-	depth_stencil_state.StencilEnable    = false;
-	depth_stencil_state.StencilReadMask  = 0;
-	depth_stencil_state.StencilWriteMask = 0;
-	depth_stencil_state.FrontFace        = { D3D12_STENCIL_OP_KEEP, D3D12_STENCIL_OP_KEEP, D3D12_STENCIL_OP_KEEP, D3D12_COMPARISON_FUNC_ALWAYS };
-	depth_stencil_state.BackFace         = { D3D12_STENCIL_OP_KEEP, D3D12_STENCIL_OP_KEEP, D3D12_STENCIL_OP_KEEP, D3D12_COMPARISON_FUNC_ALWAYS };
+	if (pipeline_state_description.depth_stencil->format != TextureFormat::None) {
+		auto* depth_stencil = pipeline_state_description.depth_stencil;
+		
+		auto& depth_stencil_state = AppendSubobject<D3D12_DEPTH_STENCIL_DESC>(stream, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_DEPTH_STENCIL);
+		depth_stencil_state.DepthEnable      = HasAnyFlags(depth_stencil->flags, PipelineDepthStencil::Flags::EnableDepth);
+		depth_stencil_state.DepthWriteMask   = HasAnyFlags(depth_stencil->flags, PipelineDepthStencil::Flags::EnableDepthWrite) ? D3D12_DEPTH_WRITE_MASK_ALL : D3D12_DEPTH_WRITE_MASK_ZERO;
+		depth_stencil_state.DepthFunc        = comparison_function_map[(u32)depth_stencil->depth_comparison];
+		depth_stencil_state.StencilEnable    = HasAnyFlags(depth_stencil->flags, PipelineDepthStencil::Flags::EnableStencil);
+		depth_stencil_state.StencilReadMask  = depth_stencil->stencil_read_mask;
+		depth_stencil_state.StencilWriteMask = depth_stencil->stencil_write_mask;
+		depth_stencil_state.FrontFace        = TranslateStencilFaceOps(depth_stencil->front);
+		depth_stencil_state.BackFace         = TranslateStencilFaceOps(depth_stencil->back);
+		
+		auto& depth_format = AppendSubobject<DXGI_FORMAT>(stream, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_DEPTH_STENCIL_FORMAT);
+		depth_format = dxgi_texture_format_map[(u32)depth_stencil->format];
+	}
 	
-	auto& primitive_topology = AppendSubobject<D3D12_PRIMITIVE_TOPOLOGY_TYPE>(stream, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_PRIMITIVE_TOPOLOGY);
-	primitive_topology = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+	if (bytecode[(u32)ShaderType::VertexShader].data) {
+		auto& primitive_topology = AppendSubobject<D3D12_PRIMITIVE_TOPOLOGY_TYPE>(stream, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_PRIMITIVE_TOPOLOGY);
+		primitive_topology = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+	}
 	
-	auto& render_targets = AppendSubobject<D3D12_RT_FORMAT_ARRAY>(stream, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_RENDER_TARGET_FORMATS);
-	render_targets.NumRenderTargets = 1;
-	// render_targets.RTFormats[0]     = DXGI_FORMAT_R16G16B16A16_FLOAT;
-	render_targets.RTFormats[0]     = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
-	
-	auto& depth_format = AppendSubobject<DXGI_FORMAT>(stream, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_DEPTH_STENCIL_FORMAT);
-	depth_format = DXGI_FORMAT_UNKNOWN;
+	if (pipeline_state_description.render_targets.count != 0) {
+		auto& render_targets = AppendSubobject<D3D12_RT_FORMAT_ARRAY>(stream, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_RENDER_TARGET_FORMATS);
+		render_targets.NumRenderTargets = (u32)pipeline_state_description.render_targets.count;
+		for (u32 i = 0; i < pipeline_state_description.render_targets.count; i += 1) {
+			render_targets.RTFormats[i] = dxgi_texture_format_map[(u32)pipeline_state_description.render_targets[i]->format];
+		}
+	}
 	
 	auto& vs = AppendSubobject<D3D12_SHADER_BYTECODE>(stream, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_VS);
 	vs.pShaderBytecode = bytecode[(u32)ShaderType::VertexShader].data;
@@ -297,7 +371,8 @@ static void BuildPipelineStates(GraphicsContextD3D12* context, StackAllocator* a
 		if (HasAnyFlags(definition.shader_type_mask, ShaderTypeMask::ComputeShader)) {
 			CreateComputePipelineState(context, bytecode, definition.root_signature_index, i);
 		} else {
-			CreateGraphicsPipelineState(context, bytecode, definition.root_signature_index, i);
+			auto pipeline_state_description = CreatePipelineStateDescription(definition.pipeline_state_stream);
+			CreateGraphicsPipelineState(context, pipeline_state_description, bytecode, definition.root_signature_index, i);
 		}
 	}
 }
