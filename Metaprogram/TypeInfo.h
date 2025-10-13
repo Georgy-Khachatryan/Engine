@@ -113,7 +113,7 @@ extern TypeInfoStruct type_info_float3x3;
 
 
 template<typename T>
-struct TypeInfoOfInternal { static TypeInfoStruct* Get() { static_assert(false, "Type info is unknown."); return nullptr; } };
+struct TypeInfoOfInternal { static TypeInfo* Get() { return nullptr; } };
 
 template<typename T>
 inline auto TypeInfoOf() { return TypeInfoOfInternal<const T>::Get(); }

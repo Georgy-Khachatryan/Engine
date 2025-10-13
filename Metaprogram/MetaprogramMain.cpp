@@ -230,6 +230,8 @@ void GenerateCodeForHlslFile(StackAllocator* alloc, HlslFileData& hlsl_file, Typ
 	
 	u32 constant_count = 0;
 	for (auto& field : type_info_struct->fields) {
+		DebugAssert(field.type != nullptr, "Type of field '%.*s' in struct '%.*s' is not reflected.", (s32)field.name.count, field.name.data, (s32)name.count, name.data);
+		
 		if (field.type == &type_info_type) {
 			builder.Append("\n");
 			GenerateCodeForHlslFile(alloc, hlsl_file, (TypeInfo*)field.constant_value);

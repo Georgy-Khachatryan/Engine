@@ -424,6 +424,7 @@ s32 main() {
 	}
 	
 	u64 frame_allocation_size = 0;
+	u64 transient_upload_allocation_size = 0;
 	while (window->should_close == false) {
 		TempAllocationScopeNamed(frame_initial_size, &alloc);
 		
@@ -440,6 +441,20 @@ s32 main() {
 		resource_table.Set(VirtualResourceID::TransientUploadBuffer, upload_buffers[upload_buffer_index], imgui_upload_buffer_size, upload_buffer_cpu_addresses[upload_buffer_index]);
 		upload_buffer_index = (upload_buffer_index + 1) % number_of_frames_in_flight;
 		
+		uint2 render_target_size = uint2(512, 512);
+		
+		SceneConstants scene;
+		scene.render_target_size     = float2(render_target_size);
+		scene.inv_render_target_size = float2(1.f) / scene.render_target_size;
+		scene.view_to_clip_coef = float4(1.f, -1.f, 0.f, 0.1f);
+		scene.clip_to_view_coef = float4(1.f, -1.f, 0.f, 10.f);
+		scene.view_to_world[0] = float4(0.f,  0.f, 1.f, 0.f);
+		scene.view_to_world[1] = float4(-1.f, 0.f, 0.f, 0.f);
+		scene.view_to_world[2] = float4(0.f, -1.f, 0.f, 0.f);
+		
+		resource_table.Set(VirtualResourceID::SceneRadiance, TextureSize(TextureFormat::R16G16B16A16_FLOAT, render_target_size));
+		
+		
 		RecordContext record_context;
 		record_context.alloc   = &alloc;
 		record_context.context = graphics_context;
@@ -450,6 +465,7 @@ s32 main() {
 		ImGui::Begin("Stats");
 		ImGui::Text("Initial Alloc Size: %llu", frame_initial_size);
 		ImGui::Text("Frame Alloc Size: %llu", frame_allocation_size);
+		ImGui::Text("Upload Alloc Size: %llu", transient_upload_allocation_size);
 		ImGui::PushFont(nullptr, 36.f);
 		ImGui::Text("ImGui Alloc Size: %llu", imgui_heap.ComputeTotalMemoryUsage());
 		ImGui::PopFont();
@@ -459,8 +475,9 @@ s32 main() {
 			HLSL::Texture2D<float4> transmittance_lut       = VirtualResourceID::TransmittanceLut;
 			HLSL::Texture2D<float4> multiple_scattering_lut = VirtualResourceID::MultipleScatteringLut;
 			HLSL::Texture2D<float4> sky_panorama_lut        = VirtualResourceID::SkyPanoramaLut;
+			HLSL::Texture2D<float4> scene_radiance          = VirtualResourceID::SceneRadiance;
 		};
-		HLSL::DescriptorTable<ImGuiDescriptorTable> root_descriptor_table = { 0, 3 };
+		HLSL::DescriptorTable<ImGuiDescriptorTable> root_descriptor_table = { 0, 4 };
 		
 		auto& descriptor_table = AllocateDescriptorTable(&record_context, root_descriptor_table);
 		
@@ -485,18 +502,30 @@ s32 main() {
 			ImGui::End();
 		}
 		
+		{
+			ImGui::Begin("Scene Radiance");
+			auto size = resource_table.virtual_resources[(u32)VirtualResourceID::SceneRadiance].texture.size;
+			ImGui::Image(descriptor_table.descriptor_heap_offset + 3, ImVec2(size.x, size.y));
+			ImGui::End();
+		}
+		
 		if (ImGui::IsKeyChordPressed(ImGuiMod_Alt | ImGuiKey_F4)) {
 			window->should_close = true;
 		}
 		
+		auto [gpu_address, cpu_address] = AllocateTransientUploadBuffer<SceneConstants>(&record_context);
+		*cpu_address = scene;
+		
 		TransmittanceLutRenderPass{}.RecordPass(&record_context);
 		MultipleScatteringLutRenderPass{}.RecordPass(&record_context);
 		SkyPanoramaLutRenderPass{}.RecordPass(&record_context);
+		AtmosphereCompositeRenderPass{ gpu_address }.RecordPass(&record_context);
 		ImGuiRenderPass{}.RecordPass(&record_context);
 		
 		WindowSwapChainEndFrame(swap_chain, graphics_context, &alloc, record_context);
 		
 		frame_allocation_size = (alloc.total_allocated_size - frame_initial_size);
+		transient_upload_allocation_size = record_context.upload_buffer_offset;
 	}
 	WaitForLastFrame(graphics_context);
 	

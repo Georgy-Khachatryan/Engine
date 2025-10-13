@@ -63,4 +63,53 @@ float4 EncodeSRGB(float4 x) { return float4(EncodeSRGB(x.xyz), x.w); }
 float4 DecodeR8G8B8A8_UNORM(uint encoded) { return float4(uint4(encoded >> 0, encoded >> 8, encoded >> 16, encoded >> 24) & 0xFF) * (1.0 / 255.0); }
 float4 DecodeR8G8B8A8_UNORM_SRGB(uint encoded) { return DecodeSRGB(DecodeR8G8B8A8_UNORM(encoded)); }
 
+
+float2 NdcToScreenUv(float2 ndc) { return float2(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5); }
+float2 ScreenUvToNdc(float2 uv)  { return float2(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0); }
+
+//
+// Perspective ViewToClip/ClipToView:
+// 
+// ViewToClip      ClipToView
+//  x 0 0 0   ->   1/x 0  0  0
+//  0 y 0 0   ->   0  1/y 0  0
+//  0 0 0 w   ->   0   0  0  1
+//  0 0 1 0   ->   0   0 1/w 0
+// 
+// 
+// Orthographic ViewToClip/ClipToView:
+// 
+// ViewToClip       ClipToView
+//  x 0 0 0   ->   1/x 0  0    0
+//  0 y 0 0   ->   0  1/y 0    0
+//  0 0 z w   ->   0   0 1/z -w/z
+//  0 0 0 1   ->   0   0  0    1
+// 
+
+bool IsPerspectiveMatrix(float4 coefficients)  { return coefficients.z == 0.0; }
+bool IsOrthographicMatrix(float4 coefficients) { return coefficients.z != 0.0; }
+
+struct RayInfo {
+	float3 origin;
+	float3 direction;
+};
+
+RayInfo RayInfoFromNdc(float2 ndc, float4 clip_to_view_coef) {
+	RayInfo result;
+	
+	if (IsPerspectiveMatrix(clip_to_view_coef)) {
+		result.origin    = float3(0.0, 0.0, 0.0);
+		result.direction = normalize(float3(ndc * clip_to_view_coef.xy, 1.0));
+	} else {
+		result.origin    = float3(ndc * clip_to_view_coef.xy, clip_to_view_coef.w);
+		result.direction = float3(0.0, 0.0, 1.0);
+	}
+	
+	return result;
+}
+
+RayInfo RayInfoFromScreenUv(float2 uv, float4 clip_to_view_coef) {
+	return RayInfoFromNdc(ScreenUvToNdc(uv), clip_to_view_coef);
+}
+
 #endif // BASIC_HLSL

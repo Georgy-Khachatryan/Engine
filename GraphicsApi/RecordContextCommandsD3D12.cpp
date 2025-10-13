@@ -183,6 +183,10 @@ static void CmdSetRootSignatureD3D12(CmdSetRootSignaturePacket* packet, ID3D12Gr
 	}
 }
 
+static void CmdSetPipelineStateD3D12(CmdSetPipelineStatePacket* packet, ID3D12GraphicsCommandList7* command_list, GraphicsContextD3D12* context) {
+	command_list->SetPipelineState(context->pipeline_state_table[packet->pipeline_id.index]);
+}
+
 static void CmdSetDescriptorTableD3D12(CmdSetDescriptorTablePacket* packet, ID3D12GraphicsCommandList7* command_list, GraphicsContextD3D12* context) {
 	auto gpu_base_handle = context->gpu_base_handles[(u32)DescriptorHeapType::SRV];
 	auto descriptor_size = context->descriptor_sizes[(u32)DescriptorHeapType::SRV];
@@ -203,9 +207,16 @@ static void CmdSetPushConstantsD3D12(CmdSetPushConstantsPacket* packet, ID3D12Gr
 	}
 }
 
-static void CmdSetPipelineStateD3D12(CmdSetPipelineStatePacket* packet, ID3D12GraphicsCommandList7* command_list, GraphicsContextD3D12* context) {
-	command_list->SetPipelineState(context->pipeline_state_table[packet->pipeline_id.index]);
+static void CmdSetConstantBufferD3D12(CmdSetConstantBufferPacket* packet, ID3D12GraphicsCommandList7* command_list, ArrayView<VirtualResource> resources) {
+	u64 gpu_address = resources[(u32)packet->gpu_address.resource_id].buffer.resource.d3d12->GetGPUVirtualAddress() + packet->gpu_address.offset;
+	
+	if (packet->pass_type == RenderPassType::Compute) {
+		command_list->SetComputeRootConstantBufferView(packet->offset, gpu_address);
+	} else {
+		command_list->SetGraphicsRootConstantBufferView(packet->offset, gpu_address);
+	}
 }
+
 
 static void ResolveTextureAccess(D3D12_BARRIER_SYNC& sync, D3D12_BARRIER_ACCESS& access, D3D12_BARRIER_LAYOUT& layout, ResourceAccessDefinition* access_definition) {
 	u32 access_mask = access_definition ? (u32)access_definition->access_mask : 0;
@@ -361,9 +372,10 @@ void ReplayRecordContext(GraphicsContext* api_context, RecordContext* record_con
 			case CommandType::SetScissor:            CmdSetScissorD3D12((CmdSetViewportAndScissorPacket*)packet, command_list); break;
 			case CommandType::SetIndexBufferView:    CmdSetIndexBufferViewD3D12((CmdSetIndexBufferViewPacket*)packet, command_list, resources); break;
 			case CommandType::SetRootSignature:      CmdSetRootSignatureD3D12((CmdSetRootSignaturePacket*)packet, command_list, context); break;
+			case CommandType::SetPipelineState:      CmdSetPipelineStateD3D12((CmdSetPipelineStatePacket*)packet, command_list, context); break;
 			case CommandType::SetDescriptorTable:    CmdSetDescriptorTableD3D12((CmdSetDescriptorTablePacket*)packet, command_list, context); break;
 			case CommandType::SetPushConstants:      CmdSetPushConstantsD3D12((CmdSetPushConstantsPacket*)packet, command_list); break;
-			case CommandType::SetPipelineState:      CmdSetPipelineStateD3D12((CmdSetPipelineStatePacket*)packet, command_list, context); break;
+			case CommandType::SetConstantBuffer:     CmdSetConstantBufferD3D12((CmdSetConstantBufferPacket*)packet, command_list, resources); break;
 			default: DebugAssertAlways("Unhandled command packet type '%u'.", (u32)packet->packet_type); command_index = command_count; break;
 			}
 		}

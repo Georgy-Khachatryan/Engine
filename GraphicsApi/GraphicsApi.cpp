@@ -79,3 +79,7 @@ TextureSize GetTextureSize(RecordContext* record_context, VirtualResourceID reso
 	DebugAssert(resource.type == VirtualResource::Type::VirtualTexture || resource.type == VirtualResource::Type::NativeTexture, "Resource is not a texture.");
 	return resource.texture.size;
 }
+
+VirtualResource& GetVirtualResource(RecordContext* record_context, VirtualResourceID resource_id) {
+	return record_context->resource_table->virtual_resources[(u32)resource_id];
+}

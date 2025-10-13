@@ -245,11 +245,16 @@ void CmdSetRootSignature(RecordContext* record_context, const HLSL::BaseRootSign
 	ArrayResizeMemset(record_context->resource_bindings, record_context->alloc, root_signature.root_parameter_count);
 }
 
+void CmdSetPipelineState(RecordContext* record_context, PipelineID pipeline_id) {
+	auto& packet = AppendPacket<CmdSetPipelineStatePacket>(record_context);
+	packet.pipeline_id = pipeline_id;
+}
+
 void CmdSetDescriptorTable(RecordContext* record_context, u32 offset, HLSL::BaseDescriptorTable& descriptor_table) {
 	auto& packet = AppendPacket<CmdSetDescriptorTablePacket>(record_context);
-	packet.offset                 = offset;
+	packet.offset    = offset;
+	packet.pass_type = record_context->current_render_pass_type;
 	packet.descriptor_heap_offset = descriptor_table.descriptor_heap_offset;
-	packet.pass_type              = record_context->current_render_pass_type;
 	
 	record_context->resource_bindings[offset] = &descriptor_table;
 	record_context->resource_bindings_dirty = true;
@@ -257,13 +262,15 @@ void CmdSetDescriptorTable(RecordContext* record_context, u32 offset, HLSL::Base
 
 void CmdSetPushConstants(RecordContext* record_context, u32 offset, ArrayView<u32> push_constants) {
 	auto& packet = AppendPacket<CmdSetPushConstantsPacket>(record_context);
-	packet.offset         = offset;
-	packet.pass_type      = record_context->current_render_pass_type;
+	packet.offset    = offset;
+	packet.pass_type = record_context->current_render_pass_type;
 	packet.push_constants = ArrayCopy(push_constants, record_context->alloc);
 }
 
-void CmdSetPipelineState(RecordContext* record_context, PipelineID pipeline_id) {
-	auto& packet = AppendPacket<CmdSetPipelineStatePacket>(record_context);
-	packet.pipeline_id = pipeline_id;
+void CmdSetConstantBuffer(RecordContext* record_context, u32 offset, GpuAddress gpu_address) {
+	auto& packet = AppendPacket<CmdSetConstantBufferPacket>(record_context);
+	packet.offset    = offset;
+	packet.pass_type = record_context->current_render_pass_type;
+	packet.gpu_address = gpu_address;
 }
 

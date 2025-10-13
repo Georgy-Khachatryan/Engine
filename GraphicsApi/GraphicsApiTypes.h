@@ -90,6 +90,34 @@ struct GpuAddress {
 	GpuAddress(const GpuAddress& other) = default;
 };
 
+struct VirtualResource {
+	enum struct Type : u32 {
+		None           = 0,
+		NativeBuffer   = 1,
+		NativeTexture  = 2,
+		VirtualBuffer  = 3,
+		VirtualTexture = 4,
+	};
+	
+	Type type = Type::None;
+	u32 padding_0 = 0;
+	
+	union {
+		struct {
+			NativeTextureResource resource;
+			TextureSize size;
+			TextureSize allocated_size;
+		} texture;
+		
+		struct {
+			NativeBufferResource resource;
+			u8* cpu_address;
+			u32 size;
+			u32 allocated_size;
+		} buffer;
+	};
+};
+
 
 enum struct PipelineStateType : u8 {
 	BlendState   = 0,

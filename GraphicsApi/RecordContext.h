@@ -13,6 +13,7 @@ namespace HLSL {
 	struct BaseRootSignature;
 	template<typename T> struct DescriptorTable;
 	template<typename T> struct PushConstantBuffer;
+	template<typename T> struct ConstantBuffer;
 }
 
 struct RecordContext {
@@ -23,6 +24,9 @@ struct RecordContext {
 	u32 remaining_size = 0; 
 	u32 command_count  = 0;
 	u8* command_memory_base = nullptr;
+	
+	u32 upload_buffer_offset = 0;
+	u32 padding_0 = 0;
 	
 	Array<HLSL::BaseDescriptorTable*> descriptor_tables;
 	VirtualResourceTable* resource_table = nullptr;
@@ -51,9 +55,10 @@ void CmdSetScissor(RecordContext* record_context, uint2 max, uint2 min = 0);
 void CmdSetIndexBufferView(RecordContext* record_context, GpuAddress gpu_address, u32 size, TextureFormat format = TextureFormat::R16_UINT);
 
 void CmdSetRootSignature(RecordContext* record_context, const HLSL::BaseRootSignature& root_signature);
+void CmdSetPipelineState(RecordContext* record_context, PipelineID pipeline_id);
 void CmdSetDescriptorTable(RecordContext* record_context, u32 offset, HLSL::BaseDescriptorTable& descriptor_table);
 void CmdSetPushConstants(RecordContext* record_context, u32 offset, ArrayView<u32> push_constants);
-void CmdSetPipelineState(RecordContext* record_context, PipelineID pipeline_id);
+void CmdSetConstantBuffer(RecordContext* record_context, u32 offset, GpuAddress gpu_address);
 
 void ReplayRecordContext(GraphicsContext* context, RecordContext* record_context);
 
@@ -66,6 +71,11 @@ void CmdSetRootArgument(RecordContext* record_context, const HLSL::DescriptorTab
 template<typename T>
 void CmdSetRootArgument(RecordContext* record_context, const HLSL::PushConstantBuffer<T>& push_constant_buffer, T& push_constants) {
 	CmdSetPushConstants(record_context, push_constant_buffer.offset, { (u32*)&push_constants, sizeof(T) / sizeof(u32) });
+}
+
+template<typename T>
+void CmdSetRootArgument(RecordContext* record_context, const HLSL::ConstantBuffer<T>& constant_buffer, GpuAddress gpu_address) {
+	CmdSetConstantBuffer(record_context, constant_buffer.offset, gpu_address);
 }
 
 
@@ -89,5 +99,40 @@ inline void CreateResourceDescriptor(RecordContext* record_context, const T& des
 	descriptor_table->descriptor_count       = 1;
 	descriptor_table->descriptor             = descriptor;
 	ArrayAppend(record_context->descriptor_tables, record_context->alloc, descriptor_table);
+}
+
+TextureSize GetTextureSize(RecordContext* record_context, VirtualResourceID resource_id);
+VirtualResource& GetVirtualResource(RecordContext* record_context, VirtualResourceID resource_id);
+
+template<typename T>
+struct TransientBufferAllocation {
+	GpuAddress gpu_address = {};
+	T* cpu_address = nullptr;
+};
+
+template<typename T = u8, u32 alignment = 256u>
+static TransientBufferAllocation<T> AllocateTransientUploadBuffer(RecordContext* record_context, u32 size = 1u) {
+	auto& upload_buffer = GetVirtualResource(record_context, VirtualResourceID::TransientUploadBuffer);
+	
+	u32 offset     = record_context->upload_buffer_offset;
+	u32 size_bytes = (u32)(size * sizeof(T));
+	
+	if constexpr (alignment & (alignment - 1)) {
+		offset     = RoundUp(offset,     alignment);
+		size_bytes = RoundUp(size_bytes, alignment);
+	} else {
+		offset     = AlignUp(offset,     alignment);
+		size_bytes = AlignUp(size_bytes, alignment);
+	}
+	
+	TransientBufferAllocation<T> result;
+	result.gpu_address = GpuAddress(VirtualResourceID::TransientUploadBuffer, offset);
+	result.cpu_address = (T*)(upload_buffer.buffer.cpu_address + offset);
+	
+	offset += size_bytes;
+	DebugAssert(offset <= upload_buffer.buffer.size, "Upload buffer overflow. %u/%u", offset, upload_buffer.buffer.size);
+	record_context->upload_buffer_offset = offset;
+	
+	return result;
 }
 

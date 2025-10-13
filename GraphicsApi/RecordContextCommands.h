@@ -15,9 +15,10 @@ enum struct CommandType : u16 {
 	SetScissor            = 9,
 	SetIndexBufferView    = 10,
 	SetRootSignature      = 11,
-	SetDescriptorTable    = 12,
-	SetPushConstants      = 13,
-	SetPipelineState      = 14,
+	SetPipelineState      = 12,
+	SetDescriptorTable    = 13,
+	SetPushConstants      = 14,
+	SetConstantBuffer     = 15,
 	
 	Count
 };
@@ -105,12 +106,18 @@ struct CmdSetRootSignaturePacket : RecordContextCommandPacket {
 	RenderPassType pass_type = RenderPassType::Graphics;
 };
 
+struct CmdSetPipelineStatePacket : RecordContextCommandPacket {
+	compile_const CommandType my_type = CommandType::SetPipelineState;
+	
+	PipelineID pipeline_id;
+};
+
 struct CmdSetDescriptorTablePacket : RecordContextCommandPacket {
 	compile_const CommandType my_type = CommandType::SetDescriptorTable;
 	
 	u32 offset = 0;
-	u32 descriptor_heap_offset = 0;
 	RenderPassType pass_type = RenderPassType::Graphics;
+	u32 descriptor_heap_offset = 0;
 };
 
 struct CmdSetPushConstantsPacket : RecordContextCommandPacket {
@@ -121,9 +128,11 @@ struct CmdSetPushConstantsPacket : RecordContextCommandPacket {
 	ArrayView<u32> push_constants;
 };
 
-struct CmdSetPipelineStatePacket : RecordContextCommandPacket {
-	compile_const CommandType my_type = CommandType::SetPipelineState;
+struct CmdSetConstantBufferPacket : RecordContextCommandPacket {
+	compile_const CommandType my_type = CommandType::SetConstantBuffer;
 	
-	PipelineID pipeline_id;
+	u32 offset = 0;
+	RenderPassType pass_type = RenderPassType::Graphics;
+	GpuAddress gpu_address = {};
 };
 

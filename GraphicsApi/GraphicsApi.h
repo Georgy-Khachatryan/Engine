@@ -75,38 +75,6 @@ PipelineID CreateGraphicsPipeline(PipelineLibrary* lib, PipelineStateDescription
 	return CreateGraphicsPipeline(lib, { (u8*)&pipeline_state_description, sizeof(pipeline_state_description) }, shader_id);
 }
 
-
-enum struct VirtualResourceID : u32;
-
-struct VirtualResource {
-	enum struct Type : u32 {
-		None           = 0,
-		NativeBuffer   = 1,
-		NativeTexture  = 2,
-		VirtualBuffer  = 3,
-		VirtualTexture = 4,
-	};
-	
-	Type type = Type::None;
-	u32 padding_0 = 0;
-	
-	union {
-		struct {
-			NativeTextureResource resource;
-			TextureSize size;
-			TextureSize allocated_size;
-		} texture;
-		
-		struct {
-			NativeBufferResource resource;
-			u8* cpu_address;
-			u32 size;
-			u32 allocated_size;
-		} buffer;
-	};
-};
-
-
 struct VirtualResourceTable {
 	Array<VirtualResource> virtual_resources;
 	
@@ -151,6 +119,4 @@ struct VirtualResourceTable {
 		return resource_id;
 	}
 };
-
-TextureSize GetTextureSize(RecordContext* record_context, VirtualResourceID resource_id);
 

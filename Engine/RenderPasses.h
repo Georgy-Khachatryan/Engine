@@ -132,6 +132,7 @@ namespace HLSL {
 
 NOTES(Meta::HlslFile{ "AtmosphereData.hlsl"_sl })
 struct AtmosphereParameters {
+	compile_const u32   thread_group_size            = 16;
 	compile_const uint2 transmittance_lut_size       = uint2(256, 64);
 	compile_const uint2 multiple_scattering_lut_size = uint2(32, 32);
 	compile_const uint2 sky_panorama_lut_size        = uint2(192, 128);
@@ -156,12 +157,26 @@ struct AtmosphereParameters {
 	float3 ozone_absorption     = { 0.000650f, 0.001881f, 0.000085f };
 };
 
+NOTES(Meta::HlslFile{ "SceneData.hlsl"_sl })
+struct SceneConstants {
+	float2 render_target_size;
+	float2 inv_render_target_size;
+	float4 view_to_clip_coef;
+	float4 clip_to_view_coef;
+	float3x4 view_to_world;
+};
 
 enum struct VirtualResourceID : u32 {
 	None = 0,
 	
+	// Core resources:
 	CurrentBackBuffer,
 	TransientUploadBuffer,
+	
+	// Common scene resources:
+	SceneRadiance,
+	
+	// Atmosphere resources:
 	TransmittanceLut,
 	MultipleScatteringLut,
 	SkyPanoramaLut,
@@ -175,6 +190,7 @@ enum struct AtmosphereShaders : u32 {
 	TransmittanceLut      = 1u << 0,
 	MultipleScatteringLut = 1u << 1,
 	SkyPanoramaLut        = 1u << 2,
+	AtmosphereComposite   = 1u << 3,
 };
 SHADER_DEFINITION_GENERATED_CODE(AtmosphereShaders);
 
@@ -229,6 +245,25 @@ struct SkyPanoramaLutRenderPass {
 	struct RootSignature : HLSL::BaseRootSignature {
 		HLSL::DescriptorTable<Descriptors> descriptor_table;
 		HLSL::ConstantBuffer<AtmosphereParameters> atmosphere;
+	};
+	
+	inline static PipelineID pipeline_id;
+};
+
+NOTES(Meta::RenderPass{})
+struct AtmosphereCompositeRenderPass {
+	RENDER_PASS_GENERATED_CODE();
+	
+	GpuAddress scene_constants;
+	
+	struct Descriptors : HLSL::BaseDescriptorTable {
+		HLSL::Texture2D<float4> sky_panorama_lut = VirtualResourceID::SkyPanoramaLut;
+		HLSL::RWTexture2D<float4> scene_radiance = VirtualResourceID::SceneRadiance;
+	};
+	
+	struct RootSignature : HLSL::BaseRootSignature {
+		HLSL::DescriptorTable<Descriptors> descriptor_table;
+		HLSL::ConstantBuffer<SceneConstants> scene;
 	};
 	
 	inline static PipelineID pipeline_id;
