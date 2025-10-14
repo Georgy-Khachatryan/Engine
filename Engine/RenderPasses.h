@@ -137,24 +137,33 @@ struct AtmosphereParameters {
 	compile_const uint2 multiple_scattering_lut_size = uint2(32, 32);
 	compile_const uint2 sky_panorama_lut_size        = uint2(192, 128);
 	
-	float bottom_radius = 6360.f; // Radius of the planet (center to ground).
-	float top_radius    = 6460.f; // Maximum considered atmosphere height (center to atmosphere top).
+	float bottom_radius = 6360.f; // Radius of the planet (center to ground), km.
+	float top_radius    = 6460.f; // Maximum considered atmosphere height (center to atmosphere top), km.
+	uint2 padding_0 = 0;
 	
 	// Rayleigh scattering exponential distribution scale in the atmosphere.
 	float  rayleigh_density_exp_scale = -1.f / 8.f;
-	float3 rayleigh_scattering        = { 0.005802f, 0.013558f, 0.033100f };
+	float3 rayleigh_scattering        = float3(0.005802f, 0.013558f, 0.033100f); // 1/km
 	
 	// Mie scattering exponential distribution scale in the atmosphere
 	float  mie_density_exp_scale = -1.f / 1.2f;
-	float3 mie_scattering = { 0.003996f, 0.003996f, 0.003996f };
-	float3 mie_absorption = { 0.000444f, 0.000444f, 0.000444f };
+	float3 mie_scattering = float3(0.003996f, 0.003996f, 0.003996f); // 1/km
+	float3 mie_absorption = float3(0.000444f, 0.000444f, 0.000444f); // 1/km
 	float  mie_phase_g    = 0.8f;
 	
 	// Ozone layer (no scattering, absorption only). Two layers, the first one below layer_height, the second one is above.
-	float  ozone_density_layer_height = 25.f;
-	float2 ozone_density_scale  = { +1.f / 15.f, -1.f / 15.f };
-	float2 ozone_density_offset = { -2.f /  3.f,  8.f /  3.f };
-	float3 ozone_absorption     = { 0.000650f, 0.001881f, 0.000085f };
+	float2 ozone_density_scale  = float2(+1.f / 15.f, -1.f / 15.f);
+	float2 ozone_density_offset = float2(-2.f /  3.f,  8.f /  3.f);
+	float3 ozone_absorption     = float3(0.000650f, 0.001881f, 0.000085f);
+	float  ozone_density_layer_height = 25.f; // km
+	
+	float3 world_space_sun_direction = float3(1.f, 0.f, 0.f);
+	float sun_irradiance = 30.f; // W/m^2
+	
+	float sun_disk_cos_outer_angle = 0.9999572f; // cos(0.53dg)
+	float sun_disk_cos_inner_angle = 0.9999649f; // cos(0.48dg)
+	float sun_disk_radiance        = 30.f; // W/(m^2*sr)
+	u32 padding_1 = 0;
 };
 
 NOTES(Meta::HlslFile{ "SceneData.hlsl"_sl })
@@ -198,6 +207,8 @@ NOTES(Meta::RenderPass{}, Meta::RenderGraphSystem{})
 struct TransmittanceLutRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
+	GpuAddress atmosphere;
+	
 	struct Descriptors : HLSL::BaseDescriptorTable {
 		HLSL::RWTexture2D<float4> transmittance_lut = VirtualResourceID::TransmittanceLut;
 	};
@@ -208,8 +219,8 @@ struct TransmittanceLutRenderPass {
 			u32 group_count_x = 0;
 		};
 		
-		HLSL::DescriptorTable<Descriptors> descriptor_table;
 		HLSL::ConstantBuffer<AtmosphereParameters> atmosphere;
+		HLSL::DescriptorTable<Descriptors> descriptor_table;
 	};
 	
 	inline static PipelineID pipeline_id;
@@ -219,14 +230,16 @@ NOTES(Meta::RenderPass{})
 struct MultipleScatteringLutRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
+	GpuAddress atmosphere;
+	
 	struct Descriptors : HLSL::BaseDescriptorTable {
 		HLSL::Texture2D<float4>   transmittance_lut       = VirtualResourceID::TransmittanceLut;
 		HLSL::RWTexture2D<float4> multiple_scattering_lut = VirtualResourceID::MultipleScatteringLut;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {
-		HLSL::DescriptorTable<Descriptors> descriptor_table;
 		HLSL::ConstantBuffer<AtmosphereParameters> atmosphere;
+		HLSL::DescriptorTable<Descriptors> descriptor_table;
 	};
 	
 	inline static PipelineID pipeline_id;
@@ -236,6 +249,8 @@ NOTES(Meta::RenderPass{})
 struct SkyPanoramaLutRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
+	GpuAddress atmosphere;
+	
 	struct Descriptors : HLSL::BaseDescriptorTable {
 		HLSL::Texture2D<float4>   transmittance_lut       = VirtualResourceID::TransmittanceLut;
 		HLSL::Texture2D<float4>   multiple_scattering_lut = VirtualResourceID::MultipleScatteringLut;
@@ -243,8 +258,8 @@ struct SkyPanoramaLutRenderPass {
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {
-		HLSL::DescriptorTable<Descriptors> descriptor_table;
 		HLSL::ConstantBuffer<AtmosphereParameters> atmosphere;
+		HLSL::DescriptorTable<Descriptors> descriptor_table;
 	};
 	
 	inline static PipelineID pipeline_id;
@@ -254,16 +269,19 @@ NOTES(Meta::RenderPass{})
 struct AtmosphereCompositeRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
+	GpuAddress atmosphere;
 	GpuAddress scene_constants;
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
+		HLSL::Texture2D<float4> transmittance_lut = VirtualResourceID::TransmittanceLut;
 		HLSL::Texture2D<float4> sky_panorama_lut = VirtualResourceID::SkyPanoramaLut;
 		HLSL::RWTexture2D<float4> scene_radiance = VirtualResourceID::SceneRadiance;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {
-		HLSL::DescriptorTable<Descriptors> descriptor_table;
+		HLSL::ConstantBuffer<AtmosphereParameters> atmosphere;
 		HLSL::ConstantBuffer<SceneConstants> scene;
+		HLSL::DescriptorTable<Descriptors> descriptor_table;
 	};
 	
 	inline static PipelineID pipeline_id;

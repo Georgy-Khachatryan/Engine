@@ -395,8 +395,9 @@ s32 main() {
 	auto* graphics_context = CreateGraphicsContext(&alloc);
 	defer{ ReleaseGraphicsContext(graphics_context); };
 	
-	// auto* swap_chain = CreateWindowSwapChain(&alloc, graphics_context, window->hwnd, TextureFormat::R16G16B16A16_FLOAT);
-	auto* swap_chain = CreateWindowSwapChain(&alloc, graphics_context, window->hwnd, TextureFormat::R8G8B8A8_UNORM_SRGB);
+	// TODO: Dynamically switch between HDR and SDR, add tone mappers for both.
+	auto* swap_chain = CreateWindowSwapChain(&alloc, graphics_context, window->hwnd, TextureFormat::R16G16B16A16_FLOAT);
+	// auto* swap_chain = CreateWindowSwapChain(&alloc, graphics_context, window->hwnd, TextureFormat::R8G8B8A8_UNORM_SRGB);
 	defer{ ReleaseWindowSwapChain(swap_chain, graphics_context); };
 	
 	ImGuiSetCustomStyle();
@@ -422,7 +423,8 @@ s32 main() {
 		table.Set(ResourceID::SkyPanoramaLut,        TextureSize(TextureFormat::R16G16B16A16_FLOAT, AtmosphereParameters::sky_panorama_lut_size));
 	}
 	
-	float vertical_fov_degrees = 75.f;
+	float vertical_fov_degrees  = 75.f;
+	float sun_elevation_degrees = 3.f;
 	
 	u64 frame_allocation_size = 0;
 	u64 transient_upload_allocation_size = 0;
@@ -570,6 +572,7 @@ s32 main() {
 		scene.view_to_world[1] = float4(-1.f, 0.f, 0.f, 0.f);
 		scene.view_to_world[2] = float4(0.f, -1.f, 0.f, 0.f);
 		
+		AtmosphereParameters atmosphere_parameters;
 		
 		ImGui::Begin("Stats");
 		ImGui::Text("Initial Alloc Size: %llu", frame_initial_size);
@@ -577,19 +580,26 @@ s32 main() {
 		ImGui::Text("Upload Alloc Size: %llu", transient_upload_allocation_size);
 		ImGui::Text("ImGui Alloc Size: %llu", imgui_heap.ComputeTotalMemoryUsage());
 		ImGui::SliderFloat("Vertical Field Of View", &vertical_fov_degrees, 10.f, 135.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+		
+		ImGui::SliderFloat("Sun Elevation", &sun_elevation_degrees, -90.f, +90.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+		atmosphere_parameters.world_space_sun_direction.x = cosf(sun_elevation_degrees * Math::degrees_to_radians);
+		atmosphere_parameters.world_space_sun_direction.z = sinf(sun_elevation_degrees * Math::degrees_to_radians);
+		
 		ImGui::End();
 		
 		if (ImGui::IsKeyChordPressed(ImGuiMod_Alt | ImGuiKey_F4)) {
 			window->should_close = true;
 		}
 		
-		auto [gpu_address, cpu_address] = AllocateTransientUploadBuffer<SceneConstants>(&record_context);
-		*cpu_address = scene;
+		auto [scene_constants_gpu_address, scene_constants_cpu_address] = AllocateTransientUploadBuffer<SceneConstants>(&record_context);
+		auto [atmosphere_parameters_gpu_address, atmosphere_parameters_cpu_address] = AllocateTransientUploadBuffer<AtmosphereParameters>(&record_context);
+		*scene_constants_cpu_address = scene;
+		*atmosphere_parameters_cpu_address = atmosphere_parameters;
 		
-		TransmittanceLutRenderPass{}.RecordPass(&record_context);
-		MultipleScatteringLutRenderPass{}.RecordPass(&record_context);
-		SkyPanoramaLutRenderPass{}.RecordPass(&record_context);
-		AtmosphereCompositeRenderPass{ gpu_address }.RecordPass(&record_context);
+		TransmittanceLutRenderPass{ atmosphere_parameters_gpu_address }.RecordPass(&record_context);
+		MultipleScatteringLutRenderPass{ atmosphere_parameters_gpu_address }.RecordPass(&record_context);
+		SkyPanoramaLutRenderPass{ atmosphere_parameters_gpu_address }.RecordPass(&record_context);
+		AtmosphereCompositeRenderPass{ atmosphere_parameters_gpu_address, scene_constants_gpu_address }.RecordPass(&record_context);
 		ImGuiRenderPass{}.RecordPass(&record_context);
 		
 		WindowSwapChainEndFrame(swap_chain, graphics_context, &alloc, record_context);
