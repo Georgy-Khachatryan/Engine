@@ -28,6 +28,7 @@
   
   <ItemGroup>
     <ClCompile Include="Basic/Assert.cpp" />
+    <ClCompile Include="Basic/BasicMath.cpp" />
     <ClCompile Include="Basic/BasicString.cpp" />
     <ClCompile Include="Basic/HeapAllocator.cpp" />
     <ClCompile Include="Basic/StackAllocator.cpp" />

@@ -67,24 +67,6 @@ float4 DecodeR8G8B8A8_UNORM_SRGB(uint encoded) { return DecodeSRGB(DecodeR8G8B8A
 float2 NdcToScreenUv(float2 ndc) { return float2(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5); }
 float2 ScreenUvToNdc(float2 uv)  { return float2(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0); }
 
-//
-// Perspective ViewToClip/ClipToView:
-// 
-// ViewToClip      ClipToView
-//  x 0 0 0   ->   1/x 0  0  0
-//  0 y 0 0   ->   0  1/y 0  0
-//  0 0 0 w   ->   0   0  0  1
-//  0 0 1 0   ->   0   0 1/w 0
-// 
-// 
-// Orthographic ViewToClip/ClipToView:
-// 
-// ViewToClip       ClipToView
-//  x 0 0 0   ->   1/x 0  0    0
-//  0 y 0 0   ->   0  1/y 0    0
-//  0 0 z w   ->   0   0 1/z -w/z
-//  0 0 0 1   ->   0   0  0    1
-// 
 
 bool IsPerspectiveMatrix(float4 coefficients)  { return coefficients.z == 0.0; }
 bool IsOrthographicMatrix(float4 coefficients) { return coefficients.z != 0.0; }

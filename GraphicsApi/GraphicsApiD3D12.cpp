@@ -638,11 +638,24 @@ void WindowSwapChainEndFrame(WindowSwapChain* api_swap_chain, GraphicsContext* a
 	auto& back_buffer = swap_chain->back_buffers[swap_chain->dxgi_swap_chain->GetCurrentBackBufferIndex()];
 	auto* command_list = context->command_list;
 	
+	Array<ID3D12Resource*> resources_to_deallocate;
 	auto& resource_table = record_context.resource_table->virtual_resources;
 	for (auto& resource : resource_table) {
 		if (resource.type == VirtualResource::Type::VirtualTexture && resource.texture.size != resource.texture.allocated_size) {
+			if (resource.texture.resource.d3d12 != nullptr) {
+				ArrayAppend(resources_to_deallocate, alloc, resource.texture.resource.d3d12);
+			}
+			
 			resource.texture.resource = CreateTextureResource(context, resource.texture.size);
 			resource.texture.allocated_size = resource.texture.size;
+		}
+	}
+	
+	if (resources_to_deallocate.count != 0) {
+		// TODO: Defer resource deallocation.
+		WaitForLastFrame(context);
+		for (auto* resource : resources_to_deallocate) {
+			SafeRelease(resource);
 		}
 	}
 	

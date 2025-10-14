@@ -357,7 +357,6 @@ static void ImGuiSetCustomStyle() {
 	colors[ImGuiCol_ModalWindowDimBg]       = ImVec4(0.80f, 0.80f, 0.80f, 0.35f);
 }
 
-
 s32 main() {
 	auto alloc = CreateStackAllocator(64 * 1024 * 1024, 512 * 1024);
 	defer{ ReleaseStackAllocator(alloc); };
@@ -387,7 +386,7 @@ s32 main() {
 	io.Fonts->Flags |= ImFontAtlasFlags_NoMouseCursors;
 	io.Fonts->AddFontFromFileTTF("./Assets/OpenSans-Regular.ttf", 18.f, &font_config);
 	
-	auto* window = SystemCreateWindow(&alloc, L"Engine");
+	auto* window = SystemCreateWindow(&alloc, "Engine"_sl);
 	defer{ SystemReleaseWindow(window); };
 	
 	ImGui_ImplWin32_Init(window->hwnd);
@@ -423,6 +422,8 @@ s32 main() {
 		table.Set(ResourceID::SkyPanoramaLut,        TextureSize(TextureFormat::R16G16B16A16_FLOAT, AtmosphereParameters::sky_panorama_lut_size));
 	}
 	
+	float vertical_fov_degrees = 75.f;
+	
 	u64 frame_allocation_size = 0;
 	u64 transient_upload_allocation_size = 0;
 	while (window->should_close == false) {
@@ -436,78 +437,147 @@ s32 main() {
 		ImGui_ImplWin32_NewFrame();
 		ImGui::NewFrame();
 		
-		resource_table.virtual_resources.count = (u64)VirtualResourceID::Count;
-		resource_table.Set(VirtualResourceID::CurrentBackBuffer, WindowSwapGetCurrentBackBuffer(swap_chain), swap_chain->size);
-		resource_table.Set(VirtualResourceID::TransientUploadBuffer, upload_buffers[upload_buffer_index], imgui_upload_buffer_size, upload_buffer_cpu_addresses[upload_buffer_index]);
-		upload_buffer_index = (upload_buffer_index + 1) % number_of_frames_in_flight;
+		ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.f);
 		
-		uint2 render_target_size = uint2(512, 512);
+		// Must be scaled by DPI.
+		compile_const float default_icon_size          = 9.f;
+		compile_const float default_button_width       = 47.f;
+		compile_const float default_title_bar_height   = 30.f;
+		compile_const float maximized_title_bar_height = 23.f;
 		
-		SceneConstants scene;
-		scene.render_target_size     = float2(render_target_size);
-		scene.inv_render_target_size = float2(1.f) / scene.render_target_size;
-		scene.view_to_clip_coef = float4(1.f, -1.f, 0.f, 0.1f);
-		scene.clip_to_view_coef = float4(1.f, -1.f, 0.f, 10.f);
-		scene.view_to_world[0] = float4(0.f,  0.f, 1.f, 0.f);
-		scene.view_to_world[1] = float4(-1.f, 0.f, 0.f, 0.f);
-		scene.view_to_world[2] = float4(0.f, -1.f, 0.f, 0.f);
+		float dpi_scale = ImGui_ImplWin32_GetDpiScaleForHwnd(window->hwnd);
+		float title_bar_height = (window->state == WindowState::Maximized ? maximized_title_bar_height : default_title_bar_height) * dpi_scale;
+		float button_width = default_button_width * dpi_scale;
 		
-		resource_table.Set(VirtualResourceID::SceneRadiance, TextureSize(TextureFormat::R16G16B16A16_FLOAT, render_target_size));
+		auto half_button_size = ImVec2(ceilf(button_width * 0.5f), floorf(title_bar_height * 0.5f));
+		auto button_size      = half_button_size * 2.f;
 		
+		ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(ImGui::GetStyle().FramePadding.x, floorf((button_size.y - ImGui::GetFontSize()) * 0.5f)));
+		ImGui::BeginMainMenuBar();
+		ImGui::PopStyleVar();
+		
+		window->titlebar_hovered = ImGui::IsWindowHovered() && (ImGui::IsAnyItemHovered() == false);
+		
+		ImGui::Dummy(ImVec2(ImGui::GetContentRegionAvail().x - button_size.x * 3.f, 0.f));
+		
+		ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.f, 0.f));
+		ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, half_button_size.y);
+		ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.f, 0.f, 0.f, 0.f));
+		auto* draw_list = ImGui::GetWindowDrawList();
+		
+		float icon_size = (default_icon_size * dpi_scale);
+		float half_icon_size = floorf(icon_size * 0.5f) + 0.5f + (1.f / 128.f);
+		float icon_line_thickness = floorf(dpi_scale);
+		
+		auto button_center = ImGui::GetCursorScreenPos() + half_button_size;
+		if (ImGui::Button("##Minimize", button_size)) {
+			window->requested_state = WindowState::Minimized;
+		}
+		
+		{
+			draw_list->PathLineTo(button_center + ImVec2(+half_icon_size, 0.5f));
+			draw_list->PathLineTo(button_center + ImVec2(-half_icon_size, 0.5f));
+			draw_list->PathStroke(ImGui::GetColorU32(ImGuiCol_Text), ImDrawFlags_None, icon_line_thickness);
+		}
+		
+		
+		button_center = ImGui::GetCursorScreenPos() + half_button_size;
+		if (ImGui::Button("##MaximizeOrRestore", button_size)) {
+			window->requested_state = window->state == WindowState::Maximized ? WindowState::Floating : WindowState::Maximized;
+		}
+		
+		{
+			float offset = 0.f;
+			if (window->state == WindowState::Maximized) {
+				offset = floorf(icon_size * 0.25f);
+				draw_list->PathLineTo(button_center + ImVec2(+half_icon_size, +half_icon_size) + ImVec2(-offset, -offset));
+				draw_list->PathLineTo(button_center + ImVec2(+half_icon_size, +half_icon_size) + ImVec2(0.f, -offset));
+				draw_list->PathLineTo(button_center + ImVec2(+half_icon_size, -half_icon_size));
+				draw_list->PathLineTo(button_center + ImVec2(-half_icon_size, -half_icon_size) + ImVec2(+offset, 0.f));
+				draw_list->PathLineTo(button_center + ImVec2(-half_icon_size, -half_icon_size) + ImVec2(+offset, +offset));
+				draw_list->PathStroke(ImGui::GetColorU32(ImGuiCol_Text), ImDrawFlags_None, icon_line_thickness);
+			}
+			
+			draw_list->PathLineTo(button_center + ImVec2(+half_icon_size, +half_icon_size) + ImVec2(-offset, 0.f));
+			draw_list->PathLineTo(button_center + ImVec2(-half_icon_size, +half_icon_size));
+			draw_list->PathLineTo(button_center + ImVec2(-half_icon_size, -half_icon_size) + ImVec2(0.f, +offset));
+			draw_list->PathLineTo(button_center + ImVec2(+half_icon_size, -half_icon_size) + ImVec2(-offset, +offset));
+			draw_list->PathStroke(ImGui::GetColorU32(ImGuiCol_Text), ImDrawFlags_Closed, icon_line_thickness);
+		}
+		
+		button_center = ImGui::GetCursorScreenPos() + half_button_size;
+		ImGui::PushStyleColor(ImGuiCol_ButtonHovered, 0xFF1C2BC4);
+		ImGui::PushStyleColor(ImGuiCol_ButtonActive,  0xFF3040C8);
+		if (ImGui::Button("##Close", button_size)) {
+			window->should_close = true;
+		}
+		ImGui::PopStyleColor(2);
+		
+		{
+			draw_list->PathLineTo(button_center + ImVec2(+half_icon_size, +half_icon_size));
+			draw_list->PathLineTo(button_center + ImVec2(-half_icon_size, -half_icon_size));
+			draw_list->PathStroke(ImGui::GetColorU32(ImGuiCol_Text), ImDrawFlags_None, icon_line_thickness);
+			
+			draw_list->PathLineTo(button_center + ImVec2(-half_icon_size, +half_icon_size));
+			draw_list->PathLineTo(button_center + ImVec2(+half_icon_size, -half_icon_size));
+			draw_list->PathStroke(ImGui::GetColorU32(ImGuiCol_Text), ImDrawFlags_None, icon_line_thickness);
+		}
+		
+		ImGui::PopStyleColor();
+		ImGui::PopStyleVar(2);
+		ImGui::EndMainMenuBar();
+		ImGui::PopStyleVar();
+		
+		ImGui::ShowDemoWindow(nullptr);
+		ImGui::DockSpaceOverViewport(0, ImGui::GetMainViewport(), ImGuiDockNodeFlags_AutoHideTabBar);
 		
 		RecordContext record_context;
 		record_context.alloc   = &alloc;
 		record_context.context = graphics_context;
 		record_context.resource_table = &resource_table;
 		
-		ImGui::ShowDemoWindow(nullptr);
+		resource_table.virtual_resources.count = (u64)VirtualResourceID::Count;
+		resource_table.Set(VirtualResourceID::CurrentBackBuffer, WindowSwapGetCurrentBackBuffer(swap_chain), swap_chain->size);
+		resource_table.Set(VirtualResourceID::TransientUploadBuffer, upload_buffers[upload_buffer_index], imgui_upload_buffer_size, upload_buffer_cpu_addresses[upload_buffer_index]);
+		upload_buffer_index = (upload_buffer_index + 1) % number_of_frames_in_flight;
+		
+		struct ImGuiDescriptorTable : HLSL::BaseDescriptorTable {
+			HLSL::Texture2D<float4> scene_radiance = VirtualResourceID::SceneRadiance;
+		};
+		HLSL::DescriptorTable<ImGuiDescriptorTable> root_descriptor_table = { 0, 1 };
+		
+		auto& descriptor_table = AllocateDescriptorTable(&record_context, root_descriptor_table);
+		
+		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.f, 0.f));
+		ImGui::Begin("Scene");
+		auto window_size = float2(ImGui::GetContentRegionAvail());
+		ImGui::Image(descriptor_table.descriptor_heap_offset, ImVec2(window_size.x, window_size.y));
+		ImGui::End();
+		ImGui::PopStyleVar();
+		
+		// Clamp render target size to a reasonable minimum. Aspect ratio for view to clip is still computed using unclamped values.
+		uint2 render_target_size = uint2((u32)Max(window_size.x, 16.f), (u32)Max(window_size.y, 16.f));
+		resource_table.Set(VirtualResourceID::SceneRadiance, TextureSize(TextureFormat::R16G16B16A16_FLOAT, render_target_size));
+		
+		compile_const float near_depth = 0.1f;
+		
+		SceneConstants scene;
+		scene.render_target_size     = float2(render_target_size);
+		scene.inv_render_target_size = float2(1.f) / scene.render_target_size;
+		scene.view_to_clip_coef = Math::PerspectiveViewToClip(vertical_fov_degrees * Math::degrees_to_radians, window_size, near_depth);
+		scene.clip_to_view_coef = Math::ViewToClipInverse(scene.view_to_clip_coef);
+		scene.view_to_world[0] = float4(0.f,  0.f, 1.f, 0.f);
+		scene.view_to_world[1] = float4(-1.f, 0.f, 0.f, 0.f);
+		scene.view_to_world[2] = float4(0.f, -1.f, 0.f, 0.f);
+		
 		
 		ImGui::Begin("Stats");
 		ImGui::Text("Initial Alloc Size: %llu", frame_initial_size);
 		ImGui::Text("Frame Alloc Size: %llu", frame_allocation_size);
 		ImGui::Text("Upload Alloc Size: %llu", transient_upload_allocation_size);
-		ImGui::PushFont(nullptr, 36.f);
 		ImGui::Text("ImGui Alloc Size: %llu", imgui_heap.ComputeTotalMemoryUsage());
-		ImGui::PopFont();
+		ImGui::SliderFloat("Vertical Field Of View", &vertical_fov_degrees, 10.f, 135.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
 		ImGui::End();
-		
-		struct ImGuiDescriptorTable : HLSL::BaseDescriptorTable {
-			HLSL::Texture2D<float4> transmittance_lut       = VirtualResourceID::TransmittanceLut;
-			HLSL::Texture2D<float4> multiple_scattering_lut = VirtualResourceID::MultipleScatteringLut;
-			HLSL::Texture2D<float4> sky_panorama_lut        = VirtualResourceID::SkyPanoramaLut;
-			HLSL::Texture2D<float4> scene_radiance          = VirtualResourceID::SceneRadiance;
-		};
-		HLSL::DescriptorTable<ImGuiDescriptorTable> root_descriptor_table = { 0, 4 };
-		
-		auto& descriptor_table = AllocateDescriptorTable(&record_context, root_descriptor_table);
-		
-		{
-			ImGui::Begin("Transmittance LUT");
-			auto size = resource_table.virtual_resources[(u32)VirtualResourceID::TransmittanceLut].texture.size;
-			ImGui::Image(descriptor_table.descriptor_heap_offset, ImVec2(size.x, size.y));
-			ImGui::End();
-		}
-		
-		{
-			ImGui::Begin("Multiple Scattering LUT");
-			auto size = resource_table.virtual_resources[(u32)VirtualResourceID::MultipleScatteringLut].texture.size;
-			ImGui::Image(descriptor_table.descriptor_heap_offset + 1, ImVec2(size.x, size.y));
-			ImGui::End();
-		}
-		
-		{
-			ImGui::Begin("Sky Panorma LUT");
-			auto size = resource_table.virtual_resources[(u32)VirtualResourceID::SkyPanoramaLut].texture.size;
-			ImGui::Image(descriptor_table.descriptor_heap_offset + 2, ImVec2(size.x, size.y) * 4.f);
-			ImGui::End();
-		}
-		
-		{
-			ImGui::Begin("Scene Radiance");
-			auto size = resource_table.virtual_resources[(u32)VirtualResourceID::SceneRadiance].texture.size;
-			ImGui::Image(descriptor_table.descriptor_heap_offset + 3, ImVec2(size.x, size.y));
-			ImGui::End();
-		}
 		
 		if (ImGui::IsKeyChordPressed(ImGuiMod_Alt | ImGuiKey_F4)) {
 			window->should_close = true;

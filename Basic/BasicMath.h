@@ -32,6 +32,7 @@ inline u16 Min(u16 lh, u16 rh) { return lh < rh ? lh : rh; }
 inline u16 Max(u16 lh, u16 rh) { return lh > rh ? lh : rh; }
 inline u8  Min(u8  lh, u8  rh) { return lh < rh ? lh : rh; }
 inline u8  Max(u8  lh, u8  rh) { return lh > rh ? lh : rh; }
+inline float Max(float lh, float rh) { return lh > rh ? lh : rh; }
 
 template<typename T, T(FirstBitLowT)(T)>
 struct BitScanLowT {
@@ -71,3 +72,13 @@ inline uint2 DivideAndRoundUp(uint2 numerator, u32 denominator) { return (numera
 inline uint3 DivideAndRoundUp(uint3 numerator, u32 denominator) { return (numerator + (denominator - 1)) / denominator; }
 inline uint4 DivideAndRoundUp(uint4 numerator, u32 denominator) { return (numerator + (denominator - 1)) / denominator; }
 
+namespace Math {
+	compile_const float PI  = 3.1415927f;
+	compile_const float TAU = 6.2831854f;
+	compile_const float degrees_to_radians = 0.017453292f;
+	compile_const float radians_to_degress = 57.29578f;
+	
+	float4 PerspectiveViewToClip(float vertical_fov, float2 viewport_size, float near_depth);
+	float4 OrthographicViewToClip(float2 size, float2 depth_range);
+	float4 ViewToClipInverse(const float4& view_to_clip_coef);
+}
