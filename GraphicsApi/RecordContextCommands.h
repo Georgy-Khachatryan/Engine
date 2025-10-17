@@ -103,7 +103,7 @@ struct CmdSetRootSignaturePacket : RecordContextCommandPacket {
 	compile_const CommandType my_type = CommandType::SetRootSignature;
 	
 	u32 root_signature_index = 0;
-	RenderPassType pass_type = RenderPassType::Graphics;
+	CommandQueueType pass_type = CommandQueueType::Graphics;
 };
 
 struct CmdSetPipelineStatePacket : RecordContextCommandPacket {
@@ -116,7 +116,7 @@ struct CmdSetDescriptorTablePacket : RecordContextCommandPacket {
 	compile_const CommandType my_type = CommandType::SetDescriptorTable;
 	
 	u32 offset = 0;
-	RenderPassType pass_type = RenderPassType::Graphics;
+	CommandQueueType pass_type = CommandQueueType::Graphics;
 	u32 descriptor_heap_offset = 0;
 };
 
@@ -124,7 +124,7 @@ struct CmdSetPushConstantsPacket : RecordContextCommandPacket {
 	compile_const CommandType my_type = CommandType::SetPushConstants;
 	
 	u32 offset = 0;
-	RenderPassType pass_type = RenderPassType::Graphics;
+	CommandQueueType pass_type = CommandQueueType::Graphics;
 	ArrayView<u32> push_constants;
 };
 
@@ -132,7 +132,7 @@ struct CmdSetConstantBufferPacket : RecordContextCommandPacket {
 	compile_const CommandType my_type = CommandType::SetConstantBuffer;
 	
 	u32 offset = 0;
-	RenderPassType pass_type = RenderPassType::Graphics;
+	CommandQueueType pass_type = CommandQueueType::Graphics;
 	GpuAddress gpu_address = {};
 };
 

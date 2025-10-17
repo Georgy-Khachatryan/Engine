@@ -6,7 +6,6 @@
 
 struct GraphicsContext;
 struct VirtualResourceTable;
-enum struct RenderPassType : u32;
 
 namespace HLSL {
 	struct BaseDescriptorTable;
@@ -34,7 +33,7 @@ struct RecordContext {
 	Array<ArrayView<ResourceAccessDefinition>> resource_accesses;
 	Array<u32> resource_access_command_prefix_sum;
 	
-	RenderPassType current_render_pass_type;
+	CommandQueueType current_render_pass_type = CommandQueueType::Graphics;
 	Array<HLSL::BaseDescriptorTable*> resource_bindings;
 	FixedCapacityArray<VirtualResourceID, 8> render_targets;
 	bool resource_bindings_dirty = false;

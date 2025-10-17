@@ -12,7 +12,7 @@ static void FillDescriptorTables(GraphicsContextD3D12* context, ArrayView<HLSL::
 	auto* device = context->device;
 	
 	for (auto* descriptor_table : descriptor_tables) {
-		auto descriptors = ArrayView<HLSL::ResourceDescriptor>{ (HLSL::ResourceDescriptor*)(descriptor_table + 1), (u64)descriptor_table->descriptor_count };
+		auto descriptors = ArrayView<ResourceDescriptor>{ (ResourceDescriptor*)(descriptor_table + 1), (u64)descriptor_table->descriptor_count };
 		auto descriptor_table_handle = cpu_base_handle;
 		descriptor_table_handle.ptr += descriptor_table->descriptor_heap_offset * descriptor_size;
 		
@@ -20,7 +20,7 @@ static void FillDescriptorTables(GraphicsContextD3D12* context, ArrayView<HLSL::
 			auto& resource = resources[(u32)descriptor.resource_id];
 			
 			switch (descriptor.common.type) {
-			case HLSL::ResourceDescriptorType::Texture2D: {
+			case ResourceDescriptorType::Texture2D: {
 				D3D12_SHADER_RESOURCE_VIEW_DESC desc = {};
 				desc.Format                        = dxgi_texture_format_map[(u32)resource.texture.size.format];
 				desc.ViewDimension                 = D3D12_SRV_DIMENSION_TEXTURE2D;
@@ -32,7 +32,7 @@ static void FillDescriptorTables(GraphicsContextD3D12* context, ArrayView<HLSL::
 				
 				device->CreateShaderResourceView(resource.texture.resource.d3d12, &desc, descriptor_table_handle);
 				break;
-			} case HLSL::ResourceDescriptorType::RWTexture2D: {
+			} case ResourceDescriptorType::RWTexture2D: {
 				D3D12_UNORDERED_ACCESS_VIEW_DESC desc = {};
 				desc.Format               = dxgi_texture_format_map[(u32)resource.texture.size.format];
 				desc.ViewDimension        = D3D12_UAV_DIMENSION_TEXTURE2D;
@@ -41,7 +41,7 @@ static void FillDescriptorTables(GraphicsContextD3D12* context, ArrayView<HLSL::
 				
 				device->CreateUnorderedAccessView(resource.texture.resource.d3d12, nullptr, &desc, descriptor_table_handle);
 				break;
-			} case HLSL::ResourceDescriptorType::RegularBuffer: {
+			} case ResourceDescriptorType::RegularBuffer: {
 				D3D12_SHADER_RESOURCE_VIEW_DESC desc = {};
 				desc.Format                     = DXGI_FORMAT_UNKNOWN;
 				desc.ViewDimension              = D3D12_SRV_DIMENSION_BUFFER;
@@ -54,7 +54,7 @@ static void FillDescriptorTables(GraphicsContextD3D12* context, ArrayView<HLSL::
 				
 				device->CreateShaderResourceView(resource.buffer.resource.d3d12, &desc, descriptor_table_handle);
 				break;
-			} case HLSL::ResourceDescriptorType::RWRegularBuffer: {
+			} case ResourceDescriptorType::RWRegularBuffer: {
 				D3D12_UNORDERED_ACCESS_VIEW_DESC desc = {};
 				desc.Format                      = DXGI_FORMAT_UNKNOWN;
 				desc.ViewDimension               = D3D12_UAV_DIMENSION_BUFFER;
@@ -64,6 +64,32 @@ static void FillDescriptorTables(GraphicsContextD3D12* context, ArrayView<HLSL::
 				desc.Buffer.CounterOffsetInBytes = 0;
 				desc.Buffer.Flags                = D3D12_BUFFER_UAV_FLAG_NONE;
 				DebugAssert(desc.Buffer.FirstElement * descriptor.buffer.stride == descriptor.buffer.offset, "RWRegularBuffer offset is not correctly aligned.");
+				
+				device->CreateUnorderedAccessView(resource.buffer.resource.d3d12, nullptr, &desc, descriptor_table_handle);
+				break;
+			} case ResourceDescriptorType::ByteBuffer: {
+				D3D12_SHADER_RESOURCE_VIEW_DESC desc = {};
+				desc.Format                     = DXGI_FORMAT_R32_TYPELESS;
+				desc.ViewDimension              = D3D12_SRV_DIMENSION_BUFFER;
+				desc.Shader4ComponentMapping    = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+				desc.Buffer.FirstElement        = descriptor.buffer.offset / sizeof(u32);
+				desc.Buffer.NumElements         = Min(descriptor.buffer.size, resource.buffer.size - descriptor.buffer.offset) / sizeof(u32);
+				desc.Buffer.StructureByteStride = 0;
+				desc.Buffer.Flags               = D3D12_BUFFER_SRV_FLAG_RAW;
+				DebugAssert(descriptor.buffer.offset % 16 == 0, "ByteBuffer offset is not correctly aligned.");
+				
+				device->CreateShaderResourceView(resource.buffer.resource.d3d12, &desc, descriptor_table_handle);
+				break;
+			} case ResourceDescriptorType::RWByteBuffer: {
+				D3D12_UNORDERED_ACCESS_VIEW_DESC desc = {};
+				desc.Format                      = DXGI_FORMAT_R32_TYPELESS;
+				desc.ViewDimension               = D3D12_UAV_DIMENSION_BUFFER;
+				desc.Buffer.FirstElement         = descriptor.buffer.offset / sizeof(u32);
+				desc.Buffer.NumElements          = Min(descriptor.buffer.size, resource.buffer.size - descriptor.buffer.offset) / sizeof(u32);
+				desc.Buffer.StructureByteStride  = 0;
+				desc.Buffer.CounterOffsetInBytes = 0;
+				desc.Buffer.Flags                = D3D12_BUFFER_UAV_FLAG_RAW;
+				DebugAssert(descriptor.buffer.offset % 16 == 0, "RWByteBuffer offset is not correctly aligned.");
 				
 				device->CreateUnorderedAccessView(resource.buffer.resource.d3d12, nullptr, &desc, descriptor_table_handle);
 				break;
@@ -176,7 +202,7 @@ static void CmdCopyBufferToTextureD3D12(CmdCopyBufferToTexturePacket* packet, ID
 }
 
 static void CmdSetRootSignatureD3D12(CmdSetRootSignaturePacket* packet, ID3D12GraphicsCommandList7* command_list, GraphicsContextD3D12* context) {
-	if (packet->pass_type == RenderPassType::Compute) {
+	if (packet->pass_type == CommandQueueType::Compute) {
 		command_list->SetComputeRootSignature(context->root_signature_table[packet->root_signature_index]);
 	} else {
 		command_list->SetGraphicsRootSignature(context->root_signature_table[packet->root_signature_index]);
@@ -192,7 +218,7 @@ static void CmdSetDescriptorTableD3D12(CmdSetDescriptorTablePacket* packet, ID3D
 	auto descriptor_size = context->descriptor_sizes[(u32)DescriptorHeapType::SRV];
 	u64 descriptor_table = gpu_base_handle.ptr + packet->descriptor_heap_offset * descriptor_size;
 	
-	if (packet->pass_type == RenderPassType::Compute) {
+	if (packet->pass_type == CommandQueueType::Compute) {
 		command_list->SetComputeRootDescriptorTable(packet->offset, { descriptor_table });
 	} else {
 		command_list->SetGraphicsRootDescriptorTable(packet->offset, { descriptor_table });
@@ -200,7 +226,7 @@ static void CmdSetDescriptorTableD3D12(CmdSetDescriptorTablePacket* packet, ID3D
 }
 
 static void CmdSetPushConstantsD3D12(CmdSetPushConstantsPacket* packet, ID3D12GraphicsCommandList7* command_list) {
-	if (packet->pass_type == RenderPassType::Compute) {
+	if (packet->pass_type == CommandQueueType::Compute) {
 		command_list->SetComputeRoot32BitConstants(packet->offset, (u32)packet->push_constants.count, packet->push_constants.data, 0);
 	} else {
 		command_list->SetGraphicsRoot32BitConstants(packet->offset, (u32)packet->push_constants.count, packet->push_constants.data, 0);
@@ -210,7 +236,7 @@ static void CmdSetPushConstantsD3D12(CmdSetPushConstantsPacket* packet, ID3D12Gr
 static void CmdSetConstantBufferD3D12(CmdSetConstantBufferPacket* packet, ID3D12GraphicsCommandList7* command_list, ArrayView<VirtualResource> resources) {
 	u64 gpu_address = resources[(u32)packet->gpu_address.resource_id].buffer.resource.d3d12->GetGPUVirtualAddress() + packet->gpu_address.offset;
 	
-	if (packet->pass_type == RenderPassType::Compute) {
+	if (packet->pass_type == CommandQueueType::Compute) {
 		command_list->SetComputeRootConstantBufferView(packet->offset, gpu_address);
 	} else {
 		command_list->SetGraphicsRootConstantBufferView(packet->offset, gpu_address);

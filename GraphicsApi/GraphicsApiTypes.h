@@ -14,6 +14,10 @@ union NativeTextureResource {
 	struct ID3D12Resource* d3d12;
 };
 
+enum struct VirtualResourceID : u32;
+struct RecordContext;
+struct PipelineLibrary;
+
 
 enum struct ShaderType : u32 {
 	ComputeShader = 0,
@@ -38,11 +42,17 @@ struct ShaderDefinition {
 	struct ShaderPermutationTable* shader_table = nullptr;
 };
 
-
 struct ShaderID { u32 index = 0; };
 struct PipelineID { u32 index = 0; };
-enum struct VirtualResourceID : u32;
 
+
+NOTES()
+enum struct CommandQueueType : u32 {
+	Graphics = 0,
+	Compute  = 1,
+	
+	Count
+};
 
 enum struct PipelineStagesMask : u16 {
 	None          = 0,
@@ -117,6 +127,57 @@ struct VirtualResource {
 		} buffer;
 	};
 };
+
+
+NOTES()
+enum struct ResourceDescriptorType : u16 {
+	AnyTexture  = 1u << 0,
+	AnyBuffer   = 1u << 1,
+	AnySRV      = 1u << 2,
+	AnyUAV      = 1u << 3,
+	IndexOffset = 4,
+	
+	None            = (0u << IndexOffset),
+	Texture2D       = (1u << IndexOffset) | AnyTexture | AnySRV,
+	RWTexture2D     = (2u << IndexOffset) | AnyTexture | AnyUAV,
+	RegularBuffer   = (3u << IndexOffset) | AnyBuffer  | AnySRV,
+	RWRegularBuffer = (4u << IndexOffset) | AnyBuffer  | AnyUAV,
+	ByteBuffer      = (5u << IndexOffset) | AnyBuffer  | AnySRV,
+	RWByteBuffer    = (6u << IndexOffset) | AnyBuffer  | AnyUAV,
+};
+ENUM_FLAGS_OPERATORS(ResourceDescriptorType);
+
+struct ResourceDescriptor {
+	using Type = ResourceDescriptorType;
+	VirtualResourceID resource_id;
+	
+	union {
+		struct {
+			Type type = Type::None;
+		} common = {};
+		
+		struct {
+			Type type;
+			u16 stride;
+			
+			u32 offset;
+			u32 size;
+		} buffer;
+		
+		struct {
+			Type type;
+			
+			u8 mip_index;
+			u8 mip_count;
+			
+			u16 array_index;
+			u16 array_count;
+			
+			u32 padding_2;
+		} texture;
+	};
+};
+static_assert(sizeof(ResourceDescriptor) == 16, "Incorrect ResourceDescriptor size.");
 
 
 enum struct PipelineStateType : u8 {
@@ -259,4 +320,95 @@ struct PipelineStateDescription {
 	const PipelineDepthStencil* depth_stencil = nullptr;
 	const PipelineRasterizer*   rasterizer    = nullptr;
 };
+
+
+namespace Meta {
+	NOTES() struct RenderPass { CommandQueueType pass_type = CommandQueueType::Compute; };
+	NOTES() struct HlslFile { String filename; };
+	NOTES() struct ShaderName { String filename; };
+};
+
+namespace HLSL {
+	NOTES(ResourceDescriptorType::Texture2D)
+	template<typename T>
+	struct Texture2D : ResourceDescriptor {
+		Texture2D(VirtualResourceID resource = (VirtualResourceID)0) { Bind(resource); }
+		
+		void Bind(VirtualResourceID resource, u32 mip_offset = 0, u32 mip_count = u32_max) {
+			resource_id = resource;
+			texture = { Type::Texture2D, (u8)mip_offset, (u8)mip_count, 0, 1, 0 };
+		}
+	};
+	
+	NOTES(ResourceDescriptorType::RWTexture2D)
+	template<typename T>
+	struct RWTexture2D : ResourceDescriptor {
+		RWTexture2D(VirtualResourceID resource = (VirtualResourceID)0) { Bind(resource); }
+		
+		void Bind(VirtualResourceID resource, u32 mip_index = 0) {
+			resource_id = resource;
+			texture = { Type::RWTexture2D, (u8)mip_index, 1, 0, 1, 0 };
+		}
+	};
+	
+	NOTES(ResourceDescriptorType::RegularBuffer)
+	template<typename T>
+	struct RegularBuffer : ResourceDescriptor {
+		RegularBuffer(VirtualResourceID resource = (VirtualResourceID)0) { Bind(resource); }
+		
+		void Bind(GpuAddress gpu_address, u32 size = u32_max) {
+			resource_id = gpu_address.resource_id;
+			buffer = { Type::RegularBuffer, (u16)sizeof(T), gpu_address.offset, size };
+		}
+	};
+	
+	NOTES(ResourceDescriptorType::RWRegularBuffer)
+	template<typename T>
+	struct RWRegularBuffer : ResourceDescriptor {
+		RWRegularBuffer(VirtualResourceID resource = (VirtualResourceID)0) { Bind(resource); }
+		
+		void Bind(GpuAddress gpu_address, u32 size = u32_max) {
+			resource_id = gpu_address.resource_id;
+			buffer = { Type::RWRegularBuffer, (u16)sizeof(T), gpu_address.offset, size };
+		}
+	};
+	
+	NOTES(ResourceDescriptorType::ByteBuffer)
+	struct ByteBuffer : ResourceDescriptor {
+		ByteBuffer(VirtualResourceID resource = (VirtualResourceID)0) { Bind(resource); }
+		
+		void Bind(GpuAddress gpu_address, u32 size = u32_max) {
+			resource_id = gpu_address.resource_id;
+			buffer = { Type::ByteBuffer, 1, gpu_address.offset, size };
+		}
+	};
+	
+	NOTES(ResourceDescriptorType::RWByteBuffer)
+	struct RWByteBuffer : ResourceDescriptor {
+		RWByteBuffer(VirtualResourceID resource = (VirtualResourceID)0) { Bind(resource); }
+		
+		void Bind(GpuAddress gpu_address, u32 size = u32_max) {
+			resource_id = gpu_address.resource_id;
+			buffer = { Type::RWByteBuffer, 1, gpu_address.offset, size };
+		}
+	};
+	
+	NOTES() template<typename T> struct DescriptorTable { u32 offset = 0; u32 descriptor_count = 0; };
+	NOTES() template<typename T> struct ConstantBuffer  { u32 offset = 0; };
+	NOTES() template<typename T> struct PushConstantBuffer { u32 offset = 0; };
+	
+	struct BaseRootSignature { u32 root_signature_index = 0; u32 root_parameter_count = 0; CommandQueueType pass_type = CommandQueueType::Graphics; };
+	struct BaseDescriptorTable { u32 descriptor_heap_offset = 0; u32 descriptor_count = 0; };
+};
+
+
+#define RENDER_PASS_GENERATED_CODE()\
+	struct RootSignature;\
+	static RootSignature root_signature;\
+	static void CreatePipelines(PipelineLibrary* lib);\
+	void RecordPass(RecordContext* record_context)
+
+#define SHADER_DEFINITION_GENERATED_CODE(name)\
+	extern ShaderID name##ID;\
+	ENUM_FLAGS_OPERATORS(name)
 

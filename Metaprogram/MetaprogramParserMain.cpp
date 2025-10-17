@@ -403,7 +403,7 @@ static AstNodeCodeBlock* ParseFile(StackAllocator* alloc, String file, String fi
 	return code_block;
 }
 
-static void GenerateCodeForCodeBlockTypeDeclarations(StringBuilder& builder, AstNodeCodeBlock* code_block);
+static void GenerateCodeForCodeBlockTypeDeclarations(StringBuilder& builder, AstNodeCodeBlock* code_block, bool forward_declaration);
 
 static String TemplateExpressionArguments(StackAllocator* alloc, AstNodeCodeBlock* template_code_block) {
 	if (template_code_block->declarations.count == 0) return ""_sl;
@@ -442,10 +442,10 @@ static void GenerateCodeForNotes(StringBuilder& builder, AstNodeNotes* notes) {
 	builder.AppendUnformatted("};\n\n"_sl);
 }
 
-static void GenerateCodeForStruct(StringBuilder& builder, AstNodeStruct* ast_node_struct) {
+static void GenerateCodeForStruct(StringBuilder& builder, AstNodeStruct* ast_node_struct, bool forward_declaration) {
 	// Generate code for internal structs first.
 	auto* code_block = ast_node_struct->code_block;
-	GenerateCodeForCodeBlockTypeDeclarations(builder, code_block);
+	GenerateCodeForCodeBlockTypeDeclarations(builder, code_block, forward_declaration);
 	
 	auto name = code_block->namespace_path;
 	auto* template_code_block = ast_node_struct->template_code_block;
@@ -455,20 +455,26 @@ static void GenerateCodeForStruct(StringBuilder& builder, AstNodeStruct* ast_nod
 		auto template_arguments = TemplateExpressionArguments(builder.alloc, template_code_block);
 		name = StringFormat(builder.alloc, "%.*s<%.*s>", (s32)name.count, name.data, (s32)template_arguments.count, template_arguments.data);;
 		
-		builder.Append("template<%.*s> struct TypeInfoOfInternal<const %.*s> { static TypeInfoStruct* Get(); };\n\n",
-			(s32)template_expression.count, template_expression.data,
-			(s32)name.count, name.data
-		);
-		
-		builder.Append("template<%.*s> TypeInfoStruct* TypeInfoOfInternal<const %.*s>::Get() {\n",
-			(s32)template_expression.count, template_expression.data,
-			(s32)name.count, name.data
-		);
+		if (forward_declaration) {
+			builder.Append("template<%.*s> struct TypeInfoOfInternal<const %.*s> { static TypeInfoStruct* Get(); };\n",
+				(s32)template_expression.count, template_expression.data,
+				(s32)name.count, name.data
+			);
+		} else {
+			builder.Append("template<%.*s> TypeInfoStruct* TypeInfoOfInternal<const %.*s>::Get() {\n",
+				(s32)template_expression.count, template_expression.data,
+				(s32)name.count, name.data
+			);
+		}
 	} else {
-		builder.Append("template<> struct TypeInfoOfInternal<const %.*s> { static TypeInfoStruct* Get(); };\n\n", (s32)name.count, name.data);
-		
-		builder.Append("TypeInfoStruct* TypeInfoOfInternal<const %.*s>::Get() {\n", (s32)name.count, name.data);
+		if (forward_declaration) {
+			builder.Append("template<> struct TypeInfoOfInternal<const %.*s> { static TypeInfoStruct* Get(); };\n", (s32)name.count, name.data);
+		} else {
+			builder.Append("TypeInfoStruct* TypeInfoOfInternal<const %.*s>::Get() {\n", (s32)name.count, name.data);
+		}
 	}
+	if (forward_declaration) return;
+	
 	builder.Indent();
 	
 	// Rename the type so it's possible to use offsetof macro with types that have comma in the name.
@@ -552,11 +558,15 @@ static void GenerateCodeForStruct(StringBuilder& builder, AstNodeStruct* ast_nod
 	builder.AppendUnformatted("}\n\n"_sl);
 }
 
-static void GenerateCodeForEnum(StringBuilder& builder, AstNodeEnum* ast_node_enum) {
+static void GenerateCodeForEnum(StringBuilder& builder, AstNodeEnum* ast_node_enum, bool forward_declaration) {
 	auto* code_block = ast_node_enum->code_block;
 	auto name = code_block->namespace_path;
 	
-	builder.Append("template<> struct TypeInfoOfInternal<const %.*s> { static TypeInfoEnum* Get(); };\n\n", (s32)name.count, name.data);
+	if (forward_declaration) {
+		builder.Append("template<> struct TypeInfoOfInternal<const %.*s> { static TypeInfoEnum* Get(); };\n", (s32)name.count, name.data);
+		return;
+	}
+	
 	builder.Append("TypeInfoEnum* TypeInfoOfInternal<const %.*s>::Get() {\n", (s32)name.count, name.data);
 	builder.Indent();
 	
@@ -614,16 +624,16 @@ static void GenerateCodeForEnum(StringBuilder& builder, AstNodeEnum* ast_node_en
 	builder.AppendUnformatted("};\n\n"_sl);
 }
 
-static void GenerateCodeForCodeBlockTypeDeclarations(StringBuilder& builder, AstNodeCodeBlock* code_block) {
+static void GenerateCodeForCodeBlockTypeDeclarations(StringBuilder& builder, AstNodeCodeBlock* code_block, bool forward_declaration) {
 	for (auto* declaration : code_block->declarations) {
 		if (declaration->type_declaration == nullptr) continue;
 		
 		switch (declaration->type_declaration->type) {
 		case AstNodeType::Struct: {
-			GenerateCodeForStruct(builder, (AstNodeStruct*)declaration->type_declaration);
+			GenerateCodeForStruct(builder, (AstNodeStruct*)declaration->type_declaration, forward_declaration);
 			break;
 		} case AstNodeType::Enum: {
-			GenerateCodeForEnum(builder, (AstNodeEnum*)declaration->type_declaration);
+			GenerateCodeForEnum(builder, (AstNodeEnum*)declaration->type_declaration, forward_declaration);
 			break;
 		} default: {
 			DebugAssertAlways("Unhanlded type declaration ast node type.");
@@ -633,33 +643,40 @@ static void GenerateCodeForCodeBlockTypeDeclarations(StringBuilder& builder, Ast
 	}
 }
 
-static void GenerateCodeForTypeTable(StringBuilder& builder, AstNodeCodeBlock* code_block) {
-	builder.AppendUnformatted("TypeInfo* type_table_internal[] = {\n"_sl);
+struct ParsedFileData {
+	String filepath;
+	AstNodeCodeBlock* top_level_code_block = nullptr;
+};
+
+static void GenerateCodeForTypeTable(StringBuilder& builder, ArrayView<ParsedFileData> files) {
+	builder.AppendUnformatted("static TypeInfo* type_table_internal[] = {\n"_sl);
 	builder.Indent();
 	
 	u32 type_table_size = 0;
-	for (auto* declaration : code_block->declarations) {
-		if (declaration->type_declaration == nullptr) continue;
-		
-		String name;
-		switch (declaration->type_declaration->type) {
-		case AstNodeType::Struct: {
-			auto* ast_node_struct = (AstNodeStruct*)declaration->type_declaration;
-			name = ast_node_struct->template_code_block ? ""_sl : ast_node_struct->code_block->namespace_path;
-			break;
-		} case AstNodeType::Enum: {
-			auto* ast_node_enum = (AstNodeEnum*)declaration->type_declaration;
-			name = ast_node_enum->code_block->namespace_path;
-			break;
-		} default: {
-			DebugAssertAlways("Unhanlded type declaration ast node type.");
-			break;
-		}
-		}
-		
-		if (name.count != 0) {
-			builder.Append("TypeInfoOf<%.*s>(),\n", (s32)name.count, name.data);
-			type_table_size += 1;
+	for (auto& file : files) {
+		for (auto* declaration : file.top_level_code_block->declarations) {
+			if (declaration->type_declaration == nullptr) continue;
+			
+			String name;
+			switch (declaration->type_declaration->type) {
+			case AstNodeType::Struct: {
+				auto* ast_node_struct = (AstNodeStruct*)declaration->type_declaration;
+				name = ast_node_struct->template_code_block ? ""_sl : ast_node_struct->code_block->namespace_path;
+				break;
+			} case AstNodeType::Enum: {
+				auto* ast_node_enum = (AstNodeEnum*)declaration->type_declaration;
+				name = ast_node_enum->code_block->namespace_path;
+				break;
+			} default: {
+				DebugAssertAlways("Unhanlded type declaration ast node type.");
+				break;
+			}
+			}
+			
+			if (name.count != 0) {
+				builder.Append("TypeInfoOf<%.*s>(),\n", (s32)name.count, name.data);
+				type_table_size += 1;
+			}
 		}
 	}
 	
@@ -669,46 +686,87 @@ static void GenerateCodeForTypeTable(StringBuilder& builder, AstNodeCodeBlock* c
 	builder.Append("ArrayView<TypeInfo*> type_table = { type_table_internal, %u };\n\n", type_table_size);
 }
 
-s32 main() {
+
+static void WriteGeneratedFile(StackAllocator* alloc, String filepath, String contents) {
+	auto output_file = SystemOpenFile(alloc, filepath, OpenFileFlags::Write);
+	if (output_file.handle == nullptr) {
+		SystemWriteToConsole(alloc, "Failed to open output file '%.*s'.\n", (s32)filepath.count, filepath.data);
+		SystemExitProcess(1);
+	}
+	
+	SystemWriteToConsole(alloc, "Writing file: %.*s\n", (s32)filepath.count, filepath.data);
+	
+	SystemWriteFile(output_file, contents.data, contents.count, 0);
+	SystemCloseFile(output_file);
+}
+
+static void EnsureDirectoryExists(StackAllocator* alloc, String directory) {
+	if (SystemCreateDirectory(alloc, directory) == false) {
+		SystemWriteToConsole(alloc, "Failed to create output directory '%.*s'.\n", (s32)directory.count, directory.data);
+		SystemExitProcess(1);
+	}
+}
+
+
+s32 main(s32 argument_count, const char* arguments[]) {
 	auto alloc = CreateStackAllocator(64 * 1024 * 1024, 512 * 1024);
 	defer{ ReleaseStackAllocator(alloc); };
 	
-	auto filepath = "./Engine/RenderPasses.h"_sl;
-	auto file = SystemReadFileToString(&alloc, filepath);
-	if (file.data == nullptr) {
-		SystemWriteToConsole(&alloc, "Failed to open file '%s'.\n", filepath.data);
-		return 1;
+	Array<String> filepaths;
+	ArrayReserve(filepaths, &alloc, argument_count - 1);
+	
+	for (s32 i = 1; i < argument_count; i += 1) {
+		String filepath;
+		filepath.data  = (char*)arguments[i];
+		filepath.count = strlen(arguments[i]);
+		ArrayAppend(filepaths, filepath);
 	}
 	
-	auto* top_level_code_block = ParseFile(&alloc, file, filepath);
 	
-	StringBuilder builder;
-	builder.alloc = &alloc;
-	
-	builder.Append("#include \"Engine/RenderPasses.h\"\n");
-	builder.Append("#include \"Metaprogram/TypeInfo.h\"\n");
-	builder.Append("#include <stddef.h>\n\n"); // Included to get offsetof().
-	
-	GenerateCodeForCodeBlockTypeDeclarations(builder, top_level_code_block);
-	GenerateCodeForTypeTable(builder, top_level_code_block);
-	
-	
-	auto output_directory = "./Metaprogram/Generated/"_sl;
-	if (SystemCreateDirectory(&alloc, output_directory) == false) {
-		SystemWriteToConsole(&alloc, "Failed to create output directory '%s'.\n", output_directory.data);
-		return 1;
+	Array<ParsedFileData> parsed_files;
+	for (auto filepath : filepaths) {
+		auto file = SystemReadFileToString(&alloc, filepath);
+		if (file.data == nullptr) {
+			SystemWriteToConsole(&alloc, "Failed to open file '%.*s'.\n", (s32)filepath.count, filepath.data);
+			SystemExitProcess(1);
+		}
+		
+		SystemWriteToConsole(&alloc, "Parsing file: %.*s\n", (s32)filepath.count, filepath.data);
+		
+		ParsedFileData ast_node_file;
+		ast_node_file.filepath = filepath;
+		ast_node_file.top_level_code_block = ParseFile(&alloc, file, filepath);
+		ArrayAppend(parsed_files, &alloc, ast_node_file);
 	}
 	
-	auto output_filepath = "./Metaprogram/Generated/RenderPasses.cpp"_sl;
-	auto output_file = SystemOpenFile(&alloc, output_filepath, OpenFileFlags::Write);
-	if (output_file.handle == nullptr) {
-		SystemWriteToConsole(&alloc, "Failed to open output file '%s'.\n", output_filepath.data);
-		return 1;
-	}
 	
-	auto file_string = builder.ToString();
-	SystemWriteFile(output_file, file_string.data, file_string.count, 0);
-	SystemCloseFile(output_file);
+	EnsureDirectoryExists(&alloc, "Metaprogram/Generated/"_sl);
+	
+	{
+		StringBuilder builder;
+		builder.alloc = &alloc;
+		
+		for (auto& file : parsed_files) {
+			builder.Append("#include \"%.*s\"\n", (s32)file.filepath.count, file.filepath.data);
+		}
+		builder.Append("#include \"Metaprogram/TypeInfo.h\"\n");
+		builder.Append("#include <stddef.h>\n\n"); // Included to get offsetof().
+		
+		builder.Append("// Forward Declarations:\n");
+		for (auto& file : parsed_files) {
+			GenerateCodeForCodeBlockTypeDeclarations(builder, file.top_level_code_block, true);
+		}
+		builder.Append("\n\n");
+		
+		builder.Append("// Type Information:\n");
+		for (auto& file : parsed_files) {
+			GenerateCodeForCodeBlockTypeDeclarations(builder, file.top_level_code_block, false);
+		}
+		
+		GenerateCodeForTypeTable(builder, parsed_files);
+		
+		WriteGeneratedFile(&alloc, "Metaprogram/Generated/TypeTable.cpp"_sl, builder.ToString());
+	}
 	
 	return 0;
 }

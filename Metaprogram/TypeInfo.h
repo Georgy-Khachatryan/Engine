@@ -144,5 +144,3 @@ template<> struct TypeInfoOfInternal<const Math::Mat4x4f> { static TypeInfoStruc
 template<> struct TypeInfoOfInternal<const Math::Mat3x4f> { static TypeInfoStruct* Get() { return &type_info_float3x4; } };
 template<> struct TypeInfoOfInternal<const Math::Mat3x3f> { static TypeInfoStruct* Get() { return &type_info_float3x3; } };
 
-
-#define FORWARD_DECLARE_NOTE(name) template<> struct TypeInfoOfInternal<const name> { static TypeInfoStruct* Get(); };

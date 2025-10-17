@@ -31,15 +31,20 @@
   </ImportGroup>
   
   <ItemGroup>
-    <ClCompile Include="Metaprogram/Generated/RenderPasses.cpp" />
+    <ReflectedFiles Include="Engine/RenderPasses.h" />
+    <ReflectedFiles Include="GraphicsApi/GraphicsApiTypes.h" />
+  </ItemGroup>
+  
+  <ItemGroup>
+    <ClCompile Include="Metaprogram/Generated/TypeTable.cpp" />
+    
     <ClCompile Include="Metaprogram/MetaprogramMain.cpp" />
     <ClCompile Include="Metaprogram/MetaprogramMath.cpp" />
     <ClCompile Include="Metaprogram/TypeInfo.cpp" />
   </ItemGroup>
   
   <ItemGroup>
-    <ClInclude Include="Engine/RenderPasses.h" />
-    
+    <ClInclude Include="@(ReflectedFiles)" />
     <ClInclude Include="Metaprogram/TypeInfo.h" />
   </ItemGroup>
   
@@ -48,7 +53,7 @@
   </ItemGroup>
   
   <Target Name="PreBuild" AfterTargets="PreBuildEvent">
-    <Exec Command="$(OutDir)MetaprogramParser.exe" />
+    <Exec Command="$(OutDir)MetaprogramParser.exe @(ReflectedFiles, ' ')" />
   </Target>
   
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

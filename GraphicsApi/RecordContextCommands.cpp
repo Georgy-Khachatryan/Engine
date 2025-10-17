@@ -67,10 +67,10 @@ static void AppendResourceBindings(RecordContext* record_context, PipelineStages
 	for (auto* descriptor_table : record_context->resource_bindings) {
 		if (descriptor_table == nullptr) continue;
 		
-		auto descriptors = ArrayView<HLSL::ResourceDescriptor>{ (HLSL::ResourceDescriptor*)(descriptor_table + 1), (u64)descriptor_table->descriptor_count };
+		auto descriptors = ArrayView<ResourceDescriptor>{ (ResourceDescriptor*)(descriptor_table + 1), (u64)descriptor_table->descriptor_count };
 		for (auto& descriptor : descriptors) {
-			u32 type = (u32)descriptor.common.type;
-			if (type & (u32)HLSL::ResourceDescriptorType::AnyTexture) {
+			auto type = descriptor.common.type;
+			if (HasAnyFlags(type,ResourceDescriptorType::AnyTexture)) {
 				ResourceAccessDefinition access;
 				access.resource_id = descriptor.resource_id;
 				access.array_index = descriptor.texture.array_index;
@@ -79,15 +79,15 @@ static void AppendResourceBindings(RecordContext* record_context, PipelineStages
 				access.mip_count   = descriptor.texture.mip_count;
 				access.is_texture  = true;
 				access.stages_mask = stages_mask;
-				access.access_mask = type & (u32)HLSL::ResourceDescriptorType::AnySRV ? ResourceAccessMask::SRV : ResourceAccessMask::UAV;
+				access.access_mask = HasAnyFlags(type, ResourceDescriptorType::AnySRV) ? ResourceAccessMask::SRV : ResourceAccessMask::UAV;
 				
 				ArrayAppend(resource_accesses, access);
-			} else if (type & (u32)HLSL::ResourceDescriptorType::AnyBuffer) {
+			} else if (HasAnyFlags(type, ResourceDescriptorType::AnyBuffer)) {
 				ResourceAccessDefinition access;
 				access.resource_id = descriptor.resource_id;
 				access.is_texture  = false;
 				access.stages_mask = stages_mask;
-				access.access_mask = type & (u32)HLSL::ResourceDescriptorType::AnySRV ? ResourceAccessMask::SRV : ResourceAccessMask::UAV;
+				access.access_mask = HasAnyFlags(type, ResourceDescriptorType::AnySRV) ? ResourceAccessMask::SRV : ResourceAccessMask::UAV;
 				
 				ArrayAppend(resource_accesses, access);
 			}

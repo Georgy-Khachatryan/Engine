@@ -4,18 +4,13 @@
 #include "Basic/BasicString.h"
 #include "Basic/BasicHashTable.h"
 #include "Basic/BasicFiles.h"
-#include "Engine/RenderPasses.h"
+#include "GraphicsApi/GraphicsApiTypes.h"
 #include "TypeInfo.h"
 
 #pragma comment(lib, "d3d12.lib")
 
 #define WIN32_LEAN_AND_MEAN
 #include <d3d12.h>
-
-FORWARD_DECLARE_NOTE(Meta::RenderGraphSystem);
-FORWARD_DECLARE_NOTE(Meta::RenderPass);
-FORWARD_DECLARE_NOTE(Meta::HlslFile);
-FORWARD_DECLARE_NOTE(Meta::ShaderName);
 
 template<typename T>
 inline T* TypeInfoCast(TypeInfo* type_info) {
@@ -25,6 +20,8 @@ inline T* TypeInfoCast(TypeInfo* type_info) {
 template<typename T>
 static T* FindNote(ArrayView<TypeInfoNote> notes) {
 	auto* type_info = TypeInfoOf<T>();
+	if (type_info == nullptr) return nullptr;
+	
 	for (auto& note : notes) {
 		if (note.type == type_info) return (T*)note.value;
 	}
@@ -160,6 +157,19 @@ static String PrintTypeName(TypeInfo* type_info) {
 	}
 }
 
+static u64 ReadIntegerAsBits(TypeInfoInteger* type_info, const void* value) {
+	switch (type_info->bit_width) {
+	case 1:  return *(bool*)value;
+	case 8:  return *(u8*)value;
+	case 16: return *(u16*)value;
+	case 32: return *(u32*)value;
+	case 64: return *(u64*)value;
+	}
+	
+	DebugAssertAlways("Unknown TypeInfoInteger bit_width '%u'.", (u32)type_info->bit_width);
+	return 0;
+}
+
 static String PrintTypeValue(StackAllocator* alloc, TypeInfo* type_info, const void* value) {
 	switch (type_info ? type_info->info_type : TypeInfoType::None) {
 	case TypeInfoType::Integer: {
@@ -208,6 +218,25 @@ static String PrintTypeValue(StackAllocator* alloc, TypeInfo* type_info, const v
 		builder.AppendUnformatted(" }"_sl);
 		
 		return builder.ToString();
+	} case TypeInfoType::Enum: {
+		auto* type_info_enum = (TypeInfoEnum*)type_info;
+		
+		String value_name;
+		
+		u64 enum_value = ReadIntegerAsBits(type_info_enum->underlying_type, value);
+		for (auto& field : type_info_enum->fields) {
+			if (field.value == enum_value) {
+				value_name = field.name;
+				break;
+			}
+		}
+		
+		if (value_name.count == 0) {
+			value_name = StringFormat(alloc, "(%.*s)%llu", (s32)type_info_enum->name.count, type_info_enum->name.data, value);
+		} else {
+			value_name = StringFormat(alloc, "%.*s::%.*s", (s32)type_info_enum->name.count, type_info_enum->name.data, (s32)value_name.count, value_name.data);
+		}
+		return value_name;
 	} case TypeInfoType::String: {
 		return *(String*)value;
 	} default: {
@@ -290,7 +319,7 @@ HlslFileData& AddOrFindHlslFile(StackAllocator* alloc, HashTable<String, HlslFil
 
 void GenerateCodeForHlslFile(StackAllocator* alloc, HashTable<String, HlslFileData>& hlsl_files, TypeInfo* type_info, Meta::HlslFile* hlsl_file_note) {
 	auto& hlsl_file = AddOrFindHlslFile(alloc, hlsl_files, hlsl_file_note->filename);
-
+	
 	GenerateCodeForHlslFile(alloc, hlsl_file, type_info);
 }
 
@@ -380,18 +409,21 @@ static void GenerateCodeForRenderPass(StackAllocator* alloc, String filename, Hl
 		builder.AppendUnformatted("\n"_sl);
 	}
 	
-	u32 cbv_index = 0;
-	u32 srv_index = 0;
-	u32 uav_index = 0;
 	
 	auto& cpp_builder = root_signature_file.builder;
 	
 	cpp_builder.Append("%.*s::RootSignature %.*s::root_signature = {\n", (s32)name.count, name.data, (s32)name.count, name.data);
 	cpp_builder.Indent();
 	
-	cpp_builder.Append("%u, %u, (RenderPassType)%u,\n", (u32)root_signature_file.root_signatures.count, root_parameter_count, (u32)render_pass_note->pass_type);
+	auto pass_type = PrintTypeValue(alloc, TypeInfoOf<CommandQueueType>(), &render_pass_note->pass_type);
+	cpp_builder.Append("%u, %u, %.*s,\n", (u32)root_signature_file.root_signatures.count, root_parameter_count, (s32)pass_type.count, pass_type.data);
+	
 	
 	Array<D3D12_ROOT_PARAMETER1> root_parameters; 
+	
+	u32 cbv_index = 0;
+	u32 srv_index = 0;
+	u32 uav_index = 0;
 	
 	u32 root_parameter_index = 0;
 	for (auto& field : root_signature_type->fields) {
@@ -405,28 +437,45 @@ static void GenerateCodeForRenderPass(StackAllocator* alloc, String filename, Hl
 			
 			Array<D3D12_DESCRIPTOR_RANGE1> descriptor_ranges;
 			
+			DebugAssert(template_type, "Template type of DescriptorTable '%.*s' in render pass '%.*s' is not reflected.", (s32)field.name.count, field.name.data, (s32)name.count, name.data);
+			
 			u32 descriptor_count = 0;
 			auto last_range_type = (D3D12_DESCRIPTOR_RANGE_TYPE)u32_max;
 			for (auto& field : template_type->fields) {
 				auto* template_type = ExtractTemplateParameterType(field.type, 0);
-				auto template_type_name = PrintTypeName(template_type);
 				
-				auto range_type = last_range_type;
-				auto type_name = PrintTypeName(field.type);
-				if (type_name == "HLSL::Texture2D<T>"_sl) {
-					builder.Append("Texture2D<%.*s> %.*s : register(t%u);\n", (s32)template_type_name.count, template_type_name.data, (s32)field.name.count, field.name.data, srv_index);
-					range_type = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-				} else if (type_name == "HLSL::RWTexture2D<T>"_sl) {
-					builder.Append("RWTexture2D<%.*s> %.*s : register(u%u);\n", (s32)template_type_name.count, template_type_name.data, (s32)field.name.count, field.name.data, uav_index);
-					range_type = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
-				} else if (type_name == "HLSL::RegularBuffer<T>"_sl) {
-					builder.Append("StructuredBuffer<%.*s> %.*s : register(t%u);\n", (s32)template_type_name.count, template_type_name.data, (s32)field.name.count, field.name.data, srv_index);
-					range_type = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-				} else if (type_name == "HLSL::RWRegularBuffer<T>"_sl) {
-					builder.Append("RWStructuredBuffer<%.*s> %.*s : register(u%u);\n", (s32)template_type_name.count, template_type_name.data, (s32)field.name.count, field.name.data, uav_index);
-					range_type = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
-				} else {
+				auto* descriptor_type_note = FindNote<ResourceDescriptorType>(field.type);
+				if (descriptor_type_note == nullptr) {
 					DebugAssertAlways("Unexpected field '%.*s' of type '%.*s' used in a descriptor table of pass '%.*s'. Only descriptors are allowed.", (s32)field.name.count, field.name.data, (s32)type_name.count, type_name.data, (s32)name.count, name.data);
+					continue;
+				}
+				auto descriptor_type = *descriptor_type_note;
+				
+				bool is_srv     = HasAnyFlags(descriptor_type, ResourceDescriptorType::AnySRV);
+				auto range_type = is_srv ? D3D12_DESCRIPTOR_RANGE_TYPE_SRV : D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
+				auto type_name  = PrintTypeName(field.type);
+				
+				compile_const char* hlsl_descriptor_type_names[] = {
+					"None",
+					"Texture2D",
+					"RWTexture2D",
+					"StructuredBuffer",
+					"RWStructuredBuffer",
+					"ByteAddressBuffer",
+					"RWByteAddressBuffer",
+				};
+				
+				u32 descriptor_type_index = (u32)descriptor_type >> (u32)ResourceDescriptorType::IndexOffset;
+				const char* descriptor_name = hlsl_descriptor_type_names[descriptor_type_index];
+				
+				u32 register_index = is_srv ? srv_index++ : uav_index++;
+				char register_type = is_srv ? 't' : 'u';
+				
+				if (template_type != nullptr) {
+					auto template_type_name = PrintTypeName(template_type);
+					builder.Append("%s<%.*s> %.*s : register(%c%u);\n", descriptor_name, (s32)template_type_name.count, template_type_name.data, (s32)field.name.count, field.name.data, register_type, register_index);
+				} else {
+					builder.Append("%s %.*s : register(%c%u);\n", descriptor_name, (s32)field.name.count, field.name.data, register_type, register_index);
 				}
 				
 				if (last_range_type != range_type) {
@@ -434,16 +483,10 @@ static void GenerateCodeForRenderPass(StackAllocator* alloc, String filename, Hl
 					auto& descriptor_range = ArrayEmplace(descriptor_ranges, alloc);
 					descriptor_range.RangeType          = range_type;
 					descriptor_range.NumDescriptors     = 0;
-					descriptor_range.BaseShaderRegister = range_type == D3D12_DESCRIPTOR_RANGE_TYPE_SRV ? srv_index : uav_index;
+					descriptor_range.BaseShaderRegister = register_index;
 					descriptor_range.RegisterSpace      = 0;
 					descriptor_range.Flags              = D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC_WHILE_SET_AT_EXECUTE | D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_STATIC_KEEPING_BUFFER_BOUNDS_CHECKS;
 					descriptor_range.OffsetInDescriptorsFromTableStart = descriptor_count;
-				}
-				
-				if (range_type == D3D12_DESCRIPTOR_RANGE_TYPE_SRV) {
-					srv_index += 1;
-				} else {
-					uav_index += 1;
 				}
 				
 				ArrayLastElement(descriptor_ranges).NumDescriptors += 1;
@@ -457,6 +500,7 @@ static void GenerateCodeForRenderPass(StackAllocator* alloc, String filename, Hl
 			root_parameter_index += 1;
 		} else if (type_name == "HLSL::ConstantBuffer<T>"_sl) {
 			auto template_type_name = PrintTypeName(template_type);
+			DebugAssert(template_type, "Template type of ConstantBuffer '%.*s' in render pass '%.*s' is not reflected.", (s32)field.name.count, field.name.data, (s32)name.count, name.data);
 			
 			builder.Append("ConstantBuffer<%.*s> %.*s : register(b%u);\n", (s32)template_type_name.count, template_type_name.data, (s32)field.name.count, field.name.data, cbv_index);
 			
@@ -472,6 +516,7 @@ static void GenerateCodeForRenderPass(StackAllocator* alloc, String filename, Hl
 			root_parameter_index += 1;
 		} else if (type_name == "HLSL::PushConstantBuffer<T>"_sl) {
 			auto template_type_name = PrintTypeName(template_type);
+			DebugAssert(template_type, "Template type of PushConstantBuffer '%.*s' in render pass '%.*s' is not reflected.", (s32)field.name.count, field.name.data, (s32)name.count, name.data);
 			
 			builder.Append("ConstantBuffer<%.*s> %.*s : register(b%u);\n", (s32)template_type_name.count, template_type_name.data, (s32)field.name.count, field.name.data, cbv_index);
 			
