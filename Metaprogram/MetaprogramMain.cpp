@@ -710,7 +710,7 @@ s32 main(s32 argument_count, const char* arguments[]) {
 	
 	{
 		auto& builder = root_signature_file.builder;
-		builder.AppendUnformatted("String root_signature_include_filenames[] = {\n"_sl);
+		builder.AppendUnformatted("static String root_signature_filenames_internal[] = {\n"_sl);
 		builder.Indent();
 		
 		for (auto& root_signature : root_signature_file.root_signatures) {
@@ -719,6 +719,8 @@ s32 main(s32 argument_count, const char* arguments[]) {
 		
 		builder.Unindent();
 		builder.AppendUnformatted("};\n\n"_sl);
+		
+		builder.Append("ArrayView<String> root_signature_filenames = { root_signature_filenames_internal, %u };\n\n", (u32)root_signature_file.root_signatures.count);
 		
 		builder.AppendUnformatted("Array<PipelineDefinition> GatherPipelineDefinitions(StackAllocator* alloc) {\n"_sl);
 		builder.Indent();

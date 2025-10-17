@@ -140,8 +140,6 @@ GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
 	}
 	
 	{
-		shader_compiler = CreateShaderCompiler(alloc);
-		
 		auto filepath = "./Build/RootSignature.bin"_sl;
 		auto file = SystemReadFileToString(alloc, filepath);
 		DebugAssert(file.data != nullptr, "Failed to read root signature file '%.*s'.", (s32)filepath.count, filepath.data);
@@ -165,8 +163,13 @@ GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
 		}
 		
 		extern Array<PipelineDefinition> GatherPipelineDefinitions(StackAllocator* alloc);
+		extern ArrayView<ShaderDefinition*> shader_definition_table;
+		extern ArrayView<String> root_signature_filenames;
+		
 		context->pipeline_definitions = GatherPipelineDefinitions(alloc);
 		ArrayResize(context->pipeline_state_table, alloc, context->pipeline_definitions.count);
+		
+		shader_compiler = CreateShaderCompiler(alloc, root_signature_filenames, shader_definition_table, context->pipeline_definitions);
 		
 		BuildPipelineStates(context, alloc);
 	}
@@ -366,7 +369,7 @@ static void BuildPipelineStates(GraphicsContextD3D12* context, StackAllocator* a
 	for (u32 i = 0; i < context->pipeline_definitions.count; i += 1) {
 		auto& definition = context->pipeline_definitions[i];
 		
-		auto bytecode = CompileShader(shader_compiler, alloc, definition.shader_definition, definition.permutation, definition.shader_type_mask, root_signature_include_filenames[definition.root_signature_index]);
+		auto bytecode = CompileShadersForPipelineIndex(shader_compiler, alloc, i);
 		
 		if (HasAnyFlags(definition.shader_type_mask, ShaderTypeMask::ComputeShader)) {
 			CreateComputePipelineState(context, bytecode, definition.root_signature_index, i);

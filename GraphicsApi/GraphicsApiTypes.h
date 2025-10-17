@@ -35,14 +35,20 @@ enum struct ShaderTypeMask : u32 {
 };
 ENUM_FLAGS_OPERATORS(ShaderTypeMask);
 
+
 struct ShaderDefinition {
 	String filename;
 	ArrayView<String> defines;
-	
-	struct ShaderPermutationTable* shader_table = nullptr;
 };
-
 struct ShaderID { u32 index = 0; };
+
+struct PipelineDefinition {
+	ShaderID       shader_id             = { 0 };
+	ShaderTypeMask shader_type_mask      = ShaderTypeMask::None;
+	u32            root_signature_index  = 0;
+	u64            permutation           = 0;
+	ArrayView<u8>  pipeline_state_stream = {};
+};
 struct PipelineID { u32 index = 0; };
 
 

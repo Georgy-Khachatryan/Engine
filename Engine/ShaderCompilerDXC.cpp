@@ -4,6 +4,7 @@
 #include "Basic/BasicFiles.h"
 #include "Basic/BasicHashTable.h"
 #include "GraphicsApi/GraphicsApiTypes.h"
+#include "GraphicsApi/GraphicsApi.h"
 
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
@@ -17,18 +18,12 @@ struct HashedShaderSourceFile {
 };
 
 struct ShaderPermutation {
-	u64        permutation = 0;
-	ShaderType shader_type = ShaderType::ComputeShader;
-	bool      shader_dirty = false;
-	
 	Array<u8> bytecode_blob;
 	Array<HashedShaderSourceFile> hashed_source_files;
+	bool is_dirty = false;
 };
 
-struct ShaderPermutationTable {
-	ShaderDefinition* definition = nullptr;
-	Array<ShaderPermutation> permutations;
-};
+using PipelineShaderIndices = FixedCountArray<u32, (u32)ShaderType::Count>;
 
 struct ShaderCompiler {
 	IDxcCompiler3* dxc_compiler = nullptr;
@@ -37,10 +32,14 @@ struct ShaderCompiler {
 	
 	DirectoryChangeTracker* directory_change_tracker = nullptr;
 	
-	compile_const u32 max_shader_count = 32;
-	FixedCapacityArray<ShaderPermutationTable, max_shader_count> shaders;
+	ArrayView<String>             root_signature_filenames;
+	ArrayView<ShaderDefinition*>  shader_definitions;
+	ArrayView<PipelineDefinition> pipeline_definitions;
 	
-	HeapAllocator heap; // Persistent allocator (shader bytecode, shader permutations, hashed sources, etc.)
+	Array<PipelineShaderIndices> pipeline_shader_indices;
+	Array<ShaderPermutation>     shaders;
+	
+	HeapAllocator heap; // Persistent allocator (shader bytecode, hashed sources, etc.)
 };
 
 template<typename ResourceT>
@@ -122,8 +121,11 @@ struct IncludeHandler : IDxcIncludeHandler {
 	ULONG Release() { return 0; }
 };
 
-static bool CompileShaderToBlob(ShaderCompiler* compiler, StackAllocator* alloc, ShaderDefinition* definition, u64 permutation, ShaderType shader_type, ShaderPermutation* shader_permutation, String root_signature_filepath) {
+static bool CompileShaderToBlob(ShaderCompiler* compiler, StackAllocator* alloc, PipelineDefinition& pipeline_definition, ShaderType shader_type, ShaderPermutation& shader) {
 	TempAllocationScope(alloc);
+	
+	auto* definition = compiler->shader_definitions[pipeline_definition.shader_id.index];
+	u64  permutation = pipeline_definition.permutation;
 	
 	auto filename = definition->filename;
 	auto shader_file = ReadShaderSourceFile(alloc, filename);
@@ -141,7 +143,8 @@ static bool CompileShaderToBlob(ShaderCompiler* compiler, StackAllocator* alloc,
 	ArrayReserve(include_handler.hashed_source_files, alloc, 16);
 	ArrayAppend(include_handler.hashed_source_files, { filename, shader_file.hash });
 	
-	auto root_signature_include = StringFormat(alloc, "ROOT_SIGNATURE_FILEPATH=\"Generated/%.*s\"", (s32)root_signature_filepath.count, root_signature_filepath.data);
+	auto root_signature_filename = compiler->root_signature_filenames[pipeline_definition.root_signature_index];
+	auto root_signature_filepath = StringFormat(alloc, "ROOT_SIGNATURE_FILEPATH=\"Generated/%.*s\"", (s32)root_signature_filename.count, root_signature_filename.data);
 	
 	Array<const wchar_t*> arguments;
 	ArrayReserve(arguments, alloc, 12 + CountSetBits(permutation) * 2);
@@ -150,7 +153,7 @@ static bool CompileShaderToBlob(ShaderCompiler* compiler, StackAllocator* alloc,
 	ArrayAppend(arguments, L"-E"); ArrayAppend(arguments, entry_point_names[(u32)shader_type]);
 	ArrayAppend(arguments, L"-T"); ArrayAppend(arguments, target_profiles[(u32)shader_type]);
 	ArrayAppend(arguments, L"-D"); ArrayAppend(arguments, shader_type_defines[(u32)shader_type]);
-	ArrayAppend(arguments, L"-D"); ArrayAppend(arguments, (wchar_t*)StringUtf8ToUtf16(alloc, root_signature_include).data);
+	ArrayAppend(arguments, L"-D"); ArrayAppend(arguments, (wchar_t*)StringUtf8ToUtf16(alloc, root_signature_filepath).data);
 	ArrayAppend(arguments, L"-Zpr");
 	ArrayAppend(arguments, L"-Qstrip_reflect");
 	ArrayAppend(arguments, L"-enable-16bit-types");
@@ -207,64 +210,38 @@ static bool CompileShaderToBlob(ShaderCompiler* compiler, StackAllocator* alloc,
 	
 	
 	auto* heap = &compiler->heap;
-	for (auto& hashed_file : shader_permutation->hashed_source_files) {
+	for (auto& hashed_file : shader.hashed_source_files) {
 		heap->Deallocate(hashed_file.filename.data);
 	}
-	shader_permutation->hashed_source_files.count = 0;
+	shader.hashed_source_files.count = 0;
 	
-	ArrayReserve(shader_permutation->hashed_source_files, heap, include_handler.hashed_source_files.count);
+	ArrayReserve(shader.hashed_source_files, heap, include_handler.hashed_source_files.count);
 	for (auto& src_hashed_file : include_handler.hashed_source_files) {
-		auto& dst_hashed_file = ArrayEmplace(shader_permutation->hashed_source_files);
+		auto& dst_hashed_file = ArrayEmplace(shader.hashed_source_files);
 		dst_hashed_file.filename = StringCopy(heap, src_hashed_file.filename);
 		dst_hashed_file.hash     = src_hashed_file.hash;
 	}
 	
-	ArrayResize(shader_permutation->bytecode_blob, heap, bytecode_blob->GetBufferSize());
-	memcpy(shader_permutation->bytecode_blob.data, bytecode_blob->GetBufferPointer(), shader_permutation->bytecode_blob.count);
-	shader_permutation->shader_dirty = false;
+	ArrayResize(shader.bytecode_blob, heap, bytecode_blob->GetBufferSize());
+	memcpy(shader.bytecode_blob.data, bytecode_blob->GetBufferPointer(), shader.bytecode_blob.count);
+	shader.is_dirty = false;
 	
 	return true;
 }
 
-static ShaderPermutation* FindShaderPermutation(ShaderCompiler* compiler, ShaderDefinition* definition, u64 permutation, ShaderType shader_type) {
-	auto* heap = &compiler->heap;
-	
-	auto* shader_table = definition->shader_table;
-	if (shader_table == nullptr) {
-		shader_table = &ArrayEmplace(compiler->shaders);
-		shader_table->definition = definition;
-		
-		definition->shader_table = shader_table;
-		ArrayReserve(shader_table->permutations, heap, 4);
-	}
-	
-	ShaderPermutation* shader_permutation = nullptr;
-	for (auto& shader : shader_table->permutations) {
-		if (shader.permutation == permutation && shader.shader_type == shader_type) {
-			shader_permutation = &shader;
-			break;
-		}
-	}
-	
-	if (shader_permutation == nullptr) {
-		shader_permutation = &ArrayEmplace(shader_table->permutations, heap);
-		shader_permutation->permutation = permutation;
-		shader_permutation->shader_type = shader_type;
-		shader_permutation->shader_dirty = true;
-	}
-	
-	return shader_permutation;
-}
 
-ShaderBytecode CompileShader(ShaderCompiler* compiler, StackAllocator* alloc, ShaderDefinition* definition, u64 permutation, ShaderTypeMask shader_type_mask, String root_signature_filepath) {
+ShaderBytecode CompileShadersForPipelineIndex(ShaderCompiler* compiler, StackAllocator* alloc, u64 pipeline_definition_index) {
 	ShaderBytecode result;
 	
-	for (u32 i : BitScanLow32((u32)shader_type_mask)) {
-		auto* shader = FindShaderPermutation(compiler, definition, permutation, (ShaderType)i);
+	auto& pipeline_definition = compiler->pipeline_definitions[pipeline_definition_index];
+	auto& shader_indices      = compiler->pipeline_shader_indices[pipeline_definition_index];
+	
+	for (u32 shader_type_index : BitScanLow32((u32)pipeline_definition.shader_type_mask)) {
+		auto& shader = compiler->shaders[shader_indices[shader_type_index]];
 		
-		bool should_recompile = shader->shader_dirty;
+		bool should_recompile = shader.is_dirty;
 		while (should_recompile) {
-			if (CompileShaderToBlob(compiler, alloc, definition, permutation, (ShaderType)i, shader, root_signature_filepath) || shader->bytecode_blob.data != nullptr) {
+			if (CompileShaderToBlob(compiler, alloc, pipeline_definition, (ShaderType)shader_type_index, shader) || shader.bytecode_blob.data != nullptr) {
 				should_recompile = false;
 			} else {
 				SystemWriteToConsole("Press enter to recompile.\n"_sl);
@@ -274,16 +251,59 @@ ShaderBytecode CompileShader(ShaderCompiler* compiler, StackAllocator* alloc, Sh
 			}
 		}
 		
-		result[i] = shader->bytecode_blob;
+		result[shader_type_index] = shader.bytecode_blob;
 	}
 	
 	return result;
 }
 
-ShaderCompiler* CreateShaderCompiler(StackAllocator* alloc) {
+union ShaderPermutationKey {
+	struct {
+		u64        permutation;
+		ShaderType shader_type;
+		ShaderID   shader_id;
+	};
+	u64 data[2] = { 0, 0 };
+	
+	bool operator== (const ShaderPermutationKey& other) { return data[0] == other.data[0] && data[1] == other.data[1]; }
+};
+static_assert(sizeof(ShaderPermutationKey) == 16, "Incorrect ShaderPermutationKey size.");
+
+static u64 ComputeHash(const ShaderPermutationKey& key) { return ComputeHash64(key.data[0], key.data[1]); }
+
+ShaderCompiler* CreateShaderCompiler(StackAllocator* alloc, ArrayView<String> root_signature_filenames, ArrayView<ShaderDefinition*> shader_definitions, ArrayView<PipelineDefinition> pipeline_definitions) {
 	auto* compiler = NewFromAlloc(alloc, ShaderCompiler);
 	
-	compiler->heap = CreateHeapAllocator(2 * 1024 * 1024);
+	compiler->root_signature_filenames = root_signature_filenames;
+	compiler->shader_definitions       = shader_definitions;
+	compiler->pipeline_definitions     = pipeline_definitions;
+	
+	ArrayResizeMemset(compiler->pipeline_shader_indices, alloc, pipeline_definitions.count);
+	
+	// Deduplicate shaders that are used across multiple pipelines.
+	HashTable<ShaderPermutationKey, u32> shader_indices;
+	HashTableReserve(shader_indices, alloc, pipeline_definitions.count * (u32)ShaderType::Count);
+	
+	for (u64 i = 0; i < pipeline_definitions.count; i += 1) {
+		auto& pipeline_definition = pipeline_definitions[i];
+		auto& indices = compiler->pipeline_shader_indices[i];
+		
+		for (u32 shader_type_index : BitScanLow32((u32)pipeline_definition.shader_type_mask)) {
+			ShaderPermutationKey key;
+			key.permutation = pipeline_definition.permutation;
+			key.shader_type = (ShaderType)shader_type_index;
+			key.shader_id   = pipeline_definition.shader_id;
+			
+			auto [element, is_added] = HashTableAddOrFind(shader_indices, key, (u32)shader_indices.count);
+			indices[shader_type_index] = element->value;
+		}
+	}
+	
+	ArrayResize(compiler->shaders, alloc, shader_indices.count);
+	for (auto& shader : compiler->shaders) shader.is_dirty = true;
+	
+	
+	compiler->heap = CreateHeapAllocator(512 * 1024);
 	
 	compiler->directory_change_tracker = CreateDirectoryChangeTracker(alloc, shader_directory_path);
 	DebugAssert(compiler->directory_change_tracker != nullptr, "Failed to create shader directory change tracker.");
@@ -323,19 +343,17 @@ bool CheckShaderFileChanges(ShaderCompiler* compiler, StackAllocator* alloc) {
 	
 	bool has_dirty_shaders = false;
 	for (auto& shader : compiler->shaders) {
-		for (auto& permutation : shader.permutations) {
-			bool is_dirty_permutation = false;
-			for (auto& source_file : permutation.hashed_source_files) {
-				auto* changed_file_hash = HashTableFind(changed_file_hashes, source_file.filename);
-				if (changed_file_hash == nullptr || source_file.hash == changed_file_hash->value) continue;
-				
-				is_dirty_permutation = true;
-				break;
-			}
+		bool is_dirty_shader = false;
+		for (auto& source_file : shader.hashed_source_files) {
+			auto* changed_file_hash = HashTableFind(changed_file_hashes, source_file.filename);
+			if (changed_file_hash == nullptr || source_file.hash == changed_file_hash->value) continue;
 			
-			permutation.shader_dirty |= is_dirty_permutation;
-			has_dirty_shaders |= permutation.shader_dirty;
+			is_dirty_shader = true;
+			break;
 		}
+		
+		shader.is_dirty |= is_dirty_shader;
+		has_dirty_shaders |= shader.is_dirty;
 	}
 	
 	return has_dirty_shaders;

@@ -42,14 +42,6 @@ u32 AllocatePersistentSrvDescriptor(GraphicsContext* context);
 void DeallocatePersistentSrvDescriptor(GraphicsContext* context, u32 heap_index);
 
 
-struct PipelineDefinition {
-	ShaderDefinition* shader_definition = nullptr;
-	u64               permutation       = 0;
-	ShaderTypeMask    shader_type_mask  = ShaderTypeMask::None;
-	u32               root_signature_index = 0;
-	ArrayView<u8>     pipeline_state_stream = {};
-};
-
 struct PipelineLibrary {
 	StackAllocator* alloc = nullptr;
 	Array<PipelineDefinition> pipeline_definitions;

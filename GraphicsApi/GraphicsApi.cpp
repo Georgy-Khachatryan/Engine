@@ -1,13 +1,11 @@
 #include "GraphicsApi.h"
 #include "RecordContext.h"
 
-extern ArrayView<ShaderDefinition*> shader_definition_table;
-
 PipelineID CreateComputePipeline(PipelineLibrary* lib, ShaderID shader_id, u64 permutation) {
 	u32 pipeline_index = (u32)lib->pipeline_definitions.count;
 	
 	auto& pipeline_definition = ArrayEmplace(lib->pipeline_definitions, lib->alloc);
-	pipeline_definition.shader_definition    = shader_definition_table[shader_id.index];
+	pipeline_definition.shader_id            = shader_id;
 	pipeline_definition.permutation          = permutation;
 	pipeline_definition.shader_type_mask     = ShaderTypeMask::ComputeShader;
 	pipeline_definition.root_signature_index = lib->current_pass_root_signature_index;
@@ -19,10 +17,10 @@ PipelineID CreateGraphicsPipeline(PipelineLibrary* lib, ArrayView<u8> pipeline_s
 	u32 pipeline_index = (u32)lib->pipeline_definitions.count;
 	
 	auto& pipeline_definition = ArrayEmplace(lib->pipeline_definitions, lib->alloc);
-	pipeline_definition.shader_definition    = shader_definition_table[shader_id.index];
-	pipeline_definition.permutation          = permutation;
-	pipeline_definition.shader_type_mask     = shader_type_mask;
-	pipeline_definition.root_signature_index = lib->current_pass_root_signature_index;
+	pipeline_definition.shader_id             = shader_id;
+	pipeline_definition.permutation           = permutation;
+	pipeline_definition.shader_type_mask      = shader_type_mask;
+	pipeline_definition.root_signature_index  = lib->current_pass_root_signature_index;
 	pipeline_definition.pipeline_state_stream = ArrayCopy(pipeline_state_stream, lib->alloc);
 	
 	return PipelineID{ pipeline_index };
