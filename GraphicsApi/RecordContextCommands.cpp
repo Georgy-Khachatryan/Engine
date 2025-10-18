@@ -236,8 +236,8 @@ void CmdSetIndexBufferView(RecordContext* record_context, GpuAddress gpu_address
 
 void CmdSetRootSignature(RecordContext* record_context, const HLSL::BaseRootSignature& root_signature) {
 	auto& packet = AppendPacket<CmdSetRootSignaturePacket>(record_context);
-	packet.root_signature_index = root_signature.root_signature_index;
-	packet.pass_type            = root_signature.pass_type;
+	packet.root_signature_id = root_signature.root_signature_id;
+	packet.pass_type         = root_signature.pass_type;
 	
 	record_context->current_render_pass_type = root_signature.pass_type;
 	record_context->resource_bindings.count = 0;

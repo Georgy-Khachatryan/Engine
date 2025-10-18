@@ -41,13 +41,14 @@ struct ShaderDefinition {
 	ArrayView<String> defines;
 };
 struct ShaderID { u32 index = 0; };
+struct RootSignatureID { u32 index = 0; };
 
 struct PipelineDefinition {
-	ShaderID       shader_id             = { 0 };
-	ShaderTypeMask shader_type_mask      = ShaderTypeMask::None;
-	u32            root_signature_index  = 0;
-	u64            permutation           = 0;
-	ArrayView<u8>  pipeline_state_stream = {};
+	ShaderID        shader_id         = { 0 };
+	RootSignatureID root_signature_id = { 0 };
+	ShaderTypeMask  shader_type_mask  = ShaderTypeMask::None;
+	u64             permutation       = 0;
+	ArrayView<u8>   pipeline_state_stream = {};
 };
 struct PipelineID { u32 index = 0; };
 
@@ -403,8 +404,17 @@ namespace HLSL {
 	NOTES() template<typename T> struct ConstantBuffer  { u32 offset = 0; };
 	NOTES() template<typename T> struct PushConstantBuffer { u32 offset = 0; };
 	
-	struct BaseRootSignature { u32 root_signature_index = 0; u32 root_parameter_count = 0; CommandQueueType pass_type = CommandQueueType::Graphics; };
-	struct BaseDescriptorTable { u32 descriptor_heap_offset = 0; u32 descriptor_count = 0; };
+	
+	struct BaseRootSignature {
+		RootSignatureID root_signature_id = { 0 };
+		u32 root_parameter_count = 0;
+		CommandQueueType pass_type = CommandQueueType::Graphics;
+	};
+	
+	struct BaseDescriptorTable {
+		u32 descriptor_heap_offset = 0;
+		u32 descriptor_count = 0;
+	};
 };
 
 

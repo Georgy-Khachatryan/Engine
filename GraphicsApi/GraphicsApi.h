@@ -45,7 +45,7 @@ void DeallocatePersistentSrvDescriptor(GraphicsContext* context, u32 heap_index)
 struct PipelineLibrary {
 	StackAllocator* alloc = nullptr;
 	Array<PipelineDefinition> pipeline_definitions;
-	u32 current_pass_root_signature_index = 0;
+	RootSignatureID current_pass_root_signature_id = { 0 };
 };
 
 PipelineID CreateComputePipeline(PipelineLibrary* lib, ShaderID shader_id, u64 permutation = 0);

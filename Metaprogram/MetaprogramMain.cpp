@@ -326,24 +326,18 @@ void GenerateCodeForHlslFile(StackAllocator* alloc, HashTable<String, HlslFileDa
 static void WriteHlslFilesToDisk(StackAllocator* alloc, HashTable<String, HlslFileData>& hlsl_files) {
 	SystemCreateDirectory(alloc, "./Shaders/Generated/"_sl);
 	
-	u8* metadata = hlsl_files.metadata;
-	auto* data   = hlsl_files.data;
-	
-	for (u64 i = 0; i < hlsl_files.capacity; i += 1) {
-		if (metadata[i] <= hash_table_hash_value_deleted) continue;
-		
-		auto& element = hlsl_files.data[i];
-		auto& hlsl_file = element.value;
+	for (auto& [filename, hlsl_file] : hlsl_files) {
 		auto& builder = hlsl_file.builder;
-		
 		builder.Append("#endif // %.*s\n", (s32)hlsl_file.include_guard.count, hlsl_file.include_guard.data);
 		
-		auto output_filepath = StringFormat(alloc, "./Shaders/Generated/%.*s", (s32)element.key.count, element.key.data);
+		auto output_filepath = StringFormat(alloc, "./Shaders/Generated/%.*s", (s32)filename.count, filename.data);
 		auto output_file = SystemOpenFile(alloc, output_filepath, OpenFileFlags::Write);
 		if (output_file.handle == nullptr) {
 			SystemWriteToConsole(alloc, "Failed to open output file '%s'.\n", output_filepath.data);
 			SystemExitProcess(1);
 		}
+		
+		SystemWriteToConsole(alloc, "Writing file: %.*s\n", (s32)output_filepath.count, output_filepath.data);
 		
 		auto file_string = builder.ToString();
 		SystemWriteFile(output_file, file_string.data, file_string.count, 0);
@@ -395,15 +389,7 @@ static void GenerateCodeForRenderPass(StackAllocator* alloc, String filename, Hl
 	DebugAssert(root_signature_type != nullptr, "RenderPass '%.*s' is missing root signature.", (s32)name.count, name.data);
 	
 	if (dependent_types.count != 0) {
-		u8* metadata = dependent_types.metadata;
-		auto* data   = dependent_types.data;
-		
-		for (u64 i = 0; i < dependent_types.capacity; i += 1) {
-			if (metadata[i] <= hash_table_hash_value_deleted) continue;
-			
-			auto& element = data[i];
-			auto filename = element.key;
-			
+		for (auto& [filename, dummy] : dependent_types) {
 			builder.Append("#include \"%.*s\"\n", (s32)filename.count, filename.data);
 		}
 		builder.AppendUnformatted("\n"_sl);
@@ -416,7 +402,7 @@ static void GenerateCodeForRenderPass(StackAllocator* alloc, String filename, Hl
 	cpp_builder.Indent();
 	
 	auto pass_type = PrintTypeValue(alloc, TypeInfoOf<CommandQueueType>(), &render_pass_note->pass_type);
-	cpp_builder.Append("%u, %u, %.*s,\n", (u32)root_signature_file.root_signatures.count, root_parameter_count, (s32)pass_type.count, pass_type.data);
+	cpp_builder.Append("RootSignatureID{ %u }, %u, %.*s,\n", (u32)root_signature_file.root_signatures.count, root_parameter_count, (s32)pass_type.count, pass_type.data);
 	
 	
 	Array<D3D12_ROOT_PARAMETER1> root_parameters; 
@@ -731,7 +717,7 @@ s32 main(s32 argument_count, const char* arguments[]) {
 		for (auto& root_signature : root_signature_file.root_signatures) {
 			auto name = root_signature.render_pass_name;
 			
-			builder.Append("lib.current_pass_root_signature_index = %.*s::root_signature.root_signature_index;\n", (s32)name.count, name.data);
+			builder.Append("lib.current_pass_root_signature_id = %.*s::root_signature.root_signature_id;\n", (s32)name.count, name.data);
 			builder.Append("%.*s::CreatePipelines(&lib);\n\n", (s32)name.count, name.data);
 		}
 		

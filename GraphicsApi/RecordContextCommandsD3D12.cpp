@@ -203,9 +203,9 @@ static void CmdCopyBufferToTextureD3D12(CmdCopyBufferToTexturePacket* packet, ID
 
 static void CmdSetRootSignatureD3D12(CmdSetRootSignaturePacket* packet, ID3D12GraphicsCommandList7* command_list, GraphicsContextD3D12* context) {
 	if (packet->pass_type == CommandQueueType::Compute) {
-		command_list->SetComputeRootSignature(context->root_signature_table[packet->root_signature_index]);
+		command_list->SetComputeRootSignature(context->root_signature_table[packet->root_signature_id.index]);
 	} else {
-		command_list->SetGraphicsRootSignature(context->root_signature_table[packet->root_signature_index]);
+		command_list->SetGraphicsRootSignature(context->root_signature_table[packet->root_signature_id.index]);
 	}
 }
 

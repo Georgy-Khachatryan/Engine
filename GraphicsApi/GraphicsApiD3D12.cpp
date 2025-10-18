@@ -364,18 +364,19 @@ static void CreateGraphicsPipelineState(GraphicsContextD3D12* context, const Pip
 }
 
 static void BuildPipelineStates(GraphicsContextD3D12* context, StackAllocator* alloc) {
-	extern String root_signature_include_filenames[];
+	TempAllocationScope(alloc);
+	auto compiled_shader_mask = CompileDirtyShaderPermutations(shader_compiler, alloc);
 	
 	for (u32 i = 0; i < context->pipeline_definitions.count; i += 1) {
+		auto [bytecode, is_dirty] = GetShadersForPipelineIndex(shader_compiler, i, compiled_shader_mask);
+		if (is_dirty == false) continue;
+		
 		auto& definition = context->pipeline_definitions[i];
-		
-		auto bytecode = CompileShadersForPipelineIndex(shader_compiler, alloc, i);
-		
 		if (HasAnyFlags(definition.shader_type_mask, ShaderTypeMask::ComputeShader)) {
-			CreateComputePipelineState(context, bytecode, definition.root_signature_index, i);
+			CreateComputePipelineState(context, bytecode, definition.root_signature_id.index, i);
 		} else {
 			auto pipeline_state_description = CreatePipelineStateDescription(definition.pipeline_state_stream);
-			CreateGraphicsPipelineState(context, pipeline_state_description, bytecode, definition.root_signature_index, i);
+			CreateGraphicsPipelineState(context, pipeline_state_description, bytecode, definition.root_signature_id.index, i);
 		}
 	}
 }

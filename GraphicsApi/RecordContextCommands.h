@@ -102,7 +102,7 @@ struct CmdSetIndexBufferViewPacket : RecordContextCommandPacket {
 struct CmdSetRootSignaturePacket : RecordContextCommandPacket {
 	compile_const CommandType my_type = CommandType::SetRootSignature;
 	
-	u32 root_signature_index = 0;
+	RootSignatureID root_signature_id = { 0 };
 	CommandQueueType pass_type = CommandQueueType::Graphics;
 };
 

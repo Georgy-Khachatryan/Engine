@@ -30,6 +30,12 @@ inline u64 ComputeHash(bool value) { return ComputeHash64((u64)value); }
 inline u64 ComputeHash(const void* value) { return ComputeHash64((u64)value); }
 
 
+compile_const u64 hash_table_max_occupancy_percent = 75;
+compile_const u32 hash_table_hash_value_empty   = 0;
+compile_const u32 hash_table_hash_value_deleted = 1;
+compile_const u32 hash_table_group_size_bits    = 4;
+compile_const u32 hash_table_group_size         = 1u << hash_table_group_size_bits;
+
 template<typename KeyT, typename ValueT>
 struct HashTableElement {
 	KeyT   key;
@@ -46,13 +52,28 @@ struct HashTable {
 	u64 capacity = 0;
 	u64 count    = 0;
 	u64 occupied = 0;
+	
+	struct Iterator {
+		u8* metadata = nullptr;
+		ElementType* data = nullptr;
+		u64 index    = 0;
+		u64 capacity = 0;
+		
+		Iterator& operator++ () {
+			index += 1;
+			while (index < capacity && metadata[index] <= hash_table_hash_value_deleted) {
+				index += 1;
+			}
+			return *this;
+		}
+		
+		bool operator!= (const Iterator& other) { return index != other.index; }
+		ElementType& operator* () { return data[index]; }
+	};
+	
+	Iterator begin() { return Iterator{ metadata, data, 0,        capacity }; }
+	Iterator end()   { return Iterator{ metadata, data, capacity, capacity }; }
 };
-
-compile_const u64 hash_table_max_occupancy_percent = 75;
-compile_const u32 hash_table_hash_value_empty   = 0;
-compile_const u32 hash_table_hash_value_deleted = 1;
-compile_const u32 hash_table_group_size_bits    = 4;
-compile_const u32 hash_table_group_size         = 1u << hash_table_group_size_bits;
 
 inline u32 HashTableExtractLargeHash(u64 hash) { return (u32)(hash >> 8); }
 inline u32 HashTableExtractSmallHash(u64 hash) { return (u32)((hash & 0xFF) <= hash_table_hash_value_deleted ? (hash & 0xFF) * 2 + 17 : (hash & 0xFF)); }

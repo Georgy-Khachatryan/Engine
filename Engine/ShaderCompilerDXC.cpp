@@ -25,6 +25,22 @@ struct ShaderPermutation {
 
 using PipelineShaderIndices = FixedCountArray<u32, (u32)ShaderType::Count>;
 
+union ShaderPermutationKey {
+	struct {
+		u64        permutation;
+		ShaderType shader_type : 4;
+		u32        root_signature_index : 28;
+		ShaderID   shader_id;
+	};
+	u64 data[2] = { 0, 0 };
+	
+	bool operator== (const ShaderPermutationKey& other) { return data[0] == other.data[0] && data[1] == other.data[1]; }
+};
+static_assert(sizeof(ShaderPermutationKey) == 16, "Incorrect ShaderPermutationKey size.");
+
+static u64 ComputeHash(const ShaderPermutationKey& key) { return ComputeHash64(key.data[0], key.data[1]); }
+
+
 struct ShaderCompiler {
 	IDxcCompiler3* dxc_compiler = nullptr;
 	IDxcUtils* dxc_utils = nullptr;
@@ -38,6 +54,7 @@ struct ShaderCompiler {
 	
 	Array<PipelineShaderIndices> pipeline_shader_indices;
 	Array<ShaderPermutation>     shaders;
+	HashTable<ShaderPermutationKey, u32> shader_permutation_table;
 	
 	HeapAllocator heap; // Persistent allocator (shader bytecode, hashed sources, etc.)
 };
@@ -121,13 +138,11 @@ struct IncludeHandler : IDxcIncludeHandler {
 	ULONG Release() { return 0; }
 };
 
-static bool CompileShaderToBlob(ShaderCompiler* compiler, StackAllocator* alloc, PipelineDefinition& pipeline_definition, ShaderType shader_type, ShaderPermutation& shader) {
+static bool CompileShaderToBlob(ShaderCompiler* compiler, StackAllocator* alloc, const ShaderPermutationKey& key, ShaderPermutation& shader) {
 	TempAllocationScope(alloc);
 	
-	auto* definition = compiler->shader_definitions[pipeline_definition.shader_id.index];
-	u64  permutation = pipeline_definition.permutation;
-	
-	auto filename = definition->filename;
+	auto* definition = compiler->shader_definitions[key.shader_id.index];
+	auto filename    = definition->filename;
 	auto shader_file = ReadShaderSourceFile(alloc, filename);
 	
 	if (shader_file.contents.data == nullptr) {
@@ -143,22 +158,22 @@ static bool CompileShaderToBlob(ShaderCompiler* compiler, StackAllocator* alloc,
 	ArrayReserve(include_handler.hashed_source_files, alloc, 16);
 	ArrayAppend(include_handler.hashed_source_files, { filename, shader_file.hash });
 	
-	auto root_signature_filename = compiler->root_signature_filenames[pipeline_definition.root_signature_index];
+	auto root_signature_filename = compiler->root_signature_filenames[key.root_signature_index];
 	auto root_signature_filepath = StringFormat(alloc, "ROOT_SIGNATURE_FILEPATH=\"Generated/%.*s\"", (s32)root_signature_filename.count, root_signature_filename.data);
 	
 	Array<const wchar_t*> arguments;
-	ArrayReserve(arguments, alloc, 12 + CountSetBits(permutation) * 2);
+	ArrayReserve(arguments, alloc, 12 + CountSetBits(key.permutation) * 2);
 	
 	ArrayAppend(arguments, (wchar_t*)StringUtf8ToUtf16(alloc, filename).data);
-	ArrayAppend(arguments, L"-E"); ArrayAppend(arguments, entry_point_names[(u32)shader_type]);
-	ArrayAppend(arguments, L"-T"); ArrayAppend(arguments, target_profiles[(u32)shader_type]);
-	ArrayAppend(arguments, L"-D"); ArrayAppend(arguments, shader_type_defines[(u32)shader_type]);
+	ArrayAppend(arguments, L"-E"); ArrayAppend(arguments, entry_point_names[(u32)key.shader_type]);
+	ArrayAppend(arguments, L"-T"); ArrayAppend(arguments, target_profiles[(u32)key.shader_type]);
+	ArrayAppend(arguments, L"-D"); ArrayAppend(arguments, shader_type_defines[(u32)key.shader_type]);
 	ArrayAppend(arguments, L"-D"); ArrayAppend(arguments, (wchar_t*)StringUtf8ToUtf16(alloc, root_signature_filepath).data);
 	ArrayAppend(arguments, L"-Zpr");
 	ArrayAppend(arguments, L"-Qstrip_reflect");
 	ArrayAppend(arguments, L"-enable-16bit-types");
 	
-	for (u64 i : BitScanLow(permutation)) {
+	for (u64 i : BitScanLow(key.permutation)) {
 		ArrayAppend(arguments, L"-D");
 		ArrayAppend(arguments, (wchar_t*)StringUtf8ToUtf16(alloc, definition->defines[i]).data);
 	}
@@ -188,13 +203,15 @@ static bool CompileShaderToBlob(ShaderCompiler* compiler, StackAllocator* alloc,
 	result->GetOutput(DXC_OUT_ERRORS, IID_PPV_ARGS(&error_blob), nullptr);
 	defer{ SafeReleaseDXC(error_blob); };
 	
+	auto permutation_name = GetShaderPermutationName(alloc, definition, key.permutation);
+	
 	String compiler_message;
 	if (FAILED(status)) {
-		compiler_message = StringFormat(alloc, "Shader '%.*s' failed to compile with target '%S'. Errors:\n\x1B[31m%.*s\x1B[0m\n", (s32)filename.count, filename.data, target_profiles[(u32)shader_type], (s32)error_blob->GetStringLength(), error_blob->GetStringPointer());
+		compiler_message = StringFormat(alloc, "Shader '%.*s' failed to compile with target '%S'. Errors:\n\x1B[31m%.*s\x1B[0m\n", (s32)permutation_name.count, permutation_name.data, target_profiles[(u32)key.shader_type], (s32)error_blob->GetStringLength(), error_blob->GetStringPointer());
 	} else if (error_blob->GetStringLength() != 0) {
-		compiler_message = StringFormat(alloc, "Shader '%.*s' compiled with target '%S'. Warnings:\n\x1B[33m%.*s\x1B[0m\n", (s32)filename.count, filename.data, target_profiles[(u32)shader_type], (s32)error_blob->GetStringLength(), error_blob->GetStringPointer());
+		compiler_message = StringFormat(alloc, "Shader '%.*s' compiled with target '%S'. Warnings:\n\x1B[33m%.*s\x1B[0m\n", (s32)permutation_name.count, permutation_name.data, target_profiles[(u32)key.shader_type], (s32)error_blob->GetStringLength(), error_blob->GetStringPointer());
 	} else {
-		compiler_message = StringFormat(alloc, "Shader '%.*s' compiled with target '%S'.\n", (s32)filename.count, filename.data, target_profiles[(u32)shader_type]);
+		compiler_message = StringFormat(alloc, "Shader '%.*s' compiled with target '%S'.\n", (s32)permutation_name.count, permutation_name.data, target_profiles[(u32)key.shader_type]);
 	}
 	SystemWriteToConsole(compiler_message);
 	
@@ -230,20 +247,20 @@ static bool CompileShaderToBlob(ShaderCompiler* compiler, StackAllocator* alloc,
 }
 
 
-ShaderBytecode CompileShadersForPipelineIndex(ShaderCompiler* compiler, StackAllocator* alloc, u64 pipeline_definition_index) {
-	ShaderBytecode result;
+ArrayView<u64> CompileDirtyShaderPermutations(ShaderCompiler* compiler, StackAllocator* alloc) {
+	Array<u64> compiled_shader_mask;
+	ArrayResizeMemset(compiled_shader_mask, alloc, DivideAndRoundUp((u32)compiler->shader_permutation_table.count, 64u));
 	
-	auto& pipeline_definition = compiler->pipeline_definitions[pipeline_definition_index];
-	auto& shader_indices      = compiler->pipeline_shader_indices[pipeline_definition_index];
-	
-	for (u32 shader_type_index : BitScanLow32((u32)pipeline_definition.shader_type_mask)) {
-		auto& shader = compiler->shaders[shader_indices[shader_type_index]];
+	for (auto& [key, value] : compiler->shader_permutation_table) {
+		auto& shader = compiler->shaders[value];
+		bool shader_compiled = false;
 		
 		bool should_recompile = shader.is_dirty;
 		while (should_recompile) {
-			if (CompileShaderToBlob(compiler, alloc, pipeline_definition, (ShaderType)shader_type_index, shader) || shader.bytecode_blob.data != nullptr) {
-				should_recompile = false;
-			} else {
+			shader_compiled = CompileShaderToBlob(compiler, alloc, key, shader);
+			should_recompile &= (shader_compiled == false) && (shader.bytecode_blob.data == nullptr);
+			
+			if (shader.bytecode_blob.data == nullptr) {
 				SystemWriteToConsole("Press enter to recompile.\n"_sl);
 				
 				FixedCapacityArray<wchar_t, 16> buffer;
@@ -251,25 +268,39 @@ ShaderBytecode CompileShadersForPipelineIndex(ShaderCompiler* compiler, StackAll
 			}
 		}
 		
-		result[shader_type_index] = shader.bytecode_blob;
+		if (shader_compiled) {
+			compiled_shader_mask[value / 64] |= (1llu << (value % 64));
+		}
 	}
 	
+	return compiled_shader_mask;
+}
+
+PipelineShaderBytecode GetShadersForPipelineIndex(ShaderCompiler* compiler, u64 pipeline_definition_index, ArrayView<u64> compiled_shader_mask) {
+	auto& pipeline_definition     = compiler->pipeline_definitions[pipeline_definition_index];
+	auto& pipeline_shader_indices = compiler->pipeline_shader_indices[pipeline_definition_index];
+	
+	PipelineShaderBytecode result;
+	for (u32 shader_type_index : BitScanLow32((u32)pipeline_definition.shader_type_mask)) {
+		u32 shader_index = pipeline_shader_indices[shader_type_index];
+		result.is_dirty |= ((compiled_shader_mask[shader_index / 64] >> (shader_index % 64)) & 0x1) != 0;
+		
+		auto& shader = compiler->shaders[shader_index];
+		result.bytecode[shader_type_index] = shader.bytecode_blob;
+	}
 	return result;
 }
 
-union ShaderPermutationKey {
-	struct {
-		u64        permutation;
-		ShaderType shader_type;
-		ShaderID   shader_id;
-	};
-	u64 data[2] = { 0, 0 };
+String GetShaderPermutationName(StackAllocator* alloc, ShaderDefinition* definition, u64 permutation) {
+	FixedCapacityArray<String, 65> strings;
+	ArrayAppend(strings, definition->filename);
 	
-	bool operator== (const ShaderPermutationKey& other) { return data[0] == other.data[0] && data[1] == other.data[1]; }
-};
-static_assert(sizeof(ShaderPermutationKey) == 16, "Incorrect ShaderPermutationKey size.");
-
-static u64 ComputeHash(const ShaderPermutationKey& key) { return ComputeHash64(key.data[0], key.data[1]); }
+	for (u64 i : BitScanLow(permutation)) {
+		ArrayAppend(strings, definition->defines[i]);
+	}
+	
+	return StringJoin(alloc, strings, "-"_sl);
+}
 
 ShaderCompiler* CreateShaderCompiler(StackAllocator* alloc, ArrayView<String> root_signature_filenames, ArrayView<ShaderDefinition*> shader_definitions, ArrayView<PipelineDefinition> pipeline_definitions) {
 	auto* compiler = NewFromAlloc(alloc, ShaderCompiler);
@@ -281,8 +312,8 @@ ShaderCompiler* CreateShaderCompiler(StackAllocator* alloc, ArrayView<String> ro
 	ArrayResizeMemset(compiler->pipeline_shader_indices, alloc, pipeline_definitions.count);
 	
 	// Deduplicate shaders that are used across multiple pipelines.
-	HashTable<ShaderPermutationKey, u32> shader_indices;
-	HashTableReserve(shader_indices, alloc, pipeline_definitions.count * (u32)ShaderType::Count);
+	HashTable<ShaderPermutationKey, u32> shader_permutation_table;
+	HashTableReserve(shader_permutation_table, alloc, pipeline_definitions.count * (u32)ShaderType::Count);
 	
 	for (u64 i = 0; i < pipeline_definitions.count; i += 1) {
 		auto& pipeline_definition = pipeline_definitions[i];
@@ -292,14 +323,16 @@ ShaderCompiler* CreateShaderCompiler(StackAllocator* alloc, ArrayView<String> ro
 			ShaderPermutationKey key;
 			key.permutation = pipeline_definition.permutation;
 			key.shader_type = (ShaderType)shader_type_index;
+			key.root_signature_index = pipeline_definition.root_signature_id.index;
 			key.shader_id   = pipeline_definition.shader_id;
 			
-			auto [element, is_added] = HashTableAddOrFind(shader_indices, key, (u32)shader_indices.count);
+			auto [element, is_added] = HashTableAddOrFind(shader_permutation_table, key, (u32)shader_permutation_table.count);
 			indices[shader_type_index] = element->value;
 		}
 	}
+	compiler->shader_permutation_table = shader_permutation_table;
 	
-	ArrayResize(compiler->shaders, alloc, shader_indices.count);
+	ArrayResize(compiler->shaders, alloc, shader_permutation_table.count);
 	for (auto& shader : compiler->shaders) shader.is_dirty = true;
 	
 	
