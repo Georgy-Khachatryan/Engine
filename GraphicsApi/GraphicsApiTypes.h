@@ -335,6 +335,14 @@ namespace Meta {
 	NOTES() struct ShaderName { String filename; };
 };
 
+
+NOTES()
+enum struct RootArgumentType : u32 {
+	DescriptorTable    = 0,
+	ConstantBuffer     = 1,
+	PushConstantBuffer = 2,
+};
+
 namespace HLSL {
 	NOTES(ResourceDescriptorType::Texture2D)
 	template<typename T>
@@ -400,9 +408,25 @@ namespace HLSL {
 		}
 	};
 	
-	NOTES() template<typename T> struct DescriptorTable { u32 offset = 0; u32 descriptor_count = 0; };
-	NOTES() template<typename T> struct ConstantBuffer  { u32 offset = 0; };
-	NOTES() template<typename T> struct PushConstantBuffer { u32 offset = 0; };
+	
+	NOTES(RootArgumentType::DescriptorTable)
+	template<typename T>
+	struct DescriptorTable {
+		u32 offset = 0;
+		u32 descriptor_count = 0;
+	};
+	
+	NOTES(RootArgumentType::ConstantBuffer)
+	template<typename T>
+	struct ConstantBuffer {
+		u32 offset = 0;
+	};
+	
+	NOTES(RootArgumentType::PushConstantBuffer)
+	template<typename T>
+	struct PushConstantBuffer {
+		u32 offset = 0;
+	};
 	
 	
 	struct BaseRootSignature {

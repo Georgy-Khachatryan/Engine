@@ -156,6 +156,19 @@ void StringBuilder::AppendUnformatted(String string) {
 	memcpy(result.data, string.data, string.count);
 }
 
+void StringBuilder::AppendBuilder(StringBuilder& builder) {
+	if (builder.total_string_size == 0) return;
+	
+	if (head_entry == nullptr) {
+		head_entry = builder.head_entry;
+	} else {
+		tail_entry->next_entry = builder.head_entry;
+	}
+	
+	tail_entry = builder.tail_entry;
+	total_string_size += builder.total_string_size;
+}
+
 String StringBuilder::ToString(StackAllocator* string_alloc) {
 	if (total_string_size == 0) return {};
 	

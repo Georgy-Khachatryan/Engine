@@ -5,6 +5,7 @@
 #include "Basic/BasicFiles.h"
 #include "Tokens.h"
 #include "AstNodes.h"
+#include "MetaprogramCommon.h"
 
 
 static String NamespaceStackToString(Tokenizer& tokenizer) {
@@ -684,27 +685,6 @@ static void GenerateCodeForTypeTable(StringBuilder& builder, ArrayView<ParsedFil
 	builder.AppendUnformatted("};\n\n"_sl);
 	
 	builder.Append("ArrayView<TypeInfo*> type_table = { type_table_internal, %u };\n\n", type_table_size);
-}
-
-
-static void WriteGeneratedFile(StackAllocator* alloc, String filepath, String contents) {
-	auto output_file = SystemOpenFile(alloc, filepath, OpenFileFlags::Write);
-	if (output_file.handle == nullptr) {
-		SystemWriteToConsole(alloc, "Failed to open output file '%.*s'.\n", (s32)filepath.count, filepath.data);
-		SystemExitProcess(1);
-	}
-	
-	SystemWriteToConsole(alloc, "Writing file: %.*s\n", (s32)filepath.count, filepath.data);
-	
-	SystemWriteFile(output_file, contents.data, contents.count, 0);
-	SystemCloseFile(output_file);
-}
-
-static void EnsureDirectoryExists(StackAllocator* alloc, String directory) {
-	if (SystemCreateDirectory(alloc, directory) == false) {
-		SystemWriteToConsole(alloc, "Failed to create output directory '%.*s'.\n", (s32)directory.count, directory.data);
-		SystemExitProcess(1);
-	}
 }
 
 

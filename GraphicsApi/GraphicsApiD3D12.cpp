@@ -3,7 +3,6 @@
 #include "Basic/BasicMemory.h"
 #include "Basic/BasicFiles.h"
 #include "Engine/ShaderCompiler.h"
-#include "Engine/RenderPasses.h"
 
 extern "C" __declspec(dllexport) extern const UINT  D3D12SDKVersion = 618;
 extern "C" __declspec(dllexport) extern const char* D3D12SDKPath    = u8".\\D3D12\\";
@@ -23,6 +22,7 @@ void WaitForNextFrame(GraphicsContext* api_context) {
 }
 
 static void BuildPipelineStates(GraphicsContextD3D12* context, StackAllocator* alloc);
+static void BuildRootSignatures(GraphicsContextD3D12* context, StackAllocator* alloc, ArrayView<ArrayView<u32>> root_signature_streams);
 
 GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
 	auto* context = NewFromAlloc(alloc, GraphicsContextD3D12);
@@ -140,37 +140,17 @@ GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
 	}
 	
 	{
-		auto filepath = "./Build/RootSignature.bin"_sl;
-		auto file = SystemReadFileToString(alloc, filepath);
-		DebugAssert(file.data != nullptr, "Failed to read root signature file '%.*s'.", (s32)filepath.count, filepath.data);
-		
-		ArrayView<u32> offset_table;
-		offset_table.count = *(u32*)file.data;
-		offset_table.data  = (u32*)file.data + 1;
-		
-		ArrayResize(context->root_signature_table, alloc, offset_table.count);
-		for (u32 i = 0; i < offset_table.count; i += 1) {
-			u32 offset = offset_table[i];
-			u32 size   = (u32)(i + 1 >= offset_table.count ? file.count : offset_table[i + 1]) - offset;
-			
-			ID3D12RootSignature* root_signature = nullptr;
-			if (FAILED(device->CreateRootSignature(0, file.data + offset, size, IID_PPV_ARGS(&root_signature)))) {
-				DebugAssertAlways("Failed to create root signature.");
-				return nullptr;
-			}
-			
-			context->root_signature_table[i] = root_signature;
-		}
-		
 		extern Array<PipelineDefinition> GatherPipelineDefinitions(StackAllocator* alloc);
 		extern ArrayView<ShaderDefinition*> shader_definition_table;
-		extern ArrayView<String> root_signature_filenames;
+		extern ArrayView<String>         root_signature_filenames;
+		extern ArrayView<ArrayView<u32>> root_signature_streams;
 		
 		context->pipeline_definitions = GatherPipelineDefinitions(alloc);
 		ArrayResize(context->pipeline_state_table, alloc, context->pipeline_definitions.count);
 		
 		shader_compiler = CreateShaderCompiler(alloc, root_signature_filenames, shader_definition_table, context->pipeline_definitions);
 		
+		BuildRootSignatures(context, alloc, root_signature_streams);
 		BuildPipelineStates(context, alloc);
 	}
 	
@@ -381,6 +361,122 @@ static void BuildPipelineStates(GraphicsContextD3D12* context, StackAllocator* a
 	}
 }
 
+static void BuildRootSignatures(GraphicsContextD3D12* context, StackAllocator* alloc, ArrayView<ArrayView<u32>> root_signature_streams) {
+	FixedCapacityArray<D3D12_STATIC_SAMPLER_DESC1, 7> sampler_descs;
+	auto append_sampler = [&](D3D12_FILTER filter, D3D12_TEXTURE_ADDRESS_MODE address_mode, u32 max_anisotropy = 0) {
+		auto& desc = ArrayEmplace(sampler_descs);
+		desc.Filter           = filter;
+		desc.AddressU         = address_mode;
+		desc.AddressV         = address_mode;
+		desc.AddressW         = address_mode;
+		desc.MipLODBias       = 0.f;
+		desc.MaxAnisotropy    = max_anisotropy;
+		desc.ComparisonFunc   = D3D12_COMPARISON_FUNC_NONE;
+		desc.BorderColor      = D3D12_STATIC_BORDER_COLOR_TRANSPARENT_BLACK;
+		desc.MinLOD           = 0.f;
+		desc.MaxLOD           = D3D12_FLOAT32_MAX;
+		desc.ShaderRegister   = (u32)sampler_descs.count - 1;
+		desc.RegisterSpace    = 0;
+		desc.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+		desc.Flags            = D3D12_SAMPLER_FLAG_NONE;
+	};
+	append_sampler(D3D12_FILTER_MIN_MAG_MIP_LINEAR, D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
+	append_sampler(D3D12_FILTER_MIN_MAG_MIP_POINT,  D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
+	append_sampler(D3D12_FILTER_MIN_MAG_MIP_LINEAR, D3D12_TEXTURE_ADDRESS_MODE_WRAP);
+	append_sampler(D3D12_FILTER_MIN_MAG_MIP_POINT,  D3D12_TEXTURE_ADDRESS_MODE_WRAP);
+	append_sampler(D3D12_FILTER_ANISOTROPIC,        D3D12_TEXTURE_ADDRESS_MODE_WRAP, 4);
+	append_sampler(D3D12_FILTER_MINIMUM_MIN_MAG_MIP_LINEAR, D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
+	append_sampler(D3D12_FILTER_MAXIMUM_MIN_MAG_MIP_LINEAR, D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
+	
+	
+	ArrayResize(context->root_signature_table, alloc, root_signature_streams.count);
+	for (u32 root_signature_index = 0; root_signature_index < root_signature_streams.count; root_signature_index += 1) {
+		TempAllocationScope(alloc);
+		
+		auto root_signature_stream = root_signature_streams[root_signature_index];
+		
+		u32 cbv_index = 0;
+		u32 srv_index = 0;
+		u32 uav_index = 0;
+		
+		Array<D3D12_ROOT_PARAMETER1> root_parameters;
+		for (u32 i = 0; i < root_signature_stream.count;) {
+			switch ((RootArgumentType)root_signature_stream[i++]) {
+			case RootArgumentType::DescriptorTable: {
+				Array<D3D12_DESCRIPTOR_RANGE1> descriptor_ranges;
+				
+				u32 descriptor_count = root_signature_stream[i++];
+				auto last_range_type = (D3D12_DESCRIPTOR_RANGE_TYPE)u32_max;
+				for (u32 descriptor_index = 0; descriptor_index < descriptor_count; descriptor_index += 1) {
+					auto descriptor_type = (ResourceDescriptorType)root_signature_stream[i++];
+					
+					bool is_srv = HasAnyFlags(descriptor_type, ResourceDescriptorType::AnySRV);
+					auto range_type = is_srv ? D3D12_DESCRIPTOR_RANGE_TYPE_SRV : D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
+					
+					if (last_range_type != range_type) {
+						last_range_type = range_type;
+						auto& descriptor_range = ArrayEmplace(descriptor_ranges, alloc);
+						descriptor_range.RangeType          = range_type;
+						descriptor_range.NumDescriptors     = 0;
+						descriptor_range.BaseShaderRegister = is_srv ? srv_index++ : uav_index++;
+						descriptor_range.RegisterSpace      = 0;
+						descriptor_range.Flags              = D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC_WHILE_SET_AT_EXECUTE | D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_STATIC_KEEPING_BUFFER_BOUNDS_CHECKS;
+						descriptor_range.OffsetInDescriptorsFromTableStart = descriptor_index;
+					}
+					ArrayLastElement(descriptor_ranges).NumDescriptors += 1;
+				}
+				
+				auto& root_parameter = ArrayEmplace(root_parameters, alloc); 
+				root_parameter.ParameterType    = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+				root_parameter.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+				root_parameter.DescriptorTable.NumDescriptorRanges = (u32)descriptor_ranges.count;
+				root_parameter.DescriptorTable.pDescriptorRanges   = descriptor_ranges.data;
+				break;
+			} case RootArgumentType::ConstantBuffer: {
+				auto& root_parameter = ArrayEmplace(root_parameters, alloc); 
+				root_parameter.ParameterType    = D3D12_ROOT_PARAMETER_TYPE_CBV;
+				root_parameter.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+				root_parameter.Descriptor.ShaderRegister = cbv_index++;
+				root_parameter.Descriptor.RegisterSpace  = 0;
+				break;
+			} case RootArgumentType::PushConstantBuffer: {
+				auto& root_parameter = ArrayEmplace(root_parameters, alloc); 
+				root_parameter.ParameterType    = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
+				root_parameter.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+				root_parameter.Constants.ShaderRegister = cbv_index++;
+				root_parameter.Constants.RegisterSpace  = 0;
+				root_parameter.Constants.Num32BitValues = root_signature_stream[i++];
+				break;
+			} default: {
+				DebugAssertAlways("Unexpected RootArgumentType '%u'.", root_signature_stream[i]);
+				i = (u32)root_signature_stream.count;
+				break;
+			}
+			}
+		}
+		
+		D3D12_VERSIONED_ROOT_SIGNATURE_DESC desc = {};
+		desc.Version = D3D_ROOT_SIGNATURE_VERSION_1_2;
+		desc.Desc_1_2.NumParameters     = (u32)root_parameters.count;
+		desc.Desc_1_2.pParameters       = root_parameters.data;
+		desc.Desc_1_2.NumStaticSamplers = (u32)sampler_descs.count;
+		desc.Desc_1_2.pStaticSamplers   = sampler_descs.data;
+		desc.Desc_1_2.Flags             = D3D12_ROOT_SIGNATURE_FLAG_CBV_SRV_UAV_HEAP_DIRECTLY_INDEXED;
+		
+		ID3DBlob* root_signature_blob = nullptr;
+		if (FAILED(D3D12SerializeVersionedRootSignature(&desc, &root_signature_blob, nullptr))) {
+			DebugAssertAlways("Failed to serialize root signature for pass.");
+		}
+		defer{ SafeRelease(root_signature_blob); };
+		
+		ID3D12RootSignature* root_signature = nullptr;
+		if (FAILED(context->device->CreateRootSignature(0, root_signature_blob->GetBufferPointer(), root_signature_blob->GetBufferSize(), IID_PPV_ARGS(&root_signature)))) {
+			DebugAssertAlways("Failed to create root signature.");
+		}
+		
+		context->root_signature_table[root_signature_index] = root_signature;
+	}
+}
 
 void ReleaseGraphicsContext(GraphicsContext* api_context) {
 	auto* context = (GraphicsContextD3D12*)api_context;

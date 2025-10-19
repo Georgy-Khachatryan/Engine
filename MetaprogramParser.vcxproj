@@ -31,13 +31,17 @@
   </ImportGroup>
   
   <ItemGroup>
+    <ClCompile Include="Metaprogram/MetaprogramCommon.cpp" />
     <ClCompile Include="Metaprogram/MetaprogramParserMain.cpp" />
     <ClCompile Include="Metaprogram/Tokens.cpp" />
+    <ClCompile Include="Metaprogram/TypeInfo.cpp" />
   </ItemGroup>
   
   <ItemGroup>
     <ClInclude Include="Metaprogram/AstNodes.h" />
+    <ClInclude Include="Metaprogram/MetaprogramCommon.h" />
     <ClInclude Include="Metaprogram/Tokens.h" />
+    <ClInclude Include="Metaprogram/TypeInfo.h" />
   </ItemGroup>
   
   <ItemGroup>

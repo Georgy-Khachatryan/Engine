@@ -40,12 +40,14 @@
     
     <ClCompile Include="Metaprogram/MetaprogramMain.cpp" />
     <ClCompile Include="Metaprogram/MetaprogramMath.cpp" />
+    <ClCompile Include="Metaprogram/MetaprogramCommon.cpp" />
     <ClCompile Include="Metaprogram/TypeInfo.cpp" />
   </ItemGroup>
   
   <ItemGroup>
     <ClInclude Include="@(ReflectedFiles)" />
     <ClInclude Include="Metaprogram/TypeInfo.h" />
+    <ClInclude Include="Metaprogram/MetaprogramCommon.h" />
   </ItemGroup>
   
   <ItemGroup>

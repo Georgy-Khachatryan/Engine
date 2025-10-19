@@ -2,7 +2,6 @@
 
 #include "Basic/BasicMemory.h"
 #include "RecordContextCommands.h"
-#include "Engine/RenderPasses.h"
 
 compile_const u32 record_context_page_size = 4 * 1024;
 

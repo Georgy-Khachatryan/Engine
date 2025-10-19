@@ -1,6 +1,7 @@
 #include "Basic/Basic.h"
 #include "Basic/BasicString.h"
 #include "Basic/BasicFiles.h"
+#include "MetaprogramCommon.h"
 
 compile_const String vector_components = "xyzw"_sl;
 
@@ -219,14 +220,5 @@ void GenerateMathLibrary(StackAllocator* alloc) {
 	builder.Unindent();
 	builder.AppendUnformatted("} // namespace Math\n\n"_sl);
 	
-	auto output_filepath = "./Basic/BasicMathGenerated.h"_sl;
-	auto output_file = SystemOpenFile(alloc, output_filepath, OpenFileFlags::Write);
-	if (output_file.handle == nullptr) {
-		SystemWriteToConsole(alloc, "Failed to open output file '%s'.\n", output_filepath.data);
-		SystemExitProcess(1);
-	}
-	
-	auto file_string = builder.ToString();
-	SystemWriteFile(output_file, file_string.data, file_string.count, 0);
-	SystemCloseFile(output_file);
+	WriteGeneratedFile(alloc, "Basic/BasicMathGenerated.h"_sl, builder.ToString());
 }

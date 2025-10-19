@@ -46,6 +46,7 @@ struct StringBuilder {
 	void Append(const char* format, ...);
 	void AppendV(const char* format, va_list args);
 	void AppendUnformatted(String string);
+	void AppendBuilder(StringBuilder& builder);
 	
 	void Indent()   { indentation_level += 1; }
 	void Unindent() { DebugAssert(indentation_level != 0, "Mismatched Indent/Unindent."); indentation_level -= 1; }

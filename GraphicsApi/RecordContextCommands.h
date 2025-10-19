@@ -1,6 +1,5 @@
 #pragma once
 #include "Basic/Basic.h"
-#include "Engine/RenderPasses.h"
 
 enum struct CommandType : u16 {
 	None                  = 0,
