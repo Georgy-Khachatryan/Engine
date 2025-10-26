@@ -520,7 +520,7 @@ NativeTextureResource CreateTextureResource(GraphicsContext* api_context, Textur
 	resource_desc.Format           = dxgi_texture_format_map[(u32)size.format];
 	resource_desc.SampleDesc       = { 1, 0 };
 	resource_desc.Layout           = D3D12_TEXTURE_LAYOUT_UNKNOWN;
-	resource_desc.Flags            = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+	resource_desc.Flags            = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS | D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
 	resource_desc.SamplerFeedbackMipRegion = { 0, 0, 0 };
 	
 	NativeTextureResource resource = {};

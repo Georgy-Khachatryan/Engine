@@ -375,6 +375,12 @@ s32 main() {
 	ImGui::CreateContext();
 	defer{ ImGui::DestroyContext(); };
 	
+	Array<BasicVertex> vertices;
+	Array<u32> indices;
+	{
+		extern void ImportFbxMeshFile(StackAllocator* alloc, String filepath, Array<BasicVertex>& result_vertices, Array<u32>& result_indices);
+		ImportFbxMeshFile(&alloc, "./Assets/Source/Torus/Torus.fbx"_sl, vertices, indices);
+	}
 	
 	auto& io = ImGui::GetIO();
 	io.IniFilename = "./Build/ImGuiSettings.ini";
@@ -566,11 +572,19 @@ s32 main() {
 		SceneConstants scene;
 		scene.render_target_size     = float2(render_target_size);
 		scene.inv_render_target_size = float2(1.f) / scene.render_target_size;
+#if 1
 		scene.view_to_clip_coef = Math::PerspectiveViewToClip(vertical_fov_degrees * Math::degrees_to_radians, window_size, near_depth);
 		scene.clip_to_view_coef = Math::ViewToClipInverse(scene.view_to_clip_coef);
+#else
+		scene.view_to_clip_coef = Math::OrthographicViewToClip(window_size * vertical_fov_degrees * (1.f / window_size.x), float2(0.f, 1000.f));
+		scene.clip_to_view_coef = Math::ViewToClipInverse(scene.view_to_clip_coef);
+#endif
 		scene.view_to_world[0] = float4(0.f,  0.f, 1.f, 0.f);
 		scene.view_to_world[1] = float4(-1.f, 0.f, 0.f, 0.f);
 		scene.view_to_world[2] = float4(0.f, -1.f, 0.f, 0.f);
+		scene.world_to_view[0] = float4(0.f, -1.f, 0.f, 0.f);
+		scene.world_to_view[1] = float4(0.f, 0.f, -1.f, 0.f);
+		scene.world_to_view[2] = float4(1.f, 0.f,  0.f, 0.f);
 		
 		AtmosphereParameters atmosphere_parameters;
 		
@@ -600,6 +614,16 @@ s32 main() {
 		MultipleScatteringLutRenderPass{ atmosphere_parameters_gpu_address }.RecordPass(&record_context);
 		SkyPanoramaLutRenderPass{ atmosphere_parameters_gpu_address }.RecordPass(&record_context);
 		AtmosphereCompositeRenderPass{ atmosphere_parameters_gpu_address, scene_constants_gpu_address }.RecordPass(&record_context);
+		
+		{
+			auto [vb_gpu_address, vb_cpu_address] = AllocateTransientUploadBuffer<BasicVertex, sizeof(BasicVertex)>(&record_context, (u32)vertices.count);
+			auto [ib_gpu_address, ib_cpu_address] = AllocateTransientUploadBuffer<u32>(&record_context, (u32)indices.count);
+			memcpy(vb_cpu_address, vertices.data, vertices.count * sizeof(BasicVertex));
+			memcpy(ib_cpu_address, indices.data, indices.count * sizeof(u32));
+			
+			BasicMeshRenderPass{ scene_constants_gpu_address, vb_gpu_address, ib_gpu_address, (u32)vertices.count, (u32)indices.count }.RecordPass(&record_context);
+		}
+		
 		ImGuiRenderPass{}.RecordPass(&record_context);
 		
 		WindowSwapChainEndFrame(swap_chain, graphics_context, &alloc, record_context);

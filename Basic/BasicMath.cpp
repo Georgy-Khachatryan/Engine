@@ -51,7 +51,7 @@ float4 Math::ViewToClipInverse(const float4& view_to_clip_coef) {
 		clip_to_view_coef.w  = 1.f / view_to_clip_coef.w;
 	} else {
 		clip_to_view_coef.xyz = float3(1.f) / view_to_clip_coef.xyz;
-		clip_to_view_coef.w   = -view_to_clip_coef.z / view_to_clip_coef.w;
+		clip_to_view_coef.w   = -view_to_clip_coef.w / view_to_clip_coef.z;
 	}
 	return clip_to_view_coef;
 }

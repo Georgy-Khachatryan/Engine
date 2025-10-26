@@ -94,4 +94,19 @@ RayInfo RayInfoFromScreenUv(float2 uv, float4 clip_to_view_coef) {
 	return RayInfoFromNdc(ScreenUvToNdc(uv), clip_to_view_coef);
 }
 
+float4 TransformViewToClipSpace(float3 view_space_position, float4 view_to_clip_coef) {
+	float4 result;
+	result.xy = view_space_position.xy * view_to_clip_coef.xy;
+	
+	if (IsPerspectiveMatrix(view_to_clip_coef)) {
+		result.z = view_to_clip_coef.w;
+		result.w = view_space_position.z;
+	} else {
+		result.z = view_space_position.z * view_to_clip_coef.z + view_to_clip_coef.w;
+		result.w = 1.0;
+	}
+	
+	return result;
+}
+
 #endif // BASIC_HLSL

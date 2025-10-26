@@ -67,6 +67,7 @@ struct SceneConstants {
 	float4 view_to_clip_coef;
 	float4 clip_to_view_coef;
 	float3x4 view_to_world;
+	float3x4 world_to_view;
 };
 
 
@@ -157,6 +158,41 @@ struct AtmosphereCompositeRenderPass {
 	
 	inline static PipelineID pipeline_id;
 };
+
+
+
+NOTES(Meta::ShaderName{ "DrawTestMesh.hlsl"_sl })
+enum struct DrawTestMeshShaders : u32 {};
+SHADER_DEFINITION_GENERATED_CODE(DrawTestMeshShaders);
+
+NOTES(Meta::HlslFile{ "MeshData.hlsl"_sl })
+struct BasicVertex {
+	float3 position;
+	float2 texcoord;
+};
+
+NOTES(Meta::RenderPass{ CommandQueueType::Graphics })
+struct BasicMeshRenderPass {
+	RENDER_PASS_GENERATED_CODE();
+	
+	GpuAddress scene_constants;
+	GpuAddress vertex_buffer;
+	GpuAddress index_buffer;
+	u32 vertex_count = 0;
+	u32 index_count  = 0;
+	
+	struct Descriptors : HLSL::BaseDescriptorTable {
+		HLSL::RegularBuffer<BasicVertex> vertices;
+	};
+	
+	struct RootSignature : HLSL::BaseRootSignature {
+		HLSL::ConstantBuffer<SceneConstants> scene;
+		HLSL::DescriptorTable<Descriptors> descriptor_table;
+	};
+	
+	inline static PipelineID pipeline_id;
+};
+
 
 
 NOTES(Meta::ShaderName{ "ImGui.hlsl"_sl })

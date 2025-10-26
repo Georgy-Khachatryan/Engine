@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?> 
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <PreprocessorDefinitions>
+        UFBX_REAL_IS_FLOAT;
+        %(PreprocessorDefinitions)
+      </PreprocessorDefinitions>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  
+  <ItemGroup>
+    <ClCompile Include="$(SdkDir)ufbx/ufbx.c" />
+  </ItemGroup>
+  
+  <ItemGroup>
+    <ClInclude Include="$(SdkDir)ufbx/ufbx.h" />
+  </ItemGroup>
+  
+  <ItemGroup>
+    <Natvis Include="$(SdkDir)ufbx/ufbx.natvis" />
+  </ItemGroup>
+  
+</Project>

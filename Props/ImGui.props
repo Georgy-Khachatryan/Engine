@@ -27,7 +27,6 @@
   </ItemGroup>
   
   <ItemGroup>
-    <ClInclude Include="$(SdkDir)imgui/backends/imgui_impl_dx12.h" />
     <ClInclude Include="$(SdkDir)imgui/backends/imgui_impl_win32.h" />
     <ClInclude Include="$(SdkDir)imgui/imgui.h" />
     <ClInclude Include="$(SdkDir)imgui/imgui_internal.h" />

@@ -1,5 +1,5 @@
 #include "RenderPasses.h"
-#include "GraphicsApi/GraphicsApiD3D12.h"
+#include "GraphicsApi/GraphicsApi.h"
 #include "GraphicsApi/RecordContext.h"
 
 void TransmittanceLutRenderPass::CreatePipelines(PipelineLibrary* lib) {
