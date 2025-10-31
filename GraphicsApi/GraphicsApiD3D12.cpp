@@ -520,8 +520,12 @@ NativeTextureResource CreateTextureResource(GraphicsContext* api_context, Textur
 	resource_desc.Format           = dxgi_texture_format_map[(u32)size.format];
 	resource_desc.SampleDesc       = { 1, 0 };
 	resource_desc.Layout           = D3D12_TEXTURE_LAYOUT_UNKNOWN;
-	resource_desc.Flags            = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS | D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+	resource_desc.Flags            = (size.format == TextureFormat::D32_FLOAT ? D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL : D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS | D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
 	resource_desc.SamplerFeedbackMipRegion = { 0, 0, 0 };
+	
+	D3D12_CLEAR_VALUE clear_value = {};
+	clear_value.Format = resource_desc.Format;
+	bool set_clear_value = (resource_desc.Flags & (D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET | D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL)) != 0;
 	
 	NativeTextureResource resource = {};
 	auto result = context->device->CreateCommittedResource3(
@@ -529,7 +533,7 @@ NativeTextureResource CreateTextureResource(GraphicsContext* api_context, Textur
 		D3D12_HEAP_FLAG_NONE,
 		&resource_desc,
 		D3D12_BARRIER_LAYOUT_COMMON,
-		nullptr,
+		set_clear_value ? &clear_value : nullptr,
 		nullptr,
 		0,
 		nullptr,

@@ -13,6 +13,7 @@ enum struct VirtualResourceID : u32 {
 	TransientUploadBuffer,
 	
 	// Common scene resources:
+	DepthStencil,
 	SceneRadiance,
 	
 	// Atmosphere resources:

@@ -5,13 +5,14 @@
 #include "RecordContextCommands.h"
 
 
-static void FillDescriptorTables(GraphicsContextD3D12* context, ArrayView<HLSL::BaseDescriptorTable*> descriptor_tables, ArrayView<VirtualResource> resources) {
+static void CreateDescriptorTables(GraphicsContextD3D12* context, ArrayView<HLSL::BaseDescriptorTable*> descriptor_tables, ArrayView<VirtualResource> resources) {
 	auto cpu_base_handle = context->cpu_base_handles[(u32)DescriptorHeapType::SRV];
 	auto descriptor_size = context->descriptor_sizes[(u32)DescriptorHeapType::SRV];
 	auto* device = context->device;
 	
 	for (auto* descriptor_table : descriptor_tables) {
 		auto descriptors = ArrayView<ResourceDescriptor>{ (ResourceDescriptor*)(descriptor_table + 1), (u64)descriptor_table->descriptor_count };
+		
 		auto descriptor_table_handle = cpu_base_handle;
 		descriptor_table_handle.ptr += descriptor_table->descriptor_heap_offset * descriptor_size;
 		
@@ -49,7 +50,7 @@ static void FillDescriptorTables(GraphicsContextD3D12* context, ArrayView<HLSL::
 				desc.Buffer.NumElements         = Min(descriptor.buffer.size, resource.buffer.size - descriptor.buffer.offset) / descriptor.buffer.stride;
 				desc.Buffer.StructureByteStride = descriptor.buffer.stride;
 				desc.Buffer.Flags               = D3D12_BUFFER_SRV_FLAG_NONE;
-				DebugAssert(desc.Buffer.FirstElement * descriptor.buffer.stride == descriptor.buffer.offset, "RegularBuffer offset is not correctly aligned.");
+				DebugAssert(descriptor.buffer.offset % descriptor.buffer.stride == 0, "RegularBuffer offset is not correctly aligned.");
 				
 				device->CreateShaderResourceView(resource.buffer.resource.d3d12, &desc, descriptor_table_handle);
 				break;
@@ -62,7 +63,7 @@ static void FillDescriptorTables(GraphicsContextD3D12* context, ArrayView<HLSL::
 				desc.Buffer.StructureByteStride  = descriptor.buffer.stride;
 				desc.Buffer.CounterOffsetInBytes = 0;
 				desc.Buffer.Flags                = D3D12_BUFFER_UAV_FLAG_NONE;
-				DebugAssert(desc.Buffer.FirstElement * descriptor.buffer.stride == descriptor.buffer.offset, "RWRegularBuffer offset is not correctly aligned.");
+				DebugAssert(descriptor.buffer.offset % descriptor.buffer.stride == 0, "RWRegularBuffer offset is not correctly aligned.");
 				
 				device->CreateUnorderedAccessView(resource.buffer.resource.d3d12, nullptr, &desc, descriptor_table_handle);
 				break;
@@ -115,6 +116,17 @@ static void CreateRenderTargetView(GraphicsContextD3D12* context, VirtualResourc
 	context->device->CreateRenderTargetView(resource.texture.resource.d3d12, &desc, descriptor_handle);
 }
 
+static void CreateDepthStencilView(GraphicsContextD3D12* context, VirtualResource& resource, D3D12_CPU_DESCRIPTOR_HANDLE descriptor_handle) {
+	DebugAssert(resource.texture.size.type == TextureSize::Type::Texture2D, "Only 2D texture render targets are implemented.");
+	
+	D3D12_DEPTH_STENCIL_VIEW_DESC desc = {};
+	desc.Format             = dxgi_texture_format_map[(u32)resource.texture.size.format];
+	desc.ViewDimension      = D3D12_DSV_DIMENSION_TEXTURE2D;
+	desc.Texture2D.MipSlice = 0;
+	context->device->CreateDepthStencilView(resource.texture.resource.d3d12, &desc, descriptor_handle);
+}
+
+
 static void CmdClearRenderTargetD3D12(CmdClearRenderTargetPacket* packet, ID3D12GraphicsCommandList7* command_list, GraphicsContextD3D12* context, ArrayView<VirtualResource> resources) {
 	auto cpu_base_handle = context->cpu_base_handles[(u32)DescriptorHeapType::RTV];
 	CreateRenderTargetView(context, resources[(u32)packet->resource_id], cpu_base_handle);
@@ -123,17 +135,28 @@ static void CmdClearRenderTargetD3D12(CmdClearRenderTargetPacket* packet, ID3D12
 	command_list->ClearRenderTargetView(cpu_base_handle, &clear_color.x, 0, nullptr);
 }
 
-static void CmdSetRenderTargetsD3D12(CmdSetRenderTargetsPacket* packet, ID3D12GraphicsCommandList7* command_list, GraphicsContextD3D12* context, ArrayView<VirtualResource> resources) {
-	auto cpu_base_handle = context->cpu_base_handles[(u32)DescriptorHeapType::RTV];
-	auto descriptor_size = context->descriptor_sizes[(u32)DescriptorHeapType::RTV];
+static void CmdClearDepthStencilD3D12(CmdClearDepthStencilPacket* packet, ID3D12GraphicsCommandList7* command_list, GraphicsContextD3D12* context, ArrayView<VirtualResource> resources) {
+	auto cpu_base_handle = context->cpu_base_handles[(u32)DescriptorHeapType::DSV];
+	CreateDepthStencilView(context, resources[(u32)packet->resource_id], cpu_base_handle);
 	
-	auto descriptor_handle = cpu_base_handle;
+	command_list->ClearDepthStencilView(cpu_base_handle, D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 0.f, 0, 0, nullptr);
+}
+
+static void CmdSetRenderTargetsD3D12(CmdSetRenderTargetsPacket* packet, ID3D12GraphicsCommandList7* command_list, GraphicsContextD3D12* context, ArrayView<VirtualResource> resources) {
+	auto rtv_cpu_base_handle = context->cpu_base_handles[(u32)DescriptorHeapType::RTV];
+	auto rtv_descriptor_size = context->descriptor_sizes[(u32)DescriptorHeapType::RTV];
+	
+	auto rtv_descriptor_handle = rtv_cpu_base_handle;
 	for (auto resource_id : packet->resource_ids) {
-		CreateRenderTargetView(context, resources[(u32)resource_id], descriptor_handle);
-		descriptor_handle.ptr += descriptor_size;
+		CreateRenderTargetView(context, resources[(u32)resource_id], rtv_descriptor_handle);
+		rtv_descriptor_handle.ptr += rtv_descriptor_size;
 	}
 	
-	command_list->OMSetRenderTargets((u32)packet->resource_ids.count, &cpu_base_handle, true, nullptr);
+	auto dsv_cpu_base_handle = context->cpu_base_handles[(u32)DescriptorHeapType::DSV];
+	bool set_depth_stencil = packet->depth_stencil_resource_id != (VirtualResourceID)0;
+	if (set_depth_stencil) CreateDepthStencilView(context, resources[(u32)packet->depth_stencil_resource_id], dsv_cpu_base_handle);
+	
+	command_list->OMSetRenderTargets((u32)packet->resource_ids.count, &rtv_cpu_base_handle, true, set_depth_stencil ? &dsv_cpu_base_handle : nullptr);
 }
 
 static void CmdSetViewportD3D12(CmdSetViewportAndScissorPacket* packet, ID3D12GraphicsCommandList7* command_list) {
@@ -253,6 +276,7 @@ static void ResolveTextureAccess(D3D12_BARRIER_SYNC& sync, D3D12_BARRIER_ACCESS&
 	if (stages_mask & (u32)PipelineStagesMask::VertexShader)  sync |= D3D12_BARRIER_SYNC_VERTEX_SHADING;
 	if (stages_mask & (u32)PipelineStagesMask::Copy)          sync |= D3D12_BARRIER_SYNC_COPY;
 	if (stages_mask & (u32)PipelineStagesMask::RenderTarget)  sync |= D3D12_BARRIER_SYNC_RENDER_TARGET;
+	if (stages_mask & (u32)PipelineStagesMask::DepthStencil)  sync |= D3D12_BARRIER_SYNC_DEPTH_STENCIL;
 	
 	if (access_mask & (u32)ResourceAccessMask::SRV) {
 		access = D3D12_BARRIER_ACCESS_SHADER_RESOURCE;
@@ -284,6 +308,18 @@ static void ResolveTextureAccess(D3D12_BARRIER_SYNC& sync, D3D12_BARRIER_ACCESS&
 		return;
 	}
 	
+	if (access_mask & (u32)ResourceAccessMask::DepthStencilRW) {
+		access = D3D12_BARRIER_ACCESS_DEPTH_STENCIL_WRITE;
+		layout = D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE;
+		return;
+	}
+	
+	if (access_mask & (u32)ResourceAccessMask::DepthStencilRO) {
+		access = D3D12_BARRIER_ACCESS_DEPTH_STENCIL_READ;
+		layout = D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_READ;
+		return;
+	}
+	
 	access = D3D12_BARRIER_ACCESS_NO_ACCESS;
 	layout = D3D12_BARRIER_LAYOUT_COMMON;
 }
@@ -303,8 +339,14 @@ static void CreateTextureBarrier(Array<D3D12_TEXTURE_BARRIER>& barriers, Virtual
 		barrier.Subresources.NumMipLevels         = Min(access->mip_count, resource.texture.size.mips - access->mip_index);
 		barrier.Subresources.FirstArraySlice      = access->array_index;
 		barrier.Subresources.NumArraySlices       = Min(access->array_count, (u16)resource.texture.size.ArraySliceCount() - access->array_index);
-		barrier.Subresources.FirstPlane           = 0;
-		barrier.Subresources.NumPlanes            = 1;
+		
+		if (access->plane_mask == 0) {
+			barrier.Subresources.FirstPlane = 0;
+			barrier.Subresources.NumPlanes  = 1;
+		} else {
+			barrier.Subresources.FirstPlane = FirstBitLow32(access->plane_mask);
+			barrier.Subresources.NumPlanes  = CountSetBits32(access->plane_mask);
+		}
 		
 		ArrayAppend(barriers, barrier);
 	}
@@ -364,7 +406,7 @@ void ReplayRecordContext(GraphicsContext* api_context, RecordContext* record_con
 	
 	auto resources = ArrayView<VirtualResource>(record_context->resource_table->virtual_resources);
 	
-	FillDescriptorTables(context, record_context->descriptor_tables, resources);
+	CreateDescriptorTables(context, record_context->descriptor_tables, resources);
 	auto last_resource_access = ResolveResourceAccesses(alloc, record_context->resource_accesses, resources);
 	
 	auto* command_list = context->command_list;
@@ -392,6 +434,7 @@ void ReplayRecordContext(GraphicsContext* api_context, RecordContext* record_con
 			case CommandType::DrawIndexedInstanced:  CmdDrawIndexedInstancedD3D12((CmdDrawIndexedInstancedPacket*)packet, command_list); break;
 			case CommandType::CopyBufferToTexture:   CmdCopyBufferToTextureD3D12((CmdCopyBufferToTexturePacket*)packet, command_list, resources); break;
 			case CommandType::ClearRenderTarget:     CmdClearRenderTargetD3D12((CmdClearRenderTargetPacket*)packet, command_list, context, resources); break;
+			case CommandType::ClearDepthStencil:     CmdClearDepthStencilD3D12((CmdClearDepthStencilPacket*)packet, command_list, context, resources); break;
 			case CommandType::SetRenderTargets:      CmdSetRenderTargetsD3D12((CmdSetRenderTargetsPacket*)packet, command_list, context, resources); break;
 			case CommandType::SetViewport:           CmdSetViewportD3D12((CmdSetViewportAndScissorPacket*)packet, command_list); break;
 			case CommandType::SetScissor:            CmdSetScissorD3D12((CmdSetViewportAndScissorPacket*)packet, command_list); break;

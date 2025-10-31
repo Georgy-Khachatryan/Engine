@@ -10,7 +10,7 @@ PipelineID CreateComputePipeline(PipelineLibrary* lib, ShaderID shader_id, u64 p
 	pipeline_definition.shader_type_mask  = ShaderTypeMask::ComputeShader;
 	pipeline_definition.root_signature_id = lib->current_pass_root_signature_id;
 	
-	return PipelineID{ pipeline_index };
+	return PipelineID{ pipeline_index, PipelineStagesMask::ComputeShader };
 }
 
 PipelineID CreateGraphicsPipeline(PipelineLibrary* lib, ArrayView<u8> pipeline_state_stream, ShaderID shader_id, u64 permutation, ShaderTypeMask shader_type_mask) {
@@ -23,7 +23,40 @@ PipelineID CreateGraphicsPipeline(PipelineLibrary* lib, ArrayView<u8> pipeline_s
 	pipeline_definition.root_signature_id     = lib->current_pass_root_signature_id;
 	pipeline_definition.pipeline_state_stream = ArrayCopy(pipeline_state_stream, lib->alloc);
 	
-	return PipelineID{ pipeline_index };
+	auto pipeline_state_description = CreatePipelineStateDescription(pipeline_state_stream);
+	
+	auto* depth_stencil = pipeline_state_description.depth_stencil;
+	auto stages = PipelineStagesMask::None;
+	auto access = DepthStencilAccess::None;
+	
+	if (HasAnyFlags(depth_stencil->flags, PipelineDepthStencil::Flags::EnableDepth)) {
+		if (HasAnyFlags(depth_stencil->flags, PipelineDepthStencil::Flags::EnableDepthWrite)) {
+			access |= DepthStencilAccess::DepthWrite;
+			stages |= PipelineStagesMask::DepthStencilRW;
+		} else {
+			access |= DepthStencilAccess::DepthRead;
+			stages |= PipelineStagesMask::DepthStencilRO;
+		}
+	}
+	
+	if (HasAnyFlags(depth_stencil->flags, PipelineDepthStencil::Flags::EnableStencil)) {
+		if (depth_stencil->stencil_write_mask != 0) {
+			access |= DepthStencilAccess::StencilWrite;
+			stages |= PipelineStagesMask::DepthStencilRW;
+		} else {
+			access |= DepthStencilAccess::StencilRead;
+			stages |= PipelineStagesMask::DepthStencilRO;
+		}
+	}
+	
+	if (pipeline_state_description.render_targets.count != 0) {
+		stages |= PipelineStagesMask::RenderTarget;
+	}
+	
+	if (HasAnyFlags(shader_type_mask, ShaderTypeMask::PixelShader))  stages |= PipelineStagesMask::PixelShader;
+	if (HasAnyFlags(shader_type_mask, ShaderTypeMask::VertexShader)) stages |= PipelineStagesMask::VertexShader;
+	
+	return PipelineID{ pipeline_index, stages, access };
 }
 
 static PipelineDepthStencil default_depth_stencil = {};

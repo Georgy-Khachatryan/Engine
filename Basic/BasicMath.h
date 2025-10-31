@@ -78,7 +78,9 @@ namespace Math {
 	compile_const float degrees_to_radians = 0.017453292f;
 	compile_const float radians_to_degress = 57.29578f;
 	
+	bool IsPerspectiveMatrix(const float4& coefficients);
+	bool IsOrthographicMatrix(const float4& coefficients);
 	float4 PerspectiveViewToClip(float vertical_fov, float2 viewport_size, float near_depth);
-	float4 OrthographicViewToClip(float2 size, float2 depth_range);
+	float4 OrthographicViewToClip(float2 size, float far_depth);
 	float4 ViewToClipInverse(const float4& view_to_clip_coef);
 }

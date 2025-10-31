@@ -40,8 +40,15 @@ struct ShaderDefinition {
 	String filename;
 	ArrayView<String> defines;
 };
-struct ShaderID { u32 index = 0; };
-struct RootSignatureID { u32 index = 0; };
+
+struct ShaderID {
+	u32 index = 0;
+};
+
+struct RootSignatureID {
+	u32 index = 0;
+};
+
 
 struct PipelineDefinition {
 	ShaderID        shader_id         = { 0 };
@@ -50,7 +57,6 @@ struct PipelineDefinition {
 	u64             permutation       = 0;
 	ArrayView<u8>   pipeline_state_stream = {};
 };
-struct PipelineID { u32 index = 0; };
 
 
 NOTES()
@@ -62,32 +68,58 @@ enum struct CommandQueueType : u32 {
 };
 
 enum struct PipelineStagesMask : u16 {
-	None          = 0,
-	ComputeShader = 1u << 0,
-	VertexShader  = 1u << 1,
-	PixelShader   = 1u << 2,
-	Copy          = 1u << 3,
-	RenderTarget  = 1u << 4,
+	None           = 0,
+	ComputeShader  = 1u << 0,
+	VertexShader   = 1u << 1,
+	PixelShader    = 1u << 2,
+	AnyShader      = ComputeShader | VertexShader | PixelShader,
+	Copy           = 1u << 3,
+	RenderTarget   = 1u << 4,
+	DepthStencilRO = 1u << 5,
+	DepthStencilRW = 1u << 6,
+	DepthStencil   = DepthStencilRO | DepthStencilRW,
 };
 ENUM_FLAGS_OPERATORS(PipelineStagesMask);
 
 enum struct ResourceAccessMask : u16 {
-	None         = 0,
-	SRV          = 1u << 0,
-	UAV          = 1u << 1,
-	CopySrc      = 1u << 2,
-	CopyDst      = 1u << 3,
-	RenderTarget = 1u << 4,
+	None           = 0,
+	SRV            = 1u << 0,
+	UAV            = 1u << 1,
+	CopySrc        = 1u << 2,
+	CopyDst        = 1u << 3,
+	RenderTarget   = 1u << 4,
+	DepthStencilRO = 1u << 5,
+	DepthStencilRW = 1u << 6,
 };
 ENUM_FLAGS_OPERATORS(ResourceAccessMask);
 
+enum struct DepthStencilAccess : u8 {
+	None          = 0,
+	DepthRead     = 1u << 0,
+	DepthWrite    = 1u << 1,
+	DepthAccess   = DepthRead | DepthWrite,
+	StencilRead   = 1u << 2,
+	StencilWrite  = 1u << 3,
+	StencilAccess = StencilRead | StencilWrite,
+};
+ENUM_FLAGS_OPERATORS(DepthStencilAccess);
+
+struct PipelineID {
+	u32 index = 0;
+	
+	PipelineStagesMask stages_mask = PipelineStagesMask::None;
+	DepthStencilAccess depth_stencil_access = DepthStencilAccess::None;
+};
+
 struct ResourceAccessDefinition {
 	ResourceAccessDefinition* last_access = nullptr;
-	VirtualResourceID resource_id;
+	VirtualResourceID resource_id = (VirtualResourceID)0;
 	
-	u16                is_texture  : 1;
-	PipelineStagesMask stages_mask : 7;
-	ResourceAccessMask access_mask : 8;
+	PipelineStagesMask stages_mask = PipelineStagesMask::None;
+	ResourceAccessMask access_mask = ResourceAccessMask::None;
+	
+	bool is_texture = false;
+	u8   plane_mask = 0;
 	
 	u8 mip_index = 0;
 	u8 mip_count = 0;
@@ -276,7 +308,7 @@ struct PipelineDepthStencil {
 	enum struct Flags : u8 {
 		None             = 0,
 		EnableDepth      = 1u << 0,
-		EnableDepthWrite = 1u << 1,
+		EnableDepthWrite = EnableDepth | (1u << 1),
 		EnableStencil    = 1u << 2,
 	};
 	
@@ -289,7 +321,7 @@ struct PipelineDepthStencil {
 	
 	PipelineStateType type = PipelineStateType::DepthStencil;
 	
-	Flags          flags            = Flags::EnableDepth;
+	Flags          flags            = Flags::None;
 	TextureFormat  format           = TextureFormat::None;
 	ComparisonMode depth_comparison = ComparisonMode::GreaterEqual;
 	

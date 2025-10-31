@@ -68,8 +68,8 @@ float2 NdcToScreenUv(float2 ndc) { return float2(ndc.x * 0.5 + 0.5, 0.5 - ndc.y 
 float2 ScreenUvToNdc(float2 uv)  { return float2(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0); }
 
 
-bool IsPerspectiveMatrix(float4 coefficients)  { return coefficients.z == 0.0; }
-bool IsOrthographicMatrix(float4 coefficients) { return coefficients.z != 0.0; }
+bool IsPerspectiveMatrix(float4 coefficients)  { return coefficients.w == 0.0; }
+bool IsOrthographicMatrix(float4 coefficients) { return coefficients.w != 0.0; }
 
 struct RayInfo {
 	float3 origin;
@@ -83,7 +83,7 @@ RayInfo RayInfoFromNdc(float2 ndc, float4 clip_to_view_coef) {
 		result.origin    = float3(0.0, 0.0, 0.0);
 		result.direction = normalize(float3(ndc * clip_to_view_coef.xy, 1.0));
 	} else {
-		result.origin    = float3(ndc * clip_to_view_coef.xy, clip_to_view_coef.w);
+		result.origin    = float3(ndc * clip_to_view_coef.xy, 0.0);
 		result.direction = float3(0.0, 0.0, 1.0);
 	}
 	
@@ -99,10 +99,10 @@ float4 TransformViewToClipSpace(float3 view_space_position, float4 view_to_clip_
 	result.xy = view_space_position.xy * view_to_clip_coef.xy;
 	
 	if (IsPerspectiveMatrix(view_to_clip_coef)) {
-		result.z = view_to_clip_coef.w;
+		result.z = view_to_clip_coef.z;
 		result.w = view_space_position.z;
 	} else {
-		result.z = view_space_position.z * view_to_clip_coef.z + view_to_clip_coef.w;
+		result.z = view_space_position.z * view_to_clip_coef.z + 1.0;
 		result.w = 1.0;
 	}
 	

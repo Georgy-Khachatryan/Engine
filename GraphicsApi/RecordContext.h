@@ -15,6 +15,19 @@ namespace HLSL {
 	template<typename T> struct ConstantBuffer;
 }
 
+struct RecordContextStateCache {
+	Array<HLSL::BaseDescriptorTable*> resource_bindings;
+	
+	FixedCapacityArray<VirtualResourceID, 8> render_targets;
+	VirtualResourceID depth_stencil = (VirtualResourceID)0;
+	
+	CommandQueueType current_render_pass_type = CommandQueueType::Graphics;
+	PipelineStagesMask stages_mask = PipelineStagesMask::None;
+	DepthStencilAccess depth_stencil_access = DepthStencilAccess::None;
+	
+	bool is_dirty = false;
+};
+
 struct RecordContext {
 	GraphicsContext* context = nullptr;
 	
@@ -33,10 +46,7 @@ struct RecordContext {
 	Array<ArrayView<ResourceAccessDefinition>> resource_accesses;
 	Array<u32> resource_access_command_prefix_sum;
 	
-	CommandQueueType current_render_pass_type = CommandQueueType::Graphics;
-	Array<HLSL::BaseDescriptorTable*> resource_bindings;
-	FixedCapacityArray<VirtualResourceID, 8> render_targets;
-	bool resource_bindings_dirty = false;
+	RecordContextStateCache state_cache;
 };
 
 void CmdDispatch(RecordContext* record_context, u32 group_count_x = 1, u32 group_count_y = 1, u32 group_count_z = 1);
@@ -46,8 +56,9 @@ void CmdDrawInstanced(RecordContext* record_context, u32 vertex_count_per_instan
 void CmdDrawIndexedInstanced(RecordContext* record_context, u32 index_count_per_instance, u32 instance_count = 1, u32 start_index_location = 0, u32 base_vertex_location = 0, u32 start_instance_location = 0);
 void CmdCopyBufferToTexture(RecordContext* record_context, GpuAddress src_buffer_gpu_address, VirtualResourceID dst_texture_resource_id, u32 src_row_pitch, uint3 src_size, uint3 dst_offset = 0, u32 dst_subresource_index = 0);
 void CmdClearRenderTarget(RecordContext* record_context, VirtualResourceID resource_id);
-void CmdSetRenderTargets(RecordContext* record_context, ArrayView<VirtualResourceID> resource_ids);
-void CmdSetRenderTargets(RecordContext* record_context, VirtualResourceID resource_id);
+void CmdClearDepthStencil(RecordContext* record_context, VirtualResourceID resource_id);
+void CmdSetRenderTargets(RecordContext* record_context, ArrayView<VirtualResourceID> resource_ids, VirtualResourceID depth_stencil = (VirtualResourceID)0);
+void CmdSetRenderTargets(RecordContext* record_context, VirtualResourceID resource_id, VirtualResourceID depth_stencil = (VirtualResourceID)0);
 void CmdSetViewportAndScissor(RecordContext* record_context, uint2 max, uint2 min = 0);
 void CmdSetViewport(RecordContext* record_context, uint2 max, uint2 min = 0);
 void CmdSetScissor(RecordContext* record_context, uint2 max, uint2 min = 0);

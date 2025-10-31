@@ -9,15 +9,16 @@ enum struct CommandType : u16 {
 	DrawIndexedInstanced  = 4,
 	CopyBufferToTexture   = 5,
 	ClearRenderTarget     = 6,
-	SetRenderTargets      = 7,
-	SetViewport           = 8,
-	SetScissor            = 9,
-	SetIndexBufferView    = 10,
-	SetRootSignature      = 11,
-	SetPipelineState      = 12,
-	SetDescriptorTable    = 13,
-	SetPushConstants      = 14,
-	SetConstantBuffer     = 15,
+	ClearDepthStencil     = 7,
+	SetRenderTargets      = 8,
+	SetViewport           = 9,
+	SetScissor            = 10,
+	SetIndexBufferView    = 11,
+	SetRootSignature      = 12,
+	SetPipelineState      = 13,
+	SetDescriptorTable    = 14,
+	SetPushConstants      = 15,
+	SetConstantBuffer     = 16,
 	
 	Count
 };
@@ -63,7 +64,7 @@ struct CmdCopyBufferToTexturePacket : RecordContextCommandPacket {
 	
 	GpuAddress        src_buffer_gpu_address  = {};
 	VirtualResourceID dst_texture_resource_id = {};
-
+	
 	u32 src_row_pitch = 0;
 	uint3 src_size = 0;
 	
@@ -77,10 +78,17 @@ struct CmdClearRenderTargetPacket : RecordContextCommandPacket {
 	VirtualResourceID resource_id = {};
 };
 
+struct CmdClearDepthStencilPacket : RecordContextCommandPacket {
+	compile_const CommandType my_type = CommandType::ClearDepthStencil;
+	
+	VirtualResourceID resource_id = {};
+};
+
 struct CmdSetRenderTargetsPacket : RecordContextCommandPacket {
 	compile_const CommandType my_type = CommandType::SetRenderTargets;
 	
 	ArrayView<VirtualResourceID> resource_ids;
+	VirtualResourceID depth_stencil_resource_id;
 };
 
 struct CmdSetViewportAndScissorPacket : RecordContextCommandPacket {

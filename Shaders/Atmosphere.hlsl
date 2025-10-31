@@ -12,7 +12,7 @@ compile_const float2 inv_multiple_scattering_lut_size = 1.0 / AtmosphereParamete
 compile_const float2 inv_sky_panorama_lut_size        = 1.0 / AtmosphereParameters::sky_panorama_lut_size;
 compile_const float  planet_radius_offset             = 0.01;
 compile_const uint   thread_group_size                = AtmosphereParameters::thread_group_size;
-
+compile_const float  world_to_planet_space_scale      = 1.0 / 1000.0;
 
 struct AtmosphereMedium {
 	float3 scattering_mie;
@@ -60,6 +60,9 @@ AtmosphereMedium SampleAtmosphereMedium(AtmosphereParameters atmosphere, float3 
 	return sample;
 }
 
+float3 WorldToPlanetSpace(float3 world_space_position) {
+	return world_space_position * world_to_planet_space_scale;
+}
 
 struct TransmittanceLutCoordinates {
 	float view_height;
@@ -413,8 +416,8 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	uint2  thread_id = group_id * thread_group_size + MortonDecode(thread_index);
 	float2 thread_uv = (thread_id + 0.5) * inv_sky_panorama_lut_size;
 	
-	float3 world_space_camera_position = float3(0.0, 0.0, 0.0);
-	float3 planet_space_position = world_space_camera_position + float3(0, 0, atmosphere.bottom_radius + 0.1);
+	float3 planet_space_camera_position = float3(0.0, 0.0, 0.0);
+	float3 planet_space_position = planet_space_camera_position + float3(0, 0, atmosphere.bottom_radius + 0.1);
 	float  view_height = length(planet_space_position);
 	
 	SkyPanoramaLutCoordinates coordinates = UvToSkyPanoramaLutCoordinates(atmosphere, view_height, thread_uv);
@@ -448,8 +451,8 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	RayInfo view_space_ray = RayInfoFromScreenUv(thread_uv, scene.clip_to_view_coef);
 	float3 planet_space_direction = mul((float3x3)scene.view_to_world, view_space_ray.direction);
 	
-	float3 world_space_camera_position = float3(0.0, 0.0, 0.0) + view_space_ray.origin;
-	float3 planet_space_position = world_space_camera_position + float3(0, 0, atmosphere.bottom_radius + 0.1);
+	float3 planet_space_camera_position = WorldToPlanetSpace(mul(scene.view_to_world, float4(view_space_ray.origin, 1.0)));
+	float3 planet_space_position = planet_space_camera_position + float3(0, 0, atmosphere.bottom_radius + 0.1);
 	float  view_height = length(planet_space_position);
 	
 	float3 up_vector = normalize(planet_space_position);

@@ -566,6 +566,7 @@ s32 main() {
 		// Clamp render target size to a reasonable minimum. Aspect ratio for view to clip is still computed using unclamped values.
 		uint2 render_target_size = uint2((u32)Max(window_size.x, 16.f), (u32)Max(window_size.y, 16.f));
 		resource_table.Set(VirtualResourceID::SceneRadiance, TextureSize(TextureFormat::R16G16B16A16_FLOAT, render_target_size));
+		resource_table.Set(VirtualResourceID::DepthStencil,  TextureSize(TextureFormat::D32_FLOAT, render_target_size));
 		
 		compile_const float near_depth = 0.1f;
 		
@@ -576,7 +577,7 @@ s32 main() {
 		scene.view_to_clip_coef = Math::PerspectiveViewToClip(vertical_fov_degrees * Math::degrees_to_radians, window_size, near_depth);
 		scene.clip_to_view_coef = Math::ViewToClipInverse(scene.view_to_clip_coef);
 #else
-		scene.view_to_clip_coef = Math::OrthographicViewToClip(window_size * vertical_fov_degrees * (1.f / window_size.x), float2(0.f, 1000.f));
+		scene.view_to_clip_coef = Math::OrthographicViewToClip(window_size * vertical_fov_degrees * (1.f / window_size.x), 1024.f);
 		scene.clip_to_view_coef = Math::ViewToClipInverse(scene.view_to_clip_coef);
 #endif
 		scene.view_to_world[0] = float4(0.f,  0.f, 1.f, 0.f);
@@ -595,7 +596,7 @@ s32 main() {
 		ImGui::Text("ImGui Alloc Size: %llu", imgui_heap.ComputeTotalMemoryUsage());
 		ImGui::SliderFloat("Vertical Field Of View", &vertical_fov_degrees, 10.f, 135.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
 		
-		ImGui::SliderFloat("Sun Elevation", &sun_elevation_degrees, -90.f, +90.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+		ImGui::SliderFloat("Sun Elevation", &sun_elevation_degrees, -10.f, +190.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
 		atmosphere_parameters.world_space_sun_direction.x = cosf(sun_elevation_degrees * Math::degrees_to_radians);
 		atmosphere_parameters.world_space_sun_direction.z = sinf(sun_elevation_degrees * Math::degrees_to_radians);
 		

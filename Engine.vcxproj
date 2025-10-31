@@ -63,6 +63,7 @@
     <ClInclude Include="Engine/RenderPasses.h" />
     
     <ClInclude Include="GraphicsApi/GraphicsApi.h" />
+    <ClInclude Include="GraphicsApi/GraphicsApiTypes.h" />
     <ClInclude Include="GraphicsApi/RecordContext.h" />
     <ClInclude Include="GraphicsApi/RecordContextCommands.h" />
     <ClInclude Include="GraphicsApi/TextureFormat.h" />
