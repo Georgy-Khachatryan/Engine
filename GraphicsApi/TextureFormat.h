@@ -109,11 +109,25 @@ enum struct TextureFormat : u8 {
 	Count
 };
 
+enum struct TextureFormatFlags : u32 {
+	None         = 0,
+	Depth        = 1u << 0,
+	Stencil      = 1u << 1,
+	DepthStencil = Depth | Stencil,
+};
+ENUM_FLAGS_OPERATORS(TextureFormatFlags);
+
+struct TextureFormatInfo {
+	TextureFormatFlags flags = TextureFormatFlags::None;
+	u32  block_size_bytes = 0;
+	uint2 block_size_log2 = 0;
+};
+
 TextureFormat ToNonSrgbFormat(TextureFormat format);
 
 enum DXGI_FORMAT;
 extern ArrayView<DXGI_FORMAT> dxgi_texture_format_map;
-
+extern ArrayView<TextureFormatInfo> texture_format_info_map;
 
 struct TextureSize {
 	enum struct Type : u8 {

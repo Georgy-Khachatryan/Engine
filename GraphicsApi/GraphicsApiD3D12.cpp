@@ -510,6 +510,9 @@ NativeTextureResource CreateTextureResource(GraphicsContext* api_context, Textur
 	heap_properties.CreationNodeMask     = 0;
 	heap_properties.VisibleNodeMask      = 0;
 	
+	auto format_info = texture_format_info_map[(u32)size.format];
+	bool is_depth_stencil = HasAnyFlags(format_info.flags, TextureFormatFlags::DepthStencil);
+	
 	D3D12_RESOURCE_DESC1 resource_desc = {};
 	resource_desc.Dimension        = size.type == TextureSize::Type::Texture3D ? D3D12_RESOURCE_DIMENSION_TEXTURE3D : D3D12_RESOURCE_DIMENSION_TEXTURE2D;
 	resource_desc.Alignment        = 0;
@@ -520,7 +523,7 @@ NativeTextureResource CreateTextureResource(GraphicsContext* api_context, Textur
 	resource_desc.Format           = dxgi_texture_format_map[(u32)size.format];
 	resource_desc.SampleDesc       = { 1, 0 };
 	resource_desc.Layout           = D3D12_TEXTURE_LAYOUT_UNKNOWN;
-	resource_desc.Flags            = (size.format == TextureFormat::D32_FLOAT ? D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL : D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS | D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
+	resource_desc.Flags            = (is_depth_stencil ? D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL : D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS | D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
 	resource_desc.SamplerFeedbackMipRegion = { 0, 0, 0 };
 	
 	D3D12_CLEAR_VALUE clear_value = {};

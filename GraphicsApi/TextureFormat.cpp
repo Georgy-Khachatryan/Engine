@@ -119,3 +119,109 @@ static DXGI_FORMAT dxgi_texture_formats[(u32)TextureFormat::Count] = {
 
 ArrayView<DXGI_FORMAT> dxgi_texture_format_map = { dxgi_texture_formats, (u64)TextureFormat::Count };
 
+
+static TextureFormatInfo texture_format_infos[(u32)TextureFormat::Count] = {
+	{ TextureFormatFlags::None, 0, uint2(0, 0) }, // None
+	
+	{ TextureFormatFlags::None, 1, uint2(0, 0) }, // R8_TYPELESS
+	{ TextureFormatFlags::None, 1, uint2(0, 0) }, // R8_UNORM
+	{ TextureFormatFlags::None, 1, uint2(0, 0) }, // R8_SNORM
+	{ TextureFormatFlags::None, 1, uint2(0, 0) }, // R8_UINT
+	{ TextureFormatFlags::None, 1, uint2(0, 0) }, // R8_SINT
+	
+	{ TextureFormatFlags::None, 2, uint2(0, 0) }, // R8G8_TYPELESS
+	{ TextureFormatFlags::None, 2, uint2(0, 0) }, // R8G8_UNORM
+	{ TextureFormatFlags::None, 2, uint2(0, 0) }, // R8G8_SNORM
+	{ TextureFormatFlags::None, 2, uint2(0, 0) }, // R8G8_UINT
+	{ TextureFormatFlags::None, 2, uint2(0, 0) }, // R8G8_SINT
+	
+	{ TextureFormatFlags::None, 4, uint2(0, 0) }, // R8G8B8A8_TYPELESS
+	{ TextureFormatFlags::None, 4, uint2(0, 0) }, // R8G8B8A8_UNORM
+	{ TextureFormatFlags::None, 4, uint2(0, 0) }, // R8G8B8A8_UNORM_SRGB
+	{ TextureFormatFlags::None, 4, uint2(0, 0) }, // R8G8B8A8_SNORM
+	{ TextureFormatFlags::None, 4, uint2(0, 0) }, // R8G8B8A8_UINT
+	{ TextureFormatFlags::None, 4, uint2(0, 0) }, // R8G8B8A8_SINT
+	
+	{ TextureFormatFlags::None, 2, uint2(0, 0) }, // R16_TYPELESS
+	{ TextureFormatFlags::None, 2, uint2(0, 0) }, // R16_UNORM
+	{ TextureFormatFlags::None, 2, uint2(0, 0) }, // R16_SNORM
+	{ TextureFormatFlags::None, 2, uint2(0, 0) }, // R16_UINT
+	{ TextureFormatFlags::None, 2, uint2(0, 0) }, // R16_SINT
+	{ TextureFormatFlags::None, 2, uint2(0, 0) }, // R16_FLOAT
+	
+	{ TextureFormatFlags::None, 4, uint2(0, 0) }, // R16G16_TYPELESS
+	{ TextureFormatFlags::None, 4, uint2(0, 0) }, // R16G16_UNORM
+	{ TextureFormatFlags::None, 4, uint2(0, 0) }, // R16G16_SNORM
+	{ TextureFormatFlags::None, 4, uint2(0, 0) }, // R16G16_UINT
+	{ TextureFormatFlags::None, 4, uint2(0, 0) }, // R16G16_SINT
+	{ TextureFormatFlags::None, 4, uint2(0, 0) }, // R16G16_FLOAT
+	
+	{ TextureFormatFlags::None, 8, uint2(0, 0) }, // R16G16B16A16_TYPELESS
+	{ TextureFormatFlags::None, 8, uint2(0, 0) }, // R16G16B16A16_UNORM
+	{ TextureFormatFlags::None, 8, uint2(0, 0) }, // R16G16B16A16_SNORM
+	{ TextureFormatFlags::None, 8, uint2(0, 0) }, // R16G16B16A16_UINT
+	{ TextureFormatFlags::None, 8, uint2(0, 0) }, // R16G16B16A16_SINT
+	{ TextureFormatFlags::None, 8, uint2(0, 0) }, // R16G16B16A16_FLOAT
+	
+	{ TextureFormatFlags::None, 4, uint2(0, 0) }, // R32_TYPELESS
+	{ TextureFormatFlags::None, 4, uint2(0, 0) }, // R32_UINT
+	{ TextureFormatFlags::None, 4, uint2(0, 0) }, // R32_SINT
+	{ TextureFormatFlags::None, 4, uint2(0, 0) }, // R32_FLOAT
+	
+	{ TextureFormatFlags::None, 8, uint2(0, 0) }, // R32G32_TYPELESS
+	{ TextureFormatFlags::None, 8, uint2(0, 0) }, // R32G32_UINT
+	{ TextureFormatFlags::None, 8, uint2(0, 0) }, // R32G32_SINT
+	{ TextureFormatFlags::None, 8, uint2(0, 0) }, // R32G32_FLOAT
+	
+	{ TextureFormatFlags::None, 12, uint2(0, 0) }, // R32G32B32_TYPELESS
+	{ TextureFormatFlags::None, 12, uint2(0, 0) }, // R32G32B32_UINT
+	{ TextureFormatFlags::None, 12, uint2(0, 0) }, // R32G32B32_SINT
+	{ TextureFormatFlags::None, 12, uint2(0, 0) }, // R32G32B32_FLOAT
+	
+	{ TextureFormatFlags::None, 16, uint2(0, 0) }, // R32G32B32A32_TYPELESS
+	{ TextureFormatFlags::None, 16, uint2(0, 0) }, // R32G32B32A32_UINT
+	{ TextureFormatFlags::None, 16, uint2(0, 0) }, // R32G32B32A32_SINT
+	{ TextureFormatFlags::None, 16, uint2(0, 0) }, // R32G32B32A32_FLOAT
+	
+	{ TextureFormatFlags::None, 4, uint2(0, 0) }, // R10G10B10A2_TYPELESS
+	{ TextureFormatFlags::None, 4, uint2(0, 0) }, // R10G10B10A2_UNORM
+	{ TextureFormatFlags::None, 4, uint2(0, 0) }, // R10G10B10A2_UINT
+	
+	{ TextureFormatFlags::None, 4, uint2(0, 0) }, // R11G11B10_FLOAT
+	{ TextureFormatFlags::None, 4, uint2(0, 0) }, // R9G9B9E5_FLOAT
+	
+	{ TextureFormatFlags::None, 8, uint2(2, 2) }, // BC1_TYPELESS
+	{ TextureFormatFlags::None, 8, uint2(2, 2) }, // BC1_UNORM
+	{ TextureFormatFlags::None, 8, uint2(2, 2) }, // BC1_UNORM_SRGB
+	
+	{ TextureFormatFlags::None, 16, uint2(2, 2) }, // BC2_TYPELESS
+	{ TextureFormatFlags::None, 16, uint2(2, 2) }, // BC2_UNORM
+	{ TextureFormatFlags::None, 16, uint2(2, 2) }, // BC2_UNORM_SRGB
+	
+	{ TextureFormatFlags::None, 16, uint2(2, 2) }, // BC3_TYPELESS
+	{ TextureFormatFlags::None, 16, uint2(2, 2) }, // BC3_UNORM
+	{ TextureFormatFlags::None, 16, uint2(2, 2) }, // BC3_UNORM_SRGB
+	
+	{ TextureFormatFlags::None, 8, uint2(2, 2) }, // BC4_TYPELESS
+	{ TextureFormatFlags::None, 8, uint2(2, 2) }, // BC4_UNORM
+	{ TextureFormatFlags::None, 8, uint2(2, 2) }, // BC4_SNORM
+	
+	{ TextureFormatFlags::None, 16, uint2(2, 2) }, // BC5_TYPELESS
+	{ TextureFormatFlags::None, 16, uint2(2, 2) }, // BC5_UNORM
+	{ TextureFormatFlags::None, 16, uint2(2, 2) }, // BC5_SNORM
+	
+	{ TextureFormatFlags::None, 16, uint2(2, 2) }, // BC6H_TYPELESS
+	{ TextureFormatFlags::None, 16, uint2(2, 2) }, // BC6H_UFLOAT
+	{ TextureFormatFlags::None, 16, uint2(2, 2) }, // BC6H_SFLOAT
+	
+	{ TextureFormatFlags::None, 16, uint2(2, 2) }, // BC7_TYPELESS
+	{ TextureFormatFlags::None, 16, uint2(2, 2) }, // BC7_UNORM
+	{ TextureFormatFlags::None, 16, uint2(2, 2) }, // BC7_UNORM_SRGB
+	
+	{ TextureFormatFlags::Depth, 2, uint2(0, 0) }, // D16_UNORM
+	{ TextureFormatFlags::Depth, 4, uint2(0, 0) }, // D32_FLOAT
+	{ TextureFormatFlags::DepthStencil, 8, uint2(0, 0) }, // D32_FLOAT_S8
+	{ TextureFormatFlags::DepthStencil, 8, uint2(0, 0) }, // X32_TYPELESS_G8
+};
+
+ArrayView<TextureFormatInfo> texture_format_info_map = { texture_format_infos, (u64)TextureFormat::Count };
