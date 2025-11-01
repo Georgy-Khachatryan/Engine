@@ -432,6 +432,8 @@ s32 main() {
 	
 	float vertical_fov_degrees  = 75.f;
 	float sun_elevation_degrees = 3.f;
+	float meshlet_target_error_pixels = 1.f;
+	bool use_perspective_view_to_clip = true;
 	
 	u64 frame_allocation_size = 0;
 	u64 transient_upload_allocation_size = 0;
@@ -571,16 +573,28 @@ s32 main() {
 		
 		compile_const float near_depth = 0.1f;
 		
+		ImGui::Begin("Stats");
+		ImGui::Text("Initial Alloc Size: %llu", frame_initial_size);
+		ImGui::Text("Frame Alloc Size: %llu", frame_allocation_size);
+		ImGui::Text("Upload Alloc Size: %llu", transient_upload_allocation_size);
+		ImGui::Text("ImGui Alloc Size: %llu", imgui_heap.ComputeTotalMemoryUsage());
+		ImGui::Checkbox("Perspective Camera", &use_perspective_view_to_clip);
+		ImGui::SliderFloat("Vertical Field Of View", &vertical_fov_degrees, 10.f, 135.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+		ImGui::SliderFloat("Meshlet Target Error Pixels", &meshlet_target_error_pixels, 1.f, 128.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+		ImGui::SliderFloat("Sun Elevation", &sun_elevation_degrees, -10.f, +190.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+		
+		ImGui::End();
+		
 		SceneConstants scene;
 		scene.render_target_size     = float2(render_target_size);
 		scene.inv_render_target_size = float2(1.f) / scene.render_target_size;
-#if 1
-		scene.view_to_clip_coef = Math::PerspectiveViewToClip(vertical_fov_degrees * Math::degrees_to_radians, window_size, near_depth);
-		scene.clip_to_view_coef = Math::ViewToClipInverse(scene.view_to_clip_coef);
-#else
-		scene.view_to_clip_coef = Math::OrthographicViewToClip(window_size * vertical_fov_degrees * (1.f / window_size.x), 1024.f);
-		scene.clip_to_view_coef = Math::ViewToClipInverse(scene.view_to_clip_coef);
-#endif
+		if (use_perspective_view_to_clip) {
+			scene.view_to_clip_coef = Math::PerspectiveViewToClip(vertical_fov_degrees * Math::degrees_to_radians, window_size, near_depth);
+			scene.clip_to_view_coef = Math::ViewToClipInverse(scene.view_to_clip_coef);
+		} else {
+			scene.view_to_clip_coef = Math::OrthographicViewToClip(window_size * vertical_fov_degrees * (1.f / window_size.x), 1024.f);
+			scene.clip_to_view_coef = Math::ViewToClipInverse(scene.view_to_clip_coef);
+		}
 		scene.view_to_world[0] = float4(0.f,  0.f, 1.f, 0.f);
 		scene.view_to_world[1] = float4(-1.f, 0.f, 0.f, 0.f);
 		scene.view_to_world[2] = float4(0.f, -1.f, 0.f, 0.f);
@@ -588,20 +602,12 @@ s32 main() {
 		scene.world_to_view[1] = float4(0.f, 0.f, -1.f, 0.f);
 		scene.world_to_view[2] = float4(1.f, 0.f,  0.f, 0.f);
 		
+		scene.world_to_pixel_scale = scene.view_to_clip_coef.x * scene.render_target_size.x * 0.5f / Max(meshlet_target_error_pixels, 1.f);
+		scene.world_space_camera_position = 0.f;
+		
 		AtmosphereParameters atmosphere_parameters;
-		
-		ImGui::Begin("Stats");
-		ImGui::Text("Initial Alloc Size: %llu", frame_initial_size);
-		ImGui::Text("Frame Alloc Size: %llu", frame_allocation_size);
-		ImGui::Text("Upload Alloc Size: %llu", transient_upload_allocation_size);
-		ImGui::Text("ImGui Alloc Size: %llu", imgui_heap.ComputeTotalMemoryUsage());
-		ImGui::SliderFloat("Vertical Field Of View", &vertical_fov_degrees, 10.f, 135.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
-		
-		ImGui::SliderFloat("Sun Elevation", &sun_elevation_degrees, -10.f, +190.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
 		atmosphere_parameters.world_space_sun_direction.x = cosf(sun_elevation_degrees * Math::degrees_to_radians);
 		atmosphere_parameters.world_space_sun_direction.z = sinf(sun_elevation_degrees * Math::degrees_to_radians);
-		
-		ImGui::End();
 		
 		if (ImGui::IsKeyChordPressed(ImGuiMod_Alt | ImGuiKey_F4)) {
 			window->should_close = true;
@@ -620,7 +626,7 @@ s32 main() {
 		{
 			auto [vb_gpu_address, vb_cpu_address] = AllocateTransientUploadBuffer<BasicVertex,  sizeof(BasicVertex)>(&record_context,  (u32)vertices.count);
 			auto [mb_gpu_address, mb_cpu_address] = AllocateTransientUploadBuffer<BasicMeshlet, sizeof(BasicMeshlet)>(&record_context, (u32)meshlets.count);
-			auto [ib_gpu_address, ib_cpu_address] = AllocateTransientUploadBuffer<u8, 16>(&record_context, (u32)indices.count);
+			auto [ib_gpu_address, ib_cpu_address] = AllocateTransientUploadBuffer<u8, sizeof(uint4)>(&record_context, (u32)indices.count);
 			memcpy(vb_cpu_address, vertices.data, vertices.count * sizeof(BasicVertex));
 			memcpy(mb_cpu_address, meshlets.data, meshlets.count * sizeof(BasicMeshlet));
 			memcpy(ib_cpu_address, indices.data,  indices.count  * sizeof(u8));

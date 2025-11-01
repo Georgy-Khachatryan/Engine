@@ -143,13 +143,8 @@ void ImportFbxMeshFile(StackAllocator* alloc, String filepath, Array<BasicVertex
 	auto mdt_meshlet_vertices       = ArrayView<BasicVertex>{ (BasicVertex*)result.vertices, result.vertex_count };
 	auto mdt_levels_of_detail       = ArrayView<MdtContinuousLodLevel>{ result.levels, result.level_count };
 	
-	auto& selected_level = mdt_levels_of_detail[0];
-	
-	u32 begin_meshlets_index = selected_level.begin_meshlets_index;
-	u32 end_meshlets_index   = selected_level.end_meshlets_index;
-	
 	ArrayResize(result_vertices, alloc, mdt_meshlet_vertex_indices.count);
-	ArrayResize(result_meshlets, alloc, end_meshlets_index - begin_meshlets_index);
+	ArrayResize(result_meshlets, alloc, mdt_meshlets.count);
 	ArrayResize(result_indices,  alloc, mdt_meshlet_triangles.count * 3);
 	
 	memcpy(result_indices.data, mdt_meshlet_triangles.data, mdt_meshlet_triangles.count * sizeof(MdtMeshletTriangle));
@@ -159,14 +154,21 @@ void ImportFbxMeshFile(StackAllocator* alloc, String filepath, Array<BasicVertex
 		result_vertices[i] = mdt_meshlet_vertices[mdt_meshlet_vertex_indices[i]];
 	}
 	
-	for (u32 i = begin_meshlets_index; i < end_meshlets_index; i += 1) {
+	for (u32 i = 0; i < mdt_meshlets.count; i += 1) {
 		auto& src_meshlet = mdt_meshlets[i];
-		auto& dst_meshlet = result_meshlets[i - begin_meshlets_index];
+		auto& dst_meshlet = result_meshlets[i];
 		
 		dst_meshlet.index_buffer_offset  = src_meshlet.begin_meshlet_triangles_index * 3;
 		dst_meshlet.vertex_buffer_offset = src_meshlet.begin_vertex_indices_index;
 		dst_meshlet.triangle_count       = src_meshlet.end_meshlet_triangles_index - src_meshlet.begin_meshlet_triangles_index;
 		dst_meshlet.vertex_count         = src_meshlet.end_vertex_indices_index    - src_meshlet.begin_vertex_indices_index;
+		
+		dst_meshlet.current_level_error_metric.center = float3(src_meshlet.current_level_error_metric.bounds.center);
+		dst_meshlet.coarser_level_error_metric.center = float3(src_meshlet.coarser_level_error_metric.bounds.center);
+		dst_meshlet.current_level_error_metric.radius = src_meshlet.current_level_error_metric.bounds.radius;
+		dst_meshlet.coarser_level_error_metric.radius = src_meshlet.coarser_level_error_metric.bounds.radius;
+		dst_meshlet.current_level_error_metric.error  = src_meshlet.current_level_error_metric.error;
+		dst_meshlet.coarser_level_error_metric.error  = src_meshlet.coarser_level_error_metric.error;
 	}
 	
 	MdtFreeContinuousLodBuildResult(&result, &callbacks);

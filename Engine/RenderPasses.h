@@ -69,6 +69,9 @@ struct SceneConstants {
 	float4 clip_to_view_coef;
 	float3x4 view_to_world;
 	float3x4 world_to_view;
+	
+	float world_to_pixel_scale;
+	float3 world_space_camera_position;
 };
 
 
@@ -174,11 +177,21 @@ struct BasicVertex {
 };
 
 NOTES(Meta::HlslFile{ "MeshData.hlsl"_sl })
+struct MeshletErrorMetric {
+	float3 center = 0.f;
+	float  radius = 0.f;
+	float  error  = 0.f;
+};
+
+NOTES(Meta::HlslFile{ "MeshData.hlsl"_sl })
 struct BasicMeshlet {
 	u32 index_buffer_offset  = 0;
 	u32 vertex_buffer_offset = 0;
 	u32 triangle_count = 0;
 	u32 vertex_count   = 0;
+	
+	MeshletErrorMetric current_level_error_metric;
+	MeshletErrorMetric coarser_level_error_metric;
 };
 
 
