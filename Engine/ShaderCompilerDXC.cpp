@@ -69,18 +69,21 @@ compile_const wchar_t* target_profiles[(u32)ShaderType::Count] = {
 	L"cs_6_8",
 	L"vs_6_8",
 	L"ps_6_8",
+	L"ms_6_8",
 };
 
 compile_const wchar_t* entry_point_names[(u32)ShaderType::Count] = {
 	L"MainCS",
 	L"MainVS",
 	L"MainPS",
+	L"MainMS",
 };
 
 compile_const wchar_t* shader_type_defines[(u32)ShaderType::Count] = {
 	L"COMPUTE_SHADER",
 	L"VERTEX_SHADER",
 	L"PIXEL_SHADER",
+	L"MESH_SHADER",
 };
 
 compile_const String shader_directory_path = "./Shaders"_sl;
@@ -162,7 +165,7 @@ static bool CompileShaderToBlob(ShaderCompiler* compiler, StackAllocator* alloc,
 	auto root_signature_filepath = StringFormat(alloc, "ROOT_SIGNATURE_FILEPATH=\"Generated/%.*s\"", (s32)root_signature_filename.count, root_signature_filename.data);
 	
 	Array<const wchar_t*> arguments;
-	ArrayReserve(arguments, alloc, 12 + CountSetBits(key.permutation) * 2);
+	ArrayReserve(arguments, alloc, 14 + CountSetBits(key.permutation) * 2);
 	
 	ArrayAppend(arguments, (wchar_t*)StringUtf8ToUtf16(alloc, filename).data);
 	ArrayAppend(arguments, L"-E"); ArrayAppend(arguments, entry_point_names[(u32)key.shader_type]);
@@ -170,8 +173,16 @@ static bool CompileShaderToBlob(ShaderCompiler* compiler, StackAllocator* alloc,
 	ArrayAppend(arguments, L"-D"); ArrayAppend(arguments, shader_type_defines[(u32)key.shader_type]);
 	ArrayAppend(arguments, L"-D"); ArrayAppend(arguments, (wchar_t*)StringUtf8ToUtf16(alloc, root_signature_filepath).data);
 	ArrayAppend(arguments, L"-Zpr");
-	ArrayAppend(arguments, L"-Qstrip_reflect");
 	ArrayAppend(arguments, L"-enable-16bit-types");
+	
+#if BUILD_TYPE(DEBUG) || BUILD_TYPE(DEV)
+	ArrayAppend(arguments, L"-Zi"); // In the debug and dev builds embed PDBs and keep reflection to help in debugging with PIX.
+	ArrayAppend(arguments, L"-Qembed_debug");
+#elif BUILD_TYPE(PROFILE)
+	ArrayAppend(arguments, L"-Qstrip_reflect"); // In profile build remove both PDBs and reflection.
+#else // !BUILD_TYPE(PROFILE)
+	#error "Unknown BUILD_TYPE"
+#endif // !BUILD_TYPE(PROFILE)
 	
 	for (u64 i : BitScanLow(key.permutation)) {
 		ArrayAppend(arguments, L"-D");

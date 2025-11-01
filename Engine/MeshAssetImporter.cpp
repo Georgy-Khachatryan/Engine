@@ -6,6 +6,7 @@
 #include "RenderPasses.h"
 
 #include <SDK/ufbx/ufbx.h>
+#include <SDK/MeshDecimationTools/MeshDecimationTools.h>
 
 static float3x4 LoadUfbxMatrix(const ufbx_matrix& m) {
 	float3x4 result;
@@ -15,7 +16,7 @@ static float3x4 LoadUfbxMatrix(const ufbx_matrix& m) {
 	return result;
 }
 
-void ImportFbxMeshFile(StackAllocator* alloc, String filepath, Array<BasicVertex>& result_vertices, Array<u32>& result_indices) {
+void ImportFbxMeshFile(StackAllocator* alloc, String filepath, Array<BasicVertex>& result_vertices, Array<BasicMeshlet>& result_meshlets, Array<u8>& result_indices) {
 	auto file_data = SystemReadFileToString(alloc, filepath);
 	DebugAssert(file_data.data != nullptr, "Failed to load mesh file '%.*s'", (s32)filepath.count, filepath.data);
 	
@@ -24,6 +25,7 @@ void ImportFbxMeshFile(StackAllocator* alloc, String filepath, Array<BasicVertex
 	options.ignore_embedded  = true;
 	options.target_axes      = ufbx_axes_right_handed_z_up;
 	options.target_unit_meters = 1.f;
+	options.generate_missing_normals = true;
 	
 	ufbx_error error = {};
 	auto* scene = ufbx_load_memory(file_data.data, file_data.count, &options, &error);
@@ -37,11 +39,10 @@ void ImportFbxMeshFile(StackAllocator* alloc, String filepath, Array<BasicVertex
 		max_result_triangles += (u32)(mesh->num_triangles * mesh->instances.count);
 	}
 	
-	ArrayReserve(result_vertices, alloc, max_result_triangles * 3);
-	ArrayReserve(result_indices,  alloc, max_result_triangles * 3);
-	
-	
-	TempAllocationScope(alloc);
+	Array<BasicVertex> source_vertices;
+	Array<u32> source_indices;
+	ArrayReserve(source_vertices, alloc, max_result_triangles * 3);
+	ArrayReserve(source_indices,  alloc, max_result_triangles * 3);
 	
 	Array<u32> face_indices;
 	ArrayReserve(face_indices, alloc, max_face_triangles * 3);
@@ -61,6 +62,7 @@ void ImportFbxMeshFile(StackAllocator* alloc, String filepath, Array<BasicVertex
 			for (u32 index : face_indices) {
 				BasicVertex vertex;
 				vertex.position = float3(mesh->vertex_position[index]);
+				vertex.normal   = float3(mesh->vertex_normal[index]);
 				vertex.texcoord = mesh->vertex_uv.exists ? float2(mesh->vertex_uv[index]) : float2(0.f, 0.f);
 				ArrayAppend(mesh_vertices, vertex);
 			}
@@ -77,16 +79,95 @@ void ImportFbxMeshFile(StackAllocator* alloc, String filepath, Array<BasicVertex
 		for (auto* instance : mesh->instances) {
 			auto geometry_to_world = LoadUfbxMatrix(instance->geometry_to_world);
 			
-			u32 index_offset = (u32)result_vertices.count;
+			u32 index_offset = (u32)source_vertices.count;
 			for (auto& vertex : mesh_vertices) {
 				auto instance_vertex = vertex;
 				instance_vertex.position = geometry_to_world * float4(instance_vertex.position, 1.f);
-				ArrayAppend(result_vertices, instance_vertex);
+				ArrayAppend(source_vertices, instance_vertex);
 			}
 			
 			for (u32 index : mesh_indices) {
-				ArrayAppend(result_indices, index + index_offset);
+				ArrayAppend(source_indices, index + index_offset);
 			}
 		}
 	}
+	
+	
+	MdtSystemCallbacks callbacks = {};
+	callbacks.temp_allocator.reallocate = [](void* old_memory_block, u64 size_bytes, void* user_data)-> void* {
+		auto* alloc = (StackAllocator*)user_data;
+		return alloc->Reallocate(old_memory_block, 0, size_bytes, 16);
+	};
+	callbacks.temp_allocator.user_data = alloc;
+	
+	callbacks.heap_allocator.reallocate = [](void* old_memory_block, u64 size_bytes, void*) {
+		void* result = nullptr;
+		if (size_bytes == 0) {
+			free(old_memory_block);
+		} else {
+			result = realloc(old_memory_block, size_bytes);
+		}
+		return result;
+	};
+	callbacks.heap_allocator.user_data = nullptr;
+	
+	
+	MdtTriangleGeometryDesc geometry_descs[1] = {};
+	geometry_descs[0].indices      = source_indices.data;
+	geometry_descs[0].vertices     = (float*)source_vertices.data;
+	geometry_descs[0].index_count  = (u32)source_indices.count;
+	geometry_descs[0].vertex_count = (u32)source_vertices.count;
+	
+	MdtContinuousLodBuildInputs inputs = {};
+	inputs.mesh.geometry_descs      = geometry_descs;
+	inputs.mesh.geometry_desc_count = 1;
+	inputs.mesh.vertex_stride_bytes = sizeof(BasicVertex);
+	inputs.mesh.geometric_weight    = 0.f;
+	inputs.mesh.attribute_weights   = nullptr;
+	inputs.mesh.normalize_vertex_attributes = [](float* attributes) {
+		auto normal = *(float3*)attributes;
+		float length = Math::Length(normal);
+		if (length > 0.f) normal = normal * (1.f / length);
+	};
+	
+	inputs.meshlet_target_triangle_count = 128;
+	inputs.meshlet_target_vertex_count   = 128;
+	
+	MdtContinuousLodBuildResult result = {};
+	MdtBuildContinuousLod(&inputs, &result, &callbacks);
+	
+	auto mdt_meshlet_groups         = ArrayView<MdtMeshletGroup>{ result.meshlet_groups, result.meshlet_group_count };
+	auto mdt_meshlets               = ArrayView<MdtMeshlet>{ result.meshlets, result.meshlet_count };
+	auto mdt_meshlet_vertex_indices = ArrayView<u32>{ result.meshlet_vertex_indices, result.meshlet_vertex_index_count };
+	auto mdt_meshlet_triangles      = ArrayView<MdtMeshletTriangle>{ result.meshlet_triangles, result.meshlet_triangle_count };
+	auto mdt_meshlet_vertices       = ArrayView<BasicVertex>{ (BasicVertex*)result.vertices, result.vertex_count };
+	auto mdt_levels_of_detail       = ArrayView<MdtContinuousLodLevel>{ result.levels, result.level_count };
+	
+	auto& selected_level = mdt_levels_of_detail[0];
+	
+	u32 begin_meshlets_index = selected_level.begin_meshlets_index;
+	u32 end_meshlets_index   = selected_level.end_meshlets_index;
+	
+	ArrayResize(result_vertices, alloc, mdt_meshlet_vertex_indices.count);
+	ArrayResize(result_meshlets, alloc, end_meshlets_index - begin_meshlets_index);
+	ArrayResize(result_indices,  alloc, mdt_meshlet_triangles.count * 3);
+	
+	memcpy(result_indices.data, mdt_meshlet_triangles.data, mdt_meshlet_triangles.count * sizeof(MdtMeshletTriangle));
+	static_assert(sizeof(MdtMeshletTriangle) == 3);
+	
+	for (u32 i = 0; i < mdt_meshlet_vertex_indices.count; i += 1) {
+		result_vertices[i] = mdt_meshlet_vertices[mdt_meshlet_vertex_indices[i]];
+	}
+	
+	for (u32 i = begin_meshlets_index; i < end_meshlets_index; i += 1) {
+		auto& src_meshlet = mdt_meshlets[i];
+		auto& dst_meshlet = result_meshlets[i - begin_meshlets_index];
+		
+		dst_meshlet.index_buffer_offset  = src_meshlet.begin_meshlet_triangles_index * 3;
+		dst_meshlet.vertex_buffer_offset = src_meshlet.begin_vertex_indices_index;
+		dst_meshlet.triangle_count       = src_meshlet.end_meshlet_triangles_index - src_meshlet.begin_meshlet_triangles_index;
+		dst_meshlet.vertex_count         = src_meshlet.end_vertex_indices_index    - src_meshlet.begin_vertex_indices_index;
+	}
+	
+	MdtFreeContinuousLodBuildResult(&result, &callbacks);
 }

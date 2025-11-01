@@ -23,6 +23,7 @@ enum struct ShaderType : u32 {
 	ComputeShader = 0,
 	VertexShader  = 1,
 	PixelShader   = 2,
+	MeshShader    = 3,
 	
 	Count
 };
@@ -32,6 +33,7 @@ enum struct ShaderTypeMask : u32 {
 	ComputeShader = 1u << (u32)ShaderType::ComputeShader,
 	VertexShader  = 1u << (u32)ShaderType::VertexShader,
 	PixelShader   = 1u << (u32)ShaderType::PixelShader,
+	MeshShader    = 1u << (u32)ShaderType::MeshShader,
 };
 ENUM_FLAGS_OPERATORS(ShaderTypeMask);
 

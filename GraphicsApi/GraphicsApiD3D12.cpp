@@ -323,9 +323,15 @@ static void CreateGraphicsPipelineState(GraphicsContextD3D12* context, const Pip
 		}
 	}
 	
-	auto& vs = AppendSubobject<D3D12_SHADER_BYTECODE>(stream, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_VS);
-	vs.pShaderBytecode = bytecode[(u32)ShaderType::VertexShader].data;
-	vs.BytecodeLength  = bytecode[(u32)ShaderType::VertexShader].count;
+	if (bytecode[(u32)ShaderType::VertexShader].data) {
+		auto& vs = AppendSubobject<D3D12_SHADER_BYTECODE>(stream, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_VS);
+		vs.pShaderBytecode = bytecode[(u32)ShaderType::VertexShader].data;
+		vs.BytecodeLength  = bytecode[(u32)ShaderType::VertexShader].count;
+	} else if (bytecode[(u32)ShaderType::MeshShader].data) {
+		auto& ms = AppendSubobject<D3D12_SHADER_BYTECODE>(stream, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_MS);
+		ms.pShaderBytecode = bytecode[(u32)ShaderType::MeshShader].data;
+		ms.BytecodeLength  = bytecode[(u32)ShaderType::MeshShader].count;
+	}
 	
 	auto& ps = AppendSubobject<D3D12_SHADER_BYTECODE>(stream, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_PS);
 	ps.pShaderBytecode = bytecode[(u32)ShaderType::PixelShader].data;

@@ -31,6 +31,7 @@
     <Import Project="Props/Direct3D12.props" />
     <Import Project="Props/DirectXShaderCompiler.props" />
     <Import Project="Props/ImGui.props" />
+    <Import Project="Props/MeshDecimationTools.props" />
     <Import Project="Props/Ufbx.props" />
   </ImportGroup>
   

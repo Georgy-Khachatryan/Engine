@@ -193,6 +193,10 @@ static void CmdDispatchD3D12(CmdDispatchPacket* packet, ID3D12GraphicsCommandLis
 	command_list->Dispatch(packet->group_count.x, packet->group_count.y, packet->group_count.z);
 }
 
+static void CmdDispatchMeshD3D12(CmdDispatchMeshPacket* packet, ID3D12GraphicsCommandList7* command_list) {
+	command_list->DispatchMesh(packet->group_count.x, packet->group_count.y, packet->group_count.z);
+}
+
 static void CmdDrawInstancedD3D12(CmdDrawInstancedPacket* packet, ID3D12GraphicsCommandList7* command_list) {
 	command_list->DrawInstanced(packet->vertex_count_per_instance, packet->instance_count, packet->start_vertex_location, packet->start_instance_location);
 }
@@ -430,6 +434,7 @@ void ReplayRecordContext(GraphicsContext* api_context, RecordContext* record_con
 			switch (packet->packet_type) {
 			case CommandType::Jump: command_memory = ((CmdJumpPacket*)packet)->command_memory; break;
 			case CommandType::Dispatch:              CmdDispatchD3D12((CmdDispatchPacket*)packet, command_list); break;
+			case CommandType::DispatchMesh:          CmdDispatchMeshD3D12((CmdDispatchMeshPacket*)packet, command_list); break;
 			case CommandType::DrawInstanced:         CmdDrawInstancedD3D12((CmdDrawInstancedPacket*)packet, command_list); break;
 			case CommandType::DrawIndexedInstanced:  CmdDrawIndexedInstancedD3D12((CmdDrawIndexedInstancedPacket*)packet, command_list); break;
 			case CommandType::CopyBufferToTexture:   CmdCopyBufferToTextureD3D12((CmdCopyBufferToTexturePacket*)packet, command_list, resources); break;

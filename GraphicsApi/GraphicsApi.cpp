@@ -55,6 +55,7 @@ PipelineID CreateGraphicsPipeline(PipelineLibrary* lib, ArrayView<u8> pipeline_s
 	
 	if (HasAnyFlags(shader_type_mask, ShaderTypeMask::PixelShader))  stages |= PipelineStagesMask::PixelShader;
 	if (HasAnyFlags(shader_type_mask, ShaderTypeMask::VertexShader)) stages |= PipelineStagesMask::VertexShader;
+	if (HasAnyFlags(shader_type_mask, ShaderTypeMask::MeshShader))   stages |= PipelineStagesMask::VertexShader;
 	
 	return PipelineID{ pipeline_index, stages, access };
 }

@@ -68,6 +68,12 @@ float2 NdcToScreenUv(float2 ndc) { return float2(ndc.x * 0.5 + 0.5, 0.5 - ndc.y 
 float2 ScreenUvToNdc(float2 uv)  { return float2(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0); }
 
 
+float BarycentricWireframe(float3 lambda, float3 lambda_ddx, float3 lambda_ddy, float thickness = 1.0) {
+	float3 wireframe = smoothstep(0.0, (abs(lambda_ddx) + abs(lambda_ddy)) * thickness, lambda);
+	return min(min(wireframe.x, wireframe.y), wireframe.z);
+}
+
+
 bool IsPerspectiveMatrix(float4 coefficients)  { return coefficients.w == 0.0; }
 bool IsOrthographicMatrix(float4 coefficients) { return coefficients.w != 0.0; }
 

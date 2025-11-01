@@ -5,20 +5,21 @@ enum struct CommandType : u16 {
 	None                  = 0,
 	Jump                  = 1,
 	Dispatch              = 2,
-	DrawInstanced         = 3,
-	DrawIndexedInstanced  = 4,
-	CopyBufferToTexture   = 5,
-	ClearRenderTarget     = 6,
-	ClearDepthStencil     = 7,
-	SetRenderTargets      = 8,
-	SetViewport           = 9,
-	SetScissor            = 10,
-	SetIndexBufferView    = 11,
-	SetRootSignature      = 12,
-	SetPipelineState      = 13,
-	SetDescriptorTable    = 14,
-	SetPushConstants      = 15,
-	SetConstantBuffer     = 16,
+	DispatchMesh          = 3,
+	DrawInstanced         = 4,
+	DrawIndexedInstanced  = 5,
+	CopyBufferToTexture   = 6,
+	ClearRenderTarget     = 7,
+	ClearDepthStencil     = 8,
+	SetRenderTargets      = 9,
+	SetViewport           = 10,
+	SetScissor            = 11,
+	SetIndexBufferView    = 12,
+	SetRootSignature      = 13,
+	SetPipelineState      = 14,
+	SetDescriptorTable    = 15,
+	SetPushConstants      = 16,
+	SetConstantBuffer     = 17,
 	
 	Count
 };
@@ -36,6 +37,12 @@ struct CmdJumpPacket : RecordContextCommandPacket {
 
 struct CmdDispatchPacket : RecordContextCommandPacket {
 	compile_const CommandType my_type = CommandType::Dispatch;
+	
+	uint3 group_count;
+};
+
+struct CmdDispatchMeshPacket : RecordContextCommandPacket {
+	compile_const CommandType my_type = CommandType::DispatchMesh;
 	
 	uint3 group_count;
 };

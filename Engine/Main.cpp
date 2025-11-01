@@ -376,10 +376,11 @@ s32 main() {
 	defer{ ImGui::DestroyContext(); };
 	
 	Array<BasicVertex> vertices;
-	Array<u32> indices;
+	Array<BasicMeshlet> meshlets;
+	Array<u8> indices;
 	{
-		extern void ImportFbxMeshFile(StackAllocator* alloc, String filepath, Array<BasicVertex>& result_vertices, Array<u32>& result_indices);
-		ImportFbxMeshFile(&alloc, "./Assets/Source/Torus/Torus.fbx"_sl, vertices, indices);
+		extern void ImportFbxMeshFile(StackAllocator* alloc, String filepath, Array<BasicVertex>& result_vertices, Array<BasicMeshlet>& result_meshlets, Array<u8>& result_indices);
+		ImportFbxMeshFile(&alloc, "./Assets/Source/Torus/Torus.fbx"_sl, vertices, meshlets, indices);
 	}
 	
 	auto& io = ImGui::GetIO();
@@ -617,12 +618,14 @@ s32 main() {
 		AtmosphereCompositeRenderPass{ atmosphere_parameters_gpu_address, scene_constants_gpu_address }.RecordPass(&record_context);
 		
 		{
-			auto [vb_gpu_address, vb_cpu_address] = AllocateTransientUploadBuffer<BasicVertex, sizeof(BasicVertex)>(&record_context, (u32)vertices.count);
-			auto [ib_gpu_address, ib_cpu_address] = AllocateTransientUploadBuffer<u32>(&record_context, (u32)indices.count);
+			auto [vb_gpu_address, vb_cpu_address] = AllocateTransientUploadBuffer<BasicVertex,  sizeof(BasicVertex)>(&record_context,  (u32)vertices.count);
+			auto [mb_gpu_address, mb_cpu_address] = AllocateTransientUploadBuffer<BasicMeshlet, sizeof(BasicMeshlet)>(&record_context, (u32)meshlets.count);
+			auto [ib_gpu_address, ib_cpu_address] = AllocateTransientUploadBuffer<u8, 16>(&record_context, (u32)indices.count);
 			memcpy(vb_cpu_address, vertices.data, vertices.count * sizeof(BasicVertex));
-			memcpy(ib_cpu_address, indices.data, indices.count * sizeof(u32));
+			memcpy(mb_cpu_address, meshlets.data, meshlets.count * sizeof(BasicMeshlet));
+			memcpy(ib_cpu_address, indices.data,  indices.count  * sizeof(u8));
 			
-			BasicMeshRenderPass{ scene_constants_gpu_address, vb_gpu_address, ib_gpu_address, (u32)vertices.count, (u32)indices.count }.RecordPass(&record_context);
+			BasicMeshRenderPass{ scene_constants_gpu_address, vb_gpu_address, mb_gpu_address, ib_gpu_address, (u32)vertices.count, (u32)meshlets.count, (u32)indices.count }.RecordPass(&record_context);
 		}
 		
 		ImGuiRenderPass{}.RecordPass(&record_context);

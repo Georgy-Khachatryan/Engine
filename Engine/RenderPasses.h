@@ -169,21 +169,37 @@ SHADER_DEFINITION_GENERATED_CODE(DrawTestMeshShaders);
 NOTES(Meta::HlslFile{ "MeshData.hlsl"_sl })
 struct BasicVertex {
 	float3 position;
+	float3 normal;
 	float2 texcoord;
 };
+
+NOTES(Meta::HlslFile{ "MeshData.hlsl"_sl })
+struct BasicMeshlet {
+	u32 index_buffer_offset  = 0;
+	u32 vertex_buffer_offset = 0;
+	u32 triangle_count = 0;
+	u32 vertex_count   = 0;
+};
+
 
 NOTES(Meta::RenderPass{ CommandQueueType::Graphics })
 struct BasicMeshRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
 	GpuAddress scene_constants;
+	
 	GpuAddress vertex_buffer;
+	GpuAddress meshlet_buffer;
 	GpuAddress index_buffer;
-	u32 vertex_count = 0;
-	u32 index_count  = 0;
+	
+	u32 vertex_count  = 0;
+	u32 meshlet_count = 0;
+	u32 index_buffer_size = 0;
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
-		HLSL::RegularBuffer<BasicVertex> vertices;
+		HLSL::RegularBuffer<BasicVertex>  vertices;
+		HLSL::RegularBuffer<BasicMeshlet> meshlets;
+		HLSL::ByteBuffer              index_buffer;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {
