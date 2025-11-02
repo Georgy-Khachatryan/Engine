@@ -8,18 +8,19 @@ enum struct CommandType : u16 {
 	DispatchMesh          = 3,
 	DrawInstanced         = 4,
 	DrawIndexedInstanced  = 5,
-	CopyBufferToTexture   = 6,
-	ClearRenderTarget     = 7,
-	ClearDepthStencil     = 8,
-	SetRenderTargets      = 9,
-	SetViewport           = 10,
-	SetScissor            = 11,
-	SetIndexBufferView    = 12,
-	SetRootSignature      = 13,
-	SetPipelineState      = 14,
-	SetDescriptorTable    = 15,
-	SetPushConstants      = 16,
-	SetConstantBuffer     = 17,
+	ExecuteIndirect       = 6,
+	CopyBufferToTexture   = 7,
+	ClearRenderTarget     = 8,
+	ClearDepthStencil     = 9,
+	SetRenderTargets      = 10,
+	SetViewport           = 11,
+	SetScissor            = 12,
+	SetIndexBufferView    = 13,
+	SetRootSignature      = 14,
+	SetPipelineState      = 15,
+	SetDescriptorTable    = 16,
+	SetPushConstants      = 17,
+	SetConstantBuffer     = 18,
 	
 	Count
 };
@@ -64,6 +65,13 @@ struct CmdDrawIndexedInstancedPacket : RecordContextCommandPacket {
 	u32 start_index_location     = 0;
 	u32 base_vertex_location     = 0;
 	u32 start_instance_location  = 0;
+};
+
+struct CmdExecuteIndirectPacket : RecordContextCommandPacket {
+	compile_const CommandType my_type = CommandType::ExecuteIndirect;
+	
+	CommandType indirect_command_type = CommandType::None;
+	GpuAddress indirect_arguments;
 };
 
 struct CmdCopyBufferToTexturePacket : RecordContextCommandPacket {

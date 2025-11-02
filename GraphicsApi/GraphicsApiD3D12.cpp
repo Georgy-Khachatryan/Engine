@@ -23,6 +23,7 @@ void WaitForNextFrame(GraphicsContext* api_context) {
 
 static void BuildPipelineStates(GraphicsContextD3D12* context, StackAllocator* alloc);
 static void BuildRootSignatures(GraphicsContextD3D12* context, StackAllocator* alloc, ArrayView<ArrayView<u32>> root_signature_streams);
+static ID3D12CommandSignature* CreateCommandSignature(ID3D12Device10* device, D3D12_INDIRECT_ARGUMENT_TYPE type, u32 byte_stride);
 
 GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
 	auto* context = NewFromAlloc(alloc, GraphicsContextD3D12);
@@ -129,6 +130,13 @@ GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
 		}
 	}
 	
+	{
+		context->dispatch_command_signature = CreateCommandSignature(device, D3D12_INDIRECT_ARGUMENT_TYPE_DISPATCH, 16);
+		context->dispatch_mesh_command_signature = CreateCommandSignature(device, D3D12_INDIRECT_ARGUMENT_TYPE_DISPATCH_MESH, 16);
+		context->draw_instanced_command_signature = CreateCommandSignature(device, D3D12_INDIRECT_ARGUMENT_TYPE_DRAW, 16);
+		context->draw_indexed_instanced_command_signature = CreateCommandSignature(device, D3D12_INDIRECT_ARGUMENT_TYPE_DRAW_INDEXED, 20);
+	}
+	
 	
 	{
 		ID3D12GraphicsCommandList7* command_list = nullptr;
@@ -155,6 +163,24 @@ GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
 	}
 	
 	return context;
+}
+
+static ID3D12CommandSignature* CreateCommandSignature(ID3D12Device10* device, D3D12_INDIRECT_ARGUMENT_TYPE type, u32 byte_stride) {
+	D3D12_INDIRECT_ARGUMENT_DESC argument_desc = {};
+	argument_desc.Type = type;
+	
+	D3D12_COMMAND_SIGNATURE_DESC desc = {};
+	desc.ByteStride = byte_stride;
+	desc.NumArgumentDescs = 1;
+	desc.pArgumentDescs = &argument_desc;
+	desc.NodeMask = 0;
+	
+	ID3D12CommandSignature* command_signature = nullptr;
+	if (FAILED(device->CreateCommandSignature(&desc, nullptr, IID_PPV_ARGS(&command_signature)))) {
+		DebugAssertAlways("Failed to create command signature.");
+	}
+	
+	return command_signature;
 }
 
 template<typename T>
@@ -492,6 +518,11 @@ void ReleaseGraphicsContext(GraphicsContext* api_context) {
 	for (auto& root_signature : context->root_signature_table) SafeRelease(root_signature);
 	for (auto& pipeline_state : context->pipeline_state_table) SafeRelease(pipeline_state);
 	
+	SafeRelease(context->dispatch_command_signature);
+	SafeRelease(context->dispatch_mesh_command_signature);
+	SafeRelease(context->draw_instanced_command_signature);
+	SafeRelease(context->draw_indexed_instanced_command_signature);
+	
 	SafeRelease(context->command_list);
 	for (auto& command_allocator : context->command_allocators) SafeRelease(command_allocator);
 	SafeRelease(context->frame_sync_fence);
@@ -553,11 +584,17 @@ NativeTextureResource CreateTextureResource(GraphicsContext* api_context, Textur
 	return resource;
 }
 
-NativeBufferResource CreateBufferResource(GraphicsContext* api_context, u32 size, u8** cpu_address) {
+NativeBufferResource CreateBufferResource(GraphicsContext* api_context, u32 size, GpuMemoryAccessType memory_access_type, u8** cpu_address) {
 	auto* context = (GraphicsContextD3D12*)api_context;
 	
+	compile_const D3D12_HEAP_TYPE memory_access_type_map[(u32)GpuMemoryAccessType::Count] = {
+		D3D12_HEAP_TYPE_DEFAULT,
+		D3D12_HEAP_TYPE_UPLOAD,
+		D3D12_HEAP_TYPE_READBACK,
+	};
+	
 	D3D12_HEAP_PROPERTIES heap_properties = {};
-	heap_properties.Type                 = D3D12_HEAP_TYPE_UPLOAD;
+	heap_properties.Type                 = memory_access_type_map[(u32)memory_access_type];
 	heap_properties.CPUPageProperty      = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
 	heap_properties.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
 	heap_properties.CreationNodeMask     = 0;
@@ -573,7 +610,7 @@ NativeBufferResource CreateBufferResource(GraphicsContext* api_context, u32 size
 	resource_desc.Format           = DXGI_FORMAT_UNKNOWN;
 	resource_desc.SampleDesc       = { 1, 0 };
 	resource_desc.Layout           = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
-	resource_desc.Flags            = D3D12_RESOURCE_FLAG_NONE;
+	resource_desc.Flags            = memory_access_type == GpuMemoryAccessType::Default ? D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS : D3D12_RESOURCE_FLAG_NONE;
 	resource_desc.SamplerFeedbackMipRegion = { 0, 0, 0 };
 	
 	NativeBufferResource resource = {};
@@ -761,6 +798,13 @@ void WindowSwapChainEndFrame(WindowSwapChain* api_swap_chain, GraphicsContext* a
 			
 			resource.texture.resource = CreateTextureResource(context, resource.texture.size);
 			resource.texture.allocated_size = resource.texture.size;
+		} else if (resource.type == VirtualResource::Type::VirtualBuffer && resource.buffer.size != resource.buffer.allocated_size) {
+			if (resource.buffer.resource.d3d12 != nullptr) {
+				ArrayAppend(resources_to_deallocate, alloc, resource.buffer.resource.d3d12);
+			}
+			
+			resource.buffer.resource = CreateBufferResource(context, resource.buffer.size);
+			resource.buffer.allocated_size = resource.buffer.size;
 		}
 	}
 	

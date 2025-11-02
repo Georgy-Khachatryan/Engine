@@ -65,7 +65,7 @@ static ResourceAccessDefinition CreateTextureResourceAccess(VirtualResourceID re
 	return access;
 }
 
-static void AppendResourceBindings(RecordContext* record_context) {
+static void AppendResourceBindings(RecordContext* record_context, ArrayView<ResourceAccessDefinition> indirect_accesses = {}) {
 	auto& state_cache = record_context->state_cache;
 	
 	if (state_cache.is_dirty == false) {
@@ -87,6 +87,8 @@ static void AppendResourceBindings(RecordContext* record_context) {
 	if (HasAnyFlags(state_cache.stages_mask, PipelineStagesMask::DepthStencil)) {
 		accessed_resource_count += 2;
 	}
+	
+	accessed_resource_count += (u32)indirect_accesses.count;
 	
 	Array<ResourceAccessDefinition> resource_accesses;
 	ArrayReserve(resource_accesses, record_context->alloc, accessed_resource_count);
@@ -146,6 +148,10 @@ static void AppendResourceBindings(RecordContext* record_context) {
 		}
 	}
 	
+	for (auto& access : indirect_accesses) {
+		ArrayAppend(resource_accesses, access);
+	}
+	
 	ArrayAppend(record_context->resource_accesses, record_context->alloc, resource_accesses);
 	ArrayAppend(record_context->resource_access_command_prefix_sum, record_context->alloc, record_context->command_count);
 }
@@ -195,6 +201,33 @@ void CmdDrawIndexedInstanced(RecordContext* record_context, u32 index_count_per_
 	packet.base_vertex_location     = base_vertex_location;
 	packet.start_instance_location  = start_instance_location;
 	AppendResourceBindings(record_context);
+}
+
+static void CmdExecuteIndirect(RecordContext* record_context, GpuAddress indirect_arguments, CommandType indirect_command_type) {
+	auto& packet = AppendPacket<CmdExecuteIndirectPacket>(record_context);
+	packet.indirect_command_type = indirect_command_type;
+	packet.indirect_arguments    = indirect_arguments;
+	
+	FixedCountArray<ResourceAccessDefinition, 1> resource_accesses;
+	resource_accesses[0] = CreateBufferResourceAccess(indirect_arguments.resource_id, PipelineStagesMask::IndirectArguments, ResourceAccessMask::IndirectArguments);
+	
+	AppendResourceBindings(record_context, resource_accesses);
+}
+
+void CmdDispatchIndirect(RecordContext* record_context, GpuAddress indirect_arguments) {
+	CmdExecuteIndirect(record_context, indirect_arguments, CommandType::Dispatch);
+}
+
+void CmdDispatchMeshIndirect(RecordContext* record_context, GpuAddress indirect_arguments) {
+	CmdExecuteIndirect(record_context, indirect_arguments, CommandType::DispatchMesh);
+}
+
+void CmdDrawInstancedIndirect(RecordContext* record_context, GpuAddress indirect_arguments) {
+	CmdExecuteIndirect(record_context, indirect_arguments, CommandType::DrawInstanced);
+}
+
+void CmdDrawIndexedInstancedIndirect(RecordContext* record_context, GpuAddress indirect_arguments) {
+	CmdExecuteIndirect(record_context, indirect_arguments, CommandType::DrawIndexedInstanced);
 }
 
 void CmdCopyBufferToTexture(RecordContext* record_context, GpuAddress src_buffer_gpu_address, VirtualResourceID dst_texture_resource_id, u32 src_row_pitch, uint3 src_size, uint3 dst_offset, u32 dst_subresource_index) {
@@ -285,7 +318,8 @@ void CmdSetRootSignature(RecordContext* record_context, const HLSL::BaseRootSign
 	auto& state_cache = record_context->state_cache;
 	state_cache.current_render_pass_type = root_signature.pass_type;
 	state_cache.is_dirty = true;
-	ArrayResizeMemset(record_context->state_cache.resource_bindings, record_context->alloc, root_signature.root_parameter_count);
+	state_cache.resource_bindings.count = 0;
+	ArrayResizeMemset(state_cache.resource_bindings, record_context->alloc, root_signature.root_parameter_count);
 }
 
 void CmdSetPipelineState(RecordContext* record_context, PipelineID pipeline_id) {

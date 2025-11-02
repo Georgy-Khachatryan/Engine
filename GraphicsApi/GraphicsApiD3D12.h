@@ -42,6 +42,11 @@ struct GraphicsContextD3D12 : GraphicsContext {
 	FixedCountArray<D3D12_CPU_DESCRIPTOR_HANDLE, (u32)DescriptorHeapType::Count> cpu_base_handles;
 	FixedCountArray<D3D12_GPU_DESCRIPTOR_HANDLE, (u32)DescriptorHeapType::Count> gpu_base_handles;
 	
+	ID3D12CommandSignature* dispatch_command_signature = nullptr;
+	ID3D12CommandSignature* dispatch_mesh_command_signature = nullptr;
+	ID3D12CommandSignature* draw_instanced_command_signature = nullptr;
+	ID3D12CommandSignature* draw_indexed_instanced_command_signature = nullptr;
+	
 	
 	ID3D12Fence* frame_sync_fence = nullptr;
 	u64 frame_index = 0;

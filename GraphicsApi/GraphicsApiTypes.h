@@ -19,6 +19,14 @@ struct RecordContext;
 struct PipelineLibrary;
 
 
+enum struct GpuMemoryAccessType : u32 {
+	Default  = 0,
+	Upload   = 1,
+	Readback = 2,
+	
+	Count
+};
+
 enum struct ShaderType : u32 {
 	ComputeShader = 0,
 	VertexShader  = 1,
@@ -70,28 +78,32 @@ enum struct CommandQueueType : u32 {
 };
 
 enum struct PipelineStagesMask : u16 {
-	None           = 0,
-	ComputeShader  = 1u << 0,
-	VertexShader   = 1u << 1,
-	PixelShader    = 1u << 2,
-	AnyShader      = ComputeShader | VertexShader | PixelShader,
-	Copy           = 1u << 3,
-	RenderTarget   = 1u << 4,
-	DepthStencilRO = 1u << 5,
-	DepthStencilRW = 1u << 6,
-	DepthStencil   = DepthStencilRO | DepthStencilRW,
+	None              = 0,
+	ComputeShader     = 1u << 0,
+	VertexShader      = 1u << 1,
+	PixelShader       = 1u << 2,
+	AnyShader         = ComputeShader | VertexShader | PixelShader,
+	Copy              = 1u << 3,
+	RenderTarget      = 1u << 4,
+	DepthStencilRO    = 1u << 5,
+	DepthStencilRW    = 1u << 6,
+	DepthStencil      = DepthStencilRO | DepthStencilRW,
+	IndirectArguments = 1u << 7,
 };
 ENUM_FLAGS_OPERATORS(PipelineStagesMask);
 
 enum struct ResourceAccessMask : u16 {
-	None           = 0,
-	SRV            = 1u << 0,
-	UAV            = 1u << 1,
-	CopySrc        = 1u << 2,
-	CopyDst        = 1u << 3,
-	RenderTarget   = 1u << 4,
-	DepthStencilRO = 1u << 5,
-	DepthStencilRW = 1u << 6,
+	None              = 0,
+	SRV               = 1u << 0,
+	UAV               = 1u << 1,
+	CopySrc           = 1u << 2,
+	CopyDst           = 1u << 3,
+	RenderTarget      = 1u << 4,
+	DepthStencilRO    = 1u << 5,
+	DepthStencilRW    = 1u << 6,
+	IndirectArguments = 1u << 7,
+	AccessRO          = SRV | CopySrc | DepthStencilRO | IndirectArguments,
+	AccessRW          = UAV | CopyDst | DepthStencilRW | RenderTarget,
 };
 ENUM_FLAGS_OPERATORS(ResourceAccessMask);
 

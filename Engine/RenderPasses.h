@@ -16,6 +16,10 @@ enum struct VirtualResourceID : u32 {
 	DepthStencil,
 	SceneRadiance,
 	
+	// Mesh rendering:
+	VisibleMeshlets,
+	MeshletIndirectArguments,
+	
 	// Atmosphere resources:
 	TransmittanceLut,
 	MultipleScatteringLut,
@@ -165,10 +169,6 @@ struct AtmosphereCompositeRenderPass {
 
 
 
-NOTES(Meta::ShaderName{ "DrawTestMesh.hlsl"_sl })
-enum struct DrawTestMeshShaders : u32 {};
-SHADER_DEFINITION_GENERATED_CODE(DrawTestMeshShaders);
-
 NOTES(Meta::HlslFile{ "MeshData.hlsl"_sl })
 struct BasicVertex {
 	float3 position;
@@ -194,6 +194,54 @@ struct BasicMeshlet {
 	MeshletErrorMetric coarser_level_error_metric;
 };
 
+NOTES(Meta::ShaderName{ "MeshletCulling.hlsl"_sl })
+enum struct MeshletCullingShaders : u32 {
+	ClearBuffers   = 1u << 0,
+	MeshletCulling = 1u << 1,
+};
+SHADER_DEFINITION_GENERATED_CODE(MeshletCullingShaders);
+
+NOTES(Meta::RenderPass{})
+struct MeshletClearBuffersRenderPass {
+	RENDER_PASS_GENERATED_CODE();
+	
+	struct Descriptors : HLSL::BaseDescriptorTable {
+		HLSL::RWRegularBuffer<uint4> indirect_arguments = VirtualResourceID::MeshletIndirectArguments;
+	};
+	
+	struct RootSignature : HLSL::BaseRootSignature {
+		HLSL::DescriptorTable<Descriptors> descriptor_table;
+	};
+	
+	inline static PipelineID pipeline_id;
+};
+
+NOTES(Meta::RenderPass{})
+struct MeshletCullingRenderPass {
+	RENDER_PASS_GENERATED_CODE();
+	
+	GpuAddress scene_constants;
+	GpuAddress meshlet_buffer;
+	u32 meshlet_count = 0;
+	
+	struct Descriptors : HLSL::BaseDescriptorTable {
+		HLSL::RWRegularBuffer<u32>   visible_meshlets   = VirtualResourceID::VisibleMeshlets;
+		HLSL::RWRegularBuffer<uint4> indirect_arguments = VirtualResourceID::MeshletIndirectArguments;
+		HLSL::RegularBuffer<BasicMeshlet> meshlets;
+	};
+	
+	struct RootSignature : HLSL::BaseRootSignature {
+		HLSL::ConstantBuffer<SceneConstants> scene;
+		HLSL::DescriptorTable<Descriptors> descriptor_table;
+	};
+	
+	inline static PipelineID pipeline_id;
+};
+
+
+NOTES(Meta::ShaderName{ "DrawTestMesh.hlsl"_sl })
+enum struct DrawTestMeshShaders : u32 {};
+SHADER_DEFINITION_GENERATED_CODE(DrawTestMeshShaders);
 
 NOTES(Meta::RenderPass{ CommandQueueType::Graphics })
 struct BasicMeshRenderPass {
@@ -210,6 +258,7 @@ struct BasicMeshRenderPass {
 	u32 index_buffer_size = 0;
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
+		HLSL::RegularBuffer<u32> visible_meshlets = VirtualResourceID::VisibleMeshlets;
 		HLSL::RegularBuffer<BasicVertex>  vertices;
 		HLSL::RegularBuffer<BasicMeshlet> meshlets;
 		HLSL::ByteBuffer              index_buffer;

@@ -57,6 +57,10 @@ void CmdDispatchMesh(RecordContext* record_context, uint2 group_count_xy, u32 gr
 void CmdDispatchMesh(RecordContext* record_context, const uint3& group_count_xyz);
 void CmdDrawInstanced(RecordContext* record_context, u32 vertex_count_per_instance, u32 instance_count = 1, u32 start_vertex_location = 0, u32 start_instance_location = 0);
 void CmdDrawIndexedInstanced(RecordContext* record_context, u32 index_count_per_instance, u32 instance_count = 1, u32 start_index_location = 0, u32 base_vertex_location = 0, u32 start_instance_location = 0);
+void CmdDispatchIndirect(RecordContext* record_context, GpuAddress indirect_arguments);
+void CmdDispatchMeshIndirect(RecordContext* record_context, GpuAddress indirect_arguments);
+void CmdDrawInstancedIndirect(RecordContext* record_context, GpuAddress indirect_arguments);
+void CmdDrawIndexedInstancedIndirect(RecordContext* record_context, GpuAddress indirect_arguments);
 void CmdCopyBufferToTexture(RecordContext* record_context, GpuAddress src_buffer_gpu_address, VirtualResourceID dst_texture_resource_id, u32 src_row_pitch, uint3 src_size, uint3 dst_offset = 0, u32 dst_subresource_index = 0);
 void CmdClearRenderTarget(RecordContext* record_context, VirtualResourceID resource_id);
 void CmdClearDepthStencil(RecordContext* record_context, VirtualResourceID resource_id);

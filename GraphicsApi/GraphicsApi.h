@@ -26,7 +26,7 @@ void WaitForLastFrame(GraphicsContext* context);
 void WaitForNextFrame(GraphicsContext* context);
 
 NativeTextureResource CreateTextureResource(GraphicsContext* context, TextureSize size);
-NativeBufferResource CreateBufferResource(GraphicsContext* context, u32 size, u8** cpu_address);
+NativeBufferResource CreateBufferResource(GraphicsContext* context, u32 size, GpuMemoryAccessType memory_access_type = GpuMemoryAccessType::Default, u8** cpu_address = nullptr);
 void ReleaseTextureResource(GraphicsContext* context, NativeTextureResource resource);
 void ReleaseBufferResource(GraphicsContext* context, NativeBufferResource resource);
 

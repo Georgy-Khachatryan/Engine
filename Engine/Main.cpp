@@ -414,7 +414,7 @@ s32 main() {
 	compile_const u32 imgui_upload_buffer_size = 8 * 1024 * 1024;
 	
 	for (u32 i = 0; i < number_of_frames_in_flight; i += 1) {
-		upload_buffers[i] = CreateBufferResource(graphics_context, imgui_upload_buffer_size, &upload_buffer_cpu_addresses[i]);
+		upload_buffers[i] = CreateBufferResource(graphics_context, imgui_upload_buffer_size, GpuMemoryAccessType::Upload, &upload_buffer_cpu_addresses[i]);
 	}
 	u32 upload_buffer_index = 0;
 	
@@ -551,6 +551,8 @@ s32 main() {
 		resource_table.Set(VirtualResourceID::CurrentBackBuffer, WindowSwapGetCurrentBackBuffer(swap_chain), swap_chain->size);
 		resource_table.Set(VirtualResourceID::TransientUploadBuffer, upload_buffers[upload_buffer_index], imgui_upload_buffer_size, upload_buffer_cpu_addresses[upload_buffer_index]);
 		upload_buffer_index = (upload_buffer_index + 1) % number_of_frames_in_flight;
+		resource_table.Set(VirtualResourceID::VisibleMeshlets, (u32)(meshlets.count * sizeof(u32)));
+		resource_table.Set(VirtualResourceID::MeshletIndirectArguments, sizeof(uint4));
 		
 		struct ImGuiDescriptorTable : HLSL::BaseDescriptorTable {
 			HLSL::Texture2D<float4> scene_radiance = VirtualResourceID::SceneRadiance;
@@ -631,6 +633,8 @@ s32 main() {
 			memcpy(mb_cpu_address, meshlets.data, meshlets.count * sizeof(BasicMeshlet));
 			memcpy(ib_cpu_address, indices.data,  indices.count  * sizeof(u8));
 			
+			MeshletClearBuffersRenderPass{}.RecordPass(&record_context);
+			MeshletCullingRenderPass{ scene_constants_gpu_address, mb_gpu_address, (u32)meshlets.count }.RecordPass(&record_context);
 			BasicMeshRenderPass{ scene_constants_gpu_address, vb_gpu_address, mb_gpu_address, ib_gpu_address, (u32)vertices.count, (u32)meshlets.count, (u32)indices.count }.RecordPass(&record_context);
 		}
 		

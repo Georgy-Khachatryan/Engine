@@ -205,6 +205,21 @@ static void CmdDrawIndexedInstancedD3D12(CmdDrawIndexedInstancedPacket* packet, 
 	command_list->DrawIndexedInstanced(packet->index_count_per_instance, packet->instance_count, packet->start_index_location, packet->base_vertex_location, packet->start_instance_location);
 }
 
+static void CmdExecuteIndirectD3D12(CmdExecuteIndirectPacket* packet, ID3D12GraphicsCommandList7* command_list, GraphicsContextD3D12* context, ArrayView<VirtualResource> resources) {
+	ID3D12CommandSignature* command_signature = nullptr;
+	
+	switch (packet->indirect_command_type) {
+	case CommandType::Dispatch: command_signature = context->dispatch_command_signature; break;
+	case CommandType::DispatchMesh: command_signature = context->dispatch_mesh_command_signature; break;
+	case CommandType::DrawInstanced: command_signature = context->draw_instanced_command_signature; break;
+	case CommandType::DrawIndexedInstanced: command_signature = context->draw_indexed_instanced_command_signature; break;
+	default: DebugAssertAlways("Unsupported indirect command type '%u'.", (u32)packet->indirect_command_type);
+	}
+	
+	auto& indirect_arguments = resources[(u32)packet->indirect_arguments.resource_id];
+	command_list->ExecuteIndirect(command_signature, 1, indirect_arguments.buffer.resource.d3d12, packet->indirect_arguments.offset, nullptr, 0);
+}
+
 static void CmdCopyBufferToTextureD3D12(CmdCopyBufferToTexturePacket* packet, ID3D12GraphicsCommandList7* command_list, ArrayView<VirtualResource> resources) {
 	auto& src_resource = resources[(u32)packet->src_buffer_gpu_address.resource_id];
 	auto& dst_resource = resources[(u32)packet->dst_texture_resource_id];
@@ -356,46 +371,121 @@ static void CreateTextureBarrier(Array<D3D12_TEXTURE_BARRIER>& barriers, Virtual
 	}
 }
 
-static void CmdBarriersD3D12(ArrayView<D3D12_TEXTURE_BARRIER> texture_barriers, ID3D12GraphicsCommandList7* command_list) {
-	if (texture_barriers.count == 0) return;
+static void ResolveBufferAccess(D3D12_BARRIER_SYNC& sync, D3D12_BARRIER_ACCESS& access, ResourceAccessDefinition* access_definition) {
+	DebugAssert(access_definition != nullptr, "Buffers don't need to sync across command lists.");
 	
-	D3D12_BARRIER_GROUP barrier_group = {};
-	barrier_group.Type             = D3D12_BARRIER_TYPE_TEXTURE;
-	barrier_group.NumBarriers      = (u32)texture_barriers.count;
-	barrier_group.pTextureBarriers = texture_barriers.data;
+	u32 access_mask = (u32)access_definition->access_mask;
+	u32 stages_mask = (u32)access_definition->stages_mask;
 	
-	command_list->Barrier(1, &barrier_group);
+	sync = D3D12_BARRIER_SYNC_NONE;
+	if (stages_mask & (u32)PipelineStagesMask::ComputeShader) sync |= D3D12_BARRIER_SYNC_COMPUTE_SHADING;
+	if (stages_mask & (u32)PipelineStagesMask::PixelShader)   sync |= D3D12_BARRIER_SYNC_PIXEL_SHADING;
+	if (stages_mask & (u32)PipelineStagesMask::VertexShader)  sync |= D3D12_BARRIER_SYNC_VERTEX_SHADING;
+	if (stages_mask & (u32)PipelineStagesMask::Copy)          sync |= D3D12_BARRIER_SYNC_COPY;
+	if (stages_mask & (u32)PipelineStagesMask::IndirectArguments) sync |= D3D12_BARRIER_SYNC_EXECUTE_INDIRECT;
+	
+	access = D3D12_BARRIER_ACCESS_COMMON;
+	if (access_mask & (u32)ResourceAccessMask::SRV)     access |= D3D12_BARRIER_ACCESS_SHADER_RESOURCE;
+	if (access_mask & (u32)ResourceAccessMask::UAV)     access |= D3D12_BARRIER_ACCESS_UNORDERED_ACCESS;
+	if (access_mask & (u32)ResourceAccessMask::CopySrc) access |= D3D12_BARRIER_ACCESS_COPY_SOURCE;
+	if (access_mask & (u32)ResourceAccessMask::CopyDst) access |= D3D12_BARRIER_ACCESS_COPY_DEST;
+	if (access_mask & (u32)ResourceAccessMask::IndirectArguments) access |= D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT;
+}
+
+static void CreateBufferBarrier(Array<D3D12_BUFFER_BARRIER>& barriers, VirtualResource& resource, ResourceAccessDefinition* last_access, ResourceAccessDefinition* next_access) {
+	if (last_access == nullptr || next_access == nullptr) return;
+	
+	D3D12_BUFFER_BARRIER barrier = {};
+	ResolveBufferAccess(barrier.SyncBefore, barrier.AccessBefore, last_access);
+	ResolveBufferAccess(barrier.SyncAfter,  barrier.AccessAfter,  next_access);
+	
+	if ((barrier.AccessBefore != barrier.AccessAfter) || ((barrier.AccessBefore & D3D12_BARRIER_ACCESS_UNORDERED_ACCESS) && (barrier.AccessAfter & D3D12_BARRIER_ACCESS_UNORDERED_ACCESS))) {
+		barrier.pResource = resource.texture.resource.d3d12;
+		barrier.Offset    = 0;
+		barrier.Size      = u64_max;
+		ArrayAppend(barriers, barrier);
+	}
+}
+
+static void CmdBarriersD3D12(ArrayView<D3D12_TEXTURE_BARRIER> texture_barriers, ArrayView<D3D12_BUFFER_BARRIER> buffer_barriers, ID3D12GraphicsCommandList7* command_list) {
+	FixedCapacityArray<D3D12_BARRIER_GROUP, 2> barrier_groups;
+	
+	if (texture_barriers.count != 0) {
+		D3D12_BARRIER_GROUP barrier_group = {};
+		barrier_group.Type             = D3D12_BARRIER_TYPE_TEXTURE;
+		barrier_group.NumBarriers      = (u32)texture_barriers.count;
+		barrier_group.pTextureBarriers = texture_barriers.data;
+		ArrayAppend(barrier_groups, barrier_group);
+	}
+	
+	if (buffer_barriers.count != 0) {
+		D3D12_BARRIER_GROUP barrier_group = {};
+		barrier_group.Type            = D3D12_BARRIER_TYPE_BUFFER;
+		barrier_group.NumBarriers     = (u32)buffer_barriers.count;
+		barrier_group.pBufferBarriers = buffer_barriers.data;
+		ArrayAppend(barrier_groups, barrier_group);
+	}
+	
+	if (barrier_groups.count != 0) {
+		command_list->Barrier((u32)barrier_groups.count, barrier_groups.data);
+	}
 }
 
 static void CmdBarriersD3D12(StackAllocator* alloc, ArrayView<ResourceAccessDefinition> resource_accesses, ID3D12GraphicsCommandList7* command_list, ArrayView<VirtualResource> resources) {
 	TempAllocationScope(alloc);
 	
 	Array<D3D12_TEXTURE_BARRIER> texture_barriers;
+	Array<D3D12_BUFFER_BARRIER> buffer_barriers;
 	ArrayReserve(texture_barriers, alloc, resource_accesses.count);
+	ArrayReserve(buffer_barriers, alloc, resource_accesses.count);
 	
 	for (auto& access : resource_accesses) {
 		auto& resource = resources[(u32)access.resource_id];
 		
 		if (access.is_texture) {
 			CreateTextureBarrier(texture_barriers, resource, access.last_access, &access);
+		} else {
+			CreateBufferBarrier(buffer_barriers, resource, access.last_access, &access);
 		}
 	}
 	
-	CmdBarriersD3D12(texture_barriers, command_list);
+	CmdBarriersD3D12(texture_barriers, buffer_barriers, command_list);
+}
+
+static bool IsReadOnly(ResourceAccessMask access_mask) {
+	return HasAnyFlags(access_mask, ResourceAccessMask::AccessRW) == false;
 }
 
 static Array<ResourceAccessDefinition*> ResolveResourceAccesses(StackAllocator* alloc, ArrayView<ArrayView<ResourceAccessDefinition>> resource_accesses, ArrayView<VirtualResource> resources) {
 	Array<ResourceAccessDefinition*> last_resource_access;
 	ArrayResizeMemset(last_resource_access, alloc, resources.count);
 	
-	for (u64 i = 0; i < resource_accesses.count; i += 1) {
-		for (auto& access : resource_accesses[i]) {
+	for (auto& accesses : resource_accesses) {
+		for (u32 i = 0; i < accesses.count;) {
+			auto& access = accesses[i];
 			u32 resource_index = (u32)access.resource_id;
 			
 			auto* last_access = last_resource_access[resource_index];
-			last_resource_access[resource_index] = &access;
-			
-			access.last_access = last_access;
+			if (accesses.begin() <= last_access && last_access < accesses.end()) {
+				DebugAssert(access.is_texture == false, "TODO: Texture resource is bound multiple times.");
+				
+				// Fold current access into the last access of the same group.
+				last_access->stages_mask |= access.stages_mask;
+				last_access->access_mask |= access.access_mask;
+				
+				ArrayEraseSwapLast(accesses, i);
+			} else if (last_access && IsReadOnly(last_access->access_mask) && IsReadOnly(access.access_mask)) {
+				// Fold all read only accesses together into the earliest access.
+				last_access->stages_mask |= access.stages_mask;
+				last_access->access_mask |= access.access_mask;
+				
+				ArrayEraseSwapLast(accesses, i);
+			} else {
+				last_resource_access[resource_index] = &access;
+				i += 1;
+				
+				access.last_access = last_access;
+			}
 		}
 	}
 	
@@ -437,6 +527,7 @@ void ReplayRecordContext(GraphicsContext* api_context, RecordContext* record_con
 			case CommandType::DispatchMesh:          CmdDispatchMeshD3D12((CmdDispatchMeshPacket*)packet, command_list); break;
 			case CommandType::DrawInstanced:         CmdDrawInstancedD3D12((CmdDrawInstancedPacket*)packet, command_list); break;
 			case CommandType::DrawIndexedInstanced:  CmdDrawIndexedInstancedD3D12((CmdDrawIndexedInstancedPacket*)packet, command_list); break;
+			case CommandType::ExecuteIndirect:       CmdExecuteIndirectD3D12((CmdExecuteIndirectPacket*)packet, command_list, context, resources); break;
 			case CommandType::CopyBufferToTexture:   CmdCopyBufferToTextureD3D12((CmdCopyBufferToTexturePacket*)packet, command_list, resources); break;
 			case CommandType::ClearRenderTarget:     CmdClearRenderTargetD3D12((CmdClearRenderTargetPacket*)packet, command_list, context, resources); break;
 			case CommandType::ClearDepthStencil:     CmdClearDepthStencilD3D12((CmdClearDepthStencilPacket*)packet, command_list, context, resources); break;
@@ -460,7 +551,9 @@ void ReplayRecordContext(GraphicsContext* api_context, RecordContext* record_con
 		TempAllocationScope(alloc);
 		
 		Array<D3D12_TEXTURE_BARRIER> texture_barriers;
+		Array<D3D12_BUFFER_BARRIER> buffer_barriers;
 		ArrayReserve(texture_barriers, alloc, last_resource_access.count);
+		ArrayReserve(buffer_barriers, alloc, last_resource_access.count);
 		
 		for (u32 resource_index = 0; resource_index < last_resource_access.count; resource_index += 1) {
 			auto* access = last_resource_access[resource_index];
@@ -468,9 +561,11 @@ void ReplayRecordContext(GraphicsContext* api_context, RecordContext* record_con
 			
 			if (access->is_texture) {
 				CreateTextureBarrier(texture_barriers, resources[resource_index], access, nullptr);
+			} else {
+				CreateBufferBarrier(buffer_barriers, resources[resource_index], access, nullptr);
 			}
 		}
 		
-		CmdBarriersD3D12(texture_barriers, command_list);
+		CmdBarriersD3D12(texture_barriers, buffer_barriers, command_list);
 	}
 }
