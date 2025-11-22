@@ -53,6 +53,52 @@ struct BitScanLowT {
 using BitScanLow   = BitScanLowT<u64, FirstBitLow>;
 using BitScanLow32 = BitScanLowT<u32, FirstBitLow32>;
 
+namespace Math {
+	struct Quatf {
+		union {
+			struct { float x; float y; float z; float w; };
+			struct { Vec2f xy; Vec2f zw; };
+			Vec3f xyz;
+		};
+		
+		constexpr Quatf() : x(0.f), y(0.f), z(0.f), w(1.f) {}
+		constexpr Quatf(float x, float y, float z, float w) : x(x), y(y), z(z), w(w) {}
+		constexpr Quatf(const Vec3f& xyz, float w) : x(xyz.x), y(xyz.y), z(xyz.z), w(w) {}
+		constexpr Quatf(const Quatf& xyzw) : x(xyzw.x), y(xyzw.y), z(xyzw.z), w(xyzw.w) {}
+		
+		template<typename T> explicit constexpr Quatf(const T& xyzw) : x((float)xyzw.x), y((float)xyzw.y), z((float)xyzw.z), w((float)xyzw.w) {}
+		
+		friend Quatf operator*(const Quatf& lh, const Quatf& rh) {
+			Quatf result;
+			result.x = lh.w * rh.x + lh.x * rh.w + lh.y * rh.z - lh.z * rh.y;
+			result.y = lh.w * rh.y - lh.x * rh.z + lh.y * rh.w + lh.z * rh.x;
+			result.z = lh.w * rh.z + lh.x * rh.y - lh.y * rh.x + lh.z * rh.w;
+			result.w = lh.w * rh.w - lh.x * rh.x - lh.y * rh.y - lh.z * rh.z;
+			return result;
+		}
+		
+		Quatf operator*(float other) const { return Quatf(x * other, y * other, z * other, w * other); }
+		Quatf operator/(float other) const { return Quatf(x / other, y / other, z / other, w / other); }
+		
+		Quatf& operator*=(const Quatf& other) { *this = *this * other; return *this; }
+		Quatf& operator*=(float other) { x *= other; y *= other; z *= other; w *= other; return *this; }
+		Quatf& operator/=(float other) { x /= other; y /= other; z /= other; w /= other; return *this; }
+		
+		float& operator[](u32 index) { return (&x)[index]; }
+		const float& operator[](u32 index) const { return (&x)[index]; }
+		
+		compile_const u64 count = 4;
+		compile_const u64 capacity = 4;
+		using ValueType = float;
+	};
+	
+	inline float Dot(const Quatf& lh, const Quatf& rh) { return lh.x * rh.x + lh.y * rh.y + lh.z * rh.z + lh.w * rh.w; }
+	inline float LengthSquare(const Quatf& v) { return Dot(v, v); }
+	inline float Length(const Quatf& v) { return sqrtf(Dot(v, v)); }
+	inline Quatf Normalize(const Quatf& v) { return v * (1.f / Length(v)); }
+}
+
+using quat = Math::Quatf;
 
 using float4 = Math::Vec4f;
 using float3 = Math::Vec3f;
@@ -83,4 +129,7 @@ namespace Math {
 	float4 PerspectiveViewToClip(float vertical_fov, float2 viewport_size, float near_depth);
 	float4 OrthographicViewToClip(float2 size, float far_depth);
 	float4 ViewToClipInverse(const float4& view_to_clip_coef);
+	
+	quat AxisAngleToQuat(const float3& axis, float angle);
+	float3x3 QuatToRotationMatrix(const quat& q);
 }

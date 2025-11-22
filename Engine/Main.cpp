@@ -9,6 +9,7 @@
 #include "GraphicsApi/RecordContext.h"
 
 #include <SDK/imgui/imgui.h>
+#include <SDK/imgui/imgui_internal.h>
 #include <SDK/imgui/backends/imgui_impl_win32.h>
 
 static void BasicExamples(StackAllocator* alloc) {
@@ -357,6 +358,28 @@ static void ImGuiSetCustomStyle() {
 	colors[ImGuiCol_ModalWindowDimBg]       = ImVec4(0.80f, 0.80f, 0.80f, 0.35f);
 }
 
+void ImGuiWrapMousePosition(const ImRect& inclusive_wrap_rect) {
+	auto& io = ImGui::GetIO();
+	auto* viewport = ImGui::GetWindowViewport();
+	
+	auto wrap_rect = ImRect(inclusive_wrap_rect.Min, inclusive_wrap_rect.Max - ImVec2(1.f, 1.f));
+	wrap_rect.Floor();
+	wrap_rect.ClipWithFull(ImRect(viewport->Pos, viewport->Pos + viewport->Size - ImVec2(1.f, 1.f)));
+	
+	auto mouse_pos = io.MousePos;
+	for (u32 axis = 0; axis < 2; axis += 1) {
+		if (mouse_pos[axis] >= wrap_rect.Max[axis]) {
+			mouse_pos[axis] = wrap_rect.Min[axis] + 1.f;
+		} else if (mouse_pos[axis] <= wrap_rect.Min[axis]) {
+			mouse_pos[axis] = wrap_rect.Max[axis] - 1.f;
+		}
+	}
+	
+	if (mouse_pos.x != io.MousePos.x || mouse_pos.y != io.MousePos.y) {
+		ImGui::TeleportMousePos(mouse_pos);
+	}
+}
+
 s32 main() {
 	auto alloc = CreateStackAllocator(64 * 1024 * 1024, 512 * 1024);
 	defer{ ReleaseStackAllocator(alloc); };
@@ -434,6 +457,12 @@ s32 main() {
 	float sun_elevation_degrees = 3.f;
 	float meshlet_target_error_pixels = 1.f;
 	bool use_perspective_view_to_clip = true;
+	
+	quat world_to_view_quat = Math::AxisAngleToQuat(float3(1.f, 0.f, 0.f), 90.f * Math::degrees_to_radians) * Math::AxisAngleToQuat(float3(0.f, 0.f, 1.f), 90.f * Math::degrees_to_radians);
+	float3 world_space_camera_position = 0.f;
+	
+	bool is_mouse_locked = false;
+	ImVec2 locked_mouse_pos;
 	
 	u64 frame_allocation_size = 0;
 	u64 transient_upload_allocation_size = 0;
@@ -565,6 +594,26 @@ s32 main() {
 		ImGui::Begin("Scene");
 		auto window_size = float2(ImGui::GetContentRegionAvail());
 		ImGui::Image(descriptor_table.descriptor_heap_offset, ImVec2(window_size.x, window_size.y));
+		bool scene_hovered = ImGui::IsWindowHovered();
+		
+		if (scene_hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+			is_mouse_locked = true;
+			locked_mouse_pos = ImGui::GetMousePos();
+		}
+		
+		if (is_mouse_locked && (ImGui::IsMouseReleased(ImGuiMouseButton_Left) || ImGui::IsMouseDown(ImGuiMouseButton_Left) == false)) {
+			is_mouse_locked = false;
+			ImGui::TeleportMousePos(locked_mouse_pos);
+		}
+		
+		if (is_mouse_locked) {
+			ImRect lock_rect;
+			lock_rect.Min = ImGui::GetWindowPos();
+			lock_rect.Max = lock_rect.Min + ImGui::GetWindowSize();
+			
+			ImGuiWrapMousePosition(lock_rect);
+			ImGui::SetMouseCursor(ImGuiMouseCursor_None);
+		}
 		ImGui::End();
 		ImGui::PopStyleVar();
 		
@@ -584,8 +633,31 @@ s32 main() {
 		ImGui::SliderFloat("Vertical Field Of View", &vertical_fov_degrees, 10.f, 135.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
 		ImGui::SliderFloat("Meshlet Target Error Pixels", &meshlet_target_error_pixels, 1.f, 128.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
 		ImGui::SliderFloat("Sun Elevation", &sun_elevation_degrees, -10.f, +190.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+		ImGui::Text("World Space Camera Position: (%.3f, %.3f, %.3f)", world_space_camera_position.x, world_space_camera_position.y, world_space_camera_position.z);
 		
 		ImGui::End();
+		
+		{
+			auto world_to_view = Math::QuatToRotationMatrix(world_to_view_quat);
+			
+			float move_distance = ImGui::GetIO().DeltaTime * (ImGui::IsKeyDown(ImGuiMod_Shift) ? 5.f : 1.f) * (ImGui::IsKeyDown(ImGuiMod_Alt) ? 0.2f : 1.f) * 10.f;
+			if (ImGui::IsKeyDown(ImGuiKey_D)) world_space_camera_position += world_to_view[0] * +move_distance;
+			if (ImGui::IsKeyDown(ImGuiKey_A)) world_space_camera_position += world_to_view[0] * -move_distance;
+			if (ImGui::IsKeyDown(ImGuiKey_W)) world_space_camera_position += world_to_view[2] * +move_distance;
+			if (ImGui::IsKeyDown(ImGuiKey_S)) world_space_camera_position += world_to_view[2] * -move_distance;
+			if (ImGui::IsKeyDown(ImGuiKey_Q)) world_space_camera_position += world_to_view[1] * +move_distance;
+			if (ImGui::IsKeyDown(ImGuiKey_E)) world_space_camera_position += world_to_view[1] * -move_distance;
+		}
+		
+		if (is_mouse_locked) {
+			world_to_view_quat = world_to_view_quat * Math::AxisAngleToQuat(float3(0.f, 0.f, 1.f), io.MouseDelta.x * io.DeltaTime * 0.5f);
+			
+			// Compute view_to_world after we applied rotation around Z axis.
+			auto view_to_world = Math::Transpose(Math::QuatToRotationMatrix(world_to_view_quat));
+			world_to_view_quat = world_to_view_quat * Math::AxisAngleToQuat(view_to_world * float3(1.f, 0.f, 0.f), io.MouseDelta.y * io.DeltaTime * 0.5f);
+			
+			world_to_view_quat = Math::Normalize(world_to_view_quat);
+		}
 		
 		SceneConstants scene;
 		scene.render_target_size     = float2(render_target_size);
@@ -597,15 +669,20 @@ s32 main() {
 			scene.view_to_clip_coef = Math::OrthographicViewToClip(window_size * vertical_fov_degrees * (1.f / window_size.x), 1024.f);
 			scene.clip_to_view_coef = Math::ViewToClipInverse(scene.view_to_clip_coef);
 		}
-		scene.view_to_world[0] = float4(0.f,  0.f, 1.f, 0.f);
-		scene.view_to_world[1] = float4(-1.f, 0.f, 0.f, 0.f);
-		scene.view_to_world[2] = float4(0.f, -1.f, 0.f, 0.f);
-		scene.world_to_view[0] = float4(0.f, -1.f, 0.f, 0.f);
-		scene.world_to_view[1] = float4(0.f, 0.f, -1.f, 0.f);
-		scene.world_to_view[2] = float4(1.f, 0.f,  0.f, 0.f);
+		
+		auto world_to_view_rotation = Math::QuatToRotationMatrix(world_to_view_quat);
+		auto view_space_camera_position = world_to_view_rotation * world_space_camera_position;
+		scene.world_to_view[0] = float4(world_to_view_rotation[0], -view_space_camera_position[0]);
+		scene.world_to_view[1] = float4(world_to_view_rotation[1], -view_space_camera_position[1]);
+		scene.world_to_view[2] = float4(world_to_view_rotation[2], -view_space_camera_position[2]);
+		
+		auto view_to_world_rotation = Math::Transpose(world_to_view_rotation);
+		scene.view_to_world[0] = float4(view_to_world_rotation[0], world_space_camera_position[0]);
+		scene.view_to_world[1] = float4(view_to_world_rotation[1], world_space_camera_position[1]);
+		scene.view_to_world[2] = float4(view_to_world_rotation[2], world_space_camera_position[2]);
 		
 		scene.world_to_pixel_scale = scene.view_to_clip_coef.x * scene.render_target_size.x * 0.5f / Max(meshlet_target_error_pixels, 1.f);
-		scene.world_space_camera_position = 0.f;
+		scene.world_space_camera_position = world_space_camera_position;
 		
 		AtmosphereParameters atmosphere_parameters;
 		atmosphere_parameters.world_space_sun_direction.x = cosf(sun_elevation_degrees * Math::degrees_to_radians);

@@ -3,9 +3,7 @@
 #include "Basic/BasicFiles.h"
 #include "MetaprogramCommon.h"
 
-compile_const String vector_components = "xyzw"_sl;
-
-static void GenerateVectorType(StringBuilder& builder, u32 count, String type, String suffix, ArrayView<String> ops) {
+static void GenerateVectorType(StringBuilder& builder, u32 count, String type, String suffix, ArrayView<String> ops, ArrayView<String> unary_ops) {
 	auto name = StringFormat(builder.alloc, "Vec%u%s", count, suffix.data);
 	
 	builder.Append("struct %s {\n", name.data);
@@ -70,10 +68,37 @@ static void GenerateVectorType(StringBuilder& builder, u32 count, String type, S
 		}
 	}
 	
+	for (u64 i = 0; i < ops.count; i += 1) {
+		auto op = ops[i].data;
+		if (count == 2) {
+			builder.Append("%s& operator%s=(const %s& other) { x %s= other.x; y %s= other.y; return *this; }\n", name.data, op, name.data, op, op);
+			builder.Append("%s& operator%s=(%s other) { x %s= other; y %s= other; return *this; }\n\n", name.data, op, type.data, op, op);
+		} else if (count == 3) {
+			builder.Append("%s& operator%s=(const %s& other) { x %s= other.x; y %s= other.y; z %s= other.z; return *this; }\n", name.data, op, name.data, op, op, op);
+			builder.Append("%s& operator%s=(%s other) { x %s= other; y %s= other; z %s= other; return *this; }\n\n", name.data, op, type.data, op, op, op);
+		} else if (count == 4) {
+			builder.Append("%s& operator%s=(const %s& other) { x %s= other.x; y %s= other.y; z %s= other.z; w %s= other.w; return *this; }\n", name.data, op, name.data, op, op, op, op);
+			builder.Append("%s& operator%s=(%s other) { x %s= other; y %s= other; z %s= other; w %s= other; return *this; }\n\n", name.data, op, type.data, op, op, op, op);
+		}
+	}
+	
+	for (u64 i = 0; i < unary_ops.count; i += 1) {
+		auto op = unary_ops[i].data;
+		if (count == 2) {
+			builder.Append("%s operator%s() const { return %s(%sx, %sy); }\n\n", name.data, op, name.data, op, op);
+		} else if (count == 3) {
+			builder.Append("%s operator%s() const { return %s(%sx, %sy, %sz); }\n\n", name.data, op, name.data, op, op, op);
+		} else if (count == 4) {
+			builder.Append("%s operator%s() const { return %s(%sx, %sy, %sz, %sw); }\n\n", name.data, op, name.data, op, op, op, op);
+		}
+	}
+	
 	builder.Append("%s& operator[](u32 index) { return (&x)[index]; }\n", type.data);
 	builder.Append("const %s& operator[](u32 index) const { return (&x)[index]; }\n\n", type.data);
 	
-	builder.Append("compile_const u32 element_count = %u;\n", count);
+	builder.Append("compile_const u64 count = %u;\n", count);
+	builder.Append("compile_const u64 capacity = %u;\n", count);
+	builder.Append("using ValueType = %s;\n", type.data);
 	
 	builder.Unindent();
 	builder.AppendUnformatted("};\n\n"_sl);
@@ -114,10 +139,41 @@ static void GenerateMatrixType(StringBuilder& builder, u32 rows, u32 cols, Strin
 	{
 		builder.Append("inline %s operator*(const %s& v, const %s& m) {\n", row.data, col.data, name.data);
 		builder.Indent();
+		builder.AppendUnformatted("return "_sl);
 		
-		builder.Append("%s result;\n", row.data);
+		StringBuilder line_builder;
+		line_builder.alloc = builder.alloc;
+		
 		for (u32 i = 0; i < cols; i += 1) {
-			builder.Append("result = result + (m[%u] * v[%u]);\n", i, i);
+			if (i != 0) line_builder.AppendUnformatted(" + "_sl);
+			line_builder.Append("(m[%u] * v[%u])", i, i);
+		}
+		line_builder.AppendUnformatted(";\n"_sl);
+		
+		builder.AppendBuilder(line_builder);
+		
+		builder.Unindent();
+		builder.AppendUnformatted("};\n\n"_sl);
+	}
+	
+	{
+		builder.Append("inline %s operator*(const %s& lh, const %s& rh) {\n", name.data, name.data, name.data);
+		builder.Indent();
+		builder.Append("%s result;\n", name.data);
+		
+		for (u32 i = 0; i < cols; i += 1) {
+			builder.Append("result[%u] = ", i);
+			
+			StringBuilder line_builder;
+			line_builder.alloc = builder.alloc;
+			
+			for (u32 j = 0; j < cols; j += 1) {
+				if (j != 0) line_builder.AppendUnformatted(" + "_sl);
+				line_builder.Append("(rh[%u] * lh[%u][%u])", j, i, j);
+			}
+			line_builder.AppendUnformatted(";\n"_sl);
+			
+			builder.AppendBuilder(line_builder);
 		}
 		builder.AppendUnformatted("return result;\n"_sl);
 		
@@ -170,7 +226,8 @@ static void GenerateVectorFunctions(StringBuilder& builder, u32 count, String ty
 	}
 	
 	builder.Append("inline %s LengthSquare(const %s& v) { return Dot(v, v); }\n", type.data, name.data);
-	builder.Append("inline %s Length(const %s& v) { return sqrt%s(Dot(v, v)); }\n\n", type.data, name.data, suffix.data);
+	builder.Append("inline %s Length(const %s& v) { return sqrt%s(Dot(v, v)); }\n", type.data, name.data, suffix.data);
+	builder.Append("inline %s Normalize(const %s& v) { return v * (1.%s / Length(v)); }\n\n", name.data, name.data, suffix.data);
 }
 
 void GenerateMathLibrary(StackAllocator* alloc) {
@@ -185,20 +242,23 @@ void GenerateMathLibrary(StackAllocator* alloc) {
 	builder.Indent();
 	
 	
-	FixedCountArray<String, 10> integer_vector_ops;
-	integer_vector_ops[0] = "+"_sl;
-	integer_vector_ops[1] = "-"_sl;
-	integer_vector_ops[2] = "*"_sl;
-	integer_vector_ops[3] = "/"_sl;
-	integer_vector_ops[4] = "%"_sl;
-	integer_vector_ops[5] = "&"_sl;
-	integer_vector_ops[6] = "|"_sl;
-	integer_vector_ops[7] = "^"_sl;
-	integer_vector_ops[8] = "<<"_sl;
-	integer_vector_ops[9] = ">>"_sl;
+	FixedCountArray<String, 10> uint_vector_ops;
+	uint_vector_ops[0] = "+"_sl;
+	uint_vector_ops[1] = "-"_sl;
+	uint_vector_ops[2] = "*"_sl;
+	uint_vector_ops[3] = "/"_sl;
+	uint_vector_ops[4] = "%"_sl;
+	uint_vector_ops[5] = "&"_sl;
+	uint_vector_ops[6] = "|"_sl;
+	uint_vector_ops[7] = "^"_sl;
+	uint_vector_ops[8] = "<<"_sl;
+	uint_vector_ops[9] = ">>"_sl;
+	
+	FixedCountArray<String, 1> uint_vector_unary_ops;
+	uint_vector_unary_ops[0] = "~"_sl;
 	
 	for (u32 i = 2; i <= 4; i += 1) {
-		GenerateVectorType(builder, i, "u32"_sl, "u32"_sl, integer_vector_ops);
+		GenerateVectorType(builder, i, "u32"_sl, "u32"_sl, uint_vector_ops, uint_vector_unary_ops);
 	}
 	
 	FixedCountArray<String, 4> float_vector_ops;
@@ -207,8 +267,11 @@ void GenerateMathLibrary(StackAllocator* alloc) {
 	float_vector_ops[2] = "*"_sl;
 	float_vector_ops[3] = "/"_sl;
 	
+	FixedCountArray<String, 1> float_vector_unary_ops;
+	float_vector_unary_ops[0] = "-"_sl;
+	
 	for (u32 i = 2; i <= 4; i += 1) {
-		GenerateVectorType(builder, i, "float"_sl, "f"_sl, float_vector_ops);
+		GenerateVectorType(builder, i, "float"_sl, "f"_sl, float_vector_ops, float_vector_unary_ops);
 		GenerateVectorFunctions(builder, i, "float"_sl, "f"_sl);
 	}
 	

@@ -56,3 +56,19 @@ float4 Math::ViewToClipInverse(const float4& view_to_clip_coef) {
 	}
 	return clip_to_view_coef;
 }
+
+
+quat Math::AxisAngleToQuat(const float3& axis, float angle) {
+	float half_angle = angle * 0.5f;
+	float sin_half_angle = sinf(half_angle);
+	float cos_half_angle = cosf(half_angle);
+	return quat(axis * sin_half_angle, cos_half_angle);
+}
+
+float3x3 Math::QuatToRotationMatrix(const quat& q) {
+	float3x3 result;
+	result[0] = float3(1.f - 2.f * (q.y * q.y + q.z * q.z),       2.f * (q.x * q.y - q.z * q.w),       2.f * (q.x * q.z + q.y * q.w));
+	result[1] = float3(      2.f * (q.x * q.y + q.z * q.w), 1.f - 2.f * (q.x * q.x + q.z * q.z),       2.f * (q.y * q.z - q.x * q.w));
+	result[2] = float3(      2.f * (q.x * q.z - q.y * q.w),       2.f * (q.y * q.z + q.x * q.w), 1.f - 2.f * (q.x * q.x + q.y * q.y));
+	return result;
+}
