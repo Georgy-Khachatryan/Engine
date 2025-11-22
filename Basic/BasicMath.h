@@ -77,6 +77,13 @@ namespace Math {
 			return result;
 		}
 		
+		friend Vec3f operator*(const Quatf& q, const Vec3f& v) {
+			// Rotate a vector with a quaternion. Equivalent to QuatToRotationMatrix(q) * v
+			// https://fgiesen.wordpress.com/2019/02/09/rotating-a-single-vector-using-a-quaternion/
+			auto t = Math::Cross(q.xyz, v) * 2.f;
+			return v + t * q.w + Math::Cross(q.xyz, t);
+		}
+		
 		Quatf operator*(float other) const { return Quatf(x * other, y * other, z * other, w * other); }
 		Quatf operator/(float other) const { return Quatf(x / other, y / other, z / other, w / other); }
 		
@@ -96,6 +103,7 @@ namespace Math {
 	inline float LengthSquare(const Quatf& v) { return Dot(v, v); }
 	inline float Length(const Quatf& v) { return sqrtf(Dot(v, v)); }
 	inline Quatf Normalize(const Quatf& v) { return v * (1.f / Length(v)); }
+	inline Quatf Conjugate(const Quatf& v) { return Quatf(-v.x, -v.y, -v.z, v.w); }
 }
 
 using quat = Math::Quatf;
@@ -124,11 +132,22 @@ namespace Math {
 	compile_const float degrees_to_radians = 0.017453292f;
 	compile_const float radians_to_degress = 57.29578f;
 	
+	struct RayInfo {
+		float3 origin;
+		float3 direction;
+	};
+	
 	bool IsPerspectiveMatrix(const float4& coefficients);
 	bool IsOrthographicMatrix(const float4& coefficients);
 	float4 PerspectiveViewToClip(float vertical_fov, float2 viewport_size, float near_depth);
 	float4 OrthographicViewToClip(float2 size, float far_depth);
 	float4 ViewToClipInverse(const float4& view_to_clip_coef);
+	
+	inline float2 NdcToScreenUv(const float2& ndc) { return float2(ndc.x * 0.5f + 0.5f, 0.5f - ndc.y * 0.5f); }
+	inline float2 ScreenUvToNdc(const float2& uv)  { return float2(uv.x * 2.f - 1.f, 1.f - uv.y * 2.f); }
+	
+	RayInfo RayInfoFromNdc(float2 ndc, const float4& clip_to_view_coef);
+	RayInfo RayInfoFromScreenUv(float2 uv, const float4& clip_to_view_coef);
 	
 	quat AxisAngleToQuat(const float3& axis, float angle);
 	float3x3 QuatToRotationMatrix(const quat& q);

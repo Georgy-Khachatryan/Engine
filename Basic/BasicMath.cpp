@@ -1,7 +1,7 @@
 #include "BasicMath.h"
 
-bool Math::IsPerspectiveMatrix(const float4& coefficients)  { return coefficients.w == 0.0; }
-bool Math::IsOrthographicMatrix(const float4& coefficients) { return coefficients.w != 0.0; }
+bool Math::IsPerspectiveMatrix(const float4& coefficients)  { return coefficients.w == 0.f; }
+bool Math::IsOrthographicMatrix(const float4& coefficients) { return coefficients.w != 0.f; }
 
 // 
 // Perspective ViewToClip/ClipToView:
@@ -55,6 +55,25 @@ float4 Math::ViewToClipInverse(const float4& view_to_clip_coef) {
 		clip_to_view_coef.w   = 1.f;
 	}
 	return clip_to_view_coef;
+}
+
+
+Math::RayInfo Math::RayInfoFromNdc(float2 ndc, const float4& clip_to_view_coef) {
+	Math::RayInfo result;
+	
+	if (Math::IsPerspectiveMatrix(clip_to_view_coef)) {
+		result.origin    = float3(0.f, 0.f, 0.f);
+		result.direction = Math::Normalize(float3(ndc * clip_to_view_coef.xy, 1.f));
+	} else {
+		result.origin    = float3(ndc * clip_to_view_coef.xy, 0.f);
+		result.direction = float3(0.f, 0.f, 1.f);
+	}
+	
+	return result;
+}
+
+Math::RayInfo Math::RayInfoFromScreenUv(float2 uv, const float4& clip_to_view_coef) {
+	return Math::RayInfoFromNdc(Math::ScreenUvToNdc(uv), clip_to_view_coef);
 }
 
 

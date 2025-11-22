@@ -380,6 +380,28 @@ void ImGuiWrapMousePosition(const ImRect& inclusive_wrap_rect) {
 	}
 }
 
+struct ImGuiMouseLock {
+	ImGuiMouseButton locked_mouse_button = ImGuiMouseButton_COUNT;
+	ImVec2 locked_mouse_pos;
+	
+	void Update(ImGuiMouseButton button, bool should_lock_mouse, const ImRect& inclusive_lock_rect) {
+		if (should_lock_mouse && locked_mouse_button == ImGuiMouseButton_COUNT && ImGui::IsMouseClicked(button)) {
+			locked_mouse_button = button;
+			locked_mouse_pos = ImGui::GetMousePos();
+		}
+		
+		if (locked_mouse_button == button && ImGui::IsMouseDown(button) == false) {
+			locked_mouse_button = ImGuiMouseButton_COUNT;
+			ImGui::TeleportMousePos(locked_mouse_pos);
+		}
+		
+		if (locked_mouse_button == button) {
+			ImGuiWrapMousePosition(inclusive_lock_rect);
+			ImGui::SetMouseCursor(ImGuiMouseCursor_None);
+		}
+	}
+};
+
 s32 main() {
 	auto alloc = CreateStackAllocator(64 * 1024 * 1024, 512 * 1024);
 	defer{ ReleaseStackAllocator(alloc); };
@@ -461,8 +483,7 @@ s32 main() {
 	quat world_to_view_quat = Math::AxisAngleToQuat(float3(1.f, 0.f, 0.f), 90.f * Math::degrees_to_radians) * Math::AxisAngleToQuat(float3(0.f, 0.f, 1.f), 90.f * Math::degrees_to_radians);
 	float3 world_space_camera_position = 0.f;
 	
-	bool is_mouse_locked = false;
-	ImVec2 locked_mouse_pos;
+	ImGuiMouseLock mouse_lock;
 	
 	u64 frame_allocation_size = 0;
 	u64 transient_upload_allocation_size = 0;
@@ -593,27 +614,16 @@ s32 main() {
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.f, 0.f));
 		ImGui::Begin("Scene");
 		auto window_size = float2(ImGui::GetContentRegionAvail());
+		auto window_pos  = ImGui::GetWindowPos();
 		ImGui::Image(descriptor_table.descriptor_heap_offset, ImVec2(window_size.x, window_size.y));
 		bool scene_hovered = ImGui::IsWindowHovered();
 		
-		if (scene_hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
-			is_mouse_locked = true;
-			locked_mouse_pos = ImGui::GetMousePos();
-		}
+		ImRect mouse_lock_rect;
+		mouse_lock_rect.Min = window_pos;
+		mouse_lock_rect.Max = window_pos + ImGui::GetWindowSize();
+		mouse_lock.Update(ImGuiMouseButton_Left, scene_hovered, mouse_lock_rect);
+		mouse_lock.Update(ImGuiMouseButton_Right, scene_hovered, mouse_lock_rect);
 		
-		if (is_mouse_locked && (ImGui::IsMouseReleased(ImGuiMouseButton_Left) || ImGui::IsMouseDown(ImGuiMouseButton_Left) == false)) {
-			is_mouse_locked = false;
-			ImGui::TeleportMousePos(locked_mouse_pos);
-		}
-		
-		if (is_mouse_locked) {
-			ImRect lock_rect;
-			lock_rect.Min = ImGui::GetWindowPos();
-			lock_rect.Max = lock_rect.Min + ImGui::GetWindowSize();
-			
-			ImGuiWrapMousePosition(lock_rect);
-			ImGui::SetMouseCursor(ImGuiMouseCursor_None);
-		}
 		ImGui::End();
 		ImGui::PopStyleVar();
 		
@@ -638,9 +648,11 @@ s32 main() {
 		ImGui::End();
 		
 		{
-			auto world_to_view = Math::QuatToRotationMatrix(world_to_view_quat);
+			float base_speed = 10.f; // m/s
+			float sensetivity_scale = (ImGui::IsKeyDown(ImGuiMod_Shift) ? 5.f : 1.f) * (ImGui::IsKeyDown(ImGuiMod_Alt) ? 0.2f : 1.f);
 			
-			float move_distance = ImGui::GetIO().DeltaTime * (ImGui::IsKeyDown(ImGuiMod_Shift) ? 5.f : 1.f) * (ImGui::IsKeyDown(ImGuiMod_Alt) ? 0.2f : 1.f) * 10.f;
+			auto world_to_view = Math::QuatToRotationMatrix(world_to_view_quat);
+			float move_distance = base_speed * sensetivity_scale * io.DeltaTime;
 			if (ImGui::IsKeyDown(ImGuiKey_D)) world_space_camera_position += world_to_view[0] * +move_distance;
 			if (ImGui::IsKeyDown(ImGuiKey_A)) world_space_camera_position += world_to_view[0] * -move_distance;
 			if (ImGui::IsKeyDown(ImGuiKey_W)) world_space_camera_position += world_to_view[2] * +move_distance;
@@ -649,14 +661,46 @@ s32 main() {
 			if (ImGui::IsKeyDown(ImGuiKey_E)) world_space_camera_position += world_to_view[1] * -move_distance;
 		}
 		
-		if (is_mouse_locked) {
-			world_to_view_quat = world_to_view_quat * Math::AxisAngleToQuat(float3(0.f, 0.f, 1.f), io.MouseDelta.x * io.DeltaTime * 0.5f);
+		if (scene_hovered && io.MouseWheel != 0.f && mouse_lock.locked_mouse_button == ImGuiMouseButton_COUNT) {
+			float4 view_to_clip_coef;
+			if (use_perspective_view_to_clip) {
+				view_to_clip_coef = Math::PerspectiveViewToClip(vertical_fov_degrees * Math::degrees_to_radians, window_size, near_depth);
+			} else {
+				view_to_clip_coef = Math::OrthographicViewToClip(window_size * vertical_fov_degrees * (1.f / window_size.x), 1024.f);
+			}
+			auto clip_to_view_coef = Math::ViewToClipInverse(view_to_clip_coef);
+			
+			auto uv = float2(ImGui::GetMousePos() - window_pos) / float2(window_size);
+			auto ray_info = Math::RayInfoFromScreenUv(uv, clip_to_view_coef);
+			
+			auto view_to_world = Math::Transpose(Math::QuatToRotationMatrix(world_to_view_quat));
+			
+			float meters_per_click = 1.f;
+			float sensetivity_scale = (ImGui::IsKeyDown(ImGuiMod_Shift) ? 5.f : 1.f) * (ImGui::IsKeyDown(ImGuiMod_Alt) ? 0.2f : 1.f);
+			
+			float move_distance = io.MouseWheel * meters_per_click * sensetivity_scale;
+			world_space_camera_position += (view_to_world * ray_info.direction) * move_distance;
+		}
+		
+		if (mouse_lock.locked_mouse_button == ImGuiMouseButton_Left) {
+			float radians_per_pixel = 1.f / 240.f;
+			
+			compile_const float3 view_space_up = float3(0.f, -1.f, 0.f);
+			auto world_space_up = Math::Conjugate(world_to_view_quat) * view_space_up;
+			world_to_view_quat *= Math::AxisAngleToQuat(float3(0.f, 0.f, world_space_up.z < 0.f ? -1.f : 1.f), io.MouseDelta.x * radians_per_pixel);
 			
 			// Compute view_to_world after we applied rotation around Z axis.
 			auto view_to_world = Math::Transpose(Math::QuatToRotationMatrix(world_to_view_quat));
-			world_to_view_quat = world_to_view_quat * Math::AxisAngleToQuat(view_to_world * float3(1.f, 0.f, 0.f), io.MouseDelta.y * io.DeltaTime * 0.5f);
+			world_to_view_quat *= Math::AxisAngleToQuat(view_to_world * float3(1.f, 0.f, 0.f), io.MouseDelta.y * radians_per_pixel);
 			
 			world_to_view_quat = Math::Normalize(world_to_view_quat);
+		} else if (mouse_lock.locked_mouse_button == ImGuiMouseButton_Right) {
+			float meters_per_pixel = 1.f / 240.f;
+			float sensetivity_scale = (ImGui::IsKeyDown(ImGuiMod_Shift) ? 5.f : 1.f) * (ImGui::IsKeyDown(ImGuiMod_Alt) ? 0.2f : 1.f);
+			
+			auto world_to_view = Math::QuatToRotationMatrix(world_to_view_quat);
+			world_space_camera_position += world_to_view[0] * ((meters_per_pixel * sensetivity_scale) * io.MouseDelta.x);
+			world_space_camera_position += world_to_view[1] * ((meters_per_pixel * sensetivity_scale) * io.MouseDelta.y);
 		}
 		
 		SceneConstants scene;
