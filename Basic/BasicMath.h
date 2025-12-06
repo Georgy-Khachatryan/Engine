@@ -11,6 +11,8 @@ inline u32 CountSetBits32(u32 mask) { return _mm_popcnt_u32(mask); }
 inline u32 CountLeadingZeros32(u32 mask) { return _lzcnt_u32(mask); }
 inline bool IsPowerOfTwo32(u32 value) { return CountSetBits32(value) == 1; }
 inline u32 RoundUpToPowerOfTwo32(u32 value) { return 1u << (32 - CountLeadingZeros32(value - 1)); }
+inline u32 DepositBits32(u32 value, u32 mask) { return _pdep_u32(value, mask); }
+inline u32 ExtractBits32(u32 value, u32 mask) { return _pext_u32(value, mask); }
 
 inline u64 FirstBitLow(u64 mask)  { return _tzcnt_u64(mask); }
 inline u64 FirstBitHigh(u64 mask) { return 63 - _lzcnt_u64(mask); }
@@ -18,6 +20,8 @@ inline u64 CountSetBits(u64 mask) { return _mm_popcnt_u64(mask); }
 inline u64 CountLeadingZeros(u64 mask) { return _lzcnt_u64(mask); }
 inline bool IsPowerOfTwo(u64 value) { return CountSetBits(value) == 1; }
 inline u64 RoundUpToPowerOfTwo(u64 value) { return 1llu << (64 - CountLeadingZeros(value - 1)); }
+inline u64 DepositBits(u64 value, u64 mask) { return _pdep_u64(value, mask); }
+inline u64 ExtractBits(u64 value, u64 mask) { return _pext_u64(value, mask); }
 
 inline u64 AlignUp(u64 size, u64 alignment) { DebugAssert(IsPowerOfTwo(alignment), "Invalid alignment '0x%llX'. Alignment must be a power of 2.", alignment); return (size + alignment - 1) & ~(alignment - 1); }
 inline u32 AlignUp(u32 size, u32 alignment) { DebugAssert(IsPowerOfTwo32(alignment), "Invalid alignment '0x%llX'. Alignment must be a power of 2.", alignment); return (size + alignment - 1) & ~(alignment - 1); }
@@ -121,10 +125,11 @@ using float3x4 = Math::Mat3x4f;
 using float3x3 = Math::Mat3x3f;
 
 
-inline u32   DivideAndRoundUp(u32   numerator, u32 denominator) { return (numerator + (denominator - 1)) / denominator; }
+compile_const u32 DivideAndRoundUp(u32 numerator, u32 denominator) { return (numerator + (denominator - 1)) / denominator; }
 inline uint2 DivideAndRoundUp(uint2 numerator, u32 denominator) { return (numerator + (denominator - 1)) / denominator; }
 inline uint3 DivideAndRoundUp(uint3 numerator, u32 denominator) { return (numerator + (denominator - 1)) / denominator; }
 inline uint4 DivideAndRoundUp(uint4 numerator, u32 denominator) { return (numerator + (denominator - 1)) / denominator; }
+
 
 namespace Math {
 	compile_const float PI  = 3.1415927f;

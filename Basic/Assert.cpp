@@ -40,6 +40,7 @@ void AssertHandler(const char* format, ...) {
 	
 	SystemWriteToConsole("Assertion Failed: "_sl);
 	SystemWriteToConsole(formatted_error_message);
+	SystemWriteToConsole("\n"_sl);
 	
 	u32 disable_assert = 0; // Can be set from the debugger.
 	__debugbreak();

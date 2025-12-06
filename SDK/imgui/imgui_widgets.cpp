@@ -6204,9 +6204,10 @@ bool ImGui::ColorPicker4(const char* label, float col[4], ImGuiColorEditFlags fl
                 draw_list->PrimWriteIdx(i1 + v);
             }
 
-            draw_list->PrimWriteIdx(i0 + grid_segment_count - u - 1);
-            draw_list->PrimWriteIdx(i0 + grid_segment_count - u);
-            draw_list->PrimWriteIdx(i1 + grid_segment_count - u - 1);
+            const unsigned int v = grid_segment_count - u - 1;
+            draw_list->PrimWriteIdx(i0 + v);
+            draw_list->PrimWriteIdx(i0 + v + 1);
+            draw_list->PrimWriteIdx(i1 + v);
 
             base_index = next_row_base_index;
             next_row_base_index += grid_segment_count - u;

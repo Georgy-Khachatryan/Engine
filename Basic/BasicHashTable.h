@@ -61,6 +61,10 @@ struct HashTable {
 		
 		Iterator& operator++ () {
 			index += 1;
+			return FindNextActiveIndex();
+		}
+		
+		Iterator& FindNextActiveIndex() {
 			while (index < capacity && metadata[index] <= hash_table_hash_value_deleted) {
 				index += 1;
 			}
@@ -71,7 +75,7 @@ struct HashTable {
 		ElementType& operator* () { return data[index]; }
 	};
 	
-	Iterator begin() { return Iterator{ metadata, data, 0,        capacity }; }
+	Iterator begin() { return Iterator{ metadata, data, 0,        capacity }.FindNextActiveIndex(); }
 	Iterator end()   { return Iterator{ metadata, data, capacity, capacity }; }
 };
 

@@ -40,11 +40,13 @@ void BasicMeshRenderPass::CreatePipelines(PipelineLibrary* lib) {
 	struct {
 		PipelineRenderTarget render_target;
 		PipelineDepthStencil depth_stencil;
+		PipelineRasterizer rasterizer;
 	} pipeline;
 	
 	pipeline.render_target.format = TextureFormat::R16G16B16A16_FLOAT;
 	pipeline.depth_stencil.flags  = PipelineDepthStencil::Flags::EnableDepthWrite;
 	pipeline.depth_stencil.format = TextureFormat::D32_FLOAT;
+	pipeline.rasterizer.cull_mode = PipelineRasterizer::CullMode::Back;
 	
 	pipeline_id = CreateGraphicsPipeline(lib, pipeline, DrawTestMeshShadersID, 0, ShaderTypeMask::MeshShader | ShaderTypeMask::PixelShader);
 }

@@ -38,9 +38,9 @@ float4 Pow2(float4 value) { return value * value; }
 uint MortonEncode(uint2 coordinates) {
 	uint t = (coordinates.x & 0xFF) | ((coordinates.y & 0xFF) << 16);
 	
-	t = (t ^ (t <<  4)) & 0x0F0F0F0F;
-	t = (t ^ (t <<  2)) & 0x33333333;
-	t = (t ^ (t <<  1)) & 0x55555555;
+	t = (t ^ (t << 4)) & 0x0F0F0F0F;
+	t = (t ^ (t << 2)) & 0x33333333;
+	t = (t ^ (t << 1)) & 0x55555555;
 	
 	return (t >> 15) | (t & 0xFFFF);
 }
@@ -49,7 +49,7 @@ uint2 MortonDecode(uint code) {
 	uint t = (code & 0x5555) | ((code & 0xAAAA) << 15);
 	
 	t = (t ^ (t >> 1)) & 0x33333333;
-	t = (t ^ (t >> 2)) & 0x0f0f0f0f;
+	t = (t ^ (t >> 2)) & 0x0F0F0F0F;
 	t ^= t >> 4;
 	
 	return uint2(t, t >> 16) & 0xFF;

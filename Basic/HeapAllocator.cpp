@@ -180,9 +180,38 @@ static void AllocateNewPage(HeapAllocator* heap, u64 reserved_size) {
 	PushFreeBlock(heap, block);
 }
 
-static void* AllocateFromHeap(HeapAllocator* heap, u64 size) {
-	size = Max(AlignUp(size, minimum_alignment) + sizeof(HeapAllocatorBlockHeader), sizeof(HeapAllocatorBlock));
+static u64 ComputeBlockSize(u64 size, u64 alignment) {
+	return Max(AlignUp(size + (alignment - minimum_alignment), minimum_alignment) + sizeof(HeapAllocatorBlockHeader), sizeof(HeapAllocatorBlock));
+}
+
+static HeapAllocatorBlock* AllocatorBlockFromMemory(void* memory) {
+	auto* block = (HeapAllocatorBlock*)((u8*)memory - sizeof(HeapAllocatorBlockHeader));
 	
+	// Zero size signals that this is a padding block. The real block is stored at an offset stored in last_block_size.
+	if (block->size == 0) {
+		block = (HeapAllocatorBlock*)((u8*)block - block->last_block_size);
+	}
+	
+	return block;
+}
+
+static void* MemoryFromAllocatorBlock(HeapAllocatorBlock* block, u64 alignment) {
+	u8* memory = (u8*)block + sizeof(HeapAllocatorBlockHeader);
+	u8* aligned_memory = (u8*)AlignUp((u64)memory, alignment);
+	
+	// Insert a padding block with an offset to the real block.
+	if (aligned_memory != memory) {
+		auto* padding_block = NewInPlace((u8*)aligned_memory - sizeof(HeapAllocatorBlockHeader), HeapAllocatorBlockHeader);
+		padding_block->is_free_block   = false;
+		padding_block->size            = 0; // Zero size signals that this is a padding block.
+		padding_block->has_next_block  = false;
+		padding_block->last_block_size = (u8*)padding_block - (u8*)block; // Offset to the real block.
+	}
+	
+	return aligned_memory;
+}
+
+static void* AllocateFromHeap(HeapAllocator* heap, u64 size, u64 alignment) {
 	u32 bin_index = ComputeBinIndex(size, true);
 	u32 index_level_0 = (bin_index >> 3);
 	u32 index_level_1 = (bin_index & 0x7);
@@ -205,21 +234,23 @@ static void* AllocateFromHeap(HeapAllocator* heap, u64 size) {
 	PopFreeBlock(heap, block, free_bin_index);
 	PushFreeBlockExcess(heap, block, size);
 	
-	return (u8*)block + sizeof(HeapAllocatorBlockHeader);
+	return MemoryFromAllocatorBlock(block, alignment);
 }
 
 void* HeapAllocator::Allocate(u64 size, u64 alignment) {
 	if (size == 0) return nullptr;
-	DebugAssert(alignment <= minimum_alignment, "Unsupported alignment.");
 	
-	auto* memory = AllocateFromHeap(this, size);
+	alignment = Max(alignment, minimum_alignment);
+	u64 block_size = ComputeBlockSize(size, alignment);
+	
+	auto* memory = AllocateFromHeap(this, block_size, alignment);
 	if (memory != nullptr) return memory;
 	
-	u64 new_block_committed_size = AlignToNextBinSize(size + sizeof(HeapAllocatorBlockHeader)) + sizeof(HeapAllocatorPage);
+	u64 new_block_committed_size = AlignToNextBinSize(block_size) + sizeof(HeapAllocatorPage);
 	u64 new_block_reserved_size  = reserved_size > new_block_committed_size ? reserved_size : new_block_committed_size;
 	AllocateNewPage(this, new_block_reserved_size);
 	
-	return AllocateFromHeap(this, size);
+	return AllocateFromHeap(this, block_size, alignment);
 }
 
 void* HeapAllocator::Reallocate(void* old_memory, u64 old_size, u64 new_size, u64 alignment) {
@@ -227,19 +258,19 @@ void* HeapAllocator::Reallocate(void* old_memory, u64 old_size, u64 new_size, u6
 	if (new_size == 0)         return Deallocate(old_memory, old_size), nullptr;
 	if (new_size <= old_size)  return old_memory;
 	
-	DebugAssert(alignment <= minimum_alignment, "Unsupported alignment.");
-	new_size = Max(AlignUp(new_size, minimum_alignment) + sizeof(HeapAllocatorBlockHeader), sizeof(HeapAllocatorBlock));
+	alignment = Max(alignment, minimum_alignment);
+	u64 new_block_size = ComputeBlockSize(new_size, alignment);
 	
-	auto* block = (HeapAllocatorBlock*)((u8*)old_memory - sizeof(HeapAllocatorBlockHeader));
+	auto* block = AllocatorBlockFromMemory(old_memory);
 	
 	auto* next_block = block->GetNextBlock();
 	if (next_block && next_block->is_free_block) {
 		PopFreeBlock(this, next_block, ComputeBinIndex(next_block->size));
 		CombineFreeBlocks(block, next_block);
 		
-		if (block->size >= new_size) {
-			PushFreeBlockExcess(this, block, new_size);
-			return (u8*)block + sizeof(HeapAllocatorBlockHeader);
+		if (block->size >= new_block_size) {
+			PushFreeBlockExcess(this, block, new_block_size);
+			return old_memory;
 		}
 	}
 	
@@ -249,17 +280,21 @@ void* HeapAllocator::Reallocate(void* old_memory, u64 old_size, u64 new_size, u6
 		CombineFreeBlocks(last_block, block);
 		block = last_block;
 		
-		if (block->size >= new_size) {
-			PushFreeBlockExcess(this, block, new_size);
-			memmove((u8*)block + sizeof(HeapAllocatorBlockHeader), old_memory, old_size);
-			return (u8*)block + sizeof(HeapAllocatorBlockHeader);
+		if (block->size >= new_block_size) {
+			void* new_memory = MemoryFromAllocatorBlock(block, alignment);
+			memmove(new_memory, old_memory, old_size);
+			
+			// Must happen after we copy the old_memory, otherwise we could override it's range when placing a free block.
+			PushFreeBlockExcess(this, block, new_block_size);
+			
+			return new_memory;
 		}
 	}
 	
 	void* new_memory = Allocate(new_size, alignment);
 	memcpy(new_memory, old_memory, old_size);
 	
-	// Must happen after we copy old_memory, otherwise we would override the first 16 bytes.
+	// Must happen after we copy the old_memory, otherwise we would override the first 16 bytes.
 	PushFreeBlock(this, block);
 	
 	return new_memory;
@@ -268,7 +303,7 @@ void* HeapAllocator::Reallocate(void* old_memory, u64 old_size, u64 new_size, u6
 void HeapAllocator::Deallocate(void* old_memory, u64 old_size) {
 	if (old_memory == nullptr) return;
 	
-	auto* block = (HeapAllocatorBlock*)((u8*)old_memory - sizeof(HeapAllocatorBlockHeader));
+	auto* block = AllocatorBlockFromMemory(old_memory);
 	
 	auto* next_block = block->GetNextBlock();
 	if (next_block && next_block->is_free_block) {
