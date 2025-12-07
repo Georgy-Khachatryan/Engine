@@ -53,6 +53,9 @@
     <ClCompile Include="Engine/ImGuiRenderPass.cpp" />
     <ClCompile Include="Engine/MeshRenderPasses.cpp" />
     
+    <!-- Entity System. -->
+    <ClCompile Include="Engine/EntitySystem.cpp" />
+    
     <!-- Generated code. -->
     <ClCompile Include="Engine/Generated/RootSignature.cpp" />
     <ClCompile Include="Engine/Generated/ShaderDefinitions.cpp" />
@@ -68,6 +71,9 @@
     <ClInclude Include="GraphicsApi/RecordContext.h" />
     <ClInclude Include="GraphicsApi/RecordContextCommands.h" />
     <ClInclude Include="GraphicsApi/TextureFormat.h" />
+    
+    <!-- Entity System. -->
+    <ClInclude Include="Engine/EntitySystem.h" />
     
     <ClInclude Include="GraphicsApi/GraphicsApiD3D12.h" />
   </ItemGroup>

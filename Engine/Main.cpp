@@ -7,6 +7,7 @@
 #include "RenderPasses.h"
 #include "GraphicsApi/GraphicsApi.h"
 #include "GraphicsApi/RecordContext.h"
+#include "EntitySystem.h"
 
 #include <SDK/imgui/imgui.h>
 #include <SDK/imgui/imgui_internal.h>
@@ -426,6 +427,84 @@ struct ImGuiMouseLock {
 	}
 };
 
+#define ImGuiScopeID(...) ImGui::PushID(__VA_ARGS__); defer{ ImGui::PopID(); }
+
+struct GuidComponent {
+	u64 guid = 0;
+	
+	compile_const u32 component_type_id = 0;
+};
+
+struct NameComponent {
+	String name;
+	
+	compile_const u32 component_type_id = 1;
+};
+
+struct PositionComponent {
+	float3 position;
+	
+	compile_const u32 component_type_id = 2;
+};
+
+struct ScaleComponent {
+	float scale = 1.f;
+	
+	compile_const u32 component_type_id = 3;
+};
+
+struct RotationComponent {
+	quat rotation;
+	
+	compile_const u32 component_type_id = 4;
+}; 
+
+extern ComponentTypeInfo component_type_infos[component_type_count] = {
+	{ sizeof(GuidComponent)      },
+	{ sizeof(NameComponent)      },
+	{ sizeof(PositionComponent)  },
+	{ sizeof(ScaleComponent)     },
+	{ sizeof(RotationComponent)  },
+};
+
+struct Guid_ComponentView {
+	GuidComponent* guid = nullptr;
+	
+	inline static EntityTypeKey key = CreateEntityTypeKey<GuidComponent>();
+};
+
+struct GuidName_ComponentView {
+	GuidComponent* guid = nullptr;
+	NameComponent* name = nullptr;
+	
+	inline static EntityTypeKey key = CreateEntityTypeKey<GuidComponent, NameComponent>();
+};
+
+struct Position_ComponentView {
+	PositionComponent* position = nullptr;
+	
+	inline static EntityTypeKey key = CreateEntityTypeKey<PositionComponent>();
+};
+
+struct Rotation_ComponentView {
+	RotationComponent* rotation = nullptr;
+	
+	inline static EntityTypeKey key = CreateEntityTypeKey<RotationComponent>();
+};
+
+struct Scale_ComponentView {
+	ScaleComponent* scale = nullptr;
+	
+	inline static EntityTypeKey key = CreateEntityTypeKey<ScaleComponent>();
+};
+
+struct Name_ComponentView {
+	NameComponent* name = nullptr;
+	
+	inline static EntityTypeKey key = CreateEntityTypeKey<NameComponent>();
+};
+
+
 s32 main() {
 	auto alloc = CreateStackAllocator(64 * 1024 * 1024, 512 * 1024);
 	defer{ ReleaseStackAllocator(alloc); };
@@ -480,10 +559,10 @@ s32 main() {
 	
 	FixedCountArray<NativeBufferResource, number_of_frames_in_flight> upload_buffers;
 	FixedCountArray<u8*, number_of_frames_in_flight> upload_buffer_cpu_addresses;
-	compile_const u32 imgui_upload_buffer_size = 8 * 1024 * 1024;
+	compile_const u32 upload_buffer_size = 8 * 1024 * 1024;
 	
 	for (u32 i = 0; i < number_of_frames_in_flight; i += 1) {
-		upload_buffers[i] = CreateBufferResource(graphics_context, imgui_upload_buffer_size, GpuMemoryAccessType::Upload, &upload_buffer_cpu_addresses[i]);
+		upload_buffers[i] = CreateBufferResource(graphics_context, upload_buffer_size, GpuMemoryAccessType::Upload, &upload_buffer_cpu_addresses[i]);
 	}
 	u32 upload_buffer_index = 0;
 	
@@ -506,6 +585,81 @@ s32 main() {
 	
 	quat world_to_view_quat = Math::AxisAngleToQuat(float3(1.f, 0.f, 0.f), 90.f * Math::degrees_to_radians) * Math::AxisAngleToQuat(float3(0.f, 0.f, 1.f), 90.f * Math::degrees_to_radians);
 	float3 world_space_camera_position = 0.f;
+	
+	EntitySystem entity_system;
+	entity_system.heap = CreateHeapAllocator(2 * 1024 * 1024);
+	
+	CreateEntities<GuidComponent, NameComponent, PositionComponent, RotationComponent, ScaleComponent>(&alloc, entity_system, 64);
+	CreateEntities<GuidComponent, NameComponent>(&alloc, entity_system, 64);
+	
+	
+	u64  random_seed    = 0x7C7C4065B00D53D3ull;
+	bool random_success = _rdrand64_step(&random_seed) != 0;
+	DebugAssert(random_success, "Failed to initialize random number generator.");
+	
+	{
+		auto guid_view = QueryEntities<Guid_ComponentView>(&alloc, entity_system);
+		
+		u32 entity_count = 0;
+		for (auto* entity_array : guid_view) {
+			entity_count += entity_array->count;
+		}
+		
+		HashTableReserve(entity_system.entity_guid_to_entity_id, &entity_system.heap, entity_count);
+		
+		for (auto* entity_array : guid_view) {
+			auto streams = ExtractComponentStreams<Guid_ComponentView>(entity_array);
+			
+			auto* entity_ids = entity_array->stream_index_to_entity_id;
+			for (u32 index = 0; index < entity_array->count; index += 1) {
+				auto& [guid] = streams.guid[index];
+				u32 entity_id = entity_ids[index];
+				
+				guid = GenerateRandomNumber64(random_seed);
+				HashTableAddOrFind(entity_system.entity_guid_to_entity_id, guid, entity_id);
+			}
+		}
+		
+		for (auto* entity_array : QueryEntities<Name_ComponentView>(&alloc, entity_system)) {
+			auto streams = ExtractComponentStreams<Name_ComponentView>(entity_array);
+			
+			for (auto& [name] : ArrayView<NameComponent>{ streams.name, entity_array->count }) {
+				name = {};
+			}
+		}
+	}
+	
+	{
+		float position_index = 0.f;
+		for (auto* entity_array : QueryEntities<Position_ComponentView>(&alloc, entity_system)) {
+			auto streams = ExtractComponentStreams<Position_ComponentView>(entity_array);
+			
+			for (auto& [position] : ArrayView<PositionComponent>{ streams.position, entity_array->count }) {
+				position = float3(position_index, 0.f, 0.f);
+				position_index += 1.f;
+			}
+		}
+		
+		for (auto* entity_array : QueryEntities<Rotation_ComponentView>(&alloc, entity_system)) {
+			auto streams = ExtractComponentStreams<Rotation_ComponentView>(entity_array);
+			
+			for (auto& [rotation] : ArrayView<RotationComponent>{ streams.rotation, entity_array->count }) {
+				rotation = quat();
+			}
+		}
+		
+		for (auto* entity_array : QueryEntities<Scale_ComponentView>(&alloc, entity_system)) {
+			auto streams = ExtractComponentStreams<Scale_ComponentView>(entity_array);
+			
+			for (auto& [scale] : ArrayView<ScaleComponent>{ streams.scale, entity_array->count }) {
+				scale = 1.f;
+			}
+		}
+	}
+	
+	HashTable<u64, u32> selected_entities_hash_table;
+	
+	defer{ ReleaseHeapAllocator(entity_system.heap); };
 	
 	ImGuiMouseLock mouse_lock;
 	
@@ -623,7 +777,7 @@ s32 main() {
 		
 		resource_table.virtual_resources.count = (u64)VirtualResourceID::Count;
 		resource_table.Set(VirtualResourceID::CurrentBackBuffer, WindowSwapGetCurrentBackBuffer(swap_chain), swap_chain->size);
-		resource_table.Set(VirtualResourceID::TransientUploadBuffer, upload_buffers[upload_buffer_index], imgui_upload_buffer_size, upload_buffer_cpu_addresses[upload_buffer_index]);
+		resource_table.Set(VirtualResourceID::TransientUploadBuffer, upload_buffers[upload_buffer_index], upload_buffer_size, upload_buffer_cpu_addresses[upload_buffer_index]);
 		upload_buffer_index = (upload_buffer_index + 1) % number_of_frames_in_flight;
 		resource_table.Set(VirtualResourceID::VisibleMeshlets, (u32)(meshlets.count * sizeof(u32)));
 		resource_table.Set(VirtualResourceID::MeshletIndirectArguments, sizeof(uint4));
@@ -641,11 +795,12 @@ s32 main() {
 		auto window_pos  = ImGui::GetWindowPos();
 		ImGui::Image(descriptor_table.descriptor_heap_offset, ImVec2(window_size.x, window_size.y));
 		bool scene_hovered = ImGui::IsWindowHovered();
+		bool scene_focused = ImGui::IsWindowFocused();
 		
 		ImRect mouse_lock_rect;
 		mouse_lock_rect.Min = window_pos;
 		mouse_lock_rect.Max = window_pos + ImGui::GetWindowSize();
-		mouse_lock.Update(ImGuiMouseButton_Left, scene_hovered, mouse_lock_rect);
+		mouse_lock.Update(ImGuiMouseButton_Left,  scene_hovered, mouse_lock_rect);
 		mouse_lock.Update(ImGuiMouseButton_Right, scene_hovered, mouse_lock_rect);
 		
 		ImGui::End();
@@ -669,9 +824,106 @@ s32 main() {
 		ImGui::SliderFloat("Sun Elevation", &sun_elevation_degrees, -10.f, +190.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
 		ImGui::Text("World Space Camera Position: (%.3f, %.3f, %.3f)", world_space_camera_position.x, world_space_camera_position.y, world_space_camera_position.z);
 		
+		ImGui::BeginGroup();
+		if (ImGui::CollapsingHeader("GUID/Name Query")) {
+			u32 entity_count = 0;
+			
+			auto entity_view = QueryEntities<GuidName_ComponentView>(&alloc, entity_system);
+			for (auto* entity_array : entity_view) {
+				entity_count += entity_array->count;
+			}
+			
+			auto apply_requests = [&](ImGuiMultiSelectIO* ms_io) {
+				for (auto& request : ms_io->Requests) {
+					if (request.Type == ImGuiSelectionRequestType_SetAll) {
+						if (request.Selected) {
+							for (auto* entity_array : entity_view) {
+								auto streams = ExtractComponentStreams<Gui_ComponentView>(entity_array);
+								for (u32 index = 0; index < entity_array->count; index += 1) {
+									auto& [guid] = streams.guid[index];
+									HashTableAddOrFind(selected_entities_hash_table, &entity_system.heap, guid, entity_array->entity_type_index);
+								}
+							}
+						} else {
+							HashTableClear(selected_entities_hash_table);
+						}
+					} else if (request.Type == ImGuiSelectionRequestType_SetRange) {
+						u32 global_index = 0;
+						for (auto* entity_array : entity_view) {
+							u32 start_index = Max((u32)request.RangeFirstItem, global_index);
+							u32 end_index   = Min((u32)request.RangeLastItem + 1, global_index + entity_array->count);
+							defer{ global_index += entity_array->count; };
+							
+							if (start_index >= end_index) continue;
+							
+							auto streams = ExtractComponentStreams<Guid_ComponentView>(entity_array);
+							for (u32 index = start_index; index < end_index; index += 1) {
+								auto& [guid] = streams.guid[index - global_index];
+								if (request.Selected) {
+									HashTableAddOrFind(selected_entities_hash_table, &entity_system.heap, guid, entity_array->entity_type_index);
+								} else {
+									HashTableRemove(selected_entities_hash_table, guid);
+								}
+							}
+						}
+					}
+				}
+			};
+			
+			auto* ms_io = ImGui::BeginMultiSelect(ImGuiMultiSelectFlags_ClearOnEscape | ImGuiMultiSelectFlags_ClearOnClickVoid, (s32)selected_entities_hash_table.count, (s32)entity_count);
+			apply_requests(ms_io);
+			
+			ImGuiListClipper clipper;
+			clipper.Begin(entity_count);
+			if (ms_io->RangeSrcItem != -1) clipper.IncludeItemByIndex((s32)ms_io->RangeSrcItem);
+			
+			while (clipper.Step()) {
+				u32 global_index = 0;
+				for (auto* entity_array : entity_view) {
+					u32 start_index = Max(clipper.DisplayStart, global_index);
+					u32 end_index   = Min(clipper.DisplayEnd,   global_index + entity_array->count);
+					defer{ global_index += entity_array->count; };
+					
+					if (start_index >= end_index) continue;
+					
+					auto streams = ExtractComponentStreams<GuidName_ComponentView>(entity_array);
+					for (u32 index = start_index; index < end_index; index += 1) {
+						auto& [guid] = streams.guid[index - global_index];
+						auto& [name] = streams.name[index - global_index];
+						
+						ImGuiScopeID((void*)guid);
+						
+						ImGui::Bullet();
+						ImGui::SameLine();
+						ImGui::Text("%u", entity_array->entity_type_index);
+						ImGui::SameLine();
+						
+						bool is_selected = HashTableFind(selected_entities_hash_table, guid) != nullptr;
+						
+						ImGui::SetNextItemSelectionUserData(index);
+						ImGui::Selectable(name.count ? name.data : "EmptyName", is_selected);
+					}
+				}
+			}
+			
+			ms_io = ImGui::EndMultiSelect();
+			apply_requests(ms_io);
+			
+			if (ImGui::Shortcut(ImGuiKey_Delete, ImGuiInputFlags_RouteGlobal)) {
+				for (auto& [guid, entity_type_index] : selected_entities_hash_table) {
+					auto* guid_to_id = HashTableRemove(entity_system.entity_guid_to_entity_id, guid);
+					if (guid_to_id != nullptr) {
+						RemoveEntity(entity_system, entity_type_index, guid_to_id->value);
+					}
+				}
+				HashTableClear(selected_entities_hash_table);
+			}
+		}
+		ImGui::EndGroup();
+		
 		ImGui::End();
 		
-		{
+		if (scene_focused) {
 			float base_speed = 10.f; // m/s
 			float sensetivity_scale = (ImGui::IsKeyDown(ImGuiMod_Shift) ? 5.f : 1.f) * (ImGui::IsKeyDown(ImGuiMod_Alt) ? 0.2f : 1.f);
 			

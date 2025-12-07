@@ -18,6 +18,16 @@ inline u64 ComputeHash64(u64 A, u64 B = 0x4B33A62ED433D4A3ull) {
 	return A ^ B;
 }
 
+// Based on wyrand by Wang Yi (public domain).
+inline u64 GenerateRandomNumber64(u64& seed) {
+	seed += 0x2D358DCCAA6C78A5ull;
+	
+	u64 B = 0;
+	u64 A = _mulx_u64(seed, seed ^ 0x8BB84B93962EACC9ull, &B);
+	
+	return A ^ B;
+}
+
 inline u64 ComputeHash(u8  value) { return ComputeHash64((u64)value); }
 inline u64 ComputeHash(s8  value) { return ComputeHash64((u64)value); }
 inline u64 ComputeHash(u16 value) { return ComputeHash64((u64)value); }
@@ -107,7 +117,7 @@ void HashTableDeallocate(HashTable<KeyT, ValueT>& hash_table, AllocatorT* alloc)
 	alloc->Deallocate(hash_table.metadata, hash_table.capacity * sizeof(ElementType) + hash_table.capacity * sizeof(u8));
 }
 
-template<typename KeyT, typename ValueT, typename AllocatorT>
+template<typename KeyT, typename ValueT>
 void HashTableClear(HashTable<KeyT, ValueT>& hash_table) {
 	hash_table.count    = 0;
 	hash_table.occupied = 0;
@@ -223,6 +233,8 @@ HashTableAddOrFindResult<KeyT, ValueT> HashTableAddOrFind(HashTable<KeyT, ValueT
 
 template<typename KeyT, typename ValueT>
 HashTableElement<KeyT, ValueT>* HashTableFind(HashTable<KeyT, ValueT>& hash_table, const KeyT& key) {
+	if (hash_table.capacity == 0) return nullptr;
+	
 	BeginHashTableTraversal();
 		for (u32 bit_index : BitScanLow32(matching_slot_mask)) {
 			u32 slot_index = group_index * hash_table_group_size + bit_index;
@@ -243,6 +255,8 @@ HashTableElement<KeyT, ValueT>* HashTableFind(HashTable<KeyT, ValueT>& hash_tabl
 
 template<typename KeyT, typename ValueT>
 HashTableElement<KeyT, ValueT>* HashTableRemove(HashTable<KeyT, ValueT>& hash_table, const KeyT& key) {
+	if (hash_table.capacity == 0) return nullptr;
+	
 	BeginHashTableTraversal();
 		for (u32 bit_index : BitScanLow32(matching_slot_mask)) {
 			u32 slot_index = group_index * hash_table_group_size + bit_index;

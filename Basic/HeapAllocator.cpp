@@ -321,6 +321,13 @@ void HeapAllocator::Deallocate(void* old_memory, u64 old_size) {
 	PushFreeBlock(this, block);
 }
 
+u64 HeapAllocator::GetMemoryBlockSize(void* memory) {
+	if (memory == nullptr) return 0;
+	
+	auto* block = AllocatorBlockFromMemory(memory);
+	return (u8*)block + block->size - (u8*)memory;
+}
+
 
 HeapAllocator CreateHeapAllocator(u64 reserved_size) {
 	DebugAssert(reserved_size <= maximum_size, "Reserved size is too large. %llu/%llu.", reserved_size, maximum_size);
