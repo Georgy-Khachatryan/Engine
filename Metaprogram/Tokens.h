@@ -51,6 +51,7 @@ enum struct KeywordType : u32 {
 	Typename     = 8,
 	Namespace    = 9,
 	CompileConst = 10,
+	Operator     = 11,
 	
 	Count
 };

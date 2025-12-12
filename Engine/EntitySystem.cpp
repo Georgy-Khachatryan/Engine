@@ -1,66 +1,61 @@
 #include "EntitySystem.h"
 #include "Basic/BasicString.h"
 
+extern ArrayView<EntityTypeInfo>      entity_type_info_table;
+extern ArrayView<EntityQueryTypeInfo> entity_query_type_info_table;
+extern ArrayView<ComponentTypeInfo>   component_type_info_table;
 
-static u64 ComputeHash(const EntityTypeKey& key) { return ComputeHash((u8*)key.active_component_mask.data, key.key_size_bytes); }
-
-static u32 AddOrFindEntityTypeArrayByKey(EntitySystem& system, const EntityTypeKey& key) {
-	auto [element, is_inserted] = HashTableAddOrFind(system.entity_type_key_to_entity_type_index, &system.heap, key, 0u);
-	if (is_inserted) {
-		element->value = (u32)system.entity_type_arrays.count;
+void InitializeEntitySystem(EntitySystem& system) {
+	system.heap = CreateHeapAllocator(2 * 1024 * 1024);
+	
+	Array<EntityTypeArray> entity_type_arrays;
+	ArrayResize(entity_type_arrays, &system.heap, entity_type_info_table.count);
+	
+	for (u32 entity_type_index = 0; entity_type_index < entity_type_info_table.count; entity_type_index += 1) {
+		auto& array     = entity_type_arrays[entity_type_index];
+		auto& type_info = entity_type_info_table[entity_type_index];
 		
-		auto& array = ArrayEmplace(system.entity_type_arrays, &system.heap);
-		array.key = key;
-		array.entity_type_index = element->value;
+		Array<u8*> component_streams;
+		ArrayResize(component_streams, &system.heap, type_info.component_type_ids.count);
 		
-		u32 stream_count = 0;
-		for (u32 dword : key.active_component_mask) {
-			stream_count += CountSetBits32(dword);
-		}
-		array.streams.count = stream_count;
+		array.component_streams    = component_streams;
+		array.entity_type_id.index = entity_type_index;
 	}
-	return element->value;
+	
+	system.entity_type_arrays = entity_type_arrays;
 }
-
-extern ComponentTypeInfo component_type_infos[component_type_count];
-
 
 template<typename Lambda>
-static void IterateComponentStreams(ArrayView<u8*> streams, EntityTypeKey key, Lambda&& lambda) {
-	u32 bit_offset = 0;
-	u32 stream_id  = 0;
-	for (u32 dword : key.active_component_mask) {
-		for (u32 bit_index : BitScanLow32(dword)) {
-			lambda(streams[stream_id], component_type_infos[bit_index + bit_offset]);
-			stream_id += 1;
-		}
-		bit_offset += 32;
+static void IterateComponentStreams(ArrayView<u8*> component_streams, ArrayView<ComponentTypeID> component_type_ids, Lambda&& lambda) {
+	for (u32 component_stream_index = 0; component_stream_index < component_type_ids.count; component_stream_index += 1) {
+		auto component_type_id = component_type_ids[component_stream_index];
+		lambda(component_streams[component_stream_index], component_type_info_table[component_type_id.index]);
 	}
 }
 
-static void AllocateComponentStreams(ArrayView<u8*> streams, EntityTypeKey key, HeapAllocator& heap, u32 old_capacity, u32 new_capacity) {
-	IterateComponentStreams(streams, key, [&](u8*& stream, ComponentTypeInfo type_info) {
-		stream = (u8*)heap.Reallocate(stream, old_capacity * type_info.size_bytes, new_capacity * type_info.size_bytes, Max(type_info.align_bytes, 64u));
+static void AllocateComponentStreams(ArrayView<u8*> component_streams, ArrayView<ComponentTypeID> component_type_ids, HeapAllocator& heap, u32 old_capacity, u32 new_capacity) {
+	IterateComponentStreams(component_streams, component_type_ids, [&](u8*& stream, ComponentTypeInfo type_info) {
+		stream = (u8*)heap.Reallocate(stream, old_capacity * type_info.size_bytes, new_capacity * type_info.size_bytes, 64u);
 	});
 }
 
-static void MemsetComponentStreams(ArrayView<u8*> streams, EntityTypeKey key, u32 stream_offset, u32 entity_count, u8 pattern) {
-	IterateComponentStreams(streams, key, [&](u8* stream, ComponentTypeInfo type_info) {
+static void MemsetComponentStreams(ArrayView<u8*> component_streams, ArrayView<ComponentTypeID> component_type_ids, u32 stream_offset, u32 entity_count, u8 pattern) {
+	IterateComponentStreams(component_streams, component_type_ids, [&](u8* stream, ComponentTypeInfo type_info) {
 		memset(stream + stream_offset * type_info.size_bytes, pattern, entity_count * type_info.size_bytes);
 	});
 }
 
-static void MemcpyComponentStreams(ArrayView<u8*> streams, EntityTypeKey key, u32 dst_index, u32 src_index) {
-	IterateComponentStreams(streams, key, [&](u8* stream, ComponentTypeInfo type_info) {
+static void MemcpyComponentStreams(ArrayView<u8*> component_streams, ArrayView<ComponentTypeID> component_type_ids, u32 dst_index, u32 src_index) {
+	IterateComponentStreams(component_streams, component_type_ids, [&](u8* stream, ComponentTypeInfo type_info) {
 		memcpy(stream + dst_index * type_info.size_bytes, stream + src_index * type_info.size_bytes, type_info.size_bytes);
 	});
 }
 
-CreateEntitiesResult CreateEntities(StackAllocator* alloc, EntitySystem& system, const EntityTypeKey& key, u32 entity_count) {
+CreateEntitiesResult CreateEntities(StackAllocator* alloc, EntitySystem& system, EntityTypeID entity_type_id, u32 entity_count) {
 	compile_const u32 base_allocation_count = 1024;
 	
-	u32 entity_type_index = AddOrFindEntityTypeArrayByKey(system, key);
-	auto& array = system.entity_type_arrays[entity_type_index];
+	auto& array = system.entity_type_arrays[entity_type_id.index];
+	auto& type_info = entity_type_info_table[entity_type_id.index];
 	
 	if (array.count + entity_count > array.capacity) {
 		u32 old_capacity = array.capacity;
@@ -69,7 +64,7 @@ CreateEntitiesResult CreateEntities(StackAllocator* alloc, EntitySystem& system,
 		array.entity_id_to_stream_index = (u32*)system.heap.Reallocate(array.entity_id_to_stream_index, old_capacity * sizeof(u32), new_capacity * sizeof(u32), 64u);
 		array.stream_index_to_entity_id = (u32*)system.heap.Reallocate(array.stream_index_to_entity_id, old_capacity * sizeof(u32), new_capacity * sizeof(u32), 64u);
 		
-		AllocateComponentStreams(array.streams, key, system.heap, old_capacity, new_capacity);
+		AllocateComponentStreams(array.component_streams, type_info.component_type_ids, system.heap, old_capacity, new_capacity);
 		
 		for (u32 i = old_capacity; i < new_capacity; i += 1) {
 			array.stream_index_to_entity_id[i] = i;
@@ -91,18 +86,19 @@ CreateEntitiesResult CreateEntities(StackAllocator* alloc, EntitySystem& system,
 		array.entity_id_to_stream_index[entity_id] = stream_offset + i;
 	}
 	
-	MemsetComponentStreams(array.streams, key, stream_offset, entity_count, 0xCC);
+	MemsetComponentStreams(array.component_streams, type_info.component_type_ids, stream_offset, entity_count, 0xCC);
 	
 	CreateEntitiesResult result;
-	result.entity_ids = entity_ids;
-	result.stream_offset = stream_offset;
-	result.entity_type_index = entity_type_index;
+	result.entity_ids     = entity_ids;
+	result.stream_offset  = stream_offset;
+	result.entity_type_id = entity_type_id;
 	
 	return result;
 }
 
-void RemoveEntity(EntitySystem& system, u32 entity_type_index, u32 entity_id) {
-	auto& array = system.entity_type_arrays[entity_type_index];
+void RemoveEntity(EntitySystem& system, EntityTypeID entity_type_id, u32 entity_id) {
+	auto& array = system.entity_type_arrays[entity_type_id.index];
+	auto& type_info = entity_type_info_table[entity_type_id.index];
 	
 	u32 stream_index = array.entity_id_to_stream_index[entity_id];
 	array.entity_id_to_stream_index[entity_id] = u32_max;
@@ -115,46 +111,74 @@ void RemoveEntity(EntitySystem& system, u32 entity_type_index, u32 entity_id) {
 		array.entity_id_to_stream_index[back_entity_id] = stream_index;
 		array.stream_index_to_entity_id[back_stream_index] = entity_id;
 		
-		MemcpyComponentStreams(array.streams, array.key, stream_index, back_stream_index);
+		MemcpyComponentStreams(array.component_streams, type_info.component_type_ids, stream_index, back_stream_index);
 	}
 	
 	array.count -= 1;
 }
 
 
-ArrayView<EntityTypeArray*> QueryEntities(StackAllocator* alloc, EntitySystem& system, const EntityTypeKey& key) {
+ArrayView<EntityTypeArray*> QueryEntities(StackAllocator* alloc, EntitySystem& system, EntityQueryTypeID query_type_id) {
 	Array<EntityTypeArray*> result;
 	
-	for (auto [type_key, entity_type_index] : system.entity_type_key_to_entity_type_index) {
-		bool all_match = true;
-		for (u64 i = 0; i < EntityTypeKey::key_size_dwords; i += 1) {
-			u32 target_dword = key.active_component_mask[i];
-			bool match = (type_key.active_component_mask[i] & target_dword) == target_dword;
-			all_match &= match;
-		}
-		if (all_match == false) continue;
+	auto match_key = entity_query_type_info_table[query_type_id.index].component_type_ids;
+	
+	u32 match_key_size = (u32)match_key.count;
+	for (u32 entity_type_index = 0; entity_type_index < entity_type_info_table.count; entity_type_index += 1) {
+		auto array_key = entity_type_info_table[entity_type_index].component_type_ids;
+		u32 array_key_size = (u32)array_key.count;
 		
-		ArrayAppend(result, alloc, &system.entity_type_arrays[entity_type_index]);
+		u32 array_key_index = 0;
+		u32 match_key_index = 0;
+		u32 match_count = 0;
+		while (array_key_index < array_key_size && match_key_index < match_key_size) {
+			u32 array_component_index = array_key[array_key_index].index;
+			u32 match_component_index = match_key[match_key_index].index;
+			
+			if (array_component_index < match_component_index) {
+				array_key_index += 1;
+			} else if (match_component_index < array_component_index) {
+				match_key_index += 1; // Skipping match key, could early out. match_count < match_key_size is guaranteed.
+			} else {
+				match_count += 1;
+				array_key_index += 1;
+				match_key_index += 1;
+			}
+		}
+		
+		if (match_count == match_key_size) {
+			auto& array = system.entity_type_arrays[entity_type_index];
+			array.entity_type_id.index = entity_type_index;
+			ArrayAppend(result, alloc, &array);
+		}
 	}
 	
 	return result;
 }
 
-void ExtractComponentStreams(EntityTypeArray* array, const EntityTypeKey& output_key, ArrayView<u8*> output_streams) {
-	u32 bit_offset = 0;
-	u32 stream_id  = 0;
-	u32 output_stream_id = 0;
-	for (u64 i = 0; i < EntityTypeKey::key_size_dwords; i += 1) {
-		u32 dword        = array->key.active_component_mask[i];
-		u32 output_dword = output_key.active_component_mask[i];
+void ExtractComponentStreams(EntityTypeArray* array, EntityQueryTypeID query_type_id, ArrayView<u8*> output_component_streams) {
+	auto array_key = entity_type_info_table[array->entity_type_id.index].component_type_ids;
+	auto match_key = entity_query_type_info_table[query_type_id.index].component_type_ids;
+	
+	auto stream_indices = entity_query_type_info_table[query_type_id.index].component_stream_indices;
+	
+	u32 array_key_size = (u32)array_key.count;
+	u32 match_key_size = (u32)match_key.count;
+	
+	u32 array_key_index = 0;
+	u32 match_key_index = 0;
+	while (array_key_index < array_key_size && match_key_index < match_key_size) {
+		u32 array_component_index = array_key[array_key_index].index;
+		u32 match_component_index = match_key[match_key_index].index;
 		
-		for (u32 bit_index : BitScanLow32(dword)) {
-			if (output_dword & (1u << bit_index)) {
-				output_streams[output_stream_id] = array->streams[stream_id];
-				output_stream_id += 1;
-			}
-			stream_id += 1;
+		if (array_component_index < match_component_index) {
+			array_key_index += 1;
+		} else if (match_component_index < array_component_index) {
+			match_key_index += 1; // Shouldn't ever happen if QueryEntities is correct.
+		} else {
+			output_component_streams[stream_indices[match_key_index]] = array->component_streams[array_key_index];
+			array_key_index += 1;
+			match_key_index += 1;
 		}
-		bit_offset += 32;
 	}
 }

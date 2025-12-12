@@ -34,6 +34,7 @@ TypeInfoStruct type_info_float4   = { TypeInfoType::Struct, "float4"_sl,   sizeo
 TypeInfoStruct type_info_uint2    = { TypeInfoType::Struct, "uint2"_sl,    sizeof(uint2),    { struct_fields_vector_of_u32,     2 } };
 TypeInfoStruct type_info_uint3    = { TypeInfoType::Struct, "uint3"_sl,    sizeof(uint3),    { struct_fields_vector_of_u32,     3 } };
 TypeInfoStruct type_info_uint4    = { TypeInfoType::Struct, "uint4"_sl,    sizeof(uint4),    { struct_fields_vector_of_u32,     4 } };
+TypeInfoStruct type_info_quat     = { TypeInfoType::Struct, "quat"_sl,     sizeof(quat),     { struct_fields_vector_of_float32, 4 } };
 TypeInfoStruct type_info_float4x4 = { TypeInfoType::Struct, "float4x4"_sl, sizeof(float4x4), { struct_fields_matrix_of_float4,  4 } };
 TypeInfoStruct type_info_float3x4 = { TypeInfoType::Struct, "float3x4"_sl, sizeof(float3x4), { struct_fields_matrix_of_float4,  3 } };
 TypeInfoStruct type_info_float3x3 = { TypeInfoType::Struct, "float3x3"_sl, sizeof(float3x3), { struct_fields_matrix_of_float3,  3 } };
@@ -48,6 +49,7 @@ String type_info_type_names[] = {
 	"Type"_sl,
 	"Void"_sl,
 	"String"_sl,
+	"Pointer"_sl,
 };
 static_assert(ArraySize(type_info_type_names) == (u32)TypeInfoType::Count);
 

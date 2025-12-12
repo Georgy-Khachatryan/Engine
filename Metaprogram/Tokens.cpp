@@ -149,6 +149,7 @@ Token Tokenizer::FindNextToken() {
 		} case 8: {
 			if (CheckKeyword(token, "template", 8, KeywordType::Template)) break;
 			if (CheckKeyword(token, "typename", 8, KeywordType::Typename)) break;
+			if (CheckKeyword(token, "operator", 8, KeywordType::Operator)) break;
 			break;
 		} case 9: {
 			if (CheckKeyword(token, "namespace", 8, KeywordType::Namespace)) break;
@@ -297,6 +298,7 @@ String keyword_type_names[] = {
 	"Typename"_sl,
 	"Namespace"_sl,
 	"CompileConst"_sl,
+	"Operator"_sl,
 };
 static_assert(ArraySize(keyword_type_names) == (u32)KeywordType::Count, "Mismatching keyword_type_names count.");
 

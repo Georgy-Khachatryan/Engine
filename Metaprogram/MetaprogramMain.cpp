@@ -5,6 +5,7 @@
 #include "Basic/BasicHashTable.h"
 #include "Basic/BasicFiles.h"
 #include "GraphicsApi/GraphicsApiTypes.h"
+#include "Engine/EntitySystem.h"
 #include "TypeInfo.h"
 #include "MetaprogramCommon.h"
 
@@ -59,6 +60,8 @@ static void GenerateCodeForHlslFile(StackAllocator* alloc, HlslFileData& hlsl_fi
 	auto& builder = hlsl_file.builder;
 	
 	auto* type_info_struct = TypeInfoCast<TypeInfoStruct>(type_info);
+	DebugAssert(type_info_struct, "Meta::HlslFile must be applied to an struct.");
+	
 	auto name = ExtractNameWithoutNamespace(type_info_struct->name);
 	
 	GatherIncludesForDependentTypes(alloc, hlsl_file.includes, type_info_struct);
@@ -74,11 +77,11 @@ static void GenerateCodeForHlslFile(StackAllocator* alloc, HlslFileData& hlsl_fi
 			builder.Append("\n");
 			GenerateCodeForHlslFile(alloc, hlsl_file, (TypeInfo*)field.constant_value);
 		} else if (field.constant_value) {
-			auto type_name = PrintTypeName(field.type);
+			auto type_name = PrintTypeName(alloc, field.type);
 			builder.Append("compile_const %.*s %.*s;\n", (s32)type_name.count, type_name.data, (s32)field.name.count, field.name.data);
 			constant_count += 1;
 		} else {
-			auto type_name = PrintTypeName(field.type);
+			auto type_name = PrintTypeName(alloc, field.type);
 			builder.Append("%.*s %.*s;\n", (s32)type_name.count, type_name.data, (s32)field.name.count, field.name.data);
 		}
 	}
@@ -91,7 +94,7 @@ static void GenerateCodeForHlslFile(StackAllocator* alloc, HlslFileData& hlsl_fi
 		for (auto& field : type_info_struct->fields) {
 			if (field.constant_value == nullptr) continue;
 			
-			auto type_name = PrintTypeName(field.type);
+			auto type_name = PrintTypeName(alloc, field.type);
 			auto type_value = PrintTypeValue(alloc, field.type, field.constant_value);
 			builder.Append("compile_const %.*s %.*s::%.*s = %.*s;\n", (s32)type_name.count, type_name.data, (s32)name.count, name.data, (s32)field.name.count, field.name.data, (s32)type_value.count, type_value.data);
 		}
@@ -149,8 +152,7 @@ static void WriteHlslFilesToDisk(StackAllocator* alloc, HashTable<String, HlslFi
 	}
 }
 
-static void GenerateCodeForRenderPass(StackAllocator* alloc, String filename, HlslFileData& hlsl_bindings_file, RootSignatureFileData& root_signature_file, TypeInfo* type_info, Meta::RenderPass* render_pass_note) {
-	auto* type_info_struct = (TypeInfoStruct*)type_info;
+static void GenerateCodeForRenderPass(StackAllocator* alloc, String filename, HlslFileData& hlsl_bindings_file, RootSignatureFileData& root_signature_file, TypeInfoStruct* type_info_struct, Meta::RenderPass* render_pass_note) {
 	auto name = ExtractNameWithoutNamespace(type_info_struct->name);
 	
 	TypeInfoStruct* root_signature_type = nullptr;
@@ -168,7 +170,7 @@ static void GenerateCodeForRenderPass(StackAllocator* alloc, String filename, Hl
 		
 		auto* root_argument_type_note = FindNote<RootArgumentType>(field.type);
 		if (root_argument_type_note == nullptr) {
-			auto type_name = PrintTypeName(field.type);
+			auto type_name = PrintTypeName(alloc, field.type);
 			DebugAssertAlways("Unexpected field '%.*s' of type '%.*s' used in a root signature of pass '%.*s'. Only root arguments are allowed.", (s32)field.name.count, field.name.data, (s32)type_name.count, type_name.data, (s32)name.count, name.data);
 			continue;
 		}
@@ -181,7 +183,7 @@ static void GenerateCodeForRenderPass(StackAllocator* alloc, String filename, Hl
 			for (auto& field : template_type->fields) {
 				auto* descriptor_type_note = FindNote<ResourceDescriptorType>(field.type);
 				if (descriptor_type_note == nullptr) {
-					auto type_name = PrintTypeName(field.type);
+					auto type_name = PrintTypeName(alloc, field.type);
 					DebugAssertAlways("Unexpected field '%.*s' of type '%.*s' used in a descriptor table of pass '%.*s'. Only descriptors are allowed.", (s32)field.name.count, field.name.data, (s32)type_name.count, type_name.data, (s32)name.count, name.data);
 				}
 			}
@@ -289,18 +291,18 @@ static void GenerateCodeForRenderPass(StackAllocator* alloc, String filename, Hl
 				
 				auto* template_type = ExtractTemplateParameterType(field.type, 0);
 				if (template_type != nullptr) {
-					auto template_type_name = PrintTypeName(template_type);
+					auto template_type_name = PrintTypeName(alloc, template_type);
 					builder.Append("%s<%.*s> %.*s : register(%c%u);\n", descriptor_name, (s32)template_type_name.count, template_type_name.data, (s32)field.name.count, field.name.data, register_type, register_index);
 				} else {
 					builder.Append("%s %.*s : register(%c%u);\n", descriptor_name, (s32)field.name.count, field.name.data, register_type, register_index);
 				}
 			}
 		} else if (root_argument_type == RootArgumentType::ConstantBuffer) {
-			auto template_type_name = PrintTypeName(template_type);
+			auto template_type_name = PrintTypeName(alloc, template_type);
 			builder.Append("ConstantBuffer<%.*s> %.*s : register(b%u);\n", (s32)template_type_name.count, template_type_name.data, (s32)field.name.count, field.name.data, cbv_index);
 			cbv_index += 1;
 		} else if (root_argument_type == RootArgumentType::PushConstantBuffer) {
-			auto template_type_name = PrintTypeName(template_type);
+			auto template_type_name = PrintTypeName(alloc, template_type);
 			builder.Append("ConstantBuffer<%.*s> %.*s : register(b%u);\n", (s32)template_type_name.count, template_type_name.data, (s32)field.name.count, field.name.data, cbv_index);
 			cbv_index += 1;
 		}
@@ -317,16 +319,20 @@ static void GenerateCodeForRenderPass(StackAllocator* alloc, String filename, Hl
 
 static void GenerateCodeForRenderPass(StackAllocator* alloc, HashTable<String, HlslFileData>& hlsl_bindings_files, RootSignatureFileData& root_signature_file, TypeInfo* type_info, Meta::RenderPass* render_pass_note) {
 	auto* type_info_struct = TypeInfoCast<TypeInfoStruct>(type_info);
+	DebugAssert(type_info_struct, "Meta::RenderPass must be applied to an struct.");
+	
 	auto render_pass_name = ExtractNameWithoutNamespace(type_info_struct->name);
 	auto filename = StringFormat(alloc, "%.*s.hlsl", (s32)render_pass_name.count, render_pass_name.data);
 	
 	auto& hlsl_file = AddOrFindHlslFile(alloc, hlsl_bindings_files, filename);
 	
-	GenerateCodeForRenderPass(alloc, filename, hlsl_file, root_signature_file, type_info, render_pass_note);
+	GenerateCodeForRenderPass(alloc, filename, hlsl_file, root_signature_file, type_info_struct, render_pass_note);
 }
 
 static void GenerateCodeForShaderDefinition(StackAllocator* alloc, ShaderDefinitionFileData& shader_definition_file, TypeInfo* type_info, Meta::ShaderName* note) {
 	auto* type_info_enum = TypeInfoCast<TypeInfoEnum>(type_info);
+	DebugAssert(type_info_enum, "Meta::ShaderName must be applied to an enum.");
+	
 	auto name = type_info_enum->name;
 	
 	auto& builder = shader_definition_file.builder;
@@ -390,6 +396,47 @@ static void GenerateCodeForShaderDefinition(StackAllocator* alloc, ShaderDefinit
 	ArrayAppend(shader_definition_file.shader_names, alloc, name);
 }
 
+static void RadixSort(StackAllocator* alloc, ArrayView<ComponentTypeID> keys, ArrayView<u32> values) {
+	TempAllocationScope(alloc);
+	
+	DebugAssert(keys.count == values.count, "Mismatch between sort key and value count.");
+	
+	Array<ComponentTypeID> keys_swap;
+	Array<u32> values_swap;
+	ArrayResize(keys_swap, alloc, keys.count);
+	ArrayResize(values_swap, alloc, keys.count);
+	
+	for (u32 offset = 0; offset < 32; offset += 8) {
+		u32 prefix_sum[256] = {};
+		
+		for (u32 i = 0; i < keys.count; i += 1) {
+			auto key = keys[i];
+			u32 radix = (key.index >> offset) & 0xFF;
+			prefix_sum[radix] += 1;
+		}
+		
+		u32 running_prefix_sum = 0;
+		for (u32 radix = 0; radix < 256; radix += 1) {
+			u32 radix_count = prefix_sum[radix];
+			prefix_sum[radix] = running_prefix_sum;
+			running_prefix_sum += radix_count;
+		}
+		
+		for (u32 i = 0; i < keys.count; i += 1) {
+			auto key = keys[i];
+			u32 radix = (key.index >> offset) & 0xFF;
+			u32 output_index = prefix_sum[radix]++;
+			
+			keys_swap[output_index] = key;
+			values_swap[output_index] = values[i];
+		}
+		
+		
+		Swap(keys_swap.data, keys.data);
+		Swap(values_swap.data, values.data);
+	}
+}
+
 s32 main(s32 argument_count, const char* arguments[]) {
 	auto alloc = CreateStackAllocator(64 * 1024 * 1024, 512 * 1024);
 	defer{ ReleaseStackAllocator(alloc); };
@@ -415,6 +462,14 @@ s32 main(s32 argument_count, const char* arguments[]) {
 	shader_definition_file.builder.AppendUnformatted("#include \"Basic/BasicString.h\"\n"_sl);
 	shader_definition_file.builder.AppendUnformatted("#include \"Engine/RenderPasses.h\"\n\n"_sl);
 	
+	Array<TypeInfoStruct*> entity_type_infos;
+	Array<TypeInfoStruct*> entity_query_type_infos;
+	
+	StringBuilder entity_system_builder;
+	entity_system_builder.alloc = &alloc;
+	entity_system_builder.AppendUnformatted("#include \"Basic/Basic.h\"\n"_sl);
+	entity_system_builder.AppendUnformatted("#include \"Engine/Entities.h\"\n\n"_sl);
+	
 	extern ArrayView<TypeInfo*> type_table;
 	for (auto* type_info : type_table) {
 		if (auto* note = FindNote<Meta::HlslFile>(type_info)) {
@@ -428,6 +483,179 @@ s32 main(s32 argument_count, const char* arguments[]) {
 		if (auto* note = FindNote<Meta::ShaderName>(type_info)) {
 			GenerateCodeForShaderDefinition(&alloc, shader_definition_file, type_info, note);
 		}
+		
+		if (auto* note = FindNote<Meta::EntityType>(type_info)) {
+			auto* type_info_struct = TypeInfoCast<TypeInfoStruct>(type_info);
+			DebugAssert(type_info_struct, "Meta::EntityType must be applied to a struct.");
+			ArrayAppend(entity_type_infos, &alloc, type_info_struct);
+		}
+		
+		if (auto* note = FindNote<Meta::ComponentQuery>(type_info)) {
+			auto* type_info_struct = TypeInfoCast<TypeInfoStruct>(type_info);
+			DebugAssert(type_info_struct, "Meta::ComponentQuery must be applied to a struct.");
+			ArrayAppend(entity_query_type_infos, &alloc, type_info_struct);
+		}
+	}
+	
+	{
+		HashTable<TypeInfoStruct*, u32> component_types;
+		Array<TypeInfoStruct*>     component_type_infos;
+		
+		Array<EntityTypeInfo> runtime_entity_type_infos;
+		ArrayReserve(runtime_entity_type_infos, &alloc, entity_type_infos.count);
+		
+		for (auto* type_info : entity_type_infos) {
+			Array<ComponentTypeID> component_type_ids;
+			ArrayReserve(component_type_ids, &alloc, type_info->fields.count);
+			
+			for (auto& field : type_info->fields) {
+				auto* component_type_info = TypeInfoCast<TypeInfoStruct>(ExtractTemplateParameterType(field.type, 0));
+				DebugAssert(component_type_info, "Unknown component type.");
+				
+				auto [element, is_inserted] = HashTableAddOrFind(component_types, &alloc, component_type_info, (u32)component_types.count);
+				if (is_inserted) ArrayAppend(component_type_infos, &alloc, component_type_info);
+				
+				ArrayAppend(component_type_ids, { element->value });
+			}
+			
+			Array<u32> component_stream_indices;
+			ArrayResize(component_stream_indices, &alloc, component_type_ids.count);
+			for (u32 i = 0; i < component_stream_indices.count; i += 1) {
+				component_stream_indices[i] = i;
+			}
+			
+			RadixSort(&alloc, component_type_ids, component_stream_indices);
+			
+			EntityTypeInfo entity_type_info;
+			entity_type_info.component_type_ids = component_type_ids;
+			ArrayAppend(runtime_entity_type_infos, entity_type_info);
+		}
+		
+		Array<EntityQueryTypeInfo> runtime_entity_query_type_infos;
+		ArrayReserve(runtime_entity_query_type_infos, &alloc, entity_query_type_infos.count);
+		
+		for (auto* type_info : entity_query_type_infos) {
+			Array<ComponentTypeID> component_type_ids;
+			ArrayReserve(component_type_ids, &alloc, type_info->fields.count);
+			
+			for (auto& field : type_info->fields) {
+				auto* component_stream_type_info = TypeInfoCast<TypeInfoPointer>(field.type);
+				DebugAssert(component_stream_type_info, "Unknown component type");
+				
+				auto* component_type_info = TypeInfoCast<TypeInfoStruct>(component_stream_type_info->pointer_to);
+				DebugAssert(component_type_info, "Unknown component type");
+				
+				auto [element, is_inserted] = HashTableAddOrFind(component_types, &alloc, component_type_info, (u32)component_types.count);
+				if (is_inserted) ArrayAppend(component_type_infos, &alloc, component_type_info);
+				
+				ArrayAppend(component_type_ids, { element->value });
+			}
+			
+			Array<u32> component_stream_indices;
+			ArrayResize(component_stream_indices, &alloc, component_type_ids.count);
+			for (u32 i = 0; i < component_stream_indices.count; i += 1) {
+				component_stream_indices[i] = i;
+			}
+			
+			RadixSort(&alloc, component_type_ids, component_stream_indices);
+			
+			EntityQueryTypeInfo entity_query_type_info;
+			entity_query_type_info.component_type_ids       = component_type_ids;
+			entity_query_type_info.component_stream_indices = component_stream_indices;
+			ArrayAppend(runtime_entity_query_type_infos, entity_query_type_info);
+		}
+		
+		
+		auto& builder = entity_system_builder;
+		for (u32 entity_type_index = 0; entity_type_index < entity_type_infos.count; entity_type_index += 1) {
+			auto* type_info = entity_type_infos[entity_type_index];
+			builder.Append("EntityTypeID ESC::GetEntityTypeID<%.*s>::id = { %u };\n", (s32)type_info->name.count, type_info->name.data, entity_type_index);
+		}
+		builder.AppendUnformatted("\n"_sl);
+		
+		for (u32 entity_query_type_index = 0; entity_query_type_index < entity_query_type_infos.count; entity_query_type_index += 1) {
+			auto* type_info = entity_query_type_infos[entity_query_type_index];
+			builder.Append("EntityQueryTypeID ESC::GetEntityQueryTypeID<%.*s>::id = { %u };\n", (s32)type_info->name.count, type_info->name.data, entity_query_type_index);
+		}
+		builder.AppendUnformatted("\n"_sl);
+		
+		for (u32 component_type_index = 0; component_type_index < component_type_infos.count; component_type_index += 1) {
+			auto* type_info = component_type_infos[component_type_index];
+			builder.Append("ComponentTypeID ESC::GetComponentTypeID<%.*s>::id = { %u };\n", (s32)type_info->name.count, type_info->name.data, component_type_index);
+		}
+		builder.AppendUnformatted("\n"_sl);
+		
+		
+		for (u32 entity_type_index = 0; entity_type_index < entity_type_infos.count; entity_type_index += 1) {
+			auto* type_info = entity_type_infos[entity_type_index];
+			auto& runtime_type_info = runtime_entity_type_infos[entity_type_index];
+			
+			builder.Append("static ComponentTypeID %.*s_component_type_ids[] = { ", (s32)type_info->name.count, type_info->name.data);
+			for (auto component_type_id : runtime_type_info.component_type_ids) {
+				builder.Append("%u, ", component_type_id.index);
+			}
+			builder.AppendUnformatted("};\n"_sl);
+		}
+		builder.AppendUnformatted("\n"_sl);
+		
+		for (u32 entity_query_type_index = 0; entity_query_type_index < entity_query_type_infos.count; entity_query_type_index += 1) {
+			auto* type_info = entity_query_type_infos[entity_query_type_index];
+			auto& runtime_type_info = runtime_entity_query_type_infos[entity_query_type_index];
+			
+			builder.Append("static ComponentTypeID %.*s_component_type_ids[] = { ", (s32)type_info->name.count, type_info->name.data);
+			for (auto component_type_id : runtime_type_info.component_type_ids) {
+				builder.Append("%u, ", component_type_id.index);
+			}
+			builder.AppendUnformatted("};\n"_sl);
+			
+			builder.Append("static u32 %.*s_component_stream_indices[] = { ", (s32)type_info->name.count, type_info->name.data);
+			for (u32 component_stream_index : runtime_type_info.component_stream_indices) {
+				builder.Append("%u, ", component_stream_index);
+			}
+			builder.AppendUnformatted("};\n"_sl);
+		}
+		builder.AppendUnformatted("\n"_sl);
+		
+		
+		builder.AppendUnformatted("static EntityTypeInfo entity_type_info_table_internal[] = {\n"_sl);
+		builder.Indent();
+		for (u32 entity_type_index = 0; entity_type_index < entity_type_infos.count; entity_type_index += 1) {
+			auto* type_info = entity_type_infos[entity_type_index];
+			auto& runtime_type_info = runtime_entity_type_infos[entity_type_index];
+			
+			builder.Append("{ { %.*s_component_type_ids, %u } },\n", (s32)type_info->name.count, type_info->name.data, (u32)runtime_type_info.component_type_ids.count);
+		}
+		builder.Unindent();
+		builder.AppendUnformatted("};\n\n"_sl);
+		
+		
+		builder.AppendUnformatted("static EntityQueryTypeInfo entity_query_type_info_table_internal[] = {\n"_sl);
+		builder.Indent();
+		for (u32 entity_query_type_index = 0; entity_query_type_index < entity_query_type_infos.count; entity_query_type_index += 1) {
+			auto* type_info = entity_query_type_infos[entity_query_type_index];
+			auto& runtime_type_info = runtime_entity_query_type_infos[entity_query_type_index];
+			
+			builder.Append("{ { %.*s_component_type_ids, %u }, { %.*s_component_stream_indices, %u } },\n",
+				(s32)type_info->name.count, type_info->name.data, (u32)runtime_type_info.component_type_ids.count,
+				(s32)type_info->name.count, type_info->name.data, (u32)runtime_type_info.component_type_ids.count
+			);
+		}
+		builder.Unindent();
+		builder.AppendUnformatted("};\n\n"_sl);
+		
+		builder.AppendUnformatted("ComponentTypeInfo component_type_info_table_internal[] = {\n"_sl);
+		builder.Indent();
+		for (auto* type_info : component_type_infos) {
+			entity_system_builder.Append("{ %u },\n", (u32)type_info->size);
+		}
+		builder.Unindent();
+		builder.AppendUnformatted("};\n\n"_sl);
+		
+		
+		builder.Append("ArrayView<EntityTypeInfo> entity_type_info_table = { entity_type_info_table_internal, %u };\n", (u32)entity_type_infos.count);
+		builder.Append("ArrayView<EntityQueryTypeInfo> entity_query_type_info_table = { entity_query_type_info_table_internal, %u };\n", (u32)entity_query_type_infos.count);
+		builder.Append("ArrayView<ComponentTypeInfo> component_type_info_table = { component_type_info_table_internal, %u };\n", (u32)component_type_infos.count);
+		
 	}
 	
 	EnsureDirectoryExists(&alloc, "Shaders/Generated/"_sl);
@@ -473,10 +701,10 @@ s32 main(s32 argument_count, const char* arguments[]) {
 			builder.AppendUnformatted("PipelineLibrary lib;\n"_sl);
 			builder.AppendUnformatted("lib.alloc = alloc;\n\n"_sl);
 			
-			for (auto& root_signature : root_signature_file.root_signatures) {
-				auto name = root_signature.render_pass_name;
+			for (u32 i = 0; i < root_signature_file.root_signatures.count; i += 1) {
+				auto name = root_signature_file.root_signatures[i].render_pass_name;
 				
-				builder.Append("lib.current_pass_root_signature_id = %.*s::root_signature.root_signature_id;\n", (s32)name.count, name.data);
+				builder.Append("lib.current_pass_root_signature_id = { %u };\n", i);
 				builder.Append("%.*s::CreatePipelines(&lib);\n\n", (s32)name.count, name.data);
 			}
 			
@@ -504,6 +732,10 @@ s32 main(s32 argument_count, const char* arguments[]) {
 		builder.Append("ArrayView<ShaderDefinition*> shader_definition_table = { shader_definitions, %u };\n\n", (u32)shader_definition_file.shader_names.count);
 		
 		WriteGeneratedFile(&alloc, "Engine/Generated/ShaderDefinitions.cpp"_sl, builder.ToString());
+	}
+	
+	{
+		WriteGeneratedFile(&alloc, "Engine/Generated/EntitySystemMetadata.cpp"_sl, entity_system_builder.ToString());
 	}
 	
 	return 0;

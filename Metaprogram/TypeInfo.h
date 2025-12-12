@@ -12,6 +12,7 @@ enum struct TypeInfoType : u8 {
 	Type    = 5,
 	Void    = 6,
 	String  = 7,
+	Pointer = 8,
 	
 	Count
 };
@@ -32,6 +33,12 @@ struct TypeInfoFloat : TypeInfo {
 	compile_const TypeInfoType my_type = TypeInfoType::Float;
 	
 	u8 bit_width = 0;
+};
+
+struct TypeInfoPointer : TypeInfo {
+	compile_const TypeInfoType my_type = TypeInfoType::Pointer;
+	
+	TypeInfo* pointer_to = nullptr;
 };
 
 struct TypeInfoNote {
@@ -107,6 +114,7 @@ extern TypeInfoStruct type_info_float4;
 extern TypeInfoStruct type_info_uint2;
 extern TypeInfoStruct type_info_uint3;
 extern TypeInfoStruct type_info_uint4;
+extern TypeInfoStruct type_info_quat;
 extern TypeInfoStruct type_info_float4x4;
 extern TypeInfoStruct type_info_float3x4;
 extern TypeInfoStruct type_info_float3x3;
@@ -117,6 +125,26 @@ struct TypeInfoOfInternal { static TypeInfo* Get() { return nullptr; } };
 
 template<typename T>
 inline auto TypeInfoOf() { return TypeInfoOfInternal<const T>::Get(); }
+
+template<typename T> struct TypeInfoOfInternal<const T* const> {
+	static TypeInfoPointer* Get() {
+		static TypeInfoPointer type_info = {
+			TypeInfoType::Pointer,
+			TypeInfoOf<T>(),
+		};
+		return &type_info;
+	}
+};
+
+template<typename T> struct TypeInfoOfInternal<T* const> {
+	static TypeInfoPointer* Get() {
+		static TypeInfoPointer type_info = {
+			TypeInfoType::Pointer,
+			TypeInfoOf<T>(),
+		};
+		return &type_info;
+	}
+};
 
 template<> struct TypeInfoOfInternal<const s8>  { static TypeInfoInteger* Get() { return &type_info_s8;  } };
 template<> struct TypeInfoOfInternal<const s16> { static TypeInfoInteger* Get() { return &type_info_s16; } };
@@ -133,13 +161,14 @@ template<> struct TypeInfoOfInternal<const float>  { static TypeInfoFloat*   Get
 template<> struct TypeInfoOfInternal<const double> { static TypeInfoFloat*   Get() { return &type_info_float64; } };
 template<> struct TypeInfoOfInternal<const String> { static TypeInfo*        Get() { return &type_info_string;  } };
 
-namespace Math { struct Vec2f; struct Vec3f; struct Vec4f; struct Vec2u32; struct Vec3u32; struct Vec4u32; struct Mat4x4f; struct Mat3x4f; struct Mat3x3f; }
+namespace Math { struct Vec2f; struct Vec3f; struct Vec4f; struct Vec2u32; struct Vec3u32; struct Vec4u32; struct Quatf; struct Mat4x4f; struct Mat3x4f; struct Mat3x3f; }
 template<> struct TypeInfoOfInternal<const Math::Vec2f>   { static TypeInfoStruct* Get() { return &type_info_float2;   } };
 template<> struct TypeInfoOfInternal<const Math::Vec3f>   { static TypeInfoStruct* Get() { return &type_info_float3;   } };
 template<> struct TypeInfoOfInternal<const Math::Vec4f>   { static TypeInfoStruct* Get() { return &type_info_float4;   } };
 template<> struct TypeInfoOfInternal<const Math::Vec2u32> { static TypeInfoStruct* Get() { return &type_info_uint2;    } };
 template<> struct TypeInfoOfInternal<const Math::Vec3u32> { static TypeInfoStruct* Get() { return &type_info_uint3;    } };
 template<> struct TypeInfoOfInternal<const Math::Vec4u32> { static TypeInfoStruct* Get() { return &type_info_uint4;    } };
+template<> struct TypeInfoOfInternal<const Math::Quatf>   { static TypeInfoStruct* Get() { return &type_info_quat;     } };
 template<> struct TypeInfoOfInternal<const Math::Mat4x4f> { static TypeInfoStruct* Get() { return &type_info_float4x4; } };
 template<> struct TypeInfoOfInternal<const Math::Mat3x4f> { static TypeInfoStruct* Get() { return &type_info_float3x4; } };
 template<> struct TypeInfoOfInternal<const Math::Mat3x3f> { static TypeInfoStruct* Get() { return &type_info_float3x3; } };

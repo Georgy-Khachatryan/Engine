@@ -317,18 +317,43 @@ static AstNodeDeclaration* ParseDeclaration(Tokenizer& tokenizer) {
 		ParseIdentifierWithNamespace(tokenizer);
 		
 		token = tokenizer.PeekNextToken();
+		
+		// Skip over template parameters.
 		if (token.type == TokenType::Less) {
-			SkipTokensWithNestingTracking(tokenizer, TokenType::Less, TokenType::Greater); // Skip over template parameters.
+			SkipTokensWithNestingTracking(tokenizer, TokenType::Less, TokenType::Greater);
+			token = tokenizer.PeekNextToken();
 		}
 		
+		// Skip over pointers and references.
+		while (token.type != TokenType::None && (token.type == TokenType::Times || token.type == TokenType::BitwiseAnd)) {
+			token = tokenizer.FindNextToken();
+			token = tokenizer.PeekNextToken();
+		}
+		
+		// Skip over operators.
+		if (token.type == TokenType::Keyword && token.keyword == KeywordType::Operator) {
+			tokenizer.ExpectKeyword(KeywordType::Operator);
+			
+			token = tokenizer.FindNextToken();
+			if (token.type == TokenType::OpeningBracket) {
+				tokenizer.ExpectToken(TokenType::ClosingBracket);
+			}
+			
+			token = tokenizer.PeekNextToken();
+			if (token.type != TokenType::OpeningParen) {
+				tokenizer.ReportError(token, "Expected '(' after operator.");
+			}
+		}
+		
+		// Extract declaration name.
 		if (token.type != TokenType::OpeningParen) {
 			declaration->name = tokenizer.ExpectToken(TokenType::Identifier).string;
 			declaration->declaration_type = is_constant ? AstNodeDeclarationType::Constant : AstNodeDeclarationType::Variable;
 		}
 		
 		token = tokenizer.PeekNextToken();
-		if (token.type == TokenType::Assign) {
-			SkipTokens(tokenizer, TokenType::Assign, TokenType::Semicolon); // Skip variable initialization.
+		if (token.type == TokenType::Assign) { // Skip variable initialization.
+			SkipTokens(tokenizer, TokenType::Assign, TokenType::Semicolon);
 		} else if (token.type == TokenType::OpeningParen) { // Skip function.
 			declaration = nullptr;
 			SkipTokensWithNestingTracking(tokenizer, TokenType::OpeningParen, TokenType::ClosingParen);

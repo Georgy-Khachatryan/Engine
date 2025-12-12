@@ -112,6 +112,9 @@ inline constexpr bool HasAllFlags(EnumTypeT mask, EnumTypeT test_pattern) { retu
 template<typename T, u32 size>
 inline constexpr u32 ArraySize(const T(&)[size]) { return size; }
 
+template<typename T>
+inline constexpr void Swap(T& lh, T& rh) { auto temp = lh; lh = rh; rh = temp; }
+
 
 struct StackAllocator;
 struct HeapAllocator;

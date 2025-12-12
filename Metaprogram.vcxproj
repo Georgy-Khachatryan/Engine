@@ -33,6 +33,9 @@
   <ItemGroup>
     <ReflectedFiles Include="Engine/RenderPasses.h" />
     <ReflectedFiles Include="GraphicsApi/GraphicsApiTypes.h" />
+    
+    <ReflectedFiles Include="Engine/Entities.h" />
+    <ReflectedFiles Include="Engine/EntitySystem.h" />
   </ItemGroup>
   
   <ItemGroup>

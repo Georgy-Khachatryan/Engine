@@ -59,6 +59,7 @@
     <!-- Generated code. -->
     <ClCompile Include="Engine/Generated/RootSignature.cpp" />
     <ClCompile Include="Engine/Generated/ShaderDefinitions.cpp" />
+    <ClCompile Include="Engine/Generated/EntitySystemMetadata.cpp" />
   </ItemGroup>
   
   <ItemGroup>
@@ -74,6 +75,7 @@
     
     <!-- Entity System. -->
     <ClInclude Include="Engine/EntitySystem.h" />
+    <ClInclude Include="Engine/Entities.h" />
     
     <ClInclude Include="GraphicsApi/GraphicsApiD3D12.h" />
   </ItemGroup>

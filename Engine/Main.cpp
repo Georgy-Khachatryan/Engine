@@ -8,6 +8,7 @@
 #include "GraphicsApi/GraphicsApi.h"
 #include "GraphicsApi/RecordContext.h"
 #include "EntitySystem.h"
+#include "Entities.h"
 
 #include <SDK/imgui/imgui.h>
 #include <SDK/imgui/imgui_internal.h>
@@ -429,81 +430,6 @@ struct ImGuiMouseLock {
 
 #define ImGuiScopeID(...) ImGui::PushID(__VA_ARGS__); defer{ ImGui::PopID(); }
 
-struct GuidComponent {
-	u64 guid = 0;
-	
-	compile_const u32 component_type_id = 0;
-};
-
-struct NameComponent {
-	String name;
-	
-	compile_const u32 component_type_id = 1;
-};
-
-struct PositionComponent {
-	float3 position;
-	
-	compile_const u32 component_type_id = 2;
-};
-
-struct ScaleComponent {
-	float scale = 1.f;
-	
-	compile_const u32 component_type_id = 3;
-};
-
-struct RotationComponent {
-	quat rotation;
-	
-	compile_const u32 component_type_id = 4;
-}; 
-
-extern ComponentTypeInfo component_type_infos[component_type_count] = {
-	{ sizeof(GuidComponent)      },
-	{ sizeof(NameComponent)      },
-	{ sizeof(PositionComponent)  },
-	{ sizeof(ScaleComponent)     },
-	{ sizeof(RotationComponent)  },
-};
-
-struct Guid_ComponentView {
-	GuidComponent* guid = nullptr;
-	
-	inline static EntityTypeKey key = CreateEntityTypeKey<GuidComponent>();
-};
-
-struct GuidName_ComponentView {
-	GuidComponent* guid = nullptr;
-	NameComponent* name = nullptr;
-	
-	inline static EntityTypeKey key = CreateEntityTypeKey<GuidComponent, NameComponent>();
-};
-
-struct Position_ComponentView {
-	PositionComponent* position = nullptr;
-	
-	inline static EntityTypeKey key = CreateEntityTypeKey<PositionComponent>();
-};
-
-struct Rotation_ComponentView {
-	RotationComponent* rotation = nullptr;
-	
-	inline static EntityTypeKey key = CreateEntityTypeKey<RotationComponent>();
-};
-
-struct Scale_ComponentView {
-	ScaleComponent* scale = nullptr;
-	
-	inline static EntityTypeKey key = CreateEntityTypeKey<ScaleComponent>();
-};
-
-struct Name_ComponentView {
-	NameComponent* name = nullptr;
-	
-	inline static EntityTypeKey key = CreateEntityTypeKey<NameComponent>();
-};
-
 
 s32 main() {
 	auto alloc = CreateStackAllocator(64 * 1024 * 1024, 512 * 1024);
@@ -559,7 +485,7 @@ s32 main() {
 	
 	FixedCountArray<NativeBufferResource, number_of_frames_in_flight> upload_buffers;
 	FixedCountArray<u8*, number_of_frames_in_flight> upload_buffer_cpu_addresses;
-	compile_const u32 upload_buffer_size = 8 * 1024 * 1024;
+	compile_const u32 upload_buffer_size = 32 * 1024 * 1024;
 	
 	for (u32 i = 0; i < number_of_frames_in_flight; i += 1) {
 		upload_buffers[i] = CreateBufferResource(graphics_context, upload_buffer_size, GpuMemoryAccessType::Upload, &upload_buffer_cpu_addresses[i]);
@@ -586,11 +512,13 @@ s32 main() {
 	quat world_to_view_quat = Math::AxisAngleToQuat(float3(1.f, 0.f, 0.f), 90.f * Math::degrees_to_radians) * Math::AxisAngleToQuat(float3(0.f, 0.f, 1.f), 90.f * Math::degrees_to_radians);
 	float3 world_space_camera_position = 0.f;
 	
-	EntitySystem entity_system;
-	entity_system.heap = CreateHeapAllocator(2 * 1024 * 1024);
 	
-	CreateEntities<GuidComponent, NameComponent, PositionComponent, RotationComponent, ScaleComponent>(&alloc, entity_system, 64);
-	CreateEntities<GuidComponent, NameComponent>(&alloc, entity_system, 64);
+	EntitySystem entity_system;
+	InitializeEntitySystem(entity_system);
+	defer{ ReleaseHeapAllocator(entity_system.heap); };
+	
+	CreateEntities<MeshEntityType>(&alloc, entity_system, 64);
+	CreateEntities<CameraEntityType>(&alloc, entity_system, 64);
 	
 	
 	u64  random_seed    = 0x7C7C4065B00D53D3ull;
@@ -598,7 +526,7 @@ s32 main() {
 	DebugAssert(random_success, "Failed to initialize random number generator.");
 	
 	{
-		auto guid_view = QueryEntities<Guid_ComponentView>(&alloc, entity_system);
+		auto guid_view = QueryEntities<GuidQuery>(&alloc, entity_system);
 		
 		u32 entity_count = 0;
 		for (auto* entity_array : guid_view) {
@@ -608,7 +536,7 @@ s32 main() {
 		HashTableReserve(entity_system.entity_guid_to_entity_id, &entity_system.heap, entity_count);
 		
 		for (auto* entity_array : guid_view) {
-			auto streams = ExtractComponentStreams<Guid_ComponentView>(entity_array);
+			auto streams = ExtractComponentStreams<GuidQuery>(entity_array);
 			
 			auto* entity_ids = entity_array->stream_index_to_entity_id;
 			for (u32 index = 0; index < entity_array->count; index += 1) {
@@ -620,8 +548,8 @@ s32 main() {
 			}
 		}
 		
-		for (auto* entity_array : QueryEntities<Name_ComponentView>(&alloc, entity_system)) {
-			auto streams = ExtractComponentStreams<Name_ComponentView>(entity_array);
+		for (auto* entity_array : QueryEntities<NameQuery>(&alloc, entity_system)) {
+			auto streams = ExtractComponentStreams<NameQuery>(entity_array);
 			
 			for (auto& [name] : ArrayView<NameComponent>{ streams.name, entity_array->count }) {
 				name = {};
@@ -631,8 +559,8 @@ s32 main() {
 	
 	{
 		float position_index = 0.f;
-		for (auto* entity_array : QueryEntities<Position_ComponentView>(&alloc, entity_system)) {
-			auto streams = ExtractComponentStreams<Position_ComponentView>(entity_array);
+		for (auto* entity_array : QueryEntities<PositionQuery>(&alloc, entity_system)) {
+			auto streams = ExtractComponentStreams<PositionQuery>(entity_array);
 			
 			for (auto& [position] : ArrayView<PositionComponent>{ streams.position, entity_array->count }) {
 				position = float3(position_index, 0.f, 0.f);
@@ -640,16 +568,16 @@ s32 main() {
 			}
 		}
 		
-		for (auto* entity_array : QueryEntities<Rotation_ComponentView>(&alloc, entity_system)) {
-			auto streams = ExtractComponentStreams<Rotation_ComponentView>(entity_array);
+		for (auto* entity_array : QueryEntities<RotationQuery>(&alloc, entity_system)) {
+			auto streams = ExtractComponentStreams<RotationQuery>(entity_array);
 			
 			for (auto& [rotation] : ArrayView<RotationComponent>{ streams.rotation, entity_array->count }) {
 				rotation = quat();
 			}
 		}
 		
-		for (auto* entity_array : QueryEntities<Scale_ComponentView>(&alloc, entity_system)) {
-			auto streams = ExtractComponentStreams<Scale_ComponentView>(entity_array);
+		for (auto* entity_array : QueryEntities<ScaleQuery>(&alloc, entity_system)) {
+			auto streams = ExtractComponentStreams<ScaleQuery>(entity_array);
 			
 			for (auto& [scale] : ArrayView<ScaleComponent>{ streams.scale, entity_array->count }) {
 				scale = 1.f;
@@ -657,9 +585,7 @@ s32 main() {
 		}
 	}
 	
-	HashTable<u64, u32> selected_entities_hash_table;
-	
-	defer{ ReleaseHeapAllocator(entity_system.heap); };
+	HashTable<u64, EntityTypeID> selected_entities_hash_table;
 	
 	ImGuiMouseLock mouse_lock;
 	
@@ -828,7 +754,7 @@ s32 main() {
 		if (ImGui::CollapsingHeader("GUID/Name Query")) {
 			u32 entity_count = 0;
 			
-			auto entity_view = QueryEntities<GuidName_ComponentView>(&alloc, entity_system);
+			auto entity_view = QueryEntities<GuidNameQuery>(&alloc, entity_system);
 			for (auto* entity_array : entity_view) {
 				entity_count += entity_array->count;
 			}
@@ -838,10 +764,10 @@ s32 main() {
 					if (request.Type == ImGuiSelectionRequestType_SetAll) {
 						if (request.Selected) {
 							for (auto* entity_array : entity_view) {
-								auto streams = ExtractComponentStreams<Gui_ComponentView>(entity_array);
+								auto streams = ExtractComponentStreams<GuidQuery>(entity_array);
 								for (u32 index = 0; index < entity_array->count; index += 1) {
 									auto& [guid] = streams.guid[index];
-									HashTableAddOrFind(selected_entities_hash_table, &entity_system.heap, guid, entity_array->entity_type_index);
+									HashTableAddOrFind(selected_entities_hash_table, &entity_system.heap, guid, entity_array->entity_type_id);
 								}
 							}
 						} else {
@@ -856,11 +782,11 @@ s32 main() {
 							
 							if (start_index >= end_index) continue;
 							
-							auto streams = ExtractComponentStreams<Guid_ComponentView>(entity_array);
+							auto streams = ExtractComponentStreams<GuidQuery>(entity_array);
 							for (u32 index = start_index; index < end_index; index += 1) {
 								auto& [guid] = streams.guid[index - global_index];
 								if (request.Selected) {
-									HashTableAddOrFind(selected_entities_hash_table, &entity_system.heap, guid, entity_array->entity_type_index);
+									HashTableAddOrFind(selected_entities_hash_table, &entity_system.heap, guid, entity_array->entity_type_id);
 								} else {
 									HashTableRemove(selected_entities_hash_table, guid);
 								}
@@ -886,7 +812,7 @@ s32 main() {
 					
 					if (start_index >= end_index) continue;
 					
-					auto streams = ExtractComponentStreams<GuidName_ComponentView>(entity_array);
+					auto streams = ExtractComponentStreams<GuidNameQuery>(entity_array);
 					for (u32 index = start_index; index < end_index; index += 1) {
 						auto& [guid] = streams.guid[index - global_index];
 						auto& [name] = streams.name[index - global_index];
@@ -895,7 +821,7 @@ s32 main() {
 						
 						ImGui::Bullet();
 						ImGui::SameLine();
-						ImGui::Text("%u", entity_array->entity_type_index);
+						ImGui::Text("%u", entity_array->entity_type_id.index);
 						ImGui::SameLine();
 						
 						bool is_selected = HashTableFind(selected_entities_hash_table, guid) != nullptr;
@@ -910,10 +836,10 @@ s32 main() {
 			apply_requests(ms_io);
 			
 			if (ImGui::Shortcut(ImGuiKey_Delete, ImGuiInputFlags_RouteGlobal)) {
-				for (auto& [guid, entity_type_index] : selected_entities_hash_table) {
+				for (auto& [guid, entity_type_id] : selected_entities_hash_table) {
 					auto* guid_to_id = HashTableRemove(entity_system.entity_guid_to_entity_id, guid);
 					if (guid_to_id != nullptr) {
-						RemoveEntity(entity_system, entity_type_index, guid_to_id->value);
+						RemoveEntity(entity_system, entity_type_id, guid_to_id->value);
 					}
 				}
 				HashTableClear(selected_entities_hash_table);

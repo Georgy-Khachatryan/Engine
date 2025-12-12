@@ -46,6 +46,8 @@ u32 ComputeTypeSize(TypeInfo* type_info) {
 		return ComputeTypeSize(type_info_enum->underlying_type);
 	} case TypeInfoType::String: {
 		return sizeof(String);
+	} case TypeInfoType::Pointer: {
+		return sizeof(void*);
 	} default: {
 		DebugAssertAlways("Unhandled TypeInfoType.");
 		return 0;
@@ -67,7 +69,7 @@ u64 ReadIntegerU64(TypeInfoInteger* type_info, const void* value) {
 }
 
 
-String PrintTypeName(TypeInfo* type_info) {
+String PrintTypeName(StackAllocator* alloc, TypeInfo* type_info) {
 	switch (type_info ? type_info->info_type : TypeInfoType::None) {
 	case TypeInfoType::Integer: {
 		auto* type_info_integer = (TypeInfoInteger*)type_info;
@@ -108,6 +110,10 @@ String PrintTypeName(TypeInfo* type_info) {
 		return "void"_sl;
 	} case TypeInfoType::String: {
 		return "String"_sl;
+	} case TypeInfoType::Pointer: {
+		auto* type_info_pointer = (TypeInfoPointer*)type_info;
+		auto pointer_to_name = PrintTypeName(alloc, type_info_pointer->pointer_to);
+		return StringFormat(alloc, "%.*s*", (s32)pointer_to_name.count, pointer_to_name.data);
 	} case TypeInfoType::None: {
 		return "None"_sl;
 	} default: {
@@ -123,10 +129,10 @@ String PrintTypeValue(StackAllocator* alloc, TypeInfo* type_info, const void* va
 		auto* type_info_integer = (TypeInfoInteger*)type_info;
 		if (type_info_integer->is_signed) {
 			switch (type_info_integer->bit_width) {
-			case 8:  StringFormat(alloc, "%d", (s32)(*(s8*)value));
-			case 16: StringFormat(alloc, "%d", (s32)(*(s16*)value));
-			case 32: StringFormat(alloc, "%d",   *(s32*)value);
-			case 64: StringFormat(alloc, "%lld", *(s64*)value);
+			case 8:  return StringFormat(alloc, "%d", (s32)(*(s8*)value));
+			case 16: return StringFormat(alloc, "%d", (s32)(*(s16*)value));
+			case 32: return StringFormat(alloc, "%d",   *(s32*)value);
+			case 64: return StringFormat(alloc, "%lld", *(s64*)value);
 			default: return "Unknown Integer"_sl;
 			}
 		} else {
@@ -190,6 +196,8 @@ String PrintTypeValue(StackAllocator* alloc, TypeInfo* type_info, const void* va
 		return value_name;
 	} case TypeInfoType::String: {
 		return *(String*)value;
+	} case TypeInfoType::Pointer: {
+		return StringFormat(alloc, "0x%P", value);
 	} default: {
 		DebugAssertAlways("Unhandled TypeInfoType.");
 		return "Unknown Type"_sl;

@@ -4,21 +4,43 @@
 #include "Basic/BasicMemory.h"
 #include "Basic/BasicHashTable.h"
 #include "Basic/BasicMath.h"
+#include "Basic/BasicString.h"
 
-compile_const u32 component_type_count = 5;
+struct EntityTypeID      { u32 index = 0; };
+struct EntityQueryTypeID { u32 index = 0; };
+struct ComponentTypeID   { u32 index = 0; };
 
-struct alignas(u64) EntityTypeKey {
-	compile_const u32 key_size_dwords = DivideAndRoundUp(component_type_count, 8u);
-	compile_const u32 key_size_bytes  = key_size_dwords * 4;
+namespace ESC {
+	NOTES()
+	enum struct ComponentType : u32 {
+		CPU = 0,
+		GPU = 1,
+	};
 	
-	FixedCountArray<u32, key_size_dwords> active_component_mask;
+	NOTES(ESC::ComponentType::CPU) template<typename T> struct Component {};
+	NOTES(ESC::ComponentType::GPU) template<typename T> struct GpuComponent {};
 	
-	bool operator== (const EntityTypeKey& other) const { return memcmp(active_component_mask.data, other.active_component_mask.data, sizeof(active_component_mask)) == 0; }
+	template<typename T> struct GetEntityTypeID      { static EntityTypeID      id; };
+	template<typename T> struct GetEntityQueryTypeID { static EntityQueryTypeID id; };
+	template<typename T> struct GetComponentTypeID   { static ComponentTypeID   id; };
+}
+
+namespace Meta {
+	NOTES() struct EntityType {};
+	NOTES() struct ComponentQuery {};
+}
+
+struct EntityTypeInfo {
+	ArrayView<ComponentTypeID> component_type_ids;
+};
+
+struct EntityQueryTypeInfo {
+	ArrayView<ComponentTypeID> component_type_ids;
+	ArrayView<u32>       component_stream_indices;
 };
 
 struct ComponentTypeInfo {
-	u32 size_bytes  = 0;
-	u32 align_bytes = 0;
+	u32 size_bytes = 0;
 };
 
 struct EntityTypeArray {
@@ -28,17 +50,13 @@ struct EntityTypeArray {
 	u32* entity_id_to_stream_index = nullptr;
 	u32* stream_index_to_entity_id = nullptr;
 	
-	FixedCapacityArray<u8*, component_type_count> streams;
-	u32 entity_type_index = 0;
-	
-	EntityTypeKey key;
+	ArrayView<u8*> component_streams;
+	EntityTypeID entity_type_id = { 0 };
 };
 
 struct EntitySystem {
-	HashTable<u64, u32> entity_guid_to_entity_id;
-	
-	HashTable<EntityTypeKey, u32> entity_type_key_to_entity_type_index;
-	Array<EntityTypeArray> entity_type_arrays;
+	HashTable<u64, u32>  entity_guid_to_entity_id;
+	ArrayView<EntityTypeArray> entity_type_arrays;
 	
 	HeapAllocator heap;
 };
@@ -46,46 +64,38 @@ struct EntitySystem {
 struct CreateEntitiesResult {
 	Array<u32> entity_ids;
 	u32 stream_offset = 0;
-	u32 entity_type_index = 0;
+	EntityTypeID entity_type_id = { 0 };
 };
 
-CreateEntitiesResult CreateEntities(StackAllocator* alloc, EntitySystem& system, const EntityTypeKey& key, u32 entity_count);
-void RemoveEntity(EntitySystem& system, u32 entity_type_index, u32 entity_id);
+void InitializeEntitySystem(EntitySystem& system);
 
-ArrayView<EntityTypeArray*> QueryEntities(StackAllocator* alloc, EntitySystem& system, const EntityTypeKey& key);
-void ExtractComponentStreams(EntityTypeArray* array, const EntityTypeKey& output_key, ArrayView<u8*> output_streams);
+CreateEntitiesResult CreateEntities(StackAllocator* alloc, EntitySystem& system, EntityTypeID entity_type_id, u32 entity_count);
+void RemoveEntity(EntitySystem& system, EntityTypeID entity_type_id, u32 entity_id);
 
-template<typename ... Ts>
-inline EntityTypeKey CreateEntityTypeKey() {
-	u64 key_u64 = 0;
-	((key_u64 |= (1ull << Ts::component_type_id)), ...);
-	
-	EntityTypeKey result;
-	memcpy(result.active_component_mask.data, &key_u64, result.key_size_bytes);
-	static_assert(result.key_size_bytes <= sizeof(key_u64));
-	
-	return result;
-}
+ArrayView<EntityTypeArray*> QueryEntities(StackAllocator* alloc, EntitySystem& system, EntityQueryTypeID query_type_id);
+void ExtractComponentStreams(EntityTypeArray* array, EntityQueryTypeID query_type_id, ArrayView<u8*> output_streams);
 
-template<typename ... Ts>
+
+template<typename EntityTypeT>
 CreateEntitiesResult CreateEntities(StackAllocator* alloc, EntitySystem& system, u32 entity_count) {
-	return CreateEntities(alloc, system, CreateEntityTypeKey<Ts ...>(), entity_count);
+	return CreateEntities(alloc, system, ESC::GetEntityTypeID<EntityTypeT>::id, entity_count);
 }
 
-template<typename T>
+template<typename QueryTypeT>
 ArrayView<EntityTypeArray*> QueryEntities(StackAllocator* alloc, EntitySystem& system) {
-	return QueryEntities(alloc, system, T::key);
+	return QueryEntities(alloc, system, ESC::GetEntityQueryTypeID<QueryTypeT>::id);
 }
 
-template<typename T>
-T ExtractComponentStreams(EntityTypeArray* array) {
-	FixedCountArray<u8*, sizeof(T) / sizeof(u8*)> streams;
-	static_assert(sizeof(streams) == sizeof(T));
+template<typename QueryTypeT>
+QueryTypeT ExtractComponentStreams(EntityTypeArray* array) {
+	FixedCountArray<u8*, sizeof(QueryTypeT) / sizeof(u8*)> component_streams;
+	static_assert(sizeof(component_streams) == sizeof(QueryTypeT));
 	
-	ExtractComponentStreams(array, T::key, streams);
+	ExtractComponentStreams(array, ESC::GetEntityQueryTypeID<QueryTypeT>::id, component_streams);
 	
-	T result;
-	memcpy(&result, streams.data, sizeof(result));
+	QueryTypeT result;
+	memcpy(&result, component_streams.data, sizeof(result));
 	
 	return result;
 }
+
