@@ -36,7 +36,7 @@ inline T* FindNote(TypeInfo* type_info) {
 TypeInfo* ExtractTemplateParameterType(TypeInfo* type_info, u32 index);
 String ExtractNameWithoutNamespace(String name);
 
-u32 ComputeTypeSize(TypeInfo* type_info);
+u64 ComputeTypeSize(TypeInfo* type_info);
 u64 ReadIntegerU64(TypeInfoInteger* type_info, const void* value);
 
 String PrintTypeName(StackAllocator* alloc, TypeInfo* type_info);

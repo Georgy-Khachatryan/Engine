@@ -27,8 +27,10 @@ StringUtf8  StringUtf16ToUtf8(StackAllocator* alloc, StringUtf16 string);
 StringUtf16 StringUtf8ToUtf16(StackAllocator* alloc, StringUtf8  string);
 String StringFormatV(StackAllocator* alloc, const char* format, va_list args);
 String StringFormat(StackAllocator* alloc, const char* format, ...);
+String StringCopy(StackAllocator* alloc, String source);
 String StringCopy(HeapAllocator* alloc, String source);
 String StringAllocate(StackAllocator* alloc, u64 count);
+String StringAllocate(HeapAllocator* alloc, u64 count);
 String StringReplaceTabsWithSpaces(StackAllocator* alloc, String source, u32 tab_width);
 String StringJoin(StackAllocator* alloc, ArrayView<String> source_strings, String separator = ""_sl);
 
@@ -59,6 +61,6 @@ u64 ComputeHash(const u8* data, u64 count, u64 seed = 0);
 u64 ComputeHash(String string);
 
 
-inline char CharToUpperCase(char c) { return (c >= 'a' && c <= 'z')  ? c - 'a' + 'A' : c; }
+inline char CharToUpperCase(char c) { return (c >= 'a' && c <= 'z') ? c - 'a' + 'A' : c; }
 inline char CharIsUpperCase(char c) { return (c >= 'A' && c <= 'Z'); }
 inline char CharIsLowerCase(char c) { return (c >= 'a' && c <= 'z'); }

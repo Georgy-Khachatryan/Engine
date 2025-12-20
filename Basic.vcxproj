@@ -29,6 +29,7 @@
   <ItemGroup>
     <ClCompile Include="Basic/Assert.cpp" />
     <ClCompile Include="Basic/BasicMath.cpp" />
+    <ClCompile Include="Basic/BasicSaveLoad.cpp" />
     <ClCompile Include="Basic/BasicString.cpp" />
     <ClCompile Include="Basic/HeapAllocator.cpp" />
     <ClCompile Include="Basic/StackAllocator.cpp" />
@@ -43,6 +44,7 @@
     <ClInclude Include="Basic/BasicMath.h" />
     <ClInclude Include="Basic/BasicMathGenerated.h" />
     <ClInclude Include="Basic/BasicMemory.h" />
+    <ClInclude Include="Basic/BasicSaveLoad.h" />
     <ClInclude Include="Basic/BasicString.h" />
   </ItemGroup>
   

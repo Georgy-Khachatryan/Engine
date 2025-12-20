@@ -1,9 +1,9 @@
 #pragma once
 #include "Basic/Basic.h"
 #include "Basic/BasicString.h"
+#include "Basic/BasicSaveLoad.h"
 #include "EntitySystem.h"
 
-NOTES() struct GuidComponent { u64 guid = 0; };
 NOTES() struct NameComponent { String name; };
 NOTES() struct PositionComponent { float3 position; };
 NOTES() struct ScaleComponent { float scale = 1.f; };
@@ -18,8 +18,6 @@ struct MeshEntityType {
 	ESC::Component<PositionComponent> position;
 	ESC::Component<RotationComponent> rotation;
 	ESC::Component<ScaleComponent>    scale;
-	
-	ESC::GpuComponent<float3x4> transform;
 };
 
 
@@ -28,6 +26,7 @@ enum struct CameraTransformType : u32 {
 	Perspective  = 0,
 	Orthographic = 1,
 };
+SAVE_LOAD_AS_BYTES(CameraTransformType);
 
 NOTES()
 struct CameraComponent {
@@ -45,11 +44,6 @@ struct CameraEntityType {
 	ESC::Component<CameraComponent>   camera;
 };
 
-
-NOTES(Meta::ComponentQuery{})
-struct GuidQuery {
-	GuidComponent* guid = nullptr;
-};
 
 NOTES(Meta::ComponentQuery{})
 struct GuidNameQuery {
@@ -75,4 +69,11 @@ struct ScaleQuery {
 NOTES(Meta::ComponentQuery{})
 struct NameQuery {
 	NameComponent* name = nullptr;
+};
+
+NOTES(Meta::ComponentQuery{})
+struct PositionRotationCameraQuery {
+	PositionComponent* position = nullptr;
+	RotationComponent* rotation = nullptr;
+	CameraComponent*   camera   = nullptr;
 };

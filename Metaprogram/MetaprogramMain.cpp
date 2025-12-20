@@ -216,7 +216,7 @@ static void GenerateCodeForRenderPass(StackAllocator* alloc, String filename, Hl
 		} else if (root_argument_type == RootArgumentType::ConstantBuffer) {
 			root_parameter_count += 1;
 		} else if (root_argument_type == RootArgumentType::PushConstantBuffer) {
-			ArrayAppend(root_signature_stream, alloc, DivideAndRoundUp(ComputeTypeSize(template_type), sizeof(u32)));
+			ArrayAppend(root_signature_stream, alloc, (u32)DivideAndRoundUp(ComputeTypeSize(template_type), sizeof(u32)));
 			root_parameter_count += 1;
 		}
 	}
@@ -651,11 +651,29 @@ s32 main(s32 argument_count, const char* arguments[]) {
 		builder.Unindent();
 		builder.AppendUnformatted("};\n\n"_sl);
 		
+		for (auto* type_info : component_type_infos) {
+			builder.Append("void SaveLoad(SaveLoadBuffer& buffer, %.*s& component) {\n", (s32)type_info->name.count, type_info->name.data);
+			builder.Indent();
+			for (auto& field : type_info->fields) {
+				builder.Append("SaveLoad(buffer, component.%.*s);\n", (s32)field.name.count, field.name.data);
+			}
+			builder.Unindent();
+			builder.AppendUnformatted("}\n\n"_sl);
+		}
+		
+		builder.AppendUnformatted("SaveLoadCallback component_save_load_callbacks_internal[] = {\n"_sl);
+		builder.Indent();
+		for (auto* type_info : component_type_infos) {
+			entity_system_builder.Append("[](SaveLoadBuffer& buffer, void* data) { SaveLoad(buffer, *(%.*s*)data); },\n", (s32)type_info->name.count, type_info->name.data);
+		}
+		builder.Unindent();
+		builder.AppendUnformatted("};\n\n"_sl);
+		
 		
 		builder.Append("ArrayView<EntityTypeInfo> entity_type_info_table = { entity_type_info_table_internal, %u };\n", (u32)entity_type_infos.count);
 		builder.Append("ArrayView<EntityQueryTypeInfo> entity_query_type_info_table = { entity_query_type_info_table_internal, %u };\n", (u32)entity_query_type_infos.count);
 		builder.Append("ArrayView<ComponentTypeInfo> component_type_info_table = { component_type_info_table_internal, %u };\n", (u32)component_type_infos.count);
-		
+		builder.Append("ArrayView<SaveLoadCallback> component_save_load_callbacks = { component_save_load_callbacks_internal, %u };\n", (u32)component_type_infos.count);
 	}
 	
 	EnsureDirectoryExists(&alloc, "Shaders/Generated/"_sl);

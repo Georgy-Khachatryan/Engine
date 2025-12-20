@@ -30,7 +30,7 @@ String ExtractNameWithoutNamespace(String name) {
 }
 
 
-u32 ComputeTypeSize(TypeInfo* type_info) {
+u64 ComputeTypeSize(TypeInfo* type_info) {
 	switch (type_info ? type_info->info_type : TypeInfoType::None) {
 	case TypeInfoType::Integer: {
 		auto* type_info_integer = (TypeInfoInteger*)type_info;

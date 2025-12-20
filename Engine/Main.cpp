@@ -3,6 +3,7 @@
 #include "Basic/BasicArray.h"
 #include "Basic/BasicString.h"
 #include "Basic/BasicHashTable.h"
+#include "Basic/BasicSaveLoad.h"
 #include "SystemWindow.h"
 #include "RenderPasses.h"
 #include "GraphicsApi/GraphicsApi.h"
@@ -504,88 +505,37 @@ s32 main() {
 		table.Set(ResourceID::SkyPanoramaLut,        TextureSize(TextureFormat::R16G16B16A16_FLOAT, AtmosphereParameters::sky_panorama_lut_size));
 	}
 	
-	float vertical_fov_degrees  = 75.f;
 	float sun_elevation_degrees = 3.f;
 	float meshlet_target_error_pixels = 1.f;
-	bool use_perspective_view_to_clip = true;
-	
-	quat world_to_view_quat = Math::AxisAngleToQuat(float3(1.f, 0.f, 0.f), 90.f * Math::degrees_to_radians) * Math::AxisAngleToQuat(float3(0.f, 0.f, 1.f), 90.f * Math::degrees_to_radians);
-	float3 world_space_camera_position = 0.f;
-	
 	
 	EntitySystem entity_system;
 	InitializeEntitySystem(entity_system);
 	defer{ ReleaseHeapAllocator(entity_system.heap); };
 	
-	CreateEntities<MeshEntityType>(&alloc, entity_system, 64);
-	CreateEntities<CameraEntityType>(&alloc, entity_system, 64);
 	
-	
-	u64  random_seed    = 0x7C7C4065B00D53D3ull;
-	bool random_success = _rdrand64_step(&random_seed) != 0;
-	DebugAssert(random_success, "Failed to initialize random number generator.");
-	
+	auto scene_save_load_path = "./Assets/Scene.csb"_sl;
 	{
-		auto guid_view = QueryEntities<GuidQuery>(&alloc, entity_system);
-		
-		u32 entity_count = 0;
-		for (auto* entity_array : guid_view) {
-			entity_count += entity_array->count;
-		}
-		
-		HashTableReserve(entity_system.entity_guid_to_entity_id, &entity_system.heap, entity_count);
-		
-		for (auto* entity_array : guid_view) {
-			auto streams = ExtractComponentStreams<GuidQuery>(entity_array);
+		TempAllocationScope(&alloc);
+		SaveLoadBuffer buffer;
+		if (OpenSaveLoadBufferForLoading(&alloc, scene_save_load_path, buffer)) {
+			SaveLoadEntitySystem(buffer, entity_system);
+		} else {
+			auto entity_result = CreateEntities<CameraEntityType>(&alloc, entity_system, 1);
+			auto* entity_array = QueryEntityTypeArray<CameraEntityType>(entity_system);
+			auto camera_entity = ExtractComponentStreams<PositionRotationCameraQuery>(entity_array, entity_result.stream_offset);
 			
-			auto* entity_ids = entity_array->stream_index_to_entity_id;
-			for (u32 index = 0; index < entity_array->count; index += 1) {
-				auto& [guid] = streams.guid[index];
-				u32 entity_id = entity_ids[index];
-				
-				guid = GenerateRandomNumber64(random_seed);
-				HashTableAddOrFind(entity_system.entity_guid_to_entity_id, guid, entity_id);
-			}
-		}
-		
-		for (auto* entity_array : QueryEntities<NameQuery>(&alloc, entity_system)) {
-			auto streams = ExtractComponentStreams<NameQuery>(entity_array);
+			camera_entity.camera->vertical_fov_degrees = 75.f;
+			camera_entity.camera->transform_type       = CameraTransformType::Perspective;
+			camera_entity.position->position = float3(0.f, 0.f, 0.f);
+			camera_entity.rotation->rotation = Math::AxisAngleToQuat(float3(1.f, 0.f, 0.f), 90.f * Math::degrees_to_radians) * Math::AxisAngleToQuat(float3(0.f, 0.f, 1.f), 90.f * Math::degrees_to_radians);
 			
-			for (auto& [name] : ArrayView<NameComponent>{ streams.name, entity_array->count }) {
-				name = {};
-			}
+			ExtractComponentStreams<NameQuery>(entity_array, entity_result.stream_offset).name->name = StringCopy(&entity_system.heap, "Camera"_sl);
 		}
 	}
 	
-	{
-		float position_index = 0.f;
-		for (auto* entity_array : QueryEntities<PositionQuery>(&alloc, entity_system)) {
-			auto streams = ExtractComponentStreams<PositionQuery>(entity_array);
-			
-			for (auto& [position] : ArrayView<PositionComponent>{ streams.position, entity_array->count }) {
-				position = float3(position_index, 0.f, 0.f);
-				position_index += 1.f;
-			}
-		}
-		
-		for (auto* entity_array : QueryEntities<RotationQuery>(&alloc, entity_system)) {
-			auto streams = ExtractComponentStreams<RotationQuery>(entity_array);
-			
-			for (auto& [rotation] : ArrayView<RotationComponent>{ streams.rotation, entity_array->count }) {
-				rotation = quat();
-			}
-		}
-		
-		for (auto* entity_array : QueryEntities<ScaleQuery>(&alloc, entity_system)) {
-			auto streams = ExtractComponentStreams<ScaleQuery>(entity_array);
-			
-			for (auto& [scale] : ArrayView<ScaleComponent>{ streams.scale, entity_array->count }) {
-				scale = 1.f;
-			}
-		}
-	}
+	u64 camera_entity_guid = ExtractComponentStreams<GuidQuery>(QueryEntityTypeArray<CameraEntityType>(entity_system), 0).guid->guid;
 	
-	HashTable<u64, EntityTypeID> selected_entities_hash_table;
+	HashTable<u64, u32> selected_entities_hash_table;
 	
 	ImGuiMouseLock mouse_lock;
 	
@@ -716,12 +666,14 @@ s32 main() {
 		auto& descriptor_table = AllocateDescriptorTable(&record_context, root_descriptor_table);
 		
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.f, 0.f));
+		ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,  ImVec2(0.f, 0.f));
 		ImGui::Begin("Scene");
+		
 		auto window_size = float2(ImGui::GetContentRegionAvail());
 		auto window_pos  = ImGui::GetWindowPos();
-		ImGui::Image(descriptor_table.descriptor_heap_offset, ImVec2(window_size.x, window_size.y));
-		bool scene_hovered = ImGui::IsWindowHovered();
-		bool scene_focused = ImGui::IsWindowFocused();
+		ImGui::ImageButton("Scene", descriptor_table.descriptor_heap_offset, ImVec2(window_size.x, window_size.y));
+		bool scene_hovered = ImGui::IsItemHovered();
+		bool scene_focused = ImGui::IsItemFocused();
 		
 		ImRect mouse_lock_rect;
 		mouse_lock_rect.Min = window_pos;
@@ -730,7 +682,7 @@ s32 main() {
 		mouse_lock.Update(ImGuiMouseButton_Right, scene_hovered, mouse_lock_rect);
 		
 		ImGui::End();
-		ImGui::PopStyleVar();
+		ImGui::PopStyleVar(2);
 		
 		// Clamp render target size to a reasonable minimum. Aspect ratio for view to clip is still computed using unclamped values.
 		uint2 render_target_size = uint2((u32)Max(window_size.x, 16.f), (u32)Max(window_size.y, 16.f));
@@ -740,11 +692,34 @@ s32 main() {
 		compile_const float near_depth = 0.1f;
 		
 		ImGui::Begin("Stats");
+		
+		ImGui::SetNextItemShortcut(ImGuiMod_Ctrl | ImGuiKey_S, ImGuiInputFlags_RouteGlobal | ImGuiInputFlags_RouteOverFocused);
+		if (ImGui::Button("Save State")) {
+			TempAllocationScope(&alloc);
+			auto buffer = OpenSaveLoadBufferForSaving(&alloc);
+			SaveLoadEntitySystem(buffer, entity_system);
+			WriteSaveLoadBufferToFile(&alloc, buffer, scene_save_load_path);
+		}
+		
+		if (ImGui::Button("Load State")) {
+			TempAllocationScope(&alloc);
+			SaveLoadBuffer buffer;
+			if (OpenSaveLoadBufferForLoading(&alloc, scene_save_load_path, buffer)) {
+				SaveLoadEntitySystem(buffer, entity_system);
+			}
+		}
+		
+		auto camera_entity = QueryEntityByGUID<PositionRotationCameraQuery>(entity_system, camera_entity_guid);
+		auto& camera_transform_type       = camera_entity.camera->transform_type;
+		auto& vertical_fov_degrees        = camera_entity.camera->vertical_fov_degrees;
+		auto& world_to_view_quat          = camera_entity.rotation->rotation;
+		auto& world_space_camera_position = camera_entity.position->position;
+		
 		ImGui::Text("Initial Alloc Size: %llu", frame_initial_size);
 		ImGui::Text("Frame Alloc Size: %llu", frame_allocation_size);
 		ImGui::Text("Upload Alloc Size: %llu", transient_upload_allocation_size);
 		ImGui::Text("ImGui Alloc Size: %llu", imgui_heap.ComputeTotalMemoryUsage());
-		ImGui::Checkbox("Perspective Camera", &use_perspective_view_to_clip);
+		ImGui::Combo("Camera Transform Type", (s32*)&camera_transform_type, "Perspective\0Orthographic\0");
 		ImGui::SliderFloat("Vertical Field Of View", &vertical_fov_degrees, 10.f, 135.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
 		ImGui::SliderFloat("Meshlet Target Error Pixels", &meshlet_target_error_pixels, 1.f, 128.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
 		ImGui::SliderFloat("Sun Elevation", &sun_elevation_degrees, -10.f, +190.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
@@ -767,7 +742,7 @@ s32 main() {
 								auto streams = ExtractComponentStreams<GuidQuery>(entity_array);
 								for (u32 index = 0; index < entity_array->count; index += 1) {
 									auto& [guid] = streams.guid[index];
-									HashTableAddOrFind(selected_entities_hash_table, &entity_system.heap, guid, entity_array->entity_type_id);
+									HashTableAddOrFind(selected_entities_hash_table, &imgui_heap, guid, 0u);
 								}
 							}
 						} else {
@@ -786,7 +761,7 @@ s32 main() {
 							for (u32 index = start_index; index < end_index; index += 1) {
 								auto& [guid] = streams.guid[index - global_index];
 								if (request.Selected) {
-									HashTableAddOrFind(selected_entities_hash_table, &entity_system.heap, guid, entity_array->entity_type_id);
+									HashTableAddOrFind(selected_entities_hash_table, &imgui_heap, guid, 0u);
 								} else {
 									HashTableRemove(selected_entities_hash_table, guid);
 								}
@@ -823,6 +798,8 @@ s32 main() {
 						ImGui::SameLine();
 						ImGui::Text("%u", entity_array->entity_type_id.index);
 						ImGui::SameLine();
+						ImGui::Text("0x%llX", guid);
+						ImGui::SameLine();
 						
 						bool is_selected = HashTableFind(selected_entities_hash_table, guid) != nullptr;
 						
@@ -836,11 +813,8 @@ s32 main() {
 			apply_requests(ms_io);
 			
 			if (ImGui::Shortcut(ImGuiKey_Delete, ImGuiInputFlags_RouteGlobal)) {
-				for (auto& [guid, entity_type_id] : selected_entities_hash_table) {
-					auto* guid_to_id = HashTableRemove(entity_system.entity_guid_to_entity_id, guid);
-					if (guid_to_id != nullptr) {
-						RemoveEntity(entity_system, entity_type_id, guid_to_id->value);
-					}
+				for (auto& [guid, dummy] : selected_entities_hash_table) {
+					RemoveEntityByGUID(entity_system, guid);
 				}
 				HashTableClear(selected_entities_hash_table);
 			}
@@ -855,17 +829,17 @@ s32 main() {
 			
 			auto world_to_view = Math::QuatToRotationMatrix(world_to_view_quat);
 			float move_distance = base_speed * sensetivity_scale * io.DeltaTime;
-			if (ImGui::IsKeyDown(ImGuiKey_D)) world_space_camera_position += world_to_view[0] * +move_distance;
-			if (ImGui::IsKeyDown(ImGuiKey_A)) world_space_camera_position += world_to_view[0] * -move_distance;
-			if (ImGui::IsKeyDown(ImGuiKey_W)) world_space_camera_position += world_to_view[2] * +move_distance;
-			if (ImGui::IsKeyDown(ImGuiKey_S)) world_space_camera_position += world_to_view[2] * -move_distance;
-			if (ImGui::IsKeyDown(ImGuiKey_Q)) world_space_camera_position += world_to_view[1] * +move_distance;
-			if (ImGui::IsKeyDown(ImGuiKey_E)) world_space_camera_position += world_to_view[1] * -move_distance;
+			if (ImGui::IsKeyDown(ImGuiKey_D, ImGuiKeyOwner_NoOwner)) world_space_camera_position += world_to_view[0] * +move_distance;
+			if (ImGui::IsKeyDown(ImGuiKey_A, ImGuiKeyOwner_NoOwner)) world_space_camera_position += world_to_view[0] * -move_distance;
+			if (ImGui::IsKeyDown(ImGuiKey_W, ImGuiKeyOwner_NoOwner)) world_space_camera_position += world_to_view[2] * +move_distance;
+			if (ImGui::IsKeyDown(ImGuiKey_S, ImGuiKeyOwner_NoOwner)) world_space_camera_position += world_to_view[2] * -move_distance;
+			if (ImGui::IsKeyDown(ImGuiKey_Q, ImGuiKeyOwner_NoOwner)) world_space_camera_position += world_to_view[1] * +move_distance;
+			if (ImGui::IsKeyDown(ImGuiKey_E, ImGuiKeyOwner_NoOwner)) world_space_camera_position += world_to_view[1] * -move_distance;
 		}
 		
 		if (scene_hovered && io.MouseWheel != 0.f && mouse_lock.locked_mouse_button == ImGuiMouseButton_COUNT) {
 			float4 view_to_clip_coef;
-			if (use_perspective_view_to_clip) {
+			if (camera_transform_type == CameraTransformType::Perspective) {
 				view_to_clip_coef = Math::PerspectiveViewToClip(vertical_fov_degrees * Math::degrees_to_radians, window_size, near_depth);
 			} else {
 				view_to_clip_coef = Math::OrthographicViewToClip(window_size * vertical_fov_degrees * (1.f / window_size.x), 1024.f);
@@ -908,7 +882,7 @@ s32 main() {
 		SceneConstants scene;
 		scene.render_target_size     = float2(render_target_size);
 		scene.inv_render_target_size = float2(1.f) / scene.render_target_size;
-		if (use_perspective_view_to_clip) {
+		if (camera_transform_type == CameraTransformType::Perspective) {
 			scene.view_to_clip_coef = Math::PerspectiveViewToClip(vertical_fov_degrees * Math::degrees_to_radians, window_size, near_depth);
 			scene.clip_to_view_coef = Math::ViewToClipInverse(scene.view_to_clip_coef);
 		} else {

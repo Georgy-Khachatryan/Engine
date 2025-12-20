@@ -37,6 +37,8 @@ struct HeapAllocator {
 	void  Deallocate(void* old_memory, u64 old_size = 0);
 	static u64 GetMemoryBlockSize(void* memory);
 	
+	void DeallocateAll();
+	
 	u64 ComputeTotalMemoryUsage();
 };
 

@@ -32,6 +32,7 @@
 
 
 #define compile_const constexpr static const
+#define always_inline __forceinline
 
 using u8  = unsigned char;
 using s8  = signed char;
@@ -122,3 +123,18 @@ struct HeapAllocator;
 
 #define NOTES(...)
 
+
+template<typename T> struct SaveLoadAsBytes { compile_const bool value = false; };
+#define SAVE_LOAD_AS_BYTES(T) template<> struct SaveLoadAsBytes<T> { using ValueType = T; compile_const bool value = true; }
+
+SAVE_LOAD_AS_BYTES(bool);
+SAVE_LOAD_AS_BYTES(u8);
+SAVE_LOAD_AS_BYTES(s8);
+SAVE_LOAD_AS_BYTES(u16);
+SAVE_LOAD_AS_BYTES(s16);
+SAVE_LOAD_AS_BYTES(u32);
+SAVE_LOAD_AS_BYTES(s32);
+SAVE_LOAD_AS_BYTES(u64);
+SAVE_LOAD_AS_BYTES(s64);
+SAVE_LOAD_AS_BYTES(float32);
+SAVE_LOAD_AS_BYTES(float64);

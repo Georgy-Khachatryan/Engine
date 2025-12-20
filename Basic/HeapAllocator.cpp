@@ -33,8 +33,9 @@ static_assert(sizeof(HeapAllocatorBlock) == 24, "Incorrect HeapAllocatorBlock si
 
 struct HeapAllocatorPage {
 	HeapAllocatorPage* last_page = nullptr;
+	u64 size = 0;
 };
-static_assert(sizeof(HeapAllocatorPage) == 8, "Incorrect HeapAllocatorPage size.");
+static_assert(sizeof(HeapAllocatorPage) == 16, "Incorrect HeapAllocatorPage size.");
 
 
 // 8 bit float binning introduced by Sebastian Aaltonen in REAC2023 "Modern Mobile Rendering @ HypeHype".
@@ -159,6 +160,15 @@ static void CombineFreeBlocks(HeapAllocatorBlock* block_0, HeapAllocatorBlock* b
 	}
 }
 
+static void PushNewPageFreeBlock(HeapAllocator* heap, HeapAllocatorPage* page, u64 reserved_size) {
+	auto* block = NewInPlace(page + 1, HeapAllocatorBlock);
+	block->size = reserved_size - sizeof(HeapAllocatorPage);
+	block->is_free_block   = false;
+	block->last_block_size = 0;
+	block->has_next_block  = false;
+	PushFreeBlock(heap, block);
+}
+
 static void AllocateNewPage(HeapAllocator* heap, u64 reserved_size) {
 	reserved_size = reserved_size < allocation_granularity ? allocation_granularity : AlignUp(reserved_size, allocation_granularity);
 	
@@ -170,14 +180,10 @@ static void AllocateNewPage(HeapAllocator* heap, u64 reserved_size) {
 	
 	auto* page = NewInPlace(memory, HeapAllocatorPage);
 	page->last_page = heap->current_page;
+	page->size      = reserved_size;
 	heap->current_page = page;
 	
-	auto* block = NewInPlace(page + 1, HeapAllocatorBlock);
-	block->size = reserved_size - sizeof(HeapAllocatorPage);
-	block->is_free_block   = false;
-	block->last_block_size = 0;
-	block->has_next_block  = false;
-	PushFreeBlock(heap, block);
+	PushNewPageFreeBlock(heap, page, reserved_size);
 }
 
 static u64 ComputeBlockSize(u64 size, u64 alignment) {
@@ -319,6 +325,18 @@ void HeapAllocator::Deallocate(void* old_memory, u64 old_size) {
 	}
 	
 	PushFreeBlock(this, block);
+}
+
+void HeapAllocator::DeallocateAll() {
+	mask_level_0 = 0;
+	memset(mask_level_1, 0, sizeof(mask_level_1));
+	memset(free_blocks, 0, sizeof(free_blocks));
+	
+	auto* page = current_page;
+	while (page != nullptr) {
+		PushNewPageFreeBlock(this, page, page->size);
+		page = page->last_page;
+	}
 }
 
 u64 HeapAllocator::GetMemoryBlockSize(void* memory) {

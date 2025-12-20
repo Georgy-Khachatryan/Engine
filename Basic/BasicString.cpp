@@ -35,6 +35,18 @@ String StringFormat(StackAllocator* alloc, const char* format, ...) {
 	return result;
 }
 
+String StringCopy(StackAllocator* alloc, String source) {
+	if (source.count == 0) return {};
+	
+	String result;
+	result.count = source.count;
+	result.data  = (char*)alloc->Allocate(result.count + 1);
+	memcpy(result.data, source.data, result.count);
+	result.data[result.count] = 0;
+	
+	return result;
+}
+
 String StringCopy(HeapAllocator* alloc, String source) {
 	if (source.count == 0) return {};
 	
@@ -48,6 +60,15 @@ String StringCopy(HeapAllocator* alloc, String source) {
 }
 
 String StringAllocate(StackAllocator* alloc, u64 count) {
+	String result;
+	result.count = count;
+	result.data  = (char*)alloc->Allocate(result.count + 1);
+	result.data[result.count] = 0;
+	
+	return result;
+}
+
+String StringAllocate(HeapAllocator* alloc, u64 count) {
 	String result;
 	result.count = count;
 	result.data  = (char*)alloc->Allocate(result.count + 1);
