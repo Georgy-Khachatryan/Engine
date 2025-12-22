@@ -535,7 +535,7 @@ s32 main() {
 	
 	u64 camera_entity_guid = ExtractComponentStreams<GuidQuery>(QueryEntityTypeArray<CameraEntityType>(entity_system), 0).guid->guid;
 	
-	HashTable<u64, u32> selected_entities_hash_table;
+	HashTable<u64, void> selected_entities_hash_table;
 	
 	ImGuiMouseLock mouse_lock;
 	
@@ -742,7 +742,7 @@ s32 main() {
 								auto streams = ExtractComponentStreams<GuidQuery>(entity_array);
 								for (u32 index = 0; index < entity_array->count; index += 1) {
 									auto& [guid] = streams.guid[index];
-									HashTableAddOrFind(selected_entities_hash_table, &imgui_heap, guid, 0u);
+									HashTableAddOrFind(selected_entities_hash_table, &imgui_heap, guid);
 								}
 							}
 						} else {
@@ -761,7 +761,7 @@ s32 main() {
 							for (u32 index = start_index; index < end_index; index += 1) {
 								auto& [guid] = streams.guid[index - global_index];
 								if (request.Selected) {
-									HashTableAddOrFind(selected_entities_hash_table, &imgui_heap, guid, 0u);
+									HashTableAddOrFind(selected_entities_hash_table, &imgui_heap, guid);
 								} else {
 									HashTableRemove(selected_entities_hash_table, guid);
 								}
@@ -813,7 +813,7 @@ s32 main() {
 			apply_requests(ms_io);
 			
 			if (ImGui::Shortcut(ImGuiKey_Delete, ImGuiInputFlags_RouteGlobal)) {
-				for (auto& [guid, dummy] : selected_entities_hash_table) {
+				for (auto& [guid] : selected_entities_hash_table) {
 					RemoveEntityByGUID(entity_system, guid);
 				}
 				HashTableClear(selected_entities_hash_table);

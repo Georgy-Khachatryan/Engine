@@ -52,6 +52,11 @@ struct HashTableElement {
 	ValueT value;
 };
 
+template<typename KeyT>
+struct HashTableElement<KeyT, void> {
+	KeyT key;
+};
+
 template<typename KeyT, typename ValueT>
 struct HashTable {
 	using ElementType = HashTableElement<KeyT, ValueT>;
@@ -139,7 +144,7 @@ void HashTableResize(HashTable<KeyT, ValueT>& hash_table, AllocatorT* alloc, u64
 		if (metadata[i] <= hash_table_hash_value_deleted) continue;
 		
 		auto& element = hash_table.data[i];
-		HashTableAddOrFind(new_hash_table, element.key, element.value);
+		HashTableAddOrFindElement(new_hash_table, element);
 	}
 	
 	HashTableDeallocate(hash_table, alloc);
@@ -153,7 +158,7 @@ struct HashTableAddOrFindResult {
 };
 
 
-#define BeginHashTableTraversal()\
+#define BeginHashTableTraversal(key)\
 	u32 mask = (u32)((hash_table.capacity >> hash_table_group_size_bits) - 1);\
 	u64 hash = ComputeHash(key);\
 	\
@@ -178,17 +183,17 @@ struct HashTableAddOrFindResult {
 
 
 template<typename KeyT, typename ValueT>
-HashTableAddOrFindResult<KeyT, ValueT> HashTableAddOrFind(HashTable<KeyT, ValueT>& hash_table, const KeyT& key, const ValueT& value) {
+HashTableAddOrFindResult<KeyT, ValueT> HashTableAddOrFindElement(HashTable<KeyT, ValueT>& hash_table, const HashTableElement<KeyT, ValueT>& element) {
 	DebugAssert((hash_table.occupied + 1) * 100 <= (hash_table.capacity * hash_table_max_occupancy_percent), "HashTableAddOrFind overflowed maximum hash table occupancy.");
 	
 	u32 deleted_slot_index = u32_max;
 	auto metadata_deleted_slot = _mm_set1_epi8(hash_table_hash_value_deleted);
 	
-	BeginHashTableTraversal();
+	BeginHashTableTraversal(element.key);
 		for (u32 bit_index : BitScanLow32(matching_slot_mask)) {
 			u32 slot_index = group_index * hash_table_group_size + bit_index;
 			
-			if (data[slot_index].key == key) {
+			if (data[slot_index].key == element.key) {
 				return { &data[slot_index], false };
 			}
 		}
@@ -213,14 +218,17 @@ HashTableAddOrFindResult<KeyT, ValueT> HashTableAddOrFind(HashTable<KeyT, ValueT
 			
 			metadata[slot_index] = small_hash;
 			
-			auto& element = data[slot_index];
-			element.key   = key;
-			element.value = value;
-			return { &element, true };
+			data[slot_index] = element;
+			return { &data[slot_index], true };
 		}
 	EndHashTableTraversal();
 	
 	return {};
+}
+
+template<typename KeyT, typename ValueT>
+HashTableAddOrFindResult<KeyT, ValueT> HashTableAddOrFind(HashTable<KeyT, ValueT>& hash_table, const KeyT& key, const ValueT& value) {
+	return HashTableAddOrFindElement(hash_table, { key, value });
 }
 
 template<typename KeyT, typename ValueT, typename AllocatorT>
@@ -228,14 +236,27 @@ HashTableAddOrFindResult<KeyT, ValueT> HashTableAddOrFind(HashTable<KeyT, ValueT
 	bool should_grow_hash_table = (hash_table.occupied + 1) * 100 > (hash_table.capacity * hash_table_max_occupancy_percent);
 	if (should_grow_hash_table) HashTableResize(hash_table, alloc, hash_table.capacity ? hash_table.capacity * 2 : hash_table_group_size);
 	
-	return HashTableAddOrFind(hash_table, key, value);
+	return HashTableAddOrFindElement(hash_table, { key, value });
+}
+
+template<typename KeyT>
+HashTableAddOrFindResult<KeyT, void> HashTableAddOrFind(HashTable<KeyT, void>& hash_table, const KeyT& key) {
+	return HashTableAddOrFindElement(hash_table, { key });
+}
+
+template<typename KeyT, typename AllocatorT>
+HashTableAddOrFindResult<KeyT, void> HashTableAddOrFind(HashTable<KeyT, void>& hash_table, AllocatorT* alloc, const KeyT& key) {
+	bool should_grow_hash_table = (hash_table.occupied + 1) * 100 > (hash_table.capacity * hash_table_max_occupancy_percent);
+	if (should_grow_hash_table) HashTableResize(hash_table, alloc, hash_table.capacity ? hash_table.capacity * 2 : hash_table_group_size);
+	
+	return HashTableAddOrFindElement(hash_table, { key });
 }
 
 template<typename KeyT, typename ValueT>
 HashTableElement<KeyT, ValueT>* HashTableFind(HashTable<KeyT, ValueT>& hash_table, const KeyT& key) {
 	if (hash_table.capacity == 0) return nullptr;
 	
-	BeginHashTableTraversal();
+	BeginHashTableTraversal(key);
 		for (u32 bit_index : BitScanLow32(matching_slot_mask)) {
 			u32 slot_index = group_index * hash_table_group_size + bit_index;
 			if (data[slot_index].key == key) {
@@ -257,7 +278,7 @@ template<typename KeyT, typename ValueT>
 HashTableElement<KeyT, ValueT>* HashTableRemove(HashTable<KeyT, ValueT>& hash_table, const KeyT& key) {
 	if (hash_table.capacity == 0) return nullptr;
 	
-	BeginHashTableTraversal();
+	BeginHashTableTraversal(key);
 		for (u32 bit_index : BitScanLow32(matching_slot_mask)) {
 			u32 slot_index = group_index * hash_table_group_size + bit_index;
 			
