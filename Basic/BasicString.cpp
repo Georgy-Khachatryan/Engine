@@ -210,6 +210,39 @@ String StringBuilder::ToString(StackAllocator* string_alloc) {
 }
 
 
+// TODO: Signal parse errors.
+u64 StringToU64(String string) {
+	u64 base = 10;
+	if ((string.count > 2) && (string[0] == '0') && (string[1] == 'x' || string[1] == 'X')) {
+		base = 16;
+		string.data  += 2;
+		string.count -= 2;
+	}
+	
+	u64 result = 0;
+	for (u64 i = 0; i < string.count; i += 1) {
+		auto c = string[i];
+		
+		// TODO: Experiment with different char to digit conversion schemes.
+		u64 digit = u64_max;
+		if (CharIsNumeric(c)) {
+			digit = c - '0';
+		} else if (c >= 'A' && c <= 'F') {
+			digit = c - 'A' + 10;
+		} else if (c >= 'a' && c <= 'f') {
+			digit = c - 'a' + 10;
+		}
+		
+		if (digit >= base) return 0;
+		
+		// TODO: Handle overflow.
+		result = result * base + digit;
+	}
+	
+	return result;
+}
+
+
 // Based on wyhash by Wang Yi (public domain).
 static inline u64 WyHashMix(u64 a, u64 b)     { a = _mulx_u64(a, b, &b); return a ^ b; }
 static inline u64 WyHashRead8(const u8* data) { u64 v; memcpy(&v, data, 8); return v; }

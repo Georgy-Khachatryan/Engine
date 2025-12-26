@@ -60,6 +60,7 @@
     <ClCompile Include="Engine/Generated/RootSignature.cpp" />
     <ClCompile Include="Engine/Generated/ShaderDefinitions.cpp" />
     <ClCompile Include="Engine/Generated/EntitySystemMetadata.cpp" />
+    <ClCompile Include="Engine/Generated/SaveLoadCallbacks.cpp" />
   </ItemGroup>
   
   <ItemGroup>

@@ -57,6 +57,8 @@ struct StringBuilder {
 };
 
 
+u64 StringToU64(String string);
+
 u64 ComputeHash(const u8* data, u64 count, u64 seed = 0);
 u64 ComputeHash(String string);
 
@@ -64,3 +66,5 @@ u64 ComputeHash(String string);
 inline char CharToUpperCase(char c) { return (c >= 'a' && c <= 'z') ? c - 'a' + 'A' : c; }
 inline char CharIsUpperCase(char c) { return (c >= 'A' && c <= 'Z'); }
 inline char CharIsLowerCase(char c) { return (c >= 'a' && c <= 'z'); }
+inline bool CharIsNumeric(char c)   { return (c >= '0' && c <= '9'); }
+

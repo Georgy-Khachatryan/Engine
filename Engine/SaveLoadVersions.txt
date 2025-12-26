@@ -1,0 +1,61 @@
+struct CameraComponent {
+	/*Version*/ 4 {
+		vertical_fov_degrees float 0;
+		transform_type CameraTransformType 2;
+	}
+}
+
+struct GuidComponent {
+	/*Version*/ 0 {
+		guid u64 0;
+	}
+}
+
+struct float3 {
+	/*Version*/ 0 {
+		x float 0;
+		y float 0;
+		z float 0;
+	}
+}
+
+struct quat {
+	/*Version*/ 0 {
+		x float 0;
+		y float 0;
+		z float 0;
+		w float 0;
+	}
+}
+
+struct ScaleComponent {
+	/*Version*/ 0 {
+		scale float 0;
+	}
+}
+
+struct PositionComponent {
+	/*Version*/ 0 {
+		position float3 0;
+	}
+}
+
+enum CameraTransformType {
+	/*Version*/ 2 u32 {
+		Perspective 0;
+		Orthographic 1;
+	}
+}
+
+struct RotationComponent {
+	/*Version*/ 0 {
+		rotation quat 0;
+	}
+}
+
+struct NameComponent {
+	/*Version*/ 0 {
+		name String 0;
+	}
+}
+

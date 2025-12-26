@@ -4,9 +4,8 @@
 
 static bool IsLineEnding(char c) { return (c == '\n') || (c == '\r'); }
 static bool IsWhiteSpace(char c) { return (c == ' ') || (c == '\t') || IsLineEnding(c); }
-static bool IsNumeric(char c)    { return c >= '0' && c <= '9'; }
 static bool IsAlphabetical(char c) { return ('a' <= c && c <= 'z') || ('A' <= c && c <= 'Z') || (c == '_'); }
-static bool IsAlphaNumeric(char c) { return IsAlphabetical(c) || IsNumeric(c); }
+static bool IsAlphaNumeric(char c) { return IsAlphabetical(c) || CharIsNumeric(c); }
 
 static const char* EatWhiteSpace(const char* string) {
 	while (*string && (IsWhiteSpace(*string) || *string == '\\')) string += 1;
@@ -121,7 +120,7 @@ Token Tokenizer::FindNextToken() {
 	token.string.data = (char*)string;
 	
 	if (IsAlphaNumeric(leading_char)) {
-		if (IsNumeric(leading_char)) {
+		if (CharIsNumeric(leading_char)) {
 			token.type = TokenType::Number;
 			while (IsAlphaNumeric(*string) || *string == '.') string += 1;
 		} else {

@@ -45,6 +45,7 @@ struct EntityQueryTypeInfo {
 
 struct ComponentTypeInfo {
 	u32 size_bytes = 0;
+	u64 version    = 0;
 };
 
 struct EntityTypeArray {

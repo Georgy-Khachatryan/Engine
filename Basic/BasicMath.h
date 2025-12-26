@@ -124,17 +124,6 @@ using float4x4 = Math::Mat4x4f;
 using float3x4 = Math::Mat3x4f;
 using float3x3 = Math::Mat3x3f;
 
-SAVE_LOAD_AS_BYTES(quat);
-SAVE_LOAD_AS_BYTES(float4);
-SAVE_LOAD_AS_BYTES(float3);
-SAVE_LOAD_AS_BYTES(float2);
-SAVE_LOAD_AS_BYTES(uint4);
-SAVE_LOAD_AS_BYTES(uint3);
-SAVE_LOAD_AS_BYTES(uint2);
-SAVE_LOAD_AS_BYTES(float4x4);
-SAVE_LOAD_AS_BYTES(float3x4);
-SAVE_LOAD_AS_BYTES(float3x3);
-
 
 compile_const u32 DivideAndRoundUp(u32 numerator, u32 denominator) { return (numerator + (denominator - 1)) / denominator; }
 compile_const u64 DivideAndRoundUp(u64 numerator, u64 denominator) { return (numerator + (denominator - 1)) / denominator; }

@@ -73,23 +73,12 @@ String PrintTypeName(StackAllocator* alloc, TypeInfo* type_info) {
 	switch (type_info ? type_info->info_type : TypeInfoType::None) {
 	case TypeInfoType::Integer: {
 		auto* type_info_integer = (TypeInfoInteger*)type_info;
-		if (type_info_integer->is_signed) {
-			switch (type_info_integer->bit_width) {
-			case 8:  return "s8"_sl;
-			case 16: return "s16"_sl;
-			case 32: return "s32"_sl;
-			case 64: return "s64"_sl;
-			default: return "Unknown Integer"_sl;
-			}
-		} else {
-			switch (type_info_integer->bit_width) {
-			case 1:  return "bool"_sl;
-			case 8:  return "u8"_sl;
-			case 16: return "u16"_sl;
-			case 32: return "u32"_sl;
-			case 64: return "u64"_sl;
-			default: return "Unknown Integer"_sl;
-			}
+		switch (type_info_integer->bit_width) {
+		case 8:  return type_info_integer->is_signed ? "s8"_sl  : "u8"_sl;
+		case 16: return type_info_integer->is_signed ? "s16"_sl : "u16"_sl;
+		case 32: return type_info_integer->is_signed ? "s32"_sl : "u32"_sl;
+		case 64: return type_info_integer->is_signed ? "s64"_sl : "u64"_sl;
+		default: return "Unknown Integer"_sl;
 		}
 	} case TypeInfoType::Float: {
 		auto* type_info_float = (TypeInfoFloat*)type_info;
@@ -127,23 +116,13 @@ String PrintTypeValue(StackAllocator* alloc, TypeInfo* type_info, const void* va
 	switch (type_info ? type_info->info_type : TypeInfoType::None) {
 	case TypeInfoType::Integer: {
 		auto* type_info_integer = (TypeInfoInteger*)type_info;
-		if (type_info_integer->is_signed) {
-			switch (type_info_integer->bit_width) {
-			case 8:  return StringFormat(alloc, "%d", (s32)(*(s8*)value));
-			case 16: return StringFormat(alloc, "%d", (s32)(*(s16*)value));
-			case 32: return StringFormat(alloc, "%d",   *(s32*)value);
-			case 64: return StringFormat(alloc, "%lld", *(s64*)value);
-			default: return "Unknown Integer"_sl;
-			}
-		} else {
-			switch (type_info_integer->bit_width) {
-			case 1:  return *(bool*)value ? "true"_sl : "false"_sl;
-			case 8:  return StringFormat(alloc, "%u", (u32)(*(u8*)value));
-			case 16: return StringFormat(alloc, "%u", (u32)(*(u16*)value));
-			case 32: return StringFormat(alloc, "%u",   *(u32*)value);
-			case 64: return StringFormat(alloc, "%llu", *(u64*)value);
-			default: return "Unknown Integer"_sl;
-			}
+		switch (type_info_integer->bit_width) {
+		case 1:  return *(bool*)value ? "true"_sl : "false"_sl;
+		case 8:  return type_info_integer->is_signed ? StringFormat(alloc, "%d",   *(s8*)value)  : StringFormat(alloc, "%u",   *(u8*)value);
+		case 16: return type_info_integer->is_signed ? StringFormat(alloc, "%d",   *(s16*)value) : StringFormat(alloc, "%u",   *(u16*)value);
+		case 32: return type_info_integer->is_signed ? StringFormat(alloc, "%d",   *(s32*)value) : StringFormat(alloc, "%u",   *(u32*)value);
+		case 64: return type_info_integer->is_signed ? StringFormat(alloc, "%lld", *(s64*)value) : StringFormat(alloc, "%llu", *(u64*)value);
+		default: return "Unknown Integer"_sl;
 		}
 	} case TypeInfoType::Float: {
 		auto* type_info_float = (TypeInfoFloat*)type_info;

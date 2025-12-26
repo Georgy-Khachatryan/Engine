@@ -3,6 +3,7 @@
 #include "BasicMath.h"
 #include "BasicMemory.h"
 #include "BasicString.h"
+#include "BasicHashTable.h"
 
 struct alignas(64) SaveLoadBuffer {
 	compile_const u64 minimum_entry_size = 4 * 1024;
@@ -63,21 +64,33 @@ bool WriteSaveLoadBufferToFile(StackAllocator* alloc, SaveLoadBuffer& buffer, St
 bool OpenSaveLoadBufferForLoading(StackAllocator* alloc, String path, SaveLoadBuffer& buffer);
 
 
-template<typename T, typename ValueType = SaveLoadAsBytes<T>::ValueType>
-always_inline void SaveLoad(SaveLoadBuffer& buffer, T& value) {
+template<typename T, typename ValueType = typename SaveLoadAsBytes<T>::ValueType>
+always_inline void SaveLoad(SaveLoadBuffer& buffer, T& value, u64 version = 0) {
 	buffer.SaveLoadBytes(&value, sizeof(value));
 }
 
-inline void SaveLoad(SaveLoadBuffer& buffer, String& value) {
+always_inline void SaveLoad(SaveLoadBuffer& buffer, String& value, u64 version = 0) {
 	u64 count = value.count;
 	SaveLoad(buffer, count);
 	
 	if (buffer.is_loading) {
-		value = StringAllocate(buffer.heap, count);
+		value = count && buffer.heap ? StringAllocate(buffer.heap, count) : String{};
 		buffer.LoadBytes(value.data, count);
 	} else if (buffer.is_saving) {
 		buffer.SaveBytes(value.data, count);
 	}
 }
 
-using SaveLoadCallback = void (*)(SaveLoadBuffer& buffer, void* data);
+template<typename T>
+always_inline void SaveLoadDummy(SaveLoadBuffer& buffer, u64 version = 0) {
+	// Don't allow heap allocations since we're not going to keep results.
+	auto* old_heap = buffer.heap;
+	buffer.heap = nullptr;
+	
+	T dummy;
+	SaveLoad(buffer, dummy, version);
+	
+	buffer.heap = old_heap;
+}
+
+using SaveLoadCallback = void (*)(SaveLoadBuffer& buffer, void* data, u64 version);

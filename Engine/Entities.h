@@ -26,7 +26,6 @@ enum struct CameraTransformType : u32 {
 	Perspective  = 0,
 	Orthographic = 1,
 };
-SAVE_LOAD_AS_BYTES(CameraTransformType);
 
 NOTES()
 struct CameraComponent {

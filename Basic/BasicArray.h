@@ -158,3 +158,11 @@ ArrayView<typename ArrayT::ValueType> ArrayCopy(ArrayT& array, AllocatorT* alloc
 	return result;
 }
 
+template<typename T, typename AllocatorT>
+ArrayView<T> ArrayViewAllocate(AllocatorT* alloc, u64 count) {
+	ArrayView<T> result;
+	result.data  = (T*)alloc->Allocate(count * sizeof(T), alignof(T));
+	result.count = count;
+	
+	return result;
+}

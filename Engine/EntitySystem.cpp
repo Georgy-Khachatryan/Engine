@@ -262,8 +262,11 @@ void SaveLoadEntitySystem(SaveLoadBuffer& buffer, EntitySystem& system) {
 			auto save_load_callback = component_save_load_callbacks[component_type_id.index];
 			auto type_info          = component_type_info_table[component_type_id.index];
 			
+			u64 version = type_info.version;
+			SaveLoad(buffer, version);
+			
 			for (u32 i = 0; i < array.count; i += 1) {
-				save_load_callback(buffer, component_stream + i * type_info.size_bytes);
+				save_load_callback(buffer, component_stream + i * type_info.size_bytes, version);
 			}
 		}
 		

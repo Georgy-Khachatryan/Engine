@@ -4,14 +4,15 @@
 #include "Basic/BasicString.h"
 #include "Basic/BasicHashTable.h"
 #include "Basic/BasicFiles.h"
+#include "Basic/BasicSaveLoad.h"
 #include "GraphicsApi/GraphicsApiTypes.h"
 #include "Engine/EntitySystem.h"
 #include "TypeInfo.h"
 #include "MetaprogramCommon.h"
-
+#include "Tokens.h"
 
 struct HlslFileData {
-	HashTable<String, u32> includes;
+	HashTable<String, void> includes;
 	StringBuilder builder;
 };
 
@@ -31,12 +32,12 @@ struct ShaderDefinitionFileData {
 	Array<String> shader_names;
 };
 
-static void GatherIncludesForDependentTypes(StackAllocator* alloc, HashTable<String, u32>& includes, TypeInfoStruct* type_info) {
+static void GatherIncludesForDependentTypes(StackAllocator* alloc, HashTable<String, void>& includes, TypeInfoStruct* type_info) {
 	if (type_info == nullptr) return;
 	
 	for (auto& field : type_info->fields) {
 		if (auto* note = FindNote<Meta::HlslFile>(field.type)) {
-			HashTableAddOrFind(includes, alloc, note->filename, 0u);
+			HashTableAddOrFind(includes, alloc, note->filename);
 		}
 		
 		auto* type_info_struct = TypeInfoCast<TypeInfoStruct>(field.type);
@@ -47,7 +48,7 @@ static void GatherIncludesForDependentTypes(StackAllocator* alloc, HashTable<Str
 				auto* template_type = (TypeInfo*)field.constant_value;
 				
 				if (auto* note = FindNote<Meta::HlslFile>(template_type)) {
-					HashTableAddOrFind(includes, alloc, note->filename, 0u);
+					HashTableAddOrFind(includes, alloc, note->filename);
 				}
 				
 				GatherIncludesForDependentTypes(alloc, includes, TypeInfoCast<TypeInfoStruct>(template_type));
@@ -137,7 +138,7 @@ static void WriteHlslFilesToDisk(StackAllocator* alloc, HashTable<String, HlslFi
 		builder.Append("#define %.*s\n", (s32)include_guard.count, include_guard.data);
 		builder.AppendUnformatted("#include \"Basic.hlsl\"\n"_sl);
 		
-		for (auto& [include, dummy] : hlsl_file.includes) {
+		for (auto& [include] : hlsl_file.includes) {
 			if (include == filename) continue;
 			builder.Append("#include \"%.*s\"\n", (s32)include.count, include.data);
 		}
@@ -401,10 +402,8 @@ static void RadixSort(StackAllocator* alloc, ArrayView<ComponentTypeID> keys, Ar
 	
 	DebugAssert(keys.count == values.count, "Mismatch between sort key and value count.");
 	
-	Array<ComponentTypeID> keys_swap;
-	Array<u32> values_swap;
-	ArrayResize(keys_swap, alloc, keys.count);
-	ArrayResize(values_swap, alloc, keys.count);
+	auto keys_swap   = ArrayViewAllocate<ComponentTypeID>(alloc, keys.count);
+	auto values_swap = ArrayViewAllocate<u32>(alloc, keys.count);
 	
 	for (u32 offset = 0; offset < 32; offset += 8) {
 		u32 prefix_sum[256] = {};
@@ -431,10 +430,213 @@ static void RadixSort(StackAllocator* alloc, ArrayView<ComponentTypeID> keys, Ar
 			values_swap[output_index] = values[i];
 		}
 		
-		
 		Swap(keys_swap.data, keys.data);
 		Swap(values_swap.data, values.data);
 	}
+}
+
+
+struct VersionedField {
+	String name;
+	
+	String type_name;
+	
+	u64 type_version   = 0;
+	u64 constant_value = 0;
+	
+	u64 hash = 0;
+};
+
+struct VersionedTypeInfo {
+	TypeInfoType info_type = TypeInfoType::None;
+	bool generate_save_load_callback = false;
+	
+	struct VersionInfo {
+		u64 version = 0;
+		u64 hash    = 0;
+		String underlying_type;
+		ArrayView<VersionedField> fields;
+	};
+	
+	Array<VersionInfo> versions;
+};
+
+compile_const auto save_load_versions_filepath = "Engine/SaveLoadVersions.txt"_sl;
+
+HashTable<String, VersionedTypeInfo> ParseSaveLoadVersionHistory(StackAllocator* alloc) {
+	auto file = SystemReadFileToString(alloc, save_load_versions_filepath);
+	
+	Tokenizer tokenizer;
+	tokenizer.file     = file;
+	tokenizer.filepath = save_load_versions_filepath;
+	tokenizer.string   = file.data;
+	tokenizer.alloc    = alloc;
+	
+	HashTable<String, VersionedTypeInfo> version_history;
+	HashTableReserve(version_history, alloc, 128);
+	
+	auto token = tokenizer.PeekNextToken();
+	while (token.type != TokenType::None) {
+		auto info_type = tokenizer.ExpectToken(TokenType::Keyword);
+		if (info_type.keyword != KeywordType::Enum && info_type.keyword != KeywordType::Struct) {
+			tokenizer.ReportError(info_type, "Unexpected keyword, expected 'struct' or 'enum'.");
+		}
+		auto is_enum = info_type.keyword == KeywordType::Enum;
+		
+		auto identifier = tokenizer.ExpectToken(TokenType::Identifier);
+		tokenizer.ExpectToken(TokenType::OpeningBrace);
+		
+		auto [element, is_added] = HashTableAddOrFind(version_history, alloc, identifier.string, { is_enum ? TypeInfoType::Enum : TypeInfoType::Struct });
+		if (is_added == false) {
+			tokenizer.ReportError(identifier, "Type already exists.");
+		}
+		auto& versions = element->value.versions;
+		
+		u64 latest_version = 0;
+		u64 latest_version_index = 0;
+		
+		u64 identifier_hash = ComputeHash(identifier.string);
+		
+		token = tokenizer.PeekNextToken();
+		while (token.type != TokenType::None && token.type != TokenType::ClosingBrace) {
+			auto version         = tokenizer.ExpectToken(TokenType::Number);
+			auto underlying_type = is_enum ? tokenizer.ExpectToken(TokenType::Identifier) : Token{};
+			
+			tokenizer.ExpectToken(TokenType::OpeningBrace);
+			
+			u64 hash = identifier_hash;
+			Array<VersionedField> fields;
+			
+			token = tokenizer.PeekNextToken();
+			while (token.type != TokenType::None && token.type != TokenType::ClosingBrace) {
+				auto identifier = tokenizer.ExpectToken(TokenType::Identifier);
+				auto type_name  = is_enum ? underlying_type : tokenizer.ExpectToken(TokenType::Identifier);
+				auto type_version_or_constant_value = tokenizer.ExpectToken(TokenType::Number);
+				
+				tokenizer.ExpectToken(TokenType::Semicolon);
+				
+				VersionedField field;
+				field.name           = identifier.string;
+				field.type_name      = type_name.string;
+				field.type_version   = is_enum ? 0 : StringToU64(type_version_or_constant_value.string);
+				field.constant_value = is_enum ? StringToU64(type_version_or_constant_value.string) : 0;
+				field.hash           = ComputeHash64(ComputeHash64(ComputeHash(field.name), ComputeHash(field.type_name)), is_enum ? field.constant_value : field.type_version);
+				ArrayAppend(fields, alloc, field);
+				
+				hash = ComputeHash64(field.hash, hash);
+				
+				token = tokenizer.PeekNextToken();
+			}
+			tokenizer.ExpectToken(TokenType::ClosingBrace);
+			
+			VersionedTypeInfo::VersionInfo version_info;
+			version_info.version = StringToU64(version.string);
+			version_info.hash    = hash;
+			version_info.underlying_type = underlying_type.string;
+			version_info.fields  = fields;
+			ArrayAppend(versions, alloc, version_info);
+			
+			if (version_info.version > latest_version) {
+				latest_version       = version_info.version;
+				latest_version_index = versions.count - 1;
+			}
+			
+			token = tokenizer.PeekNextToken();
+		}
+		tokenizer.ExpectToken(TokenType::ClosingBrace);
+		
+		if (element->value.versions.count == 0) {
+			tokenizer.ReportError(identifier, "Empty versioned type has no versions defined.");
+		}
+		
+		// Put the latest version at the end of the array.
+		if (latest_version_index != versions.count - 1) {
+			Swap(versions[versions.count - 1], versions[latest_version_index]);
+		}
+		
+		token = tokenizer.PeekNextToken();
+	}
+	
+	return version_history;
+}
+
+u64 AddVersionedTypeToSaveLoadHistory(StackAllocator* alloc, HashTable<String, VersionedTypeInfo>& version_history, String name, TypeInfoType info_type, VersionedTypeInfo::VersionInfo new_version) {
+	auto [element, is_added] = HashTableAddOrFind(version_history, alloc, name, { info_type });
+	
+	auto& type = element->value;
+	type.generate_save_load_callback = true;
+	
+	if (is_added || ArrayLastElement(type.versions).hash != new_version.hash) {
+		new_version.version = is_added ? 0 : ArrayLastElement(type.versions).version + 1;
+		ArrayAppend(type.versions, alloc, new_version);
+	}
+	
+	return ArrayLastElement(type.versions).version;
+}
+
+u64 AddTypeInfoToSaveLoadHistory(StackAllocator* alloc, HashTable<String, VersionedTypeInfo>& version_history, TypeInfo* type_info) {
+	u64 result_version = 0;
+	
+	if (type_info->info_type == TypeInfoType::Struct) {
+		auto* type_info_struct = (TypeInfoStruct*)type_info;
+		
+		VersionedTypeInfo::VersionInfo info;
+		info.hash = ComputeHash(type_info_struct->name);
+		
+		Array<VersionedField> fields;
+		ArrayReserve(fields, alloc, type_info_struct->fields.count);
+		for (auto& field : type_info_struct->fields) {
+			if (field.type == &type_info_type) continue;
+			
+			DebugAssert(field.type != nullptr, "Type of field '%.*s' in struct '%.*s' is not reflected.", (s32)field.name.count, field.name.data, (s32)type_info_struct->name.count, type_info_struct->name.data);
+			DebugAssert(field.type->info_type != TypeInfoType::Pointer, "Pointer SaveLoad is not supported. Field '%.*s' in struct '%.*s'.", (s32)field.name.count, field.name.data, (s32)type_info_struct->name.count, type_info_struct->name.data);
+			
+			u64 type_version = AddTypeInfoToSaveLoadHistory(alloc, version_history, field.type);
+			
+			VersionedField version_field;
+			version_field.name           = field.name;
+			version_field.type_name      = PrintTypeName(alloc, field.type);
+			version_field.type_version   = type_version;
+			version_field.constant_value = 0;
+			version_field.hash           = ComputeHash64(ComputeHash64(ComputeHash(version_field.name), ComputeHash(version_field.type_name)), version_field.type_version);
+			ArrayAppend(fields, alloc, version_field);
+			
+			info.hash = ComputeHash64(version_field.hash, info.hash);
+		}
+		
+		info.fields = fields;
+		
+		result_version = AddVersionedTypeToSaveLoadHistory(alloc, version_history, type_info_struct->name, TypeInfoType::Struct, info);
+	} else if (type_info->info_type == TypeInfoType::Enum) {
+		auto* type_info_enum = (TypeInfoEnum*)type_info;
+		
+		auto type_name = PrintTypeName(alloc, type_info_enum->underlying_type);
+		
+		VersionedTypeInfo::VersionInfo info;
+		info.hash = ComputeHash(type_info_enum->name);
+		info.underlying_type = type_name;
+		
+		Array<VersionedField> fields;
+		ArrayReserve(fields, alloc, type_info_enum->fields.count);
+		
+		for (auto& field : type_info_enum->fields) {
+			VersionedField version_field;
+			version_field.name           = field.name;
+			version_field.type_name      = type_name;
+			version_field.type_version   = 0;
+			version_field.constant_value = field.value;
+			version_field.hash           = ComputeHash64(ComputeHash64(ComputeHash(version_field.name), ComputeHash(version_field.type_name)), version_field.constant_value);
+			ArrayAppend(fields, alloc, version_field);
+			
+			info.hash = ComputeHash64(version_field.hash, info.hash);
+		}
+		
+		info.fields = fields;
+		
+		result_version = AddVersionedTypeToSaveLoadHistory(alloc, version_history, type_info_enum->name, TypeInfoType::Enum, info);
+	}
+	
+	return result_version;
 }
 
 s32 main(s32 argument_count, const char* arguments[]) {
@@ -497,6 +699,8 @@ s32 main(s32 argument_count, const char* arguments[]) {
 		}
 	}
 	
+	auto version_history = ParseSaveLoadVersionHistory(&alloc);
+	
 	{
 		HashTable<TypeInfoStruct*, u32> component_types;
 		Array<TypeInfoStruct*>     component_type_infos;
@@ -512,8 +716,8 @@ s32 main(s32 argument_count, const char* arguments[]) {
 				auto* component_type_info = TypeInfoCast<TypeInfoStruct>(ExtractTemplateParameterType(field.type, 0));
 				DebugAssert(component_type_info, "Unknown component type.");
 				
-				auto [element, is_inserted] = HashTableAddOrFind(component_types, &alloc, component_type_info, (u32)component_types.count);
-				if (is_inserted) ArrayAppend(component_type_infos, &alloc, component_type_info);
+				auto [element, is_added] = HashTableAddOrFind(component_types, &alloc, component_type_info, (u32)component_types.count);
+				if (is_added) ArrayAppend(component_type_infos, &alloc, component_type_info);
 				
 				ArrayAppend(component_type_ids, { element->value });
 			}
@@ -545,8 +749,8 @@ s32 main(s32 argument_count, const char* arguments[]) {
 				auto* component_type_info = TypeInfoCast<TypeInfoStruct>(component_stream_type_info->pointer_to);
 				DebugAssert(component_type_info, "Unknown component type");
 				
-				auto [element, is_inserted] = HashTableAddOrFind(component_types, &alloc, component_type_info, (u32)component_types.count);
-				if (is_inserted) ArrayAppend(component_type_infos, &alloc, component_type_info);
+				auto [element, is_added] = HashTableAddOrFind(component_types, &alloc, component_type_info, (u32)component_types.count);
+				if (is_added) ArrayAppend(component_type_infos, &alloc, component_type_info);
 				
 				ArrayAppend(component_type_ids, { element->value });
 			}
@@ -564,7 +768,6 @@ s32 main(s32 argument_count, const char* arguments[]) {
 			entity_query_type_info.component_stream_indices = component_stream_indices;
 			ArrayAppend(runtime_entity_query_type_infos, entity_query_type_info);
 		}
-		
 		
 		auto& builder = entity_system_builder;
 		for (u32 entity_type_index = 0; entity_type_index < entity_type_infos.count; entity_type_index += 1) {
@@ -646,25 +849,21 @@ s32 main(s32 argument_count, const char* arguments[]) {
 		builder.AppendUnformatted("ComponentTypeInfo component_type_info_table_internal[] = {\n"_sl);
 		builder.Indent();
 		for (auto* type_info : component_type_infos) {
-			entity_system_builder.Append("{ %u },\n", (u32)type_info->size);
+			u64 version = AddTypeInfoToSaveLoadHistory(&alloc, version_history, type_info);
+			entity_system_builder.Append("{ %u, %llu },\n", (u32)type_info->size, version);
 		}
 		builder.Unindent();
 		builder.AppendUnformatted("};\n\n"_sl);
 		
 		for (auto* type_info : component_type_infos) {
-			builder.Append("void SaveLoad(SaveLoadBuffer& buffer, %.*s& component) {\n", (s32)type_info->name.count, type_info->name.data);
-			builder.Indent();
-			for (auto& field : type_info->fields) {
-				builder.Append("SaveLoad(buffer, component.%.*s);\n", (s32)field.name.count, field.name.data);
-			}
-			builder.Unindent();
-			builder.AppendUnformatted("}\n\n"_sl);
+			builder.Append("void SaveLoad(SaveLoadBuffer& buffer, %.*s& component, u64 version);\n", (s32)type_info->name.count, type_info->name.data);
 		}
+		builder.AppendUnformatted("\n"_sl);
 		
 		builder.AppendUnformatted("SaveLoadCallback component_save_load_callbacks_internal[] = {\n"_sl);
 		builder.Indent();
 		for (auto* type_info : component_type_infos) {
-			entity_system_builder.Append("[](SaveLoadBuffer& buffer, void* data) { SaveLoad(buffer, *(%.*s*)data); },\n", (s32)type_info->name.count, type_info->name.data);
+			entity_system_builder.Append("[](SaveLoadBuffer& buffer, void* data, u64 version) { SaveLoad(buffer, *(%.*s*)data, version); },\n", (s32)type_info->name.count, type_info->name.data);
 		}
 		builder.Unindent();
 		builder.AppendUnformatted("};\n\n"_sl);
@@ -674,6 +873,158 @@ s32 main(s32 argument_count, const char* arguments[]) {
 		builder.Append("ArrayView<EntityQueryTypeInfo> entity_query_type_info_table = { entity_query_type_info_table_internal, %u };\n", (u32)entity_query_type_infos.count);
 		builder.Append("ArrayView<ComponentTypeInfo> component_type_info_table = { component_type_info_table_internal, %u };\n", (u32)component_type_infos.count);
 		builder.Append("ArrayView<SaveLoadCallback> component_save_load_callbacks = { component_save_load_callbacks_internal, %u };\n", (u32)component_type_infos.count);
+	}
+	
+	{
+		StringBuilder builder;
+		builder.alloc = &alloc;
+		builder.AppendUnformatted("#include \"Basic/Basic.h\"\n"_sl);
+		builder.AppendUnformatted("#include \"Basic/BasicSaveLoad.h\"\n"_sl);
+		builder.AppendUnformatted("#include \"Engine/Entities.h\"\n\n"_sl);
+		
+		compile_const auto save_load_dummy_suffix = "_Dummy"_sl;
+		
+		// Create dummy enum struct types for any removed types. They are only used for function overload resolution.
+		for (auto& [name, type] : version_history) {
+			if (type.generate_save_load_callback == false) {
+				builder.Append("enum struct %.*s%.*s : u32;\n", (s32)name.count, name.data, (s32)save_load_dummy_suffix.count, save_load_dummy_suffix.data);
+			}
+		}
+		
+		for (auto& [name, type] : version_history) {
+			auto suffix = type.generate_save_load_callback ? ""_sl : "_Dummy"_sl;
+			builder.Append("void SaveLoad(SaveLoadBuffer& buffer, %.*s%.*s& data, u64 version);\n", (s32)name.count, name.data, (s32)suffix.count, suffix.data);
+		}
+		builder.AppendUnformatted("\n"_sl);
+		
+		
+		for (auto& [name, type] : version_history) {
+			bool is_enum = type.info_type == TypeInfoType::Enum;
+			
+			auto suffix = type.generate_save_load_callback ? ""_sl : save_load_dummy_suffix;
+			builder.Append("void SaveLoad(SaveLoadBuffer& buffer, %.*s%.*s& data, u64 version) {\n", (s32)name.count, name.data, (s32)suffix.count, suffix.data);
+			
+ 			HashTable<u64, u64> new_field_table;
+			HashTableReserve(new_field_table, &alloc, ArrayLastElement(type.versions).fields.count);
+			
+			for (auto& field : ArrayLastElement(type.versions).fields) {
+				HashTableAddOrFind(new_field_table, ComputeHash64(ComputeHash(field.name), ComputeHash(field.type_name)), field.constant_value);
+			}
+			
+			builder.Indent();
+			
+			for (s64 i = type.versions.count - 1; i >= 0; i -= 1) {
+				auto& version = type.versions[i];
+				
+				bool is_latest_version = i == (type.versions.count - 1);
+				
+				if (type.versions.count != 1) {
+					if (is_latest_version) {
+						if (type.generate_save_load_callback) {
+							builder.Append("DebugAssert(version == %llu || buffer.is_loading, \"Old versions can only be loaded.\");\n", version.version);
+						} else {
+							builder.Append("DebugAssert(buffer.is_loading, \"Old versions can only be loaded.\");\n", version.version);
+						}
+						builder.Append("if (version == %llu) {\n", version.version);
+					} else {
+						builder.Append("} else if (version == %llu) {\n", version.version);
+					}
+					
+					builder.Indent();
+				}
+				
+				if (is_enum) {
+					if (is_latest_version && type.generate_save_load_callback) {
+						builder.AppendUnformatted("buffer.SaveLoadBytes(&data, sizeof(data));\n"_sl);
+					} else {
+						builder.Append("%.*s value = 0;\n", (s32)version.underlying_type.count, version.underlying_type.data);
+						builder.AppendUnformatted("SaveLoad(buffer, value);\n"_sl);
+						
+						if (type.generate_save_load_callback) {
+							builder.AppendUnformatted("switch (value) {\n"_sl);
+							for (auto& field : version.fields) {
+								auto* new_field = HashTableFind(new_field_table, ComputeHash64(ComputeHash(field.name), ComputeHash(field.type_name)));
+								
+								if (new_field != nullptr) {
+									builder.Append("case %llu: data = (%.*s)%llu; break;\n", field.constant_value, (s32)name.count, name.data, new_field->value	);
+								}
+							}
+							builder.AppendUnformatted("default: data = {}; break;\n"_sl);
+							builder.AppendUnformatted("}\n"_sl);
+						}
+					}
+				} else {
+					if (is_latest_version == false && type.generate_save_load_callback) {
+						// Default initialize when loading old data (might have incomplete set of fields).
+						builder.AppendUnformatted("data = {};\n"_sl);
+					}
+					
+					for (auto& field : version.fields) {
+						bool has_new_field = HashTableFind(new_field_table, ComputeHash64(ComputeHash(field.name), ComputeHash(field.type_name))) != nullptr;
+						
+						if (has_new_field && type.generate_save_load_callback) {
+							builder.Append("SaveLoad(buffer, data.%.*s, %llu);\n", (s32)field.name.count, field.name.data, field.type_version);
+						} else {
+							auto* element = HashTableFind(version_history, field.type_name);
+							bool use_skip_callback = (element != nullptr) && (element->value.generate_save_load_callback == false);
+							
+							auto suffix = use_skip_callback ? save_load_dummy_suffix : ""_sl;
+							builder.Append("SaveLoadDummy<%.*s%.*s>(buffer, %llu);\n", (s32)field.type_name.count, field.type_name.data, (s32)suffix.count, suffix.data, field.type_version);
+						}
+					}
+				}
+				
+				builder.Unindent();
+			}
+			
+			if (type.versions.count != 1) {
+				builder.AppendUnformatted("}\n"_sl);
+				builder.Unindent();
+			}
+			
+			builder.AppendUnformatted("}\n\n"_sl);
+		}
+		
+		WriteGeneratedFile(&alloc, "Engine/Generated/SaveLoadCallbacks.cpp"_sl, builder.ToString());
+	}
+	
+	{
+		StringBuilder builder;
+		builder.alloc = &alloc;
+		
+		for (auto& [name, type] : version_history) {
+			bool is_enum = type.info_type == TypeInfoType::Enum;
+			
+			builder.Append("%s %.*s {\n", is_enum ? "enum" : "struct", (s32)name.count, name.data);
+			builder.Indent();
+			
+			for (auto& version : type.versions) {
+				if (is_enum) {
+					builder.Append("/*Version*/ %llu %.*s {\n", version.version, (s32)version.underlying_type.count, version.underlying_type.data);
+				} else {
+					builder.Append("/*Version*/ %llu {\n", version.version);
+				}
+				builder.Indent();
+				
+				if (is_enum) {
+					for (auto& field : version.fields) {
+						builder.Append("%.*s %llu;\n", (s32)field.name.count, field.name.data, field.constant_value);
+					}
+				} else {
+					for (auto& field : version.fields) {
+						builder.Append("%.*s %.*s %llu;\n", (s32)field.name.count, field.name.data, (s32)field.type_name.count, field.type_name.data, field.type_version);
+					}
+				}
+				
+				builder.Unindent();
+				builder.AppendUnformatted("}\n"_sl);
+			}
+			
+			builder.Unindent();
+			builder.AppendUnformatted("}\n\n"_sl);
+		}
+		
+		WriteGeneratedFile(&alloc, save_load_versions_filepath, builder.ToString());
 	}
 	
 	EnsureDirectoryExists(&alloc, "Shaders/Generated/"_sl);

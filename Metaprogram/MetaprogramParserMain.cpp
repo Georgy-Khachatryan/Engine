@@ -150,8 +150,8 @@ static AstNodeCodeBlock* ParseTemplate(Tokenizer& tokenizer) {
 	
 	code_block->namespace_path = NamespaceStackToString(tokenizer);
 	code_block->declarations = declarations;
-	code_block->declared_namespace.data  = token_0.string.data;
-	code_block->declared_namespace.count = token_1.string.data - token_0.string.data;
+	code_block->template_expression.data  = token_0.string.data;
+	code_block->template_expression.count = token_1.string.data - token_0.string.data;
 	
 	return code_block;
 }
@@ -181,8 +181,7 @@ static AstNodeStruct* ParseStruct(Tokenizer& tokenizer, AstNodeNotes* notes) {
 	}
 	
 	auto* code_block = AstNew<AstNodeCodeBlock>(tokenizer.alloc);
-	code_block->namespace_path     = NamespaceStackToString(tokenizer);
-	code_block->declared_namespace = name.string;
+	code_block->namespace_path = NamespaceStackToString(tokenizer);
 	
 	Array<AstNodeDeclaration*> declarations;
 	while (token.type != TokenType::None && token.type != TokenType::ClosingBrace) {
@@ -477,7 +476,7 @@ static void GenerateCodeForStruct(StringBuilder& builder, AstNodeStruct* ast_nod
 	auto* template_code_block = ast_node_struct->template_code_block;
 	
 	if (template_code_block) {
-		auto template_expression = template_code_block->declared_namespace;
+		auto template_expression = template_code_block->template_expression;
 		auto template_arguments = TemplateExpressionArguments(builder.alloc, template_code_block);
 		name = StringFormat(builder.alloc, "%.*s<%.*s>", (s32)name.count, name.data, (s32)template_arguments.count, template_arguments.data);;
 		
