@@ -78,5 +78,6 @@ struct Tokenizer {
 	Token ExpectKeyword(KeywordType expected_keyword);
 	
 	void ReportMessage(Token token, String message);
-	void ReportError(Token token, const char* format, ...);
+	void ReportErrorV(Token token, String format, ArrayView<StringFormatArgument> arguments);
+	template<typename ... Args> void ReportError(Token token, String format, Args ... args) { FORMAT_PROC_BODY(ReportErrorV, token, format); }
 };

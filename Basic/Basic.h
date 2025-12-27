@@ -138,3 +138,12 @@ SAVE_LOAD_AS_BYTES(u64);
 SAVE_LOAD_AS_BYTES(s64);
 SAVE_LOAD_AS_BYTES(float32);
 SAVE_LOAD_AS_BYTES(float64);
+
+
+struct StringFormatArgument;
+template<typename T> StringFormatArgument StringFormatArgumentFromT(T);
+
+#define FORMAT_PROC_BODY(name, ...) \
+StringFormatArgument arguments_array[sizeof...(Args) == 0 ? 1 : sizeof...(Args)] = { StringFormatArgumentFromT<Args>(args) ... };\
+return name(__VA_ARGS__, { arguments_array, sizeof...(Args) })
+

@@ -226,15 +226,9 @@ void SystemWriteToConsole(String message) {
 	WriteFile(GetStdHandle(STD_ERROR_HANDLE), message.data, (u32)message.count, nullptr, nullptr);
 }
 
-void SystemWriteToConsole(StackAllocator* alloc, const char* format, ...) {
+void SystemWriteToConsoleV(StackAllocator* alloc, String format, ArrayView<StringFormatArgument> arguments) {
 	TempAllocationScope(alloc);
-	
-	va_list va_args;
-	va_start(va_args, format);
-	auto message = StringFormatV(alloc, format, va_args);
-	va_end(va_args);
-	
-	SystemWriteToConsole(message);
+	SystemWriteToConsole(StringFormatV(alloc, format, arguments));
 }
 
 

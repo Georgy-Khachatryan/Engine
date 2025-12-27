@@ -174,7 +174,7 @@ Token Tokenizer::ExpectToken(TokenType expected_type) {
 	auto token = FindNextToken();
 	if (token.type == expected_type) return token;
 	
-	ReportError(token, "Unexpected token '%s'. Expected '%s'.", token_type_names[(u32)token.type].data, token_type_names[(u32)expected_type].data);
+	ReportError(token, "Unexpected token '%'. Expected '%'."_sl, token_type_names[(u32)token.type], token_type_names[(u32)expected_type]);
 	return {};
 }
 
@@ -182,7 +182,7 @@ Token Tokenizer::ExpectKeyword(KeywordType expected_keyword) {
 	auto token = FindNextToken();
 	if (token.keyword == expected_keyword) return token;
 	
-	ReportError(token, "Unexpected token '%s'. Expected a keyword '%s'.", token_type_names[(u32)token.type].data, keyword_type_names[(u32)expected_keyword].data);
+	ReportError(token, "Unexpected token '%'. Expected a keyword '%'."_sl, token_type_names[(u32)token.type], keyword_type_names[(u32)expected_keyword]);
 	return {};
 }
 
@@ -208,7 +208,7 @@ void Tokenizer::ReportMessage(Token token, String message) {
 		string += 1;
 	}
 	
-	builder.Append("%.*s(%u,%u): error: %.*s\n", (s32)filepath.count, filepath.data, line + 1, column + 1, (s32)message.count, message.data);
+	builder.Append("%(%,%): error: %\n"_sl, filepath, line + 1, column + 1, message);
 	
 	if (token.string.data != nullptr) {
 		auto error_line = token.string;
@@ -231,22 +231,15 @@ void Tokenizer::ReportMessage(Token token, String message) {
 		memset(highlight_line.data + error_line_skip_count, '^', token.string.count);
 		
 		auto error_line_with_spaces = StringReplaceTabsWithSpaces(alloc, error_line, tab_width);
-		builder.Append("%.*s\n%.*s\n", (s32)error_line_with_spaces.count, error_line_with_spaces.data, (s32)highlight_line.count, highlight_line.data);
+		builder.Append("%\n%\n"_sl, error_line_with_spaces, highlight_line);
 	}
 	
 	SystemWriteToConsole(builder.ToString());
 }
 
-void Tokenizer::ReportError(Token token, const char* format, ...) {
+void Tokenizer::ReportErrorV(Token token, String format, ArrayView<StringFormatArgument> arguments) {
 	TempAllocationScope(alloc);
-	
-	va_list va_args;
-	va_start(va_args, format);
-	auto message = StringFormatV(alloc, format, va_args);
-	va_end(va_args);
-	
-	ReportMessage(token, message);
-	
+	ReportMessage(token, StringFormatV(alloc, format, arguments));
 	SystemExitProcess(1);
 }
 

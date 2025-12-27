@@ -38,8 +38,14 @@ static void BasicExamples(StackAllocator* alloc) {
 	{
 		TempAllocationScope(alloc);
 		
-		auto alloc_address_string = StringFormat(alloc, "Number: %u.", 10u);
-		DebugAssert(alloc_address_string == "Number: 10."_sl, "String is incorrectly formatted.");
+		auto string0 = StringFormat(alloc, "Number: %.."_sl, 10u);
+		DebugAssert(string0 == "Number: 10."_sl, "String is incorrectly formatted.");
+		
+		auto string1 = StringFormat(alloc, "%.%x"_sl, 10u, (s16)0xFFFF);
+		DebugAssert(string1 == "10FFFF"_sl, "String is incorrectly formatted.");
+		
+		auto string2 = StringFormat(alloc, "% %"_sl, "PI is:", 3.14f);
+		DebugAssert(string2 == "PI is: 3.14"_sl, "String is incorrectly formatted.");
 	}
 	
 	// String utf8 <-> utf16 conversion:
@@ -282,7 +288,7 @@ static void BasicExamples(StackAllocator* alloc) {
 			ArrayResize(keys, alloc, 128);
 			
 			for (u64 i = 0; i < 128; i += 1) {
-				keys[i] = StringFormat(alloc, "Key: %llu", i);
+				keys[i] = StringFormat(alloc, "Key: %"_sl, i);
 			}
 			
 			for (u64 i = 0; i < 128; i += 1) {

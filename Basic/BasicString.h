@@ -2,8 +2,6 @@
 #include "Basic.h"
 #include "BasicArray.h"
 
-#include <stdarg.h>
-
 struct String {
 	char* data = nullptr;
 	u64  count = 0;
@@ -25,14 +23,16 @@ inline constexpr StringUtf8 operator""_sl(const char* data, u64 count) { return 
 
 StringUtf8  StringUtf16ToUtf8(StackAllocator* alloc, StringUtf16 string);
 StringUtf16 StringUtf8ToUtf16(StackAllocator* alloc, StringUtf8  string);
-String StringFormatV(StackAllocator* alloc, const char* format, va_list args);
-String StringFormat(StackAllocator* alloc, const char* format, ...);
+String StringFromCString(const char* data);
 String StringCopy(StackAllocator* alloc, String source);
 String StringCopy(HeapAllocator* alloc, String source);
 String StringAllocate(StackAllocator* alloc, u64 count);
 String StringAllocate(HeapAllocator* alloc, u64 count);
 String StringReplaceTabsWithSpaces(StackAllocator* alloc, String source, u32 tab_width);
 String StringJoin(StackAllocator* alloc, ArrayView<String> source_strings, String separator = ""_sl);
+u64 StringFormatToMemory(String output, String format, ArrayView<StringFormatArgument> arguments);
+String StringFormatV(StackAllocator* alloc, String format, ArrayView<StringFormatArgument> arguments);
+template<typename ... Args> String StringFormat(StackAllocator* alloc, String format, Args ... args) { FORMAT_PROC_BODY(StringFormatV, alloc, format); }
 
 
 struct StringBuilderEntry;
@@ -45,9 +45,10 @@ struct StringBuilder {
 	u64 total_string_size = 0;
 	u64 indentation_level = 0;
 	
-	void Append(const char* format, ...);
-	void AppendV(const char* format, va_list args);
-	void AppendUnformatted(String string);
+	void AppendV(String format, ArrayView<StringFormatArgument> arguments);
+	template<typename ... Args> void Append(String format, Args ... args) { FORMAT_PROC_BODY(AppendV, format); }
+	
+	void Append(String string); // Explicit single string overload significantly improves compile times.
 	void AppendBuilder(StringBuilder& builder);
 	
 	void Indent()   { indentation_level += 1; }
@@ -68,3 +69,38 @@ inline char CharIsUpperCase(char c) { return (c >= 'A' && c <= 'Z'); }
 inline char CharIsLowerCase(char c) { return (c >= 'a' && c <= 'z'); }
 inline bool CharIsNumeric(char c)   { return (c >= '0' && c <= '9'); }
 
+
+enum struct StringFormatType : u32 {
+	None    = 0,
+	S8      = 1,
+	U8      = 2,
+	S16     = 3,
+	U16     = 4,
+	S32     = 5,
+	U32     = 6,
+	U64     = 7,
+	S64     = 8,
+	Float32 = 9,
+	Float64 = 10,
+	Char    = 11,
+	String  = 12,
+	CString = 13,
+	Pointer = 14,
+	
+	Count
+};
+
+struct StringFormatArgument {
+	StringFormatType type = StringFormatType::None;
+	
+	union {
+		u64         _u64;
+		s64         _s64;
+		float32     _float32;
+		float64     _float64;
+		char        _char;
+		String      _string;
+		const char* _cstring;
+		const void* _pointer;
+	} value = {};
+};

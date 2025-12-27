@@ -32,7 +32,7 @@ static Token SkipTokensWithNestingTracking(Tokenizer& tokenizer, TokenType openi
 	}
 	
 	if (token.type != closing_token) {
-		tokenizer.ReportError(token, "Unexpected end of file in a list.");
+		tokenizer.ReportError(token, "Unexpected end of file in a list."_sl);
 	}
 	
 	return token;
@@ -46,7 +46,7 @@ static Token SkipTokens(Tokenizer& tokenizer, TokenType opening_token, TokenType
 	}
 	
 	if (token.type != closing_token) {
-		tokenizer.ReportError(token, "Unexpected end of file in a list.");
+		tokenizer.ReportError(token, "Unexpected end of file in a list."_sl);
 	}
 	
 	return token;
@@ -100,7 +100,7 @@ static AstNodeNotes* ParseNotes(Tokenizer& tokenizer) {
 		
 		token = tokenizer.PeekNextToken();
 		if (token.type != TokenType::Comma && token.type != TokenType::ClosingParen) {
-			tokenizer.ReportError(token, "Unexpected token. Expected comma or closing paren.");
+			tokenizer.ReportError(token, "Unexpected token. Expected 'Comma' or 'ClosingParen'."_sl);
 		}
 		
 		if (token.type == TokenType::Comma) {
@@ -340,7 +340,7 @@ static AstNodeDeclaration* ParseDeclaration(Tokenizer& tokenizer) {
 			
 			token = tokenizer.PeekNextToken();
 			if (token.type != TokenType::OpeningParen) {
-				tokenizer.ReportError(token, "Expected '(' after operator.");
+				tokenizer.ReportError(token, "Expected 'OpeningParen' after operator."_sl);
 			}
 		}
 		
@@ -367,7 +367,7 @@ static AstNodeDeclaration* ParseDeclaration(Tokenizer& tokenizer) {
 			tokenizer.ExpectToken(TokenType::Semicolon);
 		}
 	} else {
-		tokenizer.ReportError(token, "Unexpected token in a declaration.");
+		tokenizer.ReportError(token, "Unexpected token in a declaration."_sl);
 	}
 	
 	// Skip static declarations for now.
@@ -404,7 +404,7 @@ static AstNodeCodeBlock* ParseFile(StackAllocator* alloc, String file, String fi
 		if (token.keyword == KeywordType::Notes) {
 			auto* declaration = ParseDeclaration(tokenizer);
 			if (declaration == nullptr) {
-				tokenizer.ReportError(token, "Expected declaration after notes.");
+				tokenizer.ReportError(token, "Expected declaration after notes."_sl);
 			}
 			
 			ArrayAppend(declarations, tokenizer.alloc, declaration);
@@ -449,22 +449,22 @@ static void GenerateCodeForNotes(StringBuilder& builder, AstNodeNotes* notes) {
 	
 	u32 note_count = 0;
 	for (auto& note : notes->notes) {
-		builder.Append("static auto note_%u = %.*s;\n", note_count, (s32)note.expression.count, note.expression.data);
+		builder.Append("static auto note_% = %;\n"_sl, note_count, note.expression);
 		note_count += 1;
 	}
-	builder.AppendUnformatted("\n"_sl);
+	builder.Append("\n"_sl);
 	
-	builder.Append("static TypeInfoNote notes[] = {\n");
+	builder.Append("static TypeInfoNote notes[] = {\n"_sl);
 	builder.Indent();
 	
 	note_count = 0;
 	for (auto& note : notes->notes) {
-		builder.Append("{ TypeInfoOf<decltype(note_%u)>(), &note_%u },\n", note_count, note_count);
+		builder.Append("{ TypeInfoOf<decltype(note_%0)>(), &note_%0 },\n"_sl, note_count);
 		note_count += 1;
 	}
 	
 	builder.Unindent();
-	builder.AppendUnformatted("};\n\n"_sl);
+	builder.Append("};\n\n"_sl);
 }
 
 static void GenerateCodeForStruct(StringBuilder& builder, AstNodeStruct* ast_node_struct, bool forward_declaration) {
@@ -478,24 +478,18 @@ static void GenerateCodeForStruct(StringBuilder& builder, AstNodeStruct* ast_nod
 	if (template_code_block) {
 		auto template_expression = template_code_block->template_expression;
 		auto template_arguments = TemplateExpressionArguments(builder.alloc, template_code_block);
-		name = StringFormat(builder.alloc, "%.*s<%.*s>", (s32)name.count, name.data, (s32)template_arguments.count, template_arguments.data);;
+		name = StringFormat(builder.alloc, "%<%>"_sl, name, template_arguments);
 		
 		if (forward_declaration) {
-			builder.Append("template<%.*s> struct TypeInfoOfInternal<const %.*s> { static TypeInfoStruct* Get(); };\n",
-				(s32)template_expression.count, template_expression.data,
-				(s32)name.count, name.data
-			);
+			builder.Append("template<%> struct TypeInfoOfInternal<const %> { static TypeInfoStruct* Get(); };\n"_sl, template_expression, name);
 		} else {
-			builder.Append("template<%.*s> TypeInfoStruct* TypeInfoOfInternal<const %.*s>::Get() {\n",
-				(s32)template_expression.count, template_expression.data,
-				(s32)name.count, name.data
-			);
+			builder.Append("template<%> TypeInfoStruct* TypeInfoOfInternal<const %>::Get() {\n"_sl, template_expression, name);
 		}
 	} else {
 		if (forward_declaration) {
-			builder.Append("template<> struct TypeInfoOfInternal<const %.*s> { static TypeInfoStruct* Get(); };\n", (s32)name.count, name.data);
+			builder.Append("template<> struct TypeInfoOfInternal<const %> { static TypeInfoStruct* Get(); };\n"_sl, name);
 		} else {
-			builder.Append("TypeInfoStruct* TypeInfoOfInternal<const %.*s>::Get() {\n", (s32)name.count, name.data);
+			builder.Append("TypeInfoStruct* TypeInfoOfInternal<const %>::Get() {\n"_sl, name);
 		}
 	}
 	if (forward_declaration) return;
@@ -503,7 +497,7 @@ static void GenerateCodeForStruct(StringBuilder& builder, AstNodeStruct* ast_nod
 	builder.Indent();
 	
 	// Rename the type so it's possible to use offsetof macro with types that have comma in the name.
-	builder.Append("using TypeName = %.*s;\n\n", (s32)name.count, name.data);
+	builder.Append("using TypeName = %;\n\n"_sl, name);
 	
 	// Array of notes.
 	auto* notes = ast_node_struct->notes;
@@ -512,37 +506,23 @@ static void GenerateCodeForStruct(StringBuilder& builder, AstNodeStruct* ast_nod
 	// Array of fields.
 	u32 field_count = 0;
 	if (code_block->declarations.count != 0 || (template_code_block && template_code_block->declarations.count != 0)) {
-		builder.AppendUnformatted("static TypeInfoStructField fields[] = {\n"_sl);
+		builder.Append("static TypeInfoStructField fields[] = {\n"_sl);
 		builder.Indent();
 		
 		if (template_code_block) {
 			for (auto* declaration : template_code_block->declarations) {
-				builder.Append("{ \"%.*s\"_sl, &type_info_type, 0, TypeInfoOf<%.*s>(), TypeInfoStructFieldFlags::TemplateParameter },\n",
-					(s32)declaration->name.count, declaration->name.data,
-					(s32)declaration->name.count, declaration->name.data
-				);
+				builder.Append("{ \"%0\"_sl, &type_info_type, 0, TypeInfoOf<%0>(), TypeInfoStructFieldFlags::TemplateParameter },\n"_sl, declaration->name);
 			}
 			field_count += (u32)template_code_block->declarations.count;
 		}
 		
 		for (auto* declaration : code_block->declarations) {
 			if (declaration->declaration_type == AstNodeDeclarationType::Variable) {
-				builder.Append("{ \"%.*s\"_sl, TypeInfoOf<decltype(TypeName::%.*s)>(), offsetof(TypeName, %.*s) },\n",
-					(s32)declaration->name.count, declaration->name.data,
-					(s32)declaration->name.count, declaration->name.data,
-					(s32)declaration->name.count, declaration->name.data
-				);
+				builder.Append("{ \"%0\"_sl, TypeInfoOf<decltype(TypeName::%0)>(), offsetof(TypeName, %0) },\n"_sl, declaration->name);
 			} else if (declaration->declaration_type == AstNodeDeclarationType::Constant) {
-				builder.Append("{ \"%.*s\"_sl, TypeInfoOf<decltype(TypeName::%.*s)>(), 0, &TypeName::%.*s },\n",
-					(s32)declaration->name.count, declaration->name.data,
-					(s32)declaration->name.count, declaration->name.data,
-					(s32)declaration->name.count, declaration->name.data
-				);
+				builder.Append("{ \"%0\"_sl, TypeInfoOf<decltype(TypeName::%0)>(), 0, &TypeName::%0 },\n"_sl, declaration->name);
 			} else if (declaration->declaration_type == AstNodeDeclarationType::Typename) {
-				builder.Append("{ \"%.*s\"_sl, &type_info_type, 0, TypeInfoOf<TypeName::%.*s>() },\n",
-					(s32)declaration->name.count, declaration->name.data,
-					(s32)declaration->name.count, declaration->name.data
-				);
+				builder.Append("{ \"%0\"_sl, &type_info_type, 0, TypeInfoOf<TypeName::%0>() },\n"_sl, declaration->name);
 			} else {
 				DebugAssertAlways("Unhanlded declaration type.");
 			}
@@ -550,37 +530,37 @@ static void GenerateCodeForStruct(StringBuilder& builder, AstNodeStruct* ast_nod
 		field_count += (u32)code_block->declarations.count;
 		
 		builder.Unindent();
-		builder.AppendUnformatted("};\n\n"_sl);
+		builder.Append("};\n\n"_sl);
 	}
 	
 	// TypeInfoStruct:
 	{
-		builder.AppendUnformatted("static TypeInfoStruct type_info = {\n"_sl);
+		builder.Append("static TypeInfoStruct type_info = {\n"_sl);
 		builder.Indent();
 		
-		builder.Append("TypeInfoType::Struct,\n");
-		builder.Append("\"%.*s\"_sl,\n", (s32)name.count, name.data);
-		builder.AppendUnformatted("sizeof(TypeName),\n"_sl);
+		builder.Append("TypeInfoType::Struct,\n"_sl);
+		builder.Append("\"%0\"_sl,\n"_sl, name);
+		builder.Append("sizeof(TypeName),\n"_sl);
 		
 		if (field_count != 0) {
-			builder.Append("ArrayView<TypeInfoStructField>{ fields, %u },\n", field_count);
+			builder.Append("ArrayView<TypeInfoStructField>{ fields, % },\n"_sl, field_count);
 		} else {
-			builder.AppendUnformatted("ArrayView<TypeInfoStructField>{},\n"_sl);
+			builder.Append("ArrayView<TypeInfoStructField>{},\n"_sl);
 		}
 		
 		if (notes && notes->notes.count != 0) {
-			builder.Append("ArrayView<TypeInfoNote>{ notes, %u },\n", notes->notes.count);
+			builder.Append("ArrayView<TypeInfoNote>{ notes, % },\n"_sl, notes->notes.count);
 		} else {
-			builder.AppendUnformatted("ArrayView<TypeInfoNote>{},\n"_sl);
+			builder.Append("ArrayView<TypeInfoNote>{},\n"_sl);
 		}
 		
 		builder.Unindent();
-		builder.AppendUnformatted("};\n\n"_sl);
+		builder.Append("};\n\n"_sl);
 	}
 	
-	builder.AppendUnformatted("return &type_info;\n"_sl);
+	builder.Append("return &type_info;\n"_sl);
 	builder.Unindent();
-	builder.AppendUnformatted("}\n\n"_sl);
+	builder.Append("}\n\n"_sl);
 }
 
 static void GenerateCodeForEnum(StringBuilder& builder, AstNodeEnum* ast_node_enum, bool forward_declaration) {
@@ -588,14 +568,14 @@ static void GenerateCodeForEnum(StringBuilder& builder, AstNodeEnum* ast_node_en
 	auto name = code_block->namespace_path;
 	
 	if (forward_declaration) {
-		builder.Append("template<> struct TypeInfoOfInternal<const %.*s> { static TypeInfoEnum* Get(); };\n", (s32)name.count, name.data);
+		builder.Append("template<> struct TypeInfoOfInternal<const %> { static TypeInfoEnum* Get(); };\n"_sl, name);
 		return;
 	}
 	
-	builder.Append("TypeInfoEnum* TypeInfoOfInternal<const %.*s>::Get() {\n", (s32)name.count, name.data);
+	builder.Append("TypeInfoEnum* TypeInfoOfInternal<const %>::Get() {\n"_sl, name);
 	builder.Indent();
 	
-	builder.Append("using TypeName = %.*s;\n\n", (s32)name.count, name.data);
+	builder.Append("using TypeName = %;\n\n"_sl, name);
 	
 	// Array of notes.
 	auto* notes = ast_node_enum->notes;
@@ -603,50 +583,47 @@ static void GenerateCodeForEnum(StringBuilder& builder, AstNodeEnum* ast_node_en
 	
 	// Array of fields.
 	if (code_block->declarations.count != 0) {
-		builder.AppendUnformatted("static TypeInfoEnumField fields[] = {\n"_sl);
+		builder.Append("static TypeInfoEnumField fields[] = {\n"_sl);
 		builder.Indent();
 		
 		for (auto* declaration : code_block->declarations) {
-			builder.Append("{ \"%.*s\"_sl, (u64)TypeName::%.*s },\n",
-				(s32)declaration->name.count, declaration->name.data,
-				(s32)declaration->name.count, declaration->name.data
-			);
+			builder.Append("{ \"%0\"_sl, (u64)TypeName::%0 },\n"_sl, declaration->name);
 		}
 		
 		builder.Unindent();
-		builder.AppendUnformatted("};\n\n"_sl);
+		builder.Append("};\n\n"_sl);
 	}
 	
 	// TypeInfoEnum:
 	{
-		builder.AppendUnformatted("static TypeInfoEnum type_info = {\n"_sl);
+		builder.Append("static TypeInfoEnum type_info = {\n"_sl);
 		builder.Indent();
 		
-		builder.Append("TypeInfoType::Enum,\n");
-		builder.Append("\"%.*s\"_sl,\n", (s32)name.count, name.data);
+		builder.Append("TypeInfoType::Enum,\n"_sl);
+		builder.Append("\"%\"_sl,\n"_sl, name);
 		
 		auto underlying_type = ast_node_enum->underlying_type.count ? ast_node_enum->underlying_type : "s32"_sl;
-		builder.Append("TypeInfoOf<%.*s>(),\n", (s32)underlying_type.count, underlying_type.data);
+		builder.Append("TypeInfoOf<%>(),\n"_sl, underlying_type);
 		
 		if (code_block->declarations.count != 0) {
-			builder.Append("ArrayView<TypeInfoEnumField>{ fields, %u },\n", (u32)code_block->declarations.count);
+			builder.Append("ArrayView<TypeInfoEnumField>{ fields, % },\n"_sl, code_block->declarations.count);
 		} else {
-			builder.AppendUnformatted("ArrayView<TypeInfoEnumField>{},\n"_sl);
+			builder.Append("ArrayView<TypeInfoEnumField>{},\n"_sl);
 		}
 		
 		if (notes && notes->notes.count != 0) {
-			builder.Append("ArrayView<TypeInfoNote>{ notes, %u },\n", notes->notes.count);
+			builder.Append("ArrayView<TypeInfoNote>{ notes, % },\n"_sl, notes->notes.count);
 		} else {
-			builder.AppendUnformatted("ArrayView<TypeInfoNote>{},\n"_sl);
+			builder.Append("ArrayView<TypeInfoNote>{},\n"_sl);
 		}
 		
 		builder.Unindent();
-		builder.AppendUnformatted("};\n\n"_sl);
+		builder.Append("};\n\n"_sl);
 	}
 	
-	builder.AppendUnformatted("return &type_info;\n"_sl);
+	builder.Append("return &type_info;\n"_sl);
 	builder.Unindent();
-	builder.AppendUnformatted("};\n\n"_sl);
+	builder.Append("};\n\n"_sl);
 }
 
 static void GenerateCodeForCodeBlockTypeDeclarations(StringBuilder& builder, AstNodeCodeBlock* code_block, bool forward_declaration) {
@@ -674,7 +651,7 @@ struct ParsedFileData {
 };
 
 static void GenerateCodeForTypeTable(StringBuilder& builder, ArrayView<ParsedFileData> files) {
-	builder.AppendUnformatted("static TypeInfo* type_table_internal[] = {\n"_sl);
+	builder.Append("static TypeInfo* type_table_internal[] = {\n"_sl);
 	builder.Indent();
 	
 	u32 type_table_size = 0;
@@ -699,16 +676,16 @@ static void GenerateCodeForTypeTable(StringBuilder& builder, ArrayView<ParsedFil
 			}
 			
 			if (name.count != 0) {
-				builder.Append("TypeInfoOf<%.*s>(),\n", (s32)name.count, name.data);
+				builder.Append("TypeInfoOf<%>(),\n"_sl, name);
 				type_table_size += 1;
 			}
 		}
 	}
 	
 	builder.Unindent();
-	builder.AppendUnformatted("};\n\n"_sl);
+	builder.Append("};\n\n"_sl);
 	
-	builder.Append("ArrayView<TypeInfo*> type_table = { type_table_internal, %u };\n\n", type_table_size);
+	builder.Append("ArrayView<TypeInfo*> type_table = { type_table_internal, % };\n\n"_sl, type_table_size);
 }
 
 
@@ -720,10 +697,7 @@ s32 main(s32 argument_count, const char* arguments[]) {
 	ArrayReserve(filepaths, &alloc, argument_count - 1);
 	
 	for (s32 i = 1; i < argument_count; i += 1) {
-		String filepath;
-		filepath.data  = (char*)arguments[i];
-		filepath.count = strlen(arguments[i]);
-		ArrayAppend(filepaths, filepath);
+		ArrayAppend(filepaths, StringFromCString(arguments[i]));
 	}
 	
 	
@@ -731,11 +705,11 @@ s32 main(s32 argument_count, const char* arguments[]) {
 	for (auto filepath : filepaths) {
 		auto file = SystemReadFileToString(&alloc, filepath);
 		if (file.data == nullptr) {
-			SystemWriteToConsole(&alloc, "Failed to open file '%.*s'.\n", (s32)filepath.count, filepath.data);
+			SystemWriteToConsole(&alloc, "Failed to open file '%'.\n"_sl, filepath);
 			SystemExitProcess(1);
 		}
 		
-		SystemWriteToConsole(&alloc, "Parsing file: %.*s\n", (s32)filepath.count, filepath.data);
+		SystemWriteToConsole(&alloc, "Parsing file: '%'.\n"_sl, filepath);
 		
 		ParsedFileData ast_node_file;
 		ast_node_file.filepath = filepath;
@@ -751,18 +725,18 @@ s32 main(s32 argument_count, const char* arguments[]) {
 		builder.alloc = &alloc;
 		
 		for (auto& file : parsed_files) {
-			builder.Append("#include \"%.*s\"\n", (s32)file.filepath.count, file.filepath.data);
+			builder.Append("#include \"%\"\n"_sl, file.filepath);
 		}
-		builder.Append("#include \"Metaprogram/TypeInfo.h\"\n");
-		builder.Append("#include <stddef.h>\n\n"); // Included to get offsetof().
+		builder.Append("#include \"Metaprogram/TypeInfo.h\"\n"_sl);
+		builder.Append("#include <stddef.h>\n\n"_sl); // Included to get offsetof().
 		
-		builder.Append("// Forward Declarations:\n");
+		builder.Append("// Forward Declarations:\n"_sl);
 		for (auto& file : parsed_files) {
 			GenerateCodeForCodeBlockTypeDeclarations(builder, file.top_level_code_block, true);
 		}
-		builder.Append("\n\n");
+		builder.Append("\n\n"_sl);
 		
-		builder.Append("// Type Information:\n");
+		builder.Append("// Type Information:\n"_sl);
 		for (auto& file : parsed_files) {
 			GenerateCodeForCodeBlockTypeDeclarations(builder, file.top_level_code_block, false);
 		}

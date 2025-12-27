@@ -32,4 +32,5 @@ ArrayView<String> ReadDirectoryChangeEvents(StackAllocator* alloc, DirectoryChan
 void ReleaseDirectoryChangeTracker(DirectoryChangeTracker* tracker);
 
 void SystemWriteToConsole(String message);
-void SystemWriteToConsole(StackAllocator* alloc, const char* format, ...);
+void SystemWriteToConsoleV(StackAllocator* alloc, String format, ArrayView<StringFormatArgument> arguments);
+template<typename ... Args> void SystemWriteToConsole(StackAllocator* alloc, String format, Args ... args) { FORMAT_PROC_BODY(SystemWriteToConsoleV, alloc, format); }

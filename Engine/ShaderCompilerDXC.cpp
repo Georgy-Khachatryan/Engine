@@ -86,6 +86,13 @@ compile_const wchar_t* shader_type_defines[(u32)ShaderType::Count] = {
 	L"MESH_SHADER",
 };
 
+compile_const String shader_type_names[(u32)ShaderType::Count] = {
+	"CS"_sl,
+	"VS"_sl,
+	"PS"_sl,
+	"MS"_sl,
+};
+
 compile_const String shader_directory_path = "./Shaders"_sl;
 
 
@@ -95,7 +102,7 @@ struct ShaderSourceFile {
 };
 
 static ShaderSourceFile ReadShaderSourceFile(StackAllocator* alloc, String filename) {
-	auto filepath = StringFormat(alloc, "%s/%.*s", shader_directory_path.data, (s32)filename.count, filename.data);
+	auto filepath = StringFormat(alloc, "%/%"_sl, shader_directory_path, filename);
 	
 	ShaderSourceFile shader_file;
 	shader_file.contents = SystemReadFileToString(alloc, filepath);
@@ -149,7 +156,7 @@ static bool CompileShaderToBlob(ShaderCompiler* compiler, StackAllocator* alloc,
 	auto shader_file = ReadShaderSourceFile(alloc, filename);
 	
 	if (shader_file.contents.data == nullptr) {
-		SystemWriteToConsole(alloc, "Failed to open shader source file '%.*s'.\n", (s32)filename.count, filename.data);
+		SystemWriteToConsole(alloc, "Failed to open shader source file '%'.\n"_sl, filename);
 		return false;
 	}
 	
@@ -162,7 +169,7 @@ static bool CompileShaderToBlob(ShaderCompiler* compiler, StackAllocator* alloc,
 	ArrayAppend(include_handler.hashed_source_files, { filename, shader_file.hash });
 	
 	auto root_signature_filename = compiler->root_signature_filenames[key.root_signature_index];
-	auto root_signature_filepath = StringFormat(alloc, "ROOT_SIGNATURE_FILEPATH=\"Generated/%.*s\"", (s32)root_signature_filename.count, root_signature_filename.data);
+	auto root_signature_filepath = StringFormat(alloc, "ROOT_SIGNATURE_FILEPATH=\"Generated/%\""_sl, root_signature_filename);
 	
 	Array<const wchar_t*> arguments;
 	ArrayReserve(arguments, alloc, 14 + CountSetBits(key.permutation) * 2);
@@ -215,14 +222,16 @@ static bool CompileShaderToBlob(ShaderCompiler* compiler, StackAllocator* alloc,
 	defer{ SafeReleaseDXC(error_blob); };
 	
 	auto permutation_name = GetShaderPermutationName(alloc, definition, key.permutation);
+	auto shader_type_name = shader_type_names[(u32)key.shader_type];
+	auto dxc_error_message = String{ (char*)error_blob->GetStringPointer(), error_blob->GetStringLength() };
 	
 	String compiler_message;
 	if (FAILED(status)) {
-		compiler_message = StringFormat(alloc, "Shader '%.*s' failed to compile with target '%S'. Errors:\n\x1B[31m%.*s\x1B[0m\n", (s32)permutation_name.count, permutation_name.data, target_profiles[(u32)key.shader_type], (s32)error_blob->GetStringLength(), error_blob->GetStringPointer());
-	} else if (error_blob->GetStringLength() != 0) {
-		compiler_message = StringFormat(alloc, "Shader '%.*s' compiled with target '%S'. Warnings:\n\x1B[33m%.*s\x1B[0m\n", (s32)permutation_name.count, permutation_name.data, target_profiles[(u32)key.shader_type], (s32)error_blob->GetStringLength(), error_blob->GetStringPointer());
+		compiler_message = StringFormat(alloc, "Shader '%' failed to compile with target '%'. Errors:\n\x1B[31m%\x1B[0m\n"_sl, permutation_name, shader_type_name, dxc_error_message);
+	} else if (dxc_error_message.count != 0) {
+		compiler_message = StringFormat(alloc, "Shader '%' compiled with target '%'. Warnings:\n\x1B[33m%\x1B[0m\n"_sl, permutation_name, shader_type_name, dxc_error_message);
 	} else {
-		compiler_message = StringFormat(alloc, "Shader '%.*s' compiled with target '%S'.\n", (s32)permutation_name.count, permutation_name.data, target_profiles[(u32)key.shader_type]);
+		compiler_message = StringFormat(alloc, "Shader '%' compiled with target '%'.\n"_sl, permutation_name, shader_type_name);
 	}
 	SystemWriteToConsole(compiler_message);
 	

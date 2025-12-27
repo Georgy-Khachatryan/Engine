@@ -102,7 +102,7 @@ String PrintTypeName(StackAllocator* alloc, TypeInfo* type_info) {
 	} case TypeInfoType::Pointer: {
 		auto* type_info_pointer = (TypeInfoPointer*)type_info;
 		auto pointer_to_name = PrintTypeName(alloc, type_info_pointer->pointer_to);
-		return StringFormat(alloc, "%.*s*", (s32)pointer_to_name.count, pointer_to_name.data);
+		return StringFormat(alloc, "%*"_sl, pointer_to_name);
 	} case TypeInfoType::None: {
 		return "None"_sl;
 	} default: {
@@ -118,17 +118,17 @@ String PrintTypeValue(StackAllocator* alloc, TypeInfo* type_info, const void* va
 		auto* type_info_integer = (TypeInfoInteger*)type_info;
 		switch (type_info_integer->bit_width) {
 		case 1:  return *(bool*)value ? "true"_sl : "false"_sl;
-		case 8:  return type_info_integer->is_signed ? StringFormat(alloc, "%d",   *(s8*)value)  : StringFormat(alloc, "%u",   *(u8*)value);
-		case 16: return type_info_integer->is_signed ? StringFormat(alloc, "%d",   *(s16*)value) : StringFormat(alloc, "%u",   *(u16*)value);
-		case 32: return type_info_integer->is_signed ? StringFormat(alloc, "%d",   *(s32*)value) : StringFormat(alloc, "%u",   *(u32*)value);
-		case 64: return type_info_integer->is_signed ? StringFormat(alloc, "%lld", *(s64*)value) : StringFormat(alloc, "%llu", *(u64*)value);
+		case 8:  return type_info_integer->is_signed ? StringFormat(alloc, "%"_sl, *(s8*)value)  : StringFormat(alloc, "%"_sl, *(u8*)value);
+		case 16: return type_info_integer->is_signed ? StringFormat(alloc, "%"_sl, *(s16*)value) : StringFormat(alloc, "%"_sl, *(u16*)value);
+		case 32: return type_info_integer->is_signed ? StringFormat(alloc, "%"_sl, *(s32*)value) : StringFormat(alloc, "%"_sl, *(u32*)value);
+		case 64: return type_info_integer->is_signed ? StringFormat(alloc, "%"_sl, *(s64*)value) : StringFormat(alloc, "%"_sl, *(u64*)value);
 		default: return "Unknown Integer"_sl;
 		}
 	} case TypeInfoType::Float: {
 		auto* type_info_float = (TypeInfoFloat*)type_info;
 		switch (type_info_float->bit_width) {
-		case 32: return StringFormat(alloc, "%f", *(float*)value);
-		case 64: return StringFormat(alloc, "%f", *(double*)value);
+		case 32: return StringFormat(alloc, "%"_sl, *(float*)value);
+		case 64: return StringFormat(alloc, "%"_sl, *(double*)value);
 		default: return "Unknown Float"_sl;
 		}
 	} case TypeInfoType::Struct: {
@@ -136,7 +136,7 @@ String PrintTypeValue(StackAllocator* alloc, TypeInfo* type_info, const void* va
 		
 		StringBuilder builder;
 		builder.alloc = alloc;
-		builder.AppendUnformatted("{ "_sl);
+		builder.Append("{ "_sl);
 		
 		bool is_first_field = true;
 		for (auto& field : type_info_struct->fields) {
@@ -144,15 +144,15 @@ String PrintTypeValue(StackAllocator* alloc, TypeInfo* type_info, const void* va
 			if (field.constant_value) continue;
 			
 			if (is_first_field == false) {
-				builder.AppendUnformatted(", "_sl);
+				builder.Append(", "_sl);
 			}
 			is_first_field = false;
 			
 			auto field_value = PrintTypeValue(alloc, field.type, (u8*)value + field.offset);
-			builder.AppendUnformatted(field_value);
+			builder.Append(field_value);
 		}
 		
-		builder.AppendUnformatted(" }"_sl);
+		builder.Append(" }"_sl);
 		
 		return builder.ToString();
 	} case TypeInfoType::Enum: {
@@ -168,15 +168,15 @@ String PrintTypeValue(StackAllocator* alloc, TypeInfo* type_info, const void* va
 		}
 		
 		if (value_name.count == 0) {
-			value_name = StringFormat(alloc, "(%.*s)%llu", (s32)type_info_enum->name.count, type_info_enum->name.data, value);
+			value_name = StringFormat(alloc, "(%)%"_sl, type_info_enum->name, value);
 		} else {
-			value_name = StringFormat(alloc, "%.*s::%.*s", (s32)type_info_enum->name.count, type_info_enum->name.data, (s32)value_name.count, value_name.data);
+			value_name = StringFormat(alloc, "%::%"_sl, type_info_enum->name, value_name);
 		}
 		return value_name;
 	} case TypeInfoType::String: {
 		return *(String*)value;
 	} case TypeInfoType::Pointer: {
-		return StringFormat(alloc, "0x%P", value);
+		return StringFormat(alloc, "0x%"_sl, value);
 	} default: {
 		DebugAssertAlways("Unhandled TypeInfoType.");
 		return "Unknown Type"_sl;
@@ -190,17 +190,17 @@ void WriteGeneratedFile(StackAllocator* alloc, String filepath, String contents)
 	
 	// Don't overwrite files with the same contents to help out incremental builds.
 	if (contents == SystemReadFileToString(alloc, filepath)) {
-		SystemWriteToConsole(alloc, "Cached file: %.*s\n", (s32)filepath.count, filepath.data);
+		SystemWriteToConsole(alloc, "Cached file: '%'.\n"_sl, filepath);
 		return;
 	}
 	
 	auto output_file = SystemOpenFile(alloc, filepath, OpenFileFlags::Write);
 	if (output_file.handle == nullptr) {
-		SystemWriteToConsole(alloc, "Failed to open output file '%.*s'.\n", (s32)filepath.count, filepath.data);
+		SystemWriteToConsole(alloc, "Failed to open output file '%'.\n"_sl, filepath);
 		SystemExitProcess(1);
 	}
 	
-	SystemWriteToConsole(alloc, "Writing file: %.*s\n", (s32)filepath.count, filepath.data);
+	SystemWriteToConsole(alloc, "Writing file: '%'.\n"_sl, filepath);
 	
 	SystemWriteFile(output_file, contents.data, contents.count, 0);
 	SystemCloseFile(output_file);
@@ -208,7 +208,7 @@ void WriteGeneratedFile(StackAllocator* alloc, String filepath, String contents)
 
 void EnsureDirectoryExists(StackAllocator* alloc, String directory) {
 	if (SystemCreateDirectory(alloc, directory) == false) {
-		SystemWriteToConsole(alloc, "Failed to create output directory '%.*s'.\n", (s32)directory.count, directory.data);
+		SystemWriteToConsole(alloc, "Failed to create output directory '%'.\n"_sl, directory);
 		SystemExitProcess(1);
 	}
 }

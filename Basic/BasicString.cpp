@@ -2,7 +2,7 @@
 #include "BasicMath.h"
 #include "BasicMemory.h"
 
-#include <stdio.h>
+#include <stdio.h> // For snprintf
 
 bool String::operator== (String other) const {
 	return (count == other.count) && (count == 0 || memcmp(data, other.data, count) == 0);
@@ -12,27 +12,17 @@ bool String::operator!= (String other) const {
 	return (count != other.count) || (count != 0 && memcmp(data, other.data, count) != 0);
 }
 
-String StringFormatV(StackAllocator* alloc, const char* format, va_list args) {
-	va_list args_copy;
-	va_copy(args_copy, args);
+String StringFormatV(StackAllocator* alloc, String format, ArrayView<StringFormatArgument> arguments) {
+	u64 count = StringFormatToMemory(String{}, format, arguments);
 	
-	String result;
-	result.count = vsnprintf(nullptr, 0, format, args);
-	result.data  = (char*)alloc->Allocate(result.count + 1);
-	vsnprintf((char*)result.data, result.count + 1, format, args_copy);
-	
-	va_end(args_copy);
+	auto result = StringAllocate(alloc, count);
+	StringFormatToMemory(result, format, arguments);
 	
 	return result;
 }
 
-String StringFormat(StackAllocator* alloc, const char* format, ...) {
-	va_list va_args;
-	va_start(va_args, format);
-	auto result = StringFormatV(alloc, format, va_args);
-	va_end(va_args);
-	
-	return result;
+String StringFromCString(const char* data) {
+	return data ? String{ (char*)data, strlen(data) } : String{};
 }
 
 String StringCopy(StackAllocator* alloc, String source) {
@@ -155,24 +145,12 @@ static String AppendStringBuilderEntry(StringBuilder& builder, u64 size) {
 	return result;
 }
 
-void StringBuilder::Append(const char* format, ...) {
-	va_list va_args;
-	va_start(va_args, format);
-	StringBuilder::AppendV(format, va_args);
-	va_end(va_args);
+void StringBuilder::AppendV(String format, ArrayView<StringFormatArgument> arguments) {
+	auto result = AppendStringBuilderEntry(*this, StringFormatToMemory(String{}, format, arguments));
+	StringFormatToMemory(result, format, arguments);
 }
 
-void StringBuilder::AppendV(const char* format, va_list args) {
-	va_list args_copy;
-	va_copy(args_copy, args);
-	
-	auto result = AppendStringBuilderEntry(*this, vsnprintf(nullptr, 0, format, args));
-	vsnprintf(result.data, result.count + 1, format, args_copy);
-	
-	va_end(args_copy);
-}
-
-void StringBuilder::AppendUnformatted(String string) {
+void StringBuilder::Append(String string) {
 	auto result = AppendStringBuilderEntry(*this, string.count);
 	memcpy(result.data, string.data, string.count);
 }
@@ -305,3 +283,199 @@ u64 ComputeHash(const u8* data, u64 count, u64 seed) {
 }
 
 u64 ComputeHash(String string) { return ComputeHash((u8*)string.data, string.count, 0); }
+
+
+#define STRING_FORMAT_ARG(value_type, enum_type, union_type) template<> StringFormatArgument StringFormatArgumentFromT<value_type>(value_type value) { StringFormatArgument result; result.type = StringFormatType::enum_type; result.value.union_type = value; return result; }
+	STRING_FORMAT_ARG(u8,  U8,  _u64);
+	STRING_FORMAT_ARG(u16, U16, _u64);
+	STRING_FORMAT_ARG(u32, U32, _u64);
+	STRING_FORMAT_ARG(u64, U64, _u64);
+	STRING_FORMAT_ARG(s8,  S8,  _s64);
+	STRING_FORMAT_ARG(s16, S16, _s64);
+	STRING_FORMAT_ARG(s32, S32, _s64);
+	STRING_FORMAT_ARG(s64, S64, _s64);
+	STRING_FORMAT_ARG(char, Char, _char);
+	STRING_FORMAT_ARG(float32, Float32, _float32);
+	STRING_FORMAT_ARG(float64, Float64, _float64);
+	STRING_FORMAT_ARG(String,  String,  _string);
+	STRING_FORMAT_ARG(const char*, CString, _cstring);
+	STRING_FORMAT_ARG(const void*, Pointer, _pointer);
+#undef STRING_FORMAT_ARG
+
+
+u64 StringFormatToMemory(String output, String format, ArrayView<StringFormatArgument> arguments) {
+	u64 output_index = 0;
+	u64 output_size  = 0;
+	
+	auto copy_string_to_output = [&](String string) {
+		u64 count = Min(output.count - output_index, string.count);
+		memcpy(output.data + output_index, string.data, count);
+		output_index += count;
+		output_size  += string.count;
+	};
+	
+	u64 last_copied_index = 0;
+	auto copy_format_to_output = [&](u64 index) {
+		if (index > last_copied_index) {
+			copy_string_to_output(String{ format.data + last_copied_index, index - last_copied_index });
+		}
+	};
+	
+	auto format_u64_base_10 = [&](u64 value, char leading_char = '\0') {
+		compile_const u64 max_char_count = 32;
+		char buffer[max_char_count];
+		
+		u64 char_index = max_char_count;
+		while (value != 0) {
+			// TODO: Format 2 digits at a time?
+			u64 digit = (value % 10);
+			value /= 10;
+			
+			buffer[--char_index] = '0' + (char)digit;
+		}
+		
+		if (char_index == max_char_count) {
+			buffer[--char_index] = '0';
+		}
+		
+		if (leading_char != '\0') {
+			buffer[--char_index] = leading_char;
+		}
+		
+		copy_string_to_output(String{ buffer + char_index, max_char_count - char_index });
+	};
+	
+	auto format_u64_base_16 = [&](u64 value, u64 min_char_count = 1) {
+		compile_const char* digits = "0123456789ABCDEF";
+		
+		compile_const u64 max_char_count = 32;
+		char buffer[max_char_count];
+		
+		u64 char_index = max_char_count;
+		while (value != 0) {
+			u64 digit = (value & 0xF);
+			value >>= 4;
+			
+			buffer[--char_index] = digits[digit];
+		}
+		
+		while (max_char_count - char_index < min_char_count) {
+			buffer[--char_index] = '0';
+		}
+		
+		copy_string_to_output(String{ buffer + char_index, max_char_count - char_index });
+	};
+	
+	auto format_float64_base_10 = [&](float64 value) {
+		compile_const u64 max_char_count = 32;
+		char buffer[max_char_count];
+		
+		u64 count = snprintf(buffer, max_char_count, "%g", value);
+		copy_string_to_output({ buffer, count });
+	};
+	
+	u64 argument_index = 0;
+	for (u64 i = 0; i < format.count;) {
+		auto c = format[i];
+		
+		if ((c == '%') && (i + 1 < format.count) && format[i + 1] == '%') { // Handle %% escape sequence. Output one %.
+			copy_format_to_output(i + 1);
+			last_copied_index = i + 2;
+			i += 2;
+		} else if (c == '%') {
+			copy_format_to_output(i);
+			i += 1; // Consume %.
+			
+			c = i < format.count ? format[i] : '\0';
+			if (CharIsNumeric(c)) {
+				String number;
+				number.data  = format.data + i;
+				number.count = 0;
+				
+				while (i < format.count && CharIsNumeric(format[i])) {
+					i += 1;
+					number.count += 1;
+				}
+				c = i < format.count ? format[i] : '\0';
+				
+				argument_index = StringToU64(number);
+			}
+			
+			bool use_format_base_16 = c == 'x';
+			if (use_format_base_16) {
+				i += 1;
+				c = i < format.count ? format[i] : '\0';
+			}
+			
+			if (c == '.') { // Dot is treated as the last char in a format specifier.
+				i += 1;
+			}
+			
+			last_copied_index = i;
+			
+			// Out of bounds arguments are skipped.
+			auto argument = argument_index < arguments.count ? arguments[argument_index++] : StringFormatArgument{};
+			switch (argument.type) {
+			case StringFormatType::U8:
+			case StringFormatType::U16:
+			case StringFormatType::U32:
+			case StringFormatType::U64: {
+				if (use_format_base_16) {
+					format_u64_base_16(argument.value._u64);
+				} else {
+					format_u64_base_10(argument.value._u64);
+				}
+				break;
+			} case StringFormatType::S8:
+			case StringFormatType::S16:
+			case StringFormatType::S32:
+			case StringFormatType::S64: {
+				if (use_format_base_16) {
+					switch (argument.type) {
+					case StringFormatType::S8:  format_u64_base_16((u8)argument.value._u64);  break;
+					case StringFormatType::S16: format_u64_base_16((u16)argument.value._u64); break;
+					case StringFormatType::S32: format_u64_base_16((u32)argument.value._u64); break;
+					case StringFormatType::S64: format_u64_base_16((u64)argument.value._u64); break;
+					}
+				} else {
+					bool is_negative = argument.value._s64 < 0;
+					format_u64_base_10(is_negative ? -argument.value._s64 : argument.value._s64, is_negative ? '-' : '\0');
+				}
+				break;
+			} case StringFormatType::Float32: {
+				if (use_format_base_16) {
+					format_u64_base_16((u32)argument.value._u64, 8);
+				} else {
+					format_float64_base_10(argument.value._float32);
+				}
+				break;
+			} case StringFormatType::Float64: {
+				if (use_format_base_16) {
+					format_u64_base_16(argument.value._u64, 16);
+				} else {
+					format_float64_base_10(argument.value._float64);
+				}
+				break;
+			} case StringFormatType::Char: {
+				copy_string_to_output(String{ &argument.value._char, 1 });
+				break;
+			} case StringFormatType::String: {
+				copy_string_to_output(argument.value._string);
+				break;
+			} case StringFormatType::CString: {
+				copy_string_to_output(StringFromCString(argument.value._cstring));
+				break;
+			} case StringFormatType::Pointer: {
+				format_u64_base_16((u64)argument.value._pointer, 16);
+				break;
+			}
+			}
+		} else {
+			i += 1;
+		}
+	}
+	copy_format_to_output(format.count);
+	
+	return output_size;
+}
+
