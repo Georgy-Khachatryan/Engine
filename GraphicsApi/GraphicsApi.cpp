@@ -1,6 +1,19 @@
 #include "GraphicsApi.h"
 #include "RecordContext.h"
 
+Array<PipelineDefinition> GatherPipelineDefinitions(StackAllocator* alloc) {
+	PipelineLibrary lib;
+	lib.alloc = alloc;
+	
+	extern ArrayView<CreatePipelinesCallback> create_pipeline_callbacks;
+	for (u32 i = 0; i < create_pipeline_callbacks.count; i += 1) {
+		lib.current_pass_root_signature_id = { i };
+		create_pipeline_callbacks[i](&lib);
+	}
+	
+	return lib.pipeline_definitions;
+}
+
 PipelineID CreateComputePipeline(PipelineLibrary* lib, ShaderID shader_id, u64 permutation) {
 	u32 pipeline_index = (u32)lib->pipeline_definitions.count;
 	

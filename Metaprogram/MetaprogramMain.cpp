@@ -27,9 +27,15 @@ struct RootSignatureFileData {
 	Array<RootSignaturePassData> root_signatures;
 };
 
+struct ShaderDefinitionData {
+	String filename;
+	String shader_name;
+	u32 define_count = 0;
+};
+
 struct ShaderDefinitionFileData {
 	StringBuilder builder;
-	Array<String> shader_names;
+	Array<ShaderDefinitionData> shader_definitions;
 };
 
 static void GatherIncludesForDependentTypes(StackAllocator* alloc, HashTable<String, void>& includes, TypeInfoStruct* type_info) {
@@ -377,24 +383,11 @@ static void GenerateCodeForShaderDefinition(StackAllocator* alloc, ShaderDefinit
 		builder.Append("};\n\n"_sl);
 	}
 	
-	{
-		builder.Append("static ShaderDefinition shader_definition_% = {\n"_sl, name);
-		builder.Indent();
-		
-		builder.Append("\"%\"_sl,\n"_sl, note->filename);
-		if (define_count != 0) {
-			builder.Append("ArrayView<String>{ shader_defines_%, % },\n"_sl, name, define_count);
-		} else {
-			builder.Append("ArrayView<String>{},\n"_sl);
-		}
-		
-		builder.Unindent();
-		builder.Append("};\n\n"_sl);
-	}
-	
-	builder.Append("ShaderID %ID = { % };\n\n\n"_sl, name, (u32)shader_definition_file.shader_names.count);
-	
-	ArrayAppend(shader_definition_file.shader_names, alloc, name);
+	ShaderDefinitionData shader_definition;
+	shader_definition.filename     = note->filename;
+	shader_definition.shader_name  = name;
+	shader_definition.define_count = define_count;
+	ArrayAppend(shader_definition_file.shader_definitions, alloc, shader_definition);
 }
 
 static void RadixSort(StackAllocator* alloc, ArrayView<ComponentTypeID> keys, ArrayView<u32> values) {
@@ -1062,23 +1055,18 @@ s32 main(s32 argument_count, const char* arguments[]) {
 		}
 		
 		{
-			builder.Append("Array<PipelineDefinition> GatherPipelineDefinitions(StackAllocator* alloc) {\n"_sl);
+			builder.Append("static CreatePipelinesCallback create_pipeline_callbacks_internal[] = {\n"_sl);
 			builder.Indent();
-			
-			builder.Append("PipelineLibrary lib;\n"_sl);
-			builder.Append("lib.alloc = alloc;\n\n"_sl);
 			
 			for (u32 i = 0; i < root_signature_file.root_signatures.count; i += 1) {
 				auto name = root_signature_file.root_signatures[i].render_pass_name;
-				
-				builder.Append("lib.current_pass_root_signature_id = { % };\n"_sl, i);
-				builder.Append("%::CreatePipelines(&lib);\n\n"_sl, name);
+				builder.Append("&%::CreatePipelines,\n"_sl, name);
 			}
-			
-			builder.Append("return lib.pipeline_definitions;\n"_sl);
 			
 			builder.Unindent();
 			builder.Append("};\n\n"_sl);
+			
+			builder.Append("ArrayView<CreatePipelinesCallback> create_pipeline_callbacks = { create_pipeline_callbacks_internal, % };\n\n"_sl, root_signature_file.root_signatures.count);
 		}
 		
 		WriteGeneratedFile(&alloc, "Engine/Generated/RootSignature.cpp"_sl, builder.ToString());
@@ -1086,17 +1074,28 @@ s32 main(s32 argument_count, const char* arguments[]) {
 	
 	{
 		auto& builder = shader_definition_file.builder;
-		builder.Append("static ShaderDefinition* shader_definitions[] = {\n"_sl);
+		
+		for (u64 i = 0; i < shader_definition_file.shader_definitions.count; i += 1) {
+			builder.Append("ShaderID %ID = { % };\n"_sl, shader_definition_file.shader_definitions[i].shader_name, (u32)i);
+		}
+		builder.Append("\n"_sl);
+		
+		
+		builder.Append("static ShaderDefinition shader_definition_table_internal[] = {\n"_sl);
 		builder.Indent();
 		
-		for (auto& shader_name : shader_definition_file.shader_names) {
-			builder.Append("&shader_definition_%,\n"_sl, shader_name);
+		for (auto& definition : shader_definition_file.shader_definitions) {
+			if (definition.define_count != 0) {
+				builder.Append("{ \"%\"_sl, ArrayView<String>{ shader_defines_%, % } },\n"_sl, definition.filename, definition.shader_name, definition.define_count);
+			} else {
+				builder.Append("{ \"%\"_sl, ArrayView<String>{} },\n"_sl, definition.filename);
+			}
 		}
 		
 		builder.Unindent();
 		builder.Append("};\n\n"_sl);
 		
-		builder.Append("ArrayView<ShaderDefinition*> shader_definition_table = { shader_definitions, % };\n\n"_sl, shader_definition_file.shader_names.count);
+		builder.Append("ArrayView<ShaderDefinition> shader_definition_table = { shader_definition_table_internal, % };\n\n"_sl, shader_definition_file.shader_definitions.count);
 		
 		WriteGeneratedFile(&alloc, "Engine/Generated/ShaderDefinitions.cpp"_sl, builder.ToString());
 	}

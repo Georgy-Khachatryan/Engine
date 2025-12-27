@@ -47,6 +47,9 @@ struct PipelineLibrary {
 	Array<PipelineDefinition> pipeline_definitions;
 	RootSignatureID current_pass_root_signature_id = { 0 };
 };
+using CreatePipelinesCallback = void(*)(PipelineLibrary* lib);
+
+Array<PipelineDefinition> GatherPipelineDefinitions(StackAllocator* alloc);
 
 PipelineID CreateComputePipeline(PipelineLibrary* lib, ShaderID shader_id, u64 permutation = 0);
 PipelineID CreateGraphicsPipeline(PipelineLibrary* lib, ArrayView<u8> pipeline_state_stream, ShaderID shader_id, u64 permutation = 0, ShaderTypeMask shader_type_mask = ShaderTypeMask::VertexShader | ShaderTypeMask::PixelShader);

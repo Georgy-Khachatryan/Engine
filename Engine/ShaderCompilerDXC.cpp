@@ -49,7 +49,7 @@ struct ShaderCompiler {
 	DirectoryChangeTracker* directory_change_tracker = nullptr;
 	
 	ArrayView<String>             root_signature_filenames;
-	ArrayView<ShaderDefinition*>  shader_definitions;
+	ArrayView<ShaderDefinition>   shader_definitions;
 	ArrayView<PipelineDefinition> pipeline_definitions;
 	
 	Array<PipelineShaderIndices> pipeline_shader_indices;
@@ -151,8 +151,8 @@ struct IncludeHandler : IDxcIncludeHandler {
 static bool CompileShaderToBlob(ShaderCompiler* compiler, StackAllocator* alloc, const ShaderPermutationKey& key, ShaderPermutation& shader) {
 	TempAllocationScope(alloc);
 	
-	auto* definition = compiler->shader_definitions[key.shader_id.index];
-	auto filename    = definition->filename;
+	auto& definition = compiler->shader_definitions[key.shader_id.index];
+	auto filename    = definition.filename;
 	auto shader_file = ReadShaderSourceFile(alloc, filename);
 	
 	if (shader_file.contents.data == nullptr) {
@@ -193,7 +193,7 @@ static bool CompileShaderToBlob(ShaderCompiler* compiler, StackAllocator* alloc,
 	
 	for (u64 i : BitScanLow(key.permutation)) {
 		ArrayAppend(arguments, L"-D");
-		ArrayAppend(arguments, (wchar_t*)StringUtf8ToUtf16(alloc, definition->defines[i]).data);
+		ArrayAppend(arguments, (wchar_t*)StringUtf8ToUtf16(alloc, definition.defines[i]).data);
 	}
 	
 	
@@ -311,18 +311,18 @@ PipelineShaderBytecode GetShadersForPipelineIndex(ShaderCompiler* compiler, u64 
 	return result;
 }
 
-String GetShaderPermutationName(StackAllocator* alloc, ShaderDefinition* definition, u64 permutation) {
+String GetShaderPermutationName(StackAllocator* alloc, const ShaderDefinition& definition, u64 permutation) {
 	FixedCapacityArray<String, 65> strings;
-	ArrayAppend(strings, definition->filename);
+	ArrayAppend(strings, definition.filename);
 	
 	for (u64 i : BitScanLow(permutation)) {
-		ArrayAppend(strings, definition->defines[i]);
+		ArrayAppend(strings, definition.defines[i]);
 	}
 	
 	return StringJoin(alloc, strings, "-"_sl);
 }
 
-ShaderCompiler* CreateShaderCompiler(StackAllocator* alloc, ArrayView<String> root_signature_filenames, ArrayView<ShaderDefinition*> shader_definitions, ArrayView<PipelineDefinition> pipeline_definitions) {
+ShaderCompiler* CreateShaderCompiler(StackAllocator* alloc, ArrayView<String> root_signature_filenames, ArrayView<ShaderDefinition> shader_definitions, ArrayView<PipelineDefinition> pipeline_definitions) {
 	auto* compiler = NewFromAlloc(alloc, ShaderCompiler);
 	
 	compiler->root_signature_filenames = root_signature_filenames;

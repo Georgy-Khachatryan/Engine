@@ -148,8 +148,7 @@ GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
 	}
 	
 	{
-		extern Array<PipelineDefinition> GatherPipelineDefinitions(StackAllocator* alloc);
-		extern ArrayView<ShaderDefinition*> shader_definition_table;
+		extern ArrayView<ShaderDefinition> shader_definition_table;
 		extern ArrayView<String>         root_signature_filenames;
 		extern ArrayView<ArrayView<u32>> root_signature_streams;
 		
