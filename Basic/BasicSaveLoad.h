@@ -42,7 +42,7 @@ struct alignas(64) SaveLoadBuffer {
 	
 	void LoadBytes(void* data, u64 size) {
 		DebugAssert(is_loading, "Trying to read from SaveLoad buffer with no read flag.");
-		DebugAssert(size <= remaining_size, "SaveLoad buffer overflowed when loading %llu bytes. %llu > %llu.", size, size, remaining_size);
+		DebugAssert(size <= remaining_size, "SaveLoad buffer overflowed when loading %0 bytes. (%0 > %1).", size, remaining_size);
 		
 		memcpy(data, cursor, size);
 		cursor         += size;

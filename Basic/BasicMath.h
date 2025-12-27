@@ -23,8 +23,8 @@ inline u64 RoundUpToPowerOfTwo(u64 value) { return 1llu << (64 - CountLeadingZer
 inline u64 DepositBits(u64 value, u64 mask) { return _pdep_u64(value, mask); }
 inline u64 ExtractBits(u64 value, u64 mask) { return _pext_u64(value, mask); }
 
-inline u64 AlignUp(u64 size, u64 alignment) { DebugAssert(IsPowerOfTwo(alignment), "Invalid alignment '0x%llX'. Alignment must be a power of 2.", alignment); return (size + alignment - 1) & ~(alignment - 1); }
-inline u32 AlignUp(u32 size, u32 alignment) { DebugAssert(IsPowerOfTwo32(alignment), "Invalid alignment '0x%llX'. Alignment must be a power of 2.", alignment); return (size + alignment - 1) & ~(alignment - 1); }
+inline u64 AlignUp(u64 size, u64 alignment) { DebugAssert(IsPowerOfTwo(alignment), "Invalid alignment '0x%x'. Alignment must be a power of 2.", alignment); return (size + alignment - 1) & ~(alignment - 1); }
+inline u32 AlignUp(u32 size, u32 alignment) { DebugAssert(IsPowerOfTwo32(alignment), "Invalid alignment '0x%x'. Alignment must be a power of 2.", alignment); return (size + alignment - 1) & ~(alignment - 1); }
 inline u64 RoundUp(u64 size, u64 alignment) { return ((size + alignment - 1) / alignment) * alignment; }
 inline u32 RoundUp(u32 size, u32 alignment) { return ((size + alignment - 1) / alignment) * alignment; }
 

@@ -59,7 +59,7 @@ FileHandle SystemOpenFile(StackAllocator* alloc, String path, OpenFileFlags flag
 	switch (flags & (OpenFileFlags::Read | OpenFileFlags::Write)) {
 	case OpenFileFlags::Read:  access = GENERIC_READ;  creation_mode = OPEN_EXISTING; sharing_mode = FILE_SHARE_READ | FILE_SHARE_WRITE; break;
 	case OpenFileFlags::Write: access = GENERIC_WRITE; creation_mode = CREATE_ALWAYS; break;
-	default: DebugAssertAlways("Invalid combination of open file flags '%u'.", (u32)flags);
+	default: DebugAssertAlways("Invalid combination of open file flags '%'.", (u32)flags);
 	}
 	
 	auto path_utf16 = StringUtf8ToUtf16(alloc, path);
@@ -75,7 +75,7 @@ void SystemCloseFile(FileHandle handle) {
 
 bool SystemWriteFile(FileHandle handle, const void* data, u64 size, u64 offset) {
 	DebugAssert(handle.handle != nullptr, "Invalid file handle.");
-	DebugAssert(size <= (u64)u32_max, "File write size must be under 4GB. Size given '%llu'.", size);
+	DebugAssert(size <= (u64)u32_max, "File write size must be under 4GB. Size given '%'.", size);
 	
 	OVERLAPPED overlapped = {};
 	overlapped.Offset     = (u32)offset;
@@ -89,7 +89,7 @@ bool SystemWriteFile(FileHandle handle, const void* data, u64 size, u64 offset) 
 
 bool SystemReadFile(FileHandle handle, void* data, u64 size, u64 offset) {
 	DebugAssert(handle.handle != nullptr, "Invalid file handle.");
-	DebugAssert(size <= (u64)u32_max, "File read size must be under 4GB. Size given '%llu'.", size);
+	DebugAssert(size <= (u64)u32_max, "File read size must be under 4GB. Size given '%'.", size);
 	
 	OVERLAPPED overlapped = {};
 	overlapped.Offset     = (u32)offset;

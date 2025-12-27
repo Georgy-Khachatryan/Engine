@@ -89,7 +89,7 @@ PipelineStateDescription CreatePipelineStateDescription(ArrayView<u8> stream) {
 			cursor += sizeof(PipelineRasterizer);
 			break;
 		} default: {
-			DebugAssertAlways("Unhandled PipelineStateType '%u'.", (u32)stream[cursor]);
+			DebugAssertAlways("Unhandled PipelineStateType '%'.", (u32)stream[cursor]);
 			cursor = stream.count;
 			break;
 		}
@@ -100,7 +100,7 @@ PipelineStateDescription CreatePipelineStateDescription(ArrayView<u8> stream) {
 		ArrayAppend(result.blend_states, &default_blend_state);
 	}
 	
-	DebugAssert(result.blend_states.count == 1 && result.render_targets.count != 0 || result.blend_states.count == result.render_targets.count, "Mismatching render target and blend state counts. Render targets: %llu, Blend States: %llu.", result.render_targets.count, result.blend_states.count);
+	DebugAssert(result.blend_states.count == 1 && result.render_targets.count != 0 || result.blend_states.count == result.render_targets.count, "Mismatching render target and blend state counts. Render targets: %, Blend States: %..", result.render_targets.count, result.blend_states.count);
 	
 	return result;
 }

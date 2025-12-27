@@ -147,7 +147,7 @@ static TransientBufferAllocation<T> AllocateTransientUploadBuffer(RecordContext*
 	result.cpu_address = (T*)(upload_buffer.buffer.cpu_address + offset);
 	
 	offset += size_bytes;
-	DebugAssert(offset <= upload_buffer.buffer.size, "Upload buffer overflow. %u/%u", offset, upload_buffer.buffer.size);
+	DebugAssert(offset <= upload_buffer.buffer.size, "Upload buffer overflow. (%/%).", offset, upload_buffer.buffer.size);
 	record_context->upload_buffer_offset = offset;
 	
 	return result;

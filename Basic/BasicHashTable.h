@@ -132,7 +132,7 @@ void HashTableClear(HashTable<KeyT, ValueT>& hash_table) {
 
 template<typename KeyT, typename ValueT, typename AllocatorT>
 void HashTableResize(HashTable<KeyT, ValueT>& hash_table, AllocatorT* alloc, u64 new_capacity) {
-	DebugAssert(IsPowerOfTwo(new_capacity), "Invalid HashTable capacity '0x%llX'. HashTable capacity must be a power of 2.", new_capacity);
+	DebugAssert(IsPowerOfTwo(new_capacity), "Invalid HashTable capacity '0x%x'. HashTable capacity must be a power of 2.", new_capacity);
 	
 	HashTable<KeyT, ValueT> new_hash_table;
 	HashTableReserve(new_hash_table, alloc, new_capacity);

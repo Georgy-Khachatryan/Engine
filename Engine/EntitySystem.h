@@ -114,7 +114,7 @@ QueryTypeT ExtractComponentStreams(EntityTypeArray* array, u32 component_stream_
 template<typename QueryTypeT>
 QueryTypeT QueryEntityByGUID(EntitySystem& system, u64 entity_guid) {
 	auto* element = HashTableFind(system.entity_guid_to_entity_id, entity_guid);
-	DebugAssert(element, "Failed to find entity by guid 0x%llX.", entity_guid);
+	DebugAssert(element, "Failed to find entity by guid 0x%x.", entity_guid);
 	
 	auto typed_entity_id = element->value;
 	

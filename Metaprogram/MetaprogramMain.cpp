@@ -72,7 +72,7 @@ static void GenerateCodeForHlslFile(StackAllocator* alloc, HlslFileData& hlsl_fi
 	
 	u32 constant_count = 0;
 	for (auto& field : type_info_struct->fields) {
-		DebugAssert(field.type != nullptr, "Type of field '%.*s' in struct '%.*s' is not reflected.", (s32)field.name.count, field.name.data, (s32)name.count, name.data);
+		DebugAssert(field.type != nullptr, "Type of field '%' in struct '%' is not reflected.", field.name, name);
 		
 		if (field.type == &type_info_type) {
 			builder.Append("\n"_sl);
@@ -163,7 +163,7 @@ static void GenerateCodeForRenderPass(StackAllocator* alloc, String filename, Hl
 			break;
 		}
 	}
-	DebugAssert(root_signature_type != nullptr, "RenderPass '%.*s' is missing root signature.", (s32)name.count, name.data);
+	DebugAssert(root_signature_type != nullptr, "RenderPass '%' is missing root signature.", name);
 	
 	// Validate root signature:
 	for (auto& field : root_signature_type->fields) {
@@ -172,26 +172,26 @@ static void GenerateCodeForRenderPass(StackAllocator* alloc, String filename, Hl
 		auto* root_argument_type_note = FindNote<RootArgumentType>(field.type);
 		if (root_argument_type_note == nullptr) {
 			auto type_name = PrintTypeName(alloc, field.type);
-			DebugAssertAlways("Unexpected field '%.*s' of type '%.*s' used in a root signature of pass '%.*s'. Only root arguments are allowed.", (s32)field.name.count, field.name.data, (s32)type_name.count, type_name.data, (s32)name.count, name.data);
+			DebugAssertAlways("Unexpected field '%' of type '%' used in a root signature of pass '%'. Only root arguments are allowed.", field.name, type_name, name);
 			continue;
 		}
 		auto root_argument_type = *root_argument_type_note;
 		
 		auto* template_type = TypeInfoCast<TypeInfoStruct>(ExtractTemplateParameterType(field.type, 0));
 		if (root_argument_type == RootArgumentType::DescriptorTable) {
-			DebugAssert(template_type, "Template type of DescriptorTable '%.*s' in render pass '%.*s' is not reflected.", (s32)field.name.count, field.name.data, (s32)name.count, name.data);
+			DebugAssert(template_type, "Template type of DescriptorTable '%' in render pass '%' is not reflected.", field.name, name);
 			
 			for (auto& field : template_type->fields) {
 				auto* descriptor_type_note = FindNote<ResourceDescriptorType>(field.type);
 				if (descriptor_type_note == nullptr) {
 					auto type_name = PrintTypeName(alloc, field.type);
-					DebugAssertAlways("Unexpected field '%.*s' of type '%.*s' used in a descriptor table of pass '%.*s'. Only descriptors are allowed.", (s32)field.name.count, field.name.data, (s32)type_name.count, type_name.data, (s32)name.count, name.data);
+					DebugAssertAlways("Unexpected field '%' of type '%' used in a descriptor table of pass '%'. Only descriptors are allowed.", field.name, type_name, name);
 				}
 			}
 		} else if (root_argument_type == RootArgumentType::ConstantBuffer) {
-			DebugAssert(template_type, "Template type of ConstantBuffer '%.*s' in render pass '%.*s' is not reflected.", (s32)field.name.count, field.name.data, (s32)name.count, name.data);
+			DebugAssert(template_type, "Template type of ConstantBuffer '%' in render pass '%' is not reflected.", field.name, name);
 		} else if (root_argument_type == RootArgumentType::PushConstantBuffer) {
-			DebugAssert(template_type, "Template type of PushConstantBuffer '%.*s' in render pass '%.*s' is not reflected.", (s32)field.name.count, field.name.data, (s32)name.count, name.data);
+			DebugAssert(template_type, "Template type of PushConstantBuffer '%' in render pass '%' is not reflected.", field.name, name);
 		}
 	}
 	
@@ -345,7 +345,7 @@ static void GenerateCodeForShaderDefinition(StackAllocator* alloc, ShaderDefinit
 		for (auto& field : type_info_enum->fields) {
 			if (CountSetBits(field.value) != 1) continue;
 			
-			DebugAssert(FirstBitLow(field.value) == define_count, "Out of order shader definition '%.*s' in shader '%.*s'. Position in enum: '%u', Value: '1u << %u'.", (s32)field.name.count, field.name.data, (s32)name.count, name.data, define_count, FirstBitLow(field.value));
+			DebugAssert(FirstBitLow(field.value) == define_count, "Out of order shader definition '%' in shader '%'. Position in enum: '%', Value: '1u << %'.", field.name, name, define_count, FirstBitLow(field.value));
 			
 			u64 underscore_count = 0;
 			for (u64 i = 0; i < field.name.count - 1; i += 1) {
@@ -588,8 +588,8 @@ u64 AddTypeInfoToSaveLoadHistory(StackAllocator* alloc, HashTable<String, Versio
 		for (auto& field : type_info_struct->fields) {
 			if (field.type == &type_info_type) continue;
 			
-			DebugAssert(field.type != nullptr, "Type of field '%.*s' in struct '%.*s' is not reflected.", (s32)field.name.count, field.name.data, (s32)type_info_struct->name.count, type_info_struct->name.data);
-			DebugAssert(field.type->info_type != TypeInfoType::Pointer, "Pointer SaveLoad is not supported. Field '%.*s' in struct '%.*s'.", (s32)field.name.count, field.name.data, (s32)type_info_struct->name.count, type_info_struct->name.data);
+			DebugAssert(field.type != nullptr, "Type of field '%' in struct '%' is not reflected.", field.name, type_info_struct->name);
+			DebugAssert(field.type->info_type != TypeInfoType::Pointer, "Pointer SaveLoad is not supported. Field '%' in struct '%'.", field.name, type_info_struct->name);
 			
 			u64 type_version = AddTypeInfoToSaveLoadHistory(alloc, version_history, field.type);
 			

@@ -94,7 +94,7 @@ static void CreateDescriptorTables(GraphicsContextD3D12* context, ArrayView<HLSL
 				device->CreateUnorderedAccessView(resource.buffer.resource.d3d12, nullptr, &desc, descriptor_table_handle);
 				break;
 			} default: {
-				DebugAssertAlways("Unhandled ResourceDescriptorType '%u'.", (u32)descriptor.common.type);
+				DebugAssertAlways("Unhandled ResourceDescriptorType '%'.", (u32)descriptor.common.type);
 				break;
 			}
 			}
@@ -213,7 +213,7 @@ static void CmdExecuteIndirectD3D12(CmdExecuteIndirectPacket* packet, ID3D12Grap
 	case CommandType::DispatchMesh: command_signature = context->dispatch_mesh_command_signature; break;
 	case CommandType::DrawInstanced: command_signature = context->draw_instanced_command_signature; break;
 	case CommandType::DrawIndexedInstanced: command_signature = context->draw_indexed_instanced_command_signature; break;
-	default: DebugAssertAlways("Unsupported indirect command type '%u'.", (u32)packet->indirect_command_type);
+	default: DebugAssertAlways("Unsupported indirect command type '%'.", (u32)packet->indirect_command_type);
 	}
 	
 	auto& indirect_arguments = resources[(u32)packet->indirect_arguments.resource_id];
@@ -540,7 +540,7 @@ void ReplayRecordContext(GraphicsContext* api_context, RecordContext* record_con
 			case CommandType::SetDescriptorTable:    CmdSetDescriptorTableD3D12((CmdSetDescriptorTablePacket*)packet, command_list, context); break;
 			case CommandType::SetPushConstants:      CmdSetPushConstantsD3D12((CmdSetPushConstantsPacket*)packet, command_list); break;
 			case CommandType::SetConstantBuffer:     CmdSetConstantBufferD3D12((CmdSetConstantBufferPacket*)packet, command_list, resources); break;
-			default: DebugAssertAlways("Unhandled command packet type '%u'.", (u32)packet->packet_type); command_index = command_count; break;
+			default: DebugAssertAlways("Unhandled command packet type '%'.", (u32)packet->packet_type); command_index = command_count; break;
 			}
 		}
 		

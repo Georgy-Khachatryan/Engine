@@ -63,9 +63,39 @@ compile_const s64 s64_max = (s64)0x7FFF'FFFF'FFFF'FFFF;
 compile_const s64 s64_min = (s64)0x8000'0000'0000'0000;
 
 
+enum struct StringFormatType : u32;
+struct StringFormatArgument {
+	StringFormatType type = (StringFormatType)0;
+	
+	union {
+		u64         _u64;
+		s64         _s64;
+		float32     _float32;
+		float64     _float64;
+		char        _char;
+		struct { char* data; u64 count; } _string;
+		const char* _cstring;
+		const void* _pointer;
+	} value = {};
+};
+
+template<typename T> StringFormatArgument StringFormatArgumentFromT(T);
+
+#define FORMAT_PROC_BODY(name, ...) \
+StringFormatArgument arguments_array[sizeof...(Args) == 0 ? 1 : sizeof...(Args)] = { StringFormatArgumentFromT<Args>(args) ... };\
+return name(__VA_ARGS__, { arguments_array, sizeof...(Args) })
+
+
 #if ENABLE_FEATURE(ASSERTS)
 bool IsAssertEnabled(const char* format);
-void AssertHandler(const char* format, ...);
+void AssertHandlerV(const char* format, StringFormatArgument* arguments, u64 argument_count);
+inline void AssertHandler(const char* format) { AssertHandlerV(format, nullptr, 0); }
+
+template<typename ... Args>
+void AssertHandler(const char* format, Args ... args) {
+	StringFormatArgument arguments_array[] = { StringFormatArgumentFromT<Args>(args) ... };
+	AssertHandlerV(format, arguments_array, sizeof...(Args));
+}
 #endif // ENABLE_FEATURE(ASSERTS)
 
 void SystemExitProcess(u32 exit_code);
@@ -138,12 +168,4 @@ SAVE_LOAD_AS_BYTES(u64);
 SAVE_LOAD_AS_BYTES(s64);
 SAVE_LOAD_AS_BYTES(float32);
 SAVE_LOAD_AS_BYTES(float64);
-
-
-struct StringFormatArgument;
-template<typename T> StringFormatArgument StringFormatArgumentFromT(T);
-
-#define FORMAT_PROC_BODY(name, ...) \
-StringFormatArgument arguments_array[sizeof...(Args) == 0 ? 1 : sizeof...(Args)] = { StringFormatArgumentFromT<Args>(args) ... };\
-return name(__VA_ARGS__, { arguments_array, sizeof...(Args) })
 

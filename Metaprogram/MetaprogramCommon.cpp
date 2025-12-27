@@ -64,7 +64,7 @@ u64 ReadIntegerU64(TypeInfoInteger* type_info, const void* value) {
 	case 64: return *(u64*)value;
 	}
 	
-	DebugAssertAlways("Unknown TypeInfoInteger bit_width '%u'.", (u32)type_info->bit_width);
+	DebugAssertAlways("Unknown TypeInfoInteger bit_width '%'.", (u32)type_info->bit_width);
 	return 0;
 }
 

@@ -285,6 +285,26 @@ u64 ComputeHash(const u8* data, u64 count, u64 seed) {
 u64 ComputeHash(String string) { return ComputeHash((u8*)string.data, string.count, 0); }
 
 
+enum struct StringFormatType : u32 {
+	None    = 0,
+	S8      = 1,
+	U8      = 2,
+	S16     = 3,
+	U16     = 4,
+	S32     = 5,
+	U32     = 6,
+	U64     = 7,
+	S64     = 8,
+	Float32 = 9,
+	Float64 = 10,
+	Char    = 11,
+	String  = 12,
+	CString = 13,
+	Pointer = 14,
+	
+	Count
+};
+
 #define STRING_FORMAT_ARG(value_type, enum_type, union_type) template<> StringFormatArgument StringFormatArgumentFromT<value_type>(value_type value) { StringFormatArgument result; result.type = StringFormatType::enum_type; result.value.union_type = value; return result; }
 	STRING_FORMAT_ARG(u8,  U8,  _u64);
 	STRING_FORMAT_ARG(u16, U16, _u64);
@@ -297,9 +317,12 @@ u64 ComputeHash(String string) { return ComputeHash((u8*)string.data, string.cou
 	STRING_FORMAT_ARG(char, Char, _char);
 	STRING_FORMAT_ARG(float32, Float32, _float32);
 	STRING_FORMAT_ARG(float64, Float64, _float64);
-	STRING_FORMAT_ARG(String,  String,  _string);
 	STRING_FORMAT_ARG(const char*, CString, _cstring);
+	STRING_FORMAT_ARG(char*, CString, _cstring);
 	STRING_FORMAT_ARG(const void*, Pointer, _pointer);
+	STRING_FORMAT_ARG(void*, Pointer, _pointer);
+	// Special case for String since we can't use it in Basic.h
+	template<> StringFormatArgument StringFormatArgumentFromT<String>(String value) { StringFormatArgument result; result.type = StringFormatType::String; result.value._string = { value.data, value.count }; return result; }
 #undef STRING_FORMAT_ARG
 
 
@@ -460,7 +483,7 @@ u64 StringFormatToMemory(String output, String format, ArrayView<StringFormatArg
 				copy_string_to_output(String{ &argument.value._char, 1 });
 				break;
 			} case StringFormatType::String: {
-				copy_string_to_output(argument.value._string);
+				copy_string_to_output({ argument.value._string.data, argument.value._string.count });
 				break;
 			} case StringFormatType::CString: {
 				copy_string_to_output(StringFromCString(argument.value._cstring));

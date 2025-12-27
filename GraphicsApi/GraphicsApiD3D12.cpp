@@ -480,7 +480,7 @@ static void BuildRootSignatures(GraphicsContextD3D12* context, StackAllocator* a
 				root_parameter.Constants.Num32BitValues = root_signature_stream[i++];
 				break;
 			} default: {
-				DebugAssertAlways("Unexpected RootArgumentType '%u'.", root_signature_stream[i]);
+				DebugAssertAlways("Unexpected RootArgumentType '%'.", root_signature_stream[i]);
 				i = (u32)root_signature_stream.count;
 				break;
 			}

@@ -35,7 +35,7 @@ void* StackAllocator::Allocate(u64 size, u64 alignment) {
 	auto* block = current_block;
 	
 	// We assume that we only need to align allocation_offset and the base address is already aligned.
-	DebugAssert(alignment <= allocation_granularity, "Alignment is too high (%llu/%llu).", alignment, allocation_granularity);
+	DebugAssert(alignment <= allocation_granularity, "Alignment is too high (%/%).", alignment, allocation_granularity);
 	
 	u64 allocation_offset = AlignUp(block->allocated_size, alignment);
 	if (allocation_offset + size > block->reserved_size) {
@@ -104,7 +104,7 @@ void StackAllocator::Deallocate(void* old_memory, u64 old_size) {
 void StackAllocator::DeallocateToSize(u64 new_size) {
 	auto* block = current_block;
 	
-	DebugAssert(total_allocated_size >= new_size, "Trying to deallocate already deallocated memory (%llu/%llu).", new_size, total_allocated_size);
+	DebugAssert(total_allocated_size >= new_size, "Trying to deallocate already deallocated memory (%/%).", new_size, total_allocated_size);
 	u64 size_to_deallocate = total_allocated_size - new_size;
 	
 	while (size_to_deallocate != 0) {
@@ -125,7 +125,7 @@ void StackAllocator::DeallocateToSize(u64 new_size) {
 			size_to_deallocate = 0;
 		}
 	}
-	DebugAssert(block != nullptr, "Allocator is empty after DeallocateToSize(%llu).", new_size);
+	DebugAssert(block != nullptr, "Allocator is empty after DeallocateToSize(%).", new_size);
 	
 	current_block        = block;
 	total_allocated_size = new_size;

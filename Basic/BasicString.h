@@ -9,8 +9,8 @@ struct String {
 	bool operator== (String other) const;
 	bool operator!= (String other) const;
 	
-	char& operator[] (u64 index) { DebugAssert(index < count, "String access out of bounds. %llu/%llu.", index, count); return data[index]; }
-	const char& operator[] (u64 index) const { DebugAssert(index < count, "String access out of bounds. %llu/%llu.", index, count); return data[index]; }
+	char& operator[] (u64 index) { DebugAssert(index < count, "String access out of bounds. (%/%).", index, count); return data[index]; }
+	const char& operator[] (u64 index) const { DebugAssert(index < count, "String access out of bounds. (%/%).", index, count); return data[index]; }
 };
 using StringUtf8 = String;
 
@@ -68,39 +68,3 @@ inline char CharToUpperCase(char c) { return (c >= 'a' && c <= 'z') ? c - 'a' + 
 inline char CharIsUpperCase(char c) { return (c >= 'A' && c <= 'Z'); }
 inline char CharIsLowerCase(char c) { return (c >= 'a' && c <= 'z'); }
 inline bool CharIsNumeric(char c)   { return (c >= '0' && c <= '9'); }
-
-
-enum struct StringFormatType : u32 {
-	None    = 0,
-	S8      = 1,
-	U8      = 2,
-	S16     = 3,
-	U16     = 4,
-	S32     = 5,
-	U32     = 6,
-	U64     = 7,
-	S64     = 8,
-	Float32 = 9,
-	Float64 = 10,
-	Char    = 11,
-	String  = 12,
-	CString = 13,
-	Pointer = 14,
-	
-	Count
-};
-
-struct StringFormatArgument {
-	StringFormatType type = StringFormatType::None;
-	
-	union {
-		u64         _u64;
-		s64         _s64;
-		float32     _float32;
-		float64     _float64;
-		char        _char;
-		String      _string;
-		const char* _cstring;
-		const void* _pointer;
-	} value = {};
-};

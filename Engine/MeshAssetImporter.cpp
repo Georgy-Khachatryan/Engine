@@ -18,7 +18,7 @@ static float3x4 LoadUfbxMatrix(const ufbx_matrix& m) {
 
 void ImportFbxMeshFile(StackAllocator* alloc, String filepath, Array<BasicVertex>& result_vertices, Array<BasicMeshlet>& result_meshlets, Array<u8>& result_indices) {
 	auto file_data = SystemReadFileToString(alloc, filepath);
-	DebugAssert(file_data.data != nullptr, "Failed to load mesh file '%.*s'", (s32)filepath.count, filepath.data);
+	DebugAssert(file_data.data != nullptr, "Failed to load mesh file '%'", filepath);
 	
 	ufbx_load_opts options = {};
 	options.ignore_animation = true;

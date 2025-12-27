@@ -274,7 +274,7 @@ void CmdSetRenderTargets(RecordContext* record_context, ArrayView<VirtualResourc
 	packet.resource_ids = ArrayCopy(resource_ids, record_context->alloc);
 	packet.depth_stencil_resource_id = depth_stencil;
 	
-	DebugAssert(resource_ids.count <= record_context->state_cache.render_targets.capacity, "Setting too many render targets. %llu/%llu", resource_ids.count, record_context->state_cache.render_targets.capacity);
+	DebugAssert(resource_ids.count <= record_context->state_cache.render_targets.capacity, "Setting too many render targets. (%/%).", resource_ids.count, record_context->state_cache.render_targets.capacity);
 	memcpy(record_context->state_cache.render_targets.data, resource_ids.data, resource_ids.count * sizeof(VirtualResourceID));
 	record_context->state_cache.render_targets.count = resource_ids.count;
 	record_context->state_cache.depth_stencil = depth_stencil;

@@ -1,10 +1,8 @@
 #include "Basic.h"
 #include "BasicFiles.h"
+#include "BasicString.h"
 
 #if ENABLE_FEATURE(ASSERTS)
-#include <stdarg.h>
-#include <stdio.h>
-
 compile_const u32 disabled_assert_max_count = 64;
 static const char* disabled_assert_formats[disabled_assert_max_count] = {};
 static u32 disabled_assert_count = 0;
@@ -26,17 +24,13 @@ static void DisableAssert(const char* format) {
 }
 
 #pragma optimize("", off)
-void AssertHandler(const char* format, ...) {
+void AssertHandlerV(const char* format, StringFormatArgument* arguments, u64 argument_count) {
 	char formatted_error_message_buffer[1024] = {};
 	
 	String formatted_error_message;
 	formatted_error_message.data  = formatted_error_message_buffer;
 	formatted_error_message.count = sizeof(formatted_error_message_buffer);
-	
-	va_list va_args;
-	va_start(va_args, format);
-	formatted_error_message.count = vsnprintf(formatted_error_message.data, formatted_error_message.count, format, va_args);
-	va_end(va_args);
+	formatted_error_message.count = StringFormatToMemory(formatted_error_message, StringFromCString(format), { arguments, argument_count });
 	
 	SystemWriteToConsole("Assertion Failed: "_sl);
 	SystemWriteToConsole(formatted_error_message);

@@ -40,8 +40,8 @@ static_assert(sizeof(HeapAllocatorPage) == 16, "Incorrect HeapAllocatorPage size
 
 // 8 bit float binning introduced by Sebastian Aaltonen in REAC2023 "Modern Mobile Rendering @ HypeHype".
 static u32 ComputeBinIndex(u64 size, bool round_up = false) {
-	DebugAssert((size % minimum_alignment) == 0, "Allocation size is not aligned to the minimum_alignment = %llu.", minimum_alignment);
-	DebugAssert((size <= maximum_size), "Allocation size is too large. %llu/%llu.", size, maximum_size);
+	DebugAssert((size % minimum_alignment) == 0, "Allocation size is not aligned to the minimum_alignment = %..", minimum_alignment);
+	DebugAssert((size <= maximum_size), "Allocation size is too large. (%/%).", size, maximum_size);
 	
 	u32 size_index = (u32)(size >> minimum_alignment_bits);
 	u64 bin_index_u64 = 0;
@@ -62,8 +62,8 @@ static u32 ComputeBinIndex(u64 size, bool round_up = false) {
 }
 
 static u64 AlignToNextBinSize(u64 size) {
-	DebugAssert((size % minimum_alignment) == 0, "Allocation size is not aligned to the minimum_alignment = %llu.", minimum_alignment);
-	DebugAssert((size <= maximum_size), "Allocation size is too large. %llu/%llu.", size, maximum_size);
+	DebugAssert((size % minimum_alignment) == 0, "Allocation size is not aligned to the minimum_alignment = %..", minimum_alignment);
+	DebugAssert((size <= maximum_size), "Allocation size is too large. (%/%).", size, maximum_size);
 	
 	u32 size_index = (u32)(size >> minimum_alignment_bits);
 	u64 bin_index_u64 = 0;
@@ -235,7 +235,7 @@ static void* AllocateFromHeap(HeapAllocator* heap, u64 size, u64 alignment) {
 	
 	u32 free_bin_index = (index_level_0 << 3) | index_level_1;
 	auto* block = heap->free_blocks[free_bin_index];
-	DebugAssert(block->size >= size, "Block size is too small. %llu/%llu.", block->size, size);
+	DebugAssert(block->size >= size, "Block size is too small. (%/%).", block->size, size);
 	
 	PopFreeBlock(heap, block, free_bin_index);
 	PushFreeBlockExcess(heap, block, size);
@@ -348,7 +348,7 @@ u64 HeapAllocator::GetMemoryBlockSize(void* memory) {
 
 
 HeapAllocator CreateHeapAllocator(u64 reserved_size) {
-	DebugAssert(reserved_size <= maximum_size, "Reserved size is too large. %llu/%llu.", reserved_size, maximum_size);
+	DebugAssert(reserved_size <= maximum_size, "Reserved size is too large. (%/%).", reserved_size, maximum_size);
 	
 	HeapAllocator heap;
 	heap.reserved_size = (u32)reserved_size;

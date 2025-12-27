@@ -9,8 +9,8 @@ struct ArrayView {
 	
 	using ValueType = T;
 	
-	T& operator[] (u64 index) { DebugAssert(index < count, "Array access out of bounds. %llu/%llu.", index, count); return data[index]; }
-	const T& operator[] (u64 index) const { DebugAssert(index < count, "Array access out of bounds. %llu/%llu.", index, count); return data[index]; }
+	T& operator[] (u64 index) { DebugAssert(index < count, "Array access out of bounds. (%/%).", index, count); return data[index]; }
+	const T& operator[] (u64 index) const { DebugAssert(index < count, "Array access out of bounds. (%/%).", index, count); return data[index]; }
 	
 	T* begin() { return data; }
 	T* end() { return data + count; }
@@ -27,8 +27,8 @@ struct Array {
 	
 	using ValueType = T;
 	
-	T& operator[] (u64 index) { DebugAssert(index < count, "Array access out of bounds. %llu/%llu.", index, count); return data[index]; }
-	const T& operator[] (u64 index) const { DebugAssert(index < count, "Array access out of bounds. %llu/%llu.", index, count); return data[index]; }
+	T& operator[] (u64 index) { DebugAssert(index < count, "Array access out of bounds. (%/%).", index, count); return data[index]; }
+	const T& operator[] (u64 index) const { DebugAssert(index < count, "Array access out of bounds. (%/%).", index, count); return data[index]; }
 	
 	T* begin() { return data; }
 	T* end() { return data + count; }
@@ -47,8 +47,8 @@ struct FixedCapacityArray {
 	
 	using ValueType = T;
 	
-	T& operator[] (u64 index) { DebugAssert(index < count, "Array access out of bounds. %llu/%llu.", index, count); return data[index]; }
-	const T& operator[] (u64 index) const { DebugAssert(index < count, "Array access out of bounds. %llu/%llu.", index, count); return data[index]; }
+	T& operator[] (u64 index) { DebugAssert(index < count, "Array access out of bounds. (%/%).", index, count); return data[index]; }
+	const T& operator[] (u64 index) const { DebugAssert(index < count, "Array access out of bounds. (%/%).", index, count); return data[index]; }
 	
 	T* begin() { return data; }
 	T* end() { return data + count; }
@@ -67,8 +67,8 @@ struct FixedCountArray {
 	
 	using ValueType = T;
 	
-	T& operator[] (u64 index) { DebugAssert(index < count, "Array access out of bounds. %llu/%llu.", index, count); return data[index]; }
-	const T& operator[] (u64 index) const { DebugAssert(index < count, "Array access out of bounds. %llu/%llu.", index, count); return data[index]; }
+	T& operator[] (u64 index) { DebugAssert(index < count, "Array access out of bounds. (%/%).", index, count); return data[index]; }
+	const T& operator[] (u64 index) const { DebugAssert(index < count, "Array access out of bounds. (%/%).", index, count); return data[index]; }
 	
 	T* begin() { return data; }
 	T* end() { return data + count; }
@@ -118,13 +118,13 @@ T& ArrayEmplace(Array<T>& array, AllocatorT* alloc) {
 
 template<typename ArrayT>
 void ArrayAppend(ArrayT& array, const typename ArrayT::ValueType& value) {
-	DebugAssert(array.count < array.capacity, "ArrayAppend overflowed allocated buffer: %llu.", array.capacity);
+	DebugAssert(array.count < array.capacity, "ArrayAppend overflowed allocated buffer: %..", array.capacity);
 	array[array.count++] = value;
 }
 
 template<typename ArrayT>
 typename ArrayT::ValueType& ArrayEmplace(ArrayT& array) {
-	DebugAssert(array.count < array.capacity, "ArrayAppend overflowed allocated buffer: %llu.", array.capacity);
+	DebugAssert(array.count < array.capacity, "ArrayAppend overflowed allocated buffer: %..", array.capacity);
 	return array[array.count++] = {};
 }
 

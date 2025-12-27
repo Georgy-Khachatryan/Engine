@@ -193,9 +193,9 @@ static void BasicExamples(StackAllocator* alloc) {
 			auto* memory1 = heap.Allocate(128, 64);
 			auto* memory2 = heap.Allocate(128, 64);
 			
-			DebugAssert((u64)memory0 % 64 == 0, "Incorrect heap allocation alignment. Offset: %llu.", (u64)memory0 % 64);
-			DebugAssert((u64)memory1 % 64 == 0, "Incorrect heap allocation alignment. Offset: %llu.", (u64)memory1 % 64);
-			DebugAssert((u64)memory2 % 64 == 0, "Incorrect heap allocation alignment. Offset: %llu.", (u64)memory2 % 64);
+			DebugAssert((u64)memory0 % 64 == 0, "Incorrect heap allocation alignment. Offset: %..", (u64)memory0 % 64);
+			DebugAssert((u64)memory1 % 64 == 0, "Incorrect heap allocation alignment. Offset: %..", (u64)memory1 % 64);
+			DebugAssert((u64)memory2 % 64 == 0, "Incorrect heap allocation alignment. Offset: %..", (u64)memory2 % 64);
 			
 			memset(memory0, 0xA0, 128);
 			memset(memory1, 0xA1, 128);
@@ -204,7 +204,7 @@ static void BasicExamples(StackAllocator* alloc) {
 			heap.Deallocate(memory0);
 			memory1 = heap.Reallocate(memory1, 128, 192, 64);
 			DebugAssert(memory1 == memory0, "Reallocation failed.");
-			DebugAssert((u64)memory1 % 64 == 0, "Incorrect heap allocation alignment. Offset: %llu.", (u64)memory1 % 64);
+			DebugAssert((u64)memory1 % 64 == 0, "Incorrect heap allocation alignment. Offset: %..", (u64)memory1 % 64);
 			
 			for (u32 i = 0; i < 128; i += 1) {
 				u32 byte = ((u8*)memory1)[i];
