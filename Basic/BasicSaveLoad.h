@@ -8,6 +8,7 @@
 struct alignas(64) SaveLoadBuffer {
 	compile_const u64 minimum_entry_size = 4 * 1024;
 	
+	// Hot cache line:
 	StackAllocator* alloc = nullptr;
 	HeapAllocator*  heap  = nullptr;
 	
@@ -18,6 +19,10 @@ struct alignas(64) SaveLoadBuffer {
 	
 	bool is_saving  = false;
 	bool is_loading = false;
+	
+	// Cold cache line:
+	String filepath;
+	
 	
 	u8* ReserveSaveBytes(u64 size) {
 		DebugAssert(is_saving, "Trying to write to SaveLoad buffer with no write flag.");
@@ -82,11 +87,11 @@ struct alignas(64) SaveLoadBuffer {
 		}
 	}
 };
-static_assert(sizeof(SaveLoadBuffer) == 64, "Incorrect SaveLoad buffer size.");
+static_assert(sizeof(SaveLoadBuffer) == 128, "Incorrect SaveLoad buffer size.");
 
 SaveLoadBuffer OpenSaveLoadBufferForSaving(StackAllocator* alloc);
-bool WriteSaveLoadBufferToFile(StackAllocator* alloc, SaveLoadBuffer& buffer, String path);
-bool OpenSaveLoadBufferForLoading(StackAllocator* alloc, String path, SaveLoadBuffer& buffer);
+bool OpenSaveLoadBuffer(StackAllocator* alloc, String filepath, bool is_loading, SaveLoadBuffer& buffer);
+bool CloseSaveLoadBuffer(SaveLoadBuffer& buffer);
 
 
 template<typename T, typename ValueType = typename SaveLoadAsBytes<T>::ValueType>
@@ -109,6 +114,78 @@ always_inline void SaveLoad(SaveLoadBuffer& buffer, String& value, u64 version =
 		buffer.SaveBytes(value.data, count);
 	}
 }
+
+template<typename T>
+void SaveLoad(SaveLoadBuffer& buffer, Array<T>& array, u64 version = 0) {
+	u64 count = array.count;
+	SaveLoad(buffer, count);
+	
+	if (buffer.is_loading) {
+		array = {};
+		if (count && buffer.heap) {
+			ArrayResize(array, buffer.heap, count);
+		} else if (count) {
+			ArrayResize(array, buffer.alloc, count);
+		}
+		
+		for (auto& value : array) {
+			SaveLoad(buffer, value, version);
+		}
+	} else if (buffer.is_saving) {
+		for (auto& value : array) {
+			SaveLoad(buffer, value, version);
+		}
+	}
+}
+
+template<typename T>
+void SaveLoad(SaveLoadBuffer& buffer, ArrayView<T>& array, u64 version = 0) {
+	u64 count = array.count;
+	SaveLoad(buffer, count);
+	
+	if (buffer.is_loading) {
+		array = {};
+		if (count && buffer.heap) {
+			array = ArrayViewAllocate<T>(buffer.heap, count);
+		} else if (count) {
+			array = ArrayViewAllocate<T>(buffer.alloc, count);
+		}
+		
+		for (auto& value : array) {
+			SaveLoad(buffer, value, version);
+		}
+	} else if (buffer.is_saving) {
+		for (auto& value : array) {
+			SaveLoad(buffer, value, version);
+		}
+	}
+}
+
+template<typename KeyT, typename ValueT>
+void SaveLoad(SaveLoadBuffer& buffer, HashTable<KeyT, ValueT>& hash_table, u64 version = 0) {
+	u64 count = hash_table.count;
+	SaveLoad(buffer, count);
+	
+	if (buffer.is_loading) {
+		hash_table = {};
+		if (count && buffer.heap) {
+			HashTableReserve(hash_table, buffer.heap, count);
+		} else if (count) {
+			HashTableReserve(hash_table, buffer.alloc, count);
+		}
+		
+		for (u64 i = 0; i < count; i += 1) {
+			HashTableElement<KeyT, ValueT> element;
+			SaveLoad(buffer, element, version);
+			HashTableAddOrFindElement(hash_table, element);
+		}
+	} else if (buffer.is_saving) {
+		for (auto& element : hash_table) {
+			SaveLoad(buffer, element, version);
+		}
+	}
+}
+
 
 template<typename T>
 always_inline void SaveLoadDummy(SaveLoadBuffer& buffer, u64 version = 0) {

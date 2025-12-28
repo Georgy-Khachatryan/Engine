@@ -523,8 +523,9 @@ s32 main() {
 	{
 		TempAllocationScope(&alloc);
 		SaveLoadBuffer buffer;
-		if (OpenSaveLoadBufferForLoading(&alloc, scene_save_load_path, buffer)) {
+		if (OpenSaveLoadBuffer(&alloc, scene_save_load_path, true, buffer)) {
 			SaveLoadEntitySystem(buffer, entity_system);
+			CloseSaveLoadBuffer(buffer);
 		} else {
 			auto entity_result = CreateEntities<CameraEntityType>(&alloc, entity_system, 1);
 			auto* entity_array = QueryEntityTypeArray<CameraEntityType>(entity_system);
@@ -699,18 +700,15 @@ s32 main() {
 		ImGui::Begin("Stats");
 		
 		ImGui::SetNextItemShortcut(ImGuiMod_Ctrl | ImGuiKey_S, ImGuiInputFlags_RouteGlobal | ImGuiInputFlags_RouteOverFocused);
-		if (ImGui::Button("Save State")) {
-			TempAllocationScope(&alloc);
-			auto buffer = OpenSaveLoadBufferForSaving(&alloc);
-			SaveLoadEntitySystem(buffer, entity_system);
-			WriteSaveLoadBufferToFile(&alloc, buffer, scene_save_load_path);
-		}
+		bool should_save_scene = ImGui::Button("Save State");
+		bool should_load_scene = ImGui::Button("Load State") && (should_save_scene == false);
 		
-		if (ImGui::Button("Load State")) {
+		if (should_save_scene || should_load_scene) {
 			TempAllocationScope(&alloc);
 			SaveLoadBuffer buffer;
-			if (OpenSaveLoadBufferForLoading(&alloc, scene_save_load_path, buffer)) {
+			if (OpenSaveLoadBuffer(&alloc, scene_save_load_path, should_load_scene, buffer)) {
 				SaveLoadEntitySystem(buffer, entity_system);
+				CloseSaveLoadBuffer(buffer);
 			}
 		}
 		

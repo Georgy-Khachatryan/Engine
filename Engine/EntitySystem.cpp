@@ -242,8 +242,6 @@ void ResetEntitySystem(EntitySystem& system) {
 // TODO: Simplify this function. There is a lot of code that handles remapping of entity/component
 // streams when they change order or are added/removed, but in most cases it's not necessary.
 void SaveLoadEntitySystem(SaveLoadBuffer& buffer, EntitySystem& system) {
-	TempAllocationScope(buffer.alloc);
-	
 	if (buffer.is_loading) {
 		ResetEntitySystem(system);
 	}

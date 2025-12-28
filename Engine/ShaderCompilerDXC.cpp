@@ -416,141 +416,33 @@ bool CheckShaderFileChanges(ShaderCompiler* compiler, StackAllocator* alloc) {
 	return has_dirty_shaders;
 }
 
-// TODO: Combine save/load paths.
-void SaveShaderCache(ShaderCompiler* compiler, StackAllocator* alloc) {
-	TempAllocationScope(alloc);
-	
-	auto buffer = OpenSaveLoadBufferForSaving(alloc);
-	
-	
-	u64 root_signature_filename_count = compiler->root_signature_filenames.count;
-	SaveLoad(buffer, root_signature_filename_count);
-	for (auto& filename : compiler->root_signature_filenames) {
-		SaveLoad(buffer, filename);
-	}
-	
-	
-	u64 shader_definition_count = compiler->shader_definitions.count;
-	SaveLoad(buffer, shader_definition_count);
-	
-	for (auto& definition : compiler->shader_definitions) {
-		SaveLoad(buffer, definition.filename);
-		
-		u64 count = definition.defines.count;
-		SaveLoad(buffer, count);
-		
-		for (auto& define : definition.defines) {
-			SaveLoad(buffer, define);
-		}
-	}
-	
-	
-	u64 shader_permutation_count = compiler->shader_permutation_table.count;
-	SaveLoad(buffer, shader_permutation_count);
-	for (auto& [key, value] : compiler->shader_permutation_table) {
-		SaveLoad(buffer, key.data[0]);
-		SaveLoad(buffer, key.data[1]);
-		SaveLoad(buffer, value);
-	}
-	
-	for (auto& shader : compiler->shaders) {
-		u64 count = shader.bytecode_blob.count;
-		SaveLoad(buffer, count);
-		buffer.SaveBytes(shader.bytecode_blob.data, shader.bytecode_blob.count);
-		
-		count = shader.hashed_source_files.count;
-		SaveLoad(buffer, count);
-		
-		for (auto& file : shader.hashed_source_files) {
-			SaveLoad(buffer, file.filename);
-			SaveLoad(buffer, file.hash);
-		}
-	}
-	
-	WriteSaveLoadBufferToFile(alloc, buffer, shader_cache_filepath);
-}
+struct ShaderCache {
+	ArrayView<String>           root_signature_filenames;
+	ArrayView<ShaderDefinition> shader_definitions;
+	Array<ShaderPermutation>    shaders;
+	HashTable<ShaderPermutationKey, u32> shader_permutation_table;
+};
 
-
-void LoadShaderCache(ShaderCompiler* compiler, StackAllocator* alloc) {
-	TempAllocationScope(alloc);
-	
-	SaveLoadBuffer buffer;
-	if (!OpenSaveLoadBufferForLoading(alloc, shader_cache_filepath, buffer)) return;
-	
-	
-	u64 root_signature_filename_count = 0;
-	SaveLoad(buffer, root_signature_filename_count);
-	
-	auto root_signature_filenames = ArrayViewAllocate<String>(alloc, root_signature_filename_count);
-	for (auto& filename : root_signature_filenames) {
-		SaveLoad(buffer, filename);
-	}
-	
-	
-	u64 shader_definition_count = 0;
-	SaveLoad(buffer, shader_definition_count);
-	
-	auto shader_definitions = ArrayViewAllocate<ShaderDefinition>(alloc, shader_definition_count);
-	for (auto& definition : shader_definitions) {
-		SaveLoad(buffer, definition.filename);
-		
-		u64 count = 0;
-		SaveLoad(buffer, count);
-		
-		definition.defines = ArrayViewAllocate<String>(alloc, count);
-		for (auto& define : definition.defines) {
-			SaveLoad(buffer, define);
-		}
-	}
-	
-	
-	u64 shader_permutation_count = 0;
-	SaveLoad(buffer, shader_permutation_count);
-	
-	auto shader_permutation_table = ArrayViewAllocate<HashTableElement<ShaderPermutationKey, u32>>(alloc, shader_permutation_count);
-	for (auto& [key, value] : shader_permutation_table) {
-		SaveLoad(buffer, key.data[0]);
-		SaveLoad(buffer, key.data[1]);
-		SaveLoad(buffer, value);
-	}
-	
-	auto shaders = ArrayViewAllocate<ShaderPermutation>(alloc, shader_permutation_count);
-	for (auto& shader : shaders) {
-		SaveLoad(buffer, shader.bytecode_blob.count);
-		shader.bytecode_blob.capacity = shader.bytecode_blob.count;
-		shader.bytecode_blob.data     = buffer.ReserveLoadBytes(shader.bytecode_blob.count);
-		
-		u64 count = 0;
-		SaveLoad(buffer, count);
-		
-		ArrayResize(shader.hashed_source_files, alloc, count);
-		for (auto& file : shader.hashed_source_files) {
-			SaveLoad(buffer, file.filename);
-			SaveLoad(buffer, file.hash);
-		}
-	}
-	
-	
-	
-	// TODO: Simplify shader cache validation.
+// TODO: Simplify shader cache validation.
+static void ValidateShaderCache(StackAllocator* alloc, ShaderCache& old_cache, ShaderCache& new_cache) {
 	HashTable<String, u32> shader_definition_table;
-	HashTableReserve(shader_definition_table, alloc, compiler->shader_definitions.count);
-	for (u32 i = 0; i < compiler->shader_definitions.count; i += 1) {
-		HashTableAddOrFind(shader_definition_table, compiler->shader_definitions[i].filename, i);
+	HashTableReserve(shader_definition_table, alloc, new_cache.shader_definitions.count);
+	for (u32 i = 0; i < new_cache.shader_definitions.count; i += 1) {
+		HashTableAddOrFind(shader_definition_table, new_cache.shader_definitions[i].filename, i);
 	}
 	
 	HashTable<String, u32> root_signature_filename_table;
-	HashTableReserve(root_signature_filename_table, alloc, compiler->root_signature_filenames.count);
-	for (u32 i = 0; i < compiler->root_signature_filenames.count; i += 1) {
-		HashTableAddOrFind(root_signature_filename_table, compiler->root_signature_filenames[i], i);
+	HashTableReserve(root_signature_filename_table, alloc, new_cache.root_signature_filenames.count);
+	for (u32 i = 0; i < new_cache.root_signature_filenames.count; i += 1) {
+		HashTableAddOrFind(root_signature_filename_table, new_cache.root_signature_filenames[i], i);
 	}
 	
 	// Valudate shader definitions.
-	for (auto& definition : shader_definitions) {
+	for (auto& definition : old_cache.shader_definitions) {
 		auto* new_shader_id = HashTableFind(shader_definition_table, definition.filename);
 		if (new_shader_id == nullptr) continue;
 		
-		auto& new_definition = compiler->shader_definitions[new_shader_id->value];
+		auto& new_definition = new_cache.shader_definitions[new_shader_id->value];
 		
 		bool matches = (definition.defines.count == new_definition.defines.count);
 		for (u32 i = 0; i < definition.defines.count && matches; i += 1) {
@@ -561,9 +453,9 @@ void LoadShaderCache(ShaderCompiler* compiler, StackAllocator* alloc) {
 	}
 	
 	// Validate and remap shader permutation keys.
-	for (auto& [key, shader_index] : shader_permutation_table) {
-		auto* new_shader_id            = HashTableFind(shader_definition_table,       shader_definitions[key.shader_id.index].filename);
-		auto* new_root_signature_index = HashTableFind(root_signature_filename_table, root_signature_filenames[key.root_signature_index]);
+	for (auto& [key, shader_index] : old_cache.shader_permutation_table) {
+		auto* new_shader_id            = HashTableFind(shader_definition_table,       old_cache.shader_definitions[key.shader_id.index].filename);
+		auto* new_root_signature_index = HashTableFind(root_signature_filename_table, old_cache.root_signature_filenames[key.root_signature_index]);
 		
 		if (new_shader_id && new_root_signature_index && new_shader_id->value != u32_max) {
 			key.shader_id.index      = new_shader_id->value;
@@ -578,7 +470,7 @@ void LoadShaderCache(ShaderCompiler* compiler, StackAllocator* alloc) {
 	HashTableReserve(all_hashed_source_files, alloc, 128);
 	
 	// Validate shader sources.
-	for (auto& shader : shaders) {
+	for (auto& shader : old_cache.shaders) {
 		bool is_dirty_shader = false;
 		for (auto& file : shader.hashed_source_files) {
 			auto [hashed_source_file, is_added] = HashTableAddOrFind(all_hashed_source_files, file.filename, 0llu);
@@ -596,16 +488,65 @@ void LoadShaderCache(ShaderCompiler* compiler, StackAllocator* alloc) {
 		}
 		shader.is_dirty |= is_dirty_shader;
 	}
+}
+
+
+static void SaveLoad(SaveLoadBuffer& buffer, ShaderDefinition& definition, u64 version = 0) {
+	SaveLoad(buffer, definition.filename);
+	SaveLoad(buffer, definition.defines);
+}
+
+static void SaveLoad(SaveLoadBuffer& buffer, HashedShaderSourceFile& hashed_source_file, u64 version = 0) {
+	SaveLoad(buffer, hashed_source_file.filename);
+	SaveLoad(buffer, hashed_source_file.hash);
+}
+
+static void SaveLoad(SaveLoadBuffer& buffer, ShaderPermutation& shader, u64 version = 0) {
+	SaveLoad(buffer, shader.bytecode_blob);
+	SaveLoad(buffer, shader.hashed_source_files);
+}
+
+static void SaveLoad(SaveLoadBuffer& buffer, HashTableElement<ShaderPermutationKey, u32>& element, u64 version = 0) {
+	SaveLoad(buffer, element.key.data[0]);
+	SaveLoad(buffer, element.key.data[1]);
+	SaveLoad(buffer, element.value);
+}
+
+static void SaveLoad(SaveLoadBuffer& buffer, ShaderCache& cache) {
+	SaveLoad(buffer, cache.root_signature_filenames);
+	SaveLoad(buffer, cache.shader_definitions);
+	SaveLoad(buffer, cache.shader_permutation_table);
+	SaveLoad(buffer, cache.shaders);
+}
+
+void SaveLoadShaderCache(ShaderCompiler* compiler, StackAllocator* alloc, bool should_load_shader_cache) {
+	TempAllocationScope(alloc);
 	
+	SaveLoadBuffer buffer;
+	if (!OpenSaveLoadBuffer(alloc, shader_cache_filepath, should_load_shader_cache, buffer)) return;
+	defer{ CloseSaveLoadBuffer(buffer); };
 	
-	auto* heap = &compiler->heap;
-	for (auto& [key, shader_index] : shader_permutation_table) {
-		if (shader_index == u32_max || shaders[shader_index].is_dirty) continue;
+	ShaderCache old_cache;
+	
+	ShaderCache new_cache;
+	new_cache.root_signature_filenames = compiler->root_signature_filenames;
+	new_cache.shader_definitions       = compiler->shader_definitions;
+	new_cache.shader_permutation_table = compiler->shader_permutation_table;
+	new_cache.shaders                  = compiler->shaders;
+	SaveLoad(buffer, should_load_shader_cache ? old_cache : new_cache);
+	
+	if (should_load_shader_cache) {
+		ValidateShaderCache(alloc, old_cache, new_cache);
 		
-		auto* new_shader_entry = HashTableFind(compiler->shader_permutation_table, key);
-		if (new_shader_entry == nullptr) continue;
-		
-		auto& cached_shader = shaders[shader_index];
-		CreateShaderPermutation(heap, compiler->shaders[new_shader_entry->value], cached_shader.hashed_source_files, cached_shader.bytecode_blob);
+		auto* heap = &compiler->heap;
+		for (auto& [key, shader_index] : old_cache.shader_permutation_table) {
+			if (shader_index == u32_max || old_cache.shaders[shader_index].is_dirty) continue;
+			
+			auto* new_shader_entry = HashTableFind(new_cache.shader_permutation_table, key);
+			if (new_shader_entry == nullptr) continue;
+			
+			auto& cached_shader = old_cache.shaders[shader_index];
+			CreateShaderPermutation(heap, new_cache.shaders[new_shader_entry->value], cached_shader.hashed_source_files, cached_shader.bytecode_blob);
+		}
 	}
 }
