@@ -99,8 +99,12 @@ always_inline void SaveLoad(SaveLoadBuffer& buffer, String& value, u64 version =
 	SaveLoad(buffer, count);
 	
 	if (buffer.is_loading) {
-		value = count && buffer.heap ? StringAllocate(buffer.heap, count) : String{};
-		buffer.LoadBytes(value.data, count);
+		if (count && buffer.heap) {
+			value = StringAllocate(buffer.heap, count);
+			buffer.LoadBytes(value.data, count);
+		} else {
+			value = { (char*)buffer.ReserveLoadBytes(count), count };
+		}
 	} else if (buffer.is_saving) {
 		buffer.SaveBytes(value.data, count);
 	}

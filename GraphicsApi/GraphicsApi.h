@@ -21,7 +21,7 @@ struct WindowSwapChain {
 
 
 GraphicsContext* CreateGraphicsContext(StackAllocator* alloc);
-void ReleaseGraphicsContext(GraphicsContext* context);
+void ReleaseGraphicsContext(GraphicsContext* context, StackAllocator* alloc);
 void WaitForLastFrame(GraphicsContext* context);
 void WaitForNextFrame(GraphicsContext* context);
 

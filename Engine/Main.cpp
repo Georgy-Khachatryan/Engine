@@ -481,7 +481,7 @@ s32 main() {
 	defer{ ImGui_ImplWin32_Shutdown(); };
 	
 	auto* graphics_context = CreateGraphicsContext(&alloc);
-	defer{ ReleaseGraphicsContext(graphics_context); };
+	defer{ ReleaseGraphicsContext(graphics_context, &alloc); };
 	
 	// TODO: Dynamically switch between HDR and SDR, add tone mappers for both.
 	auto* swap_chain = CreateWindowSwapChain(&alloc, graphics_context, window->hwnd, TextureFormat::R16G16B16A16_FLOAT);

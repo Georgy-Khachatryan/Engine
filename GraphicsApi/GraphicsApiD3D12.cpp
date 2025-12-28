@@ -21,7 +21,7 @@ void WaitForNextFrame(GraphicsContext* api_context) {
 	context->frame_sync_fence->SetEventOnCompletion(context->frame_index - number_of_frames_in_flight, nullptr);
 }
 
-static void BuildPipelineStates(GraphicsContextD3D12* context, StackAllocator* alloc);
+static void BuildPipelineStates(GraphicsContextD3D12* context, StackAllocator* alloc, bool build_only_dirty_pipelines = true);
 static void BuildRootSignatures(GraphicsContextD3D12* context, StackAllocator* alloc, ArrayView<ArrayView<u32>> root_signature_streams);
 static ID3D12CommandSignature* CreateCommandSignature(ID3D12Device10* device, D3D12_INDIRECT_ARGUMENT_TYPE type, u32 byte_stride);
 
@@ -156,9 +156,10 @@ GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
 		ArrayResize(context->pipeline_state_table, alloc, context->pipeline_definitions.count);
 		
 		shader_compiler = CreateShaderCompiler(alloc, root_signature_filenames, shader_definition_table, context->pipeline_definitions);
+		LoadShaderCache(shader_compiler, alloc);
 		
 		BuildRootSignatures(context, alloc, root_signature_streams);
-		BuildPipelineStates(context, alloc);
+		BuildPipelineStates(context, alloc, false);
 	}
 	
 	return context;
@@ -374,13 +375,13 @@ static void CreateGraphicsPipelineState(GraphicsContextD3D12* context, const Pip
 	context->pipeline_state_table[pipeline_state_index] = new_pipeline_state;
 }
 
-static void BuildPipelineStates(GraphicsContextD3D12* context, StackAllocator* alloc) {
+static void BuildPipelineStates(GraphicsContextD3D12* context, StackAllocator* alloc, bool build_only_dirty_pipelines) {
 	TempAllocationScope(alloc);
 	auto compiled_shader_mask = CompileDirtyShaderPermutations(shader_compiler, alloc);
 	
 	for (u32 i = 0; i < context->pipeline_definitions.count; i += 1) {
 		auto [bytecode, is_dirty] = GetShadersForPipelineIndex(shader_compiler, i, compiled_shader_mask);
-		if (is_dirty == false) continue;
+		if (is_dirty == false && build_only_dirty_pipelines) continue;
 		
 		auto& definition = context->pipeline_definitions[i];
 		if (HasAnyFlags(definition.shader_type_mask, ShaderTypeMask::ComputeShader)) {
@@ -509,9 +510,10 @@ static void BuildRootSignatures(GraphicsContextD3D12* context, StackAllocator* a
 	}
 }
 
-void ReleaseGraphicsContext(GraphicsContext* api_context) {
+void ReleaseGraphicsContext(GraphicsContext* api_context, StackAllocator* alloc) {
 	auto* context = (GraphicsContextD3D12*)api_context;
 	
+	SaveShaderCache(shader_compiler, alloc);
 	ReleaseShaderCompiler(shader_compiler);
 	
 	for (auto& root_signature : context->root_signature_table) SafeRelease(root_signature);

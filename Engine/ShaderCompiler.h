@@ -20,3 +20,6 @@ String GetShaderPermutationName(StackAllocator* alloc, const ShaderDefinition& d
 ShaderCompiler* CreateShaderCompiler(StackAllocator* alloc, ArrayView<String> root_signature_filenames, ArrayView<ShaderDefinition> shader_definitions, ArrayView<PipelineDefinition> pipeline_definitions);
 void ReleaseShaderCompiler(ShaderCompiler* compiler);
 bool CheckShaderFileChanges(ShaderCompiler* compiler, StackAllocator* alloc);
+
+void SaveShaderCache(ShaderCompiler* compiler, StackAllocator* alloc);
+void LoadShaderCache(ShaderCompiler* compiler, StackAllocator* alloc);
