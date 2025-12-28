@@ -12,13 +12,14 @@ struct alignas(64) SaveLoadBuffer {
 	HeapAllocator*  heap  = nullptr;
 	
 	u8* cursor = nullptr;
-	u64 remaining_size = 0;
+	u32 remaining_size = 0;
+	u32 global_offset  = 0;
 	Array<ArrayView<u8>> chunks;
 	
 	bool is_saving  = false;
 	bool is_loading = false;
 	
-	void SaveBytes(const void* data, u64 size) {
+	u8* ReserveSaveBytes(u64 size) {
 		DebugAssert(is_saving, "Trying to write to SaveLoad buffer with no write flag.");
 		
 		if (size > remaining_size) {
@@ -30,23 +31,47 @@ struct alignas(64) SaveLoadBuffer {
 			u64 new_chunk_capacity = AlignUp(Max(minimum_entry_size, size), minimum_entry_size);
 			
 			cursor         = (u8*)alloc->Allocate(new_chunk_capacity);
-			remaining_size = new_chunk_capacity;
+			remaining_size = (u32)new_chunk_capacity;
 			
 			ArrayAppend(chunks, alloc, { cursor, new_chunk_capacity });
 		}
 		
-		memcpy(cursor, data, size);
-		cursor         += size;
-		remaining_size -= size;
+		u8* result = cursor;
+		cursor         += (u32)size;
+		remaining_size -= (u32)size;
+		global_offset  += (u32)size;
+		
+		return result;
 	}
 	
-	void LoadBytes(void* data, u64 size) {
+	u8* ReserveLoadBytes(u64 size) {
 		DebugAssert(is_loading, "Trying to read from SaveLoad buffer with no read flag.");
 		DebugAssert(size <= remaining_size, "SaveLoad buffer overflowed when loading %0 bytes. (%0 > %1).", size, remaining_size);
 		
-		memcpy(data, cursor, size);
-		cursor         += size;
-		remaining_size -= size;
+		u8* result = cursor;
+		cursor         += (u32)size;
+		remaining_size -= (u32)size;
+		global_offset  += (u32)size;
+		
+		return result;
+	}
+	
+	always_inline u8* ReserveSaveLoadBytes(u64 size) {
+		u8* result = nullptr;
+		if (is_loading) {
+			result = ReserveLoadBytes(size);
+		} else if (is_saving) {
+			result = ReserveSaveBytes(size);
+		}
+		return result;
+	}
+	
+	always_inline void SaveBytes(const void* data, u64 size) {
+		memcpy(ReserveSaveBytes(size), data, size);
+	}
+	
+	always_inline void LoadBytes(void* data, u64 size) {
+		memcpy(data, ReserveLoadBytes(size), size);
 	}
 	
 	always_inline void SaveLoadBytes(void* data, u64 size) {

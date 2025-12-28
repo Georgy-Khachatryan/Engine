@@ -44,9 +44,12 @@ struct EntityQueryTypeInfo {
 };
 
 struct ComponentTypeInfo {
-	u32 size_bytes = 0;
+	u64 size_bytes = 0;
 	u64 version    = 0;
+	u64 type_hash  = 0;
 };
+
+using DefaultInitializeCallback = void (*)(void* data, u64 begin, u64 end);
 
 struct EntityTypeArray {
 	u32 count    = 0;

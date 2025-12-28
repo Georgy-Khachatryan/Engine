@@ -5,9 +5,11 @@
 #include "EntitySystem.h"
 
 NOTES() struct NameComponent { String name; };
-NOTES() struct PositionComponent { float3 position; };
-NOTES() struct ScaleComponent { float scale = 1.f; };
-NOTES() struct RotationComponent { quat rotation; };
+
+// Transform components represent model_to_world or view_to_world translation (world space position), rotation, and scale.
+NOTES() struct PositionComponent { float3 position = {};  };
+NOTES() struct RotationComponent { quat   rotation = {};  };
+NOTES() struct ScaleComponent    { float  scale    = 1.f; };
 
 
 NOTES(Meta::EntityType{})

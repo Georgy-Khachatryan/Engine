@@ -5,6 +5,7 @@ extern ArrayView<EntityTypeInfo>      entity_type_info_table;
 extern ArrayView<EntityQueryTypeInfo> entity_query_type_info_table;
 extern ArrayView<ComponentTypeInfo>   component_type_info_table;
 extern ArrayView<SaveLoadCallback>    component_save_load_callbacks;
+extern ArrayView<DefaultInitializeCallback> component_default_initialize_callbacks;
 
 compile_const u32 base_allocation_count = 1024;
 
@@ -32,6 +33,13 @@ static void MemcpyComponentStreams(ArrayView<u8*> component_streams, ArrayView<C
 	IterateComponentStreams(component_streams, component_type_ids, [&](u8* stream, ComponentTypeInfo type_info) {
 		memcpy(stream + dst_index * type_info.size_bytes, stream + src_index * type_info.size_bytes, type_info.size_bytes);
 	});
+}
+
+static void DefaultInitializeStreams(ArrayView<u8*> component_streams, ArrayView<ComponentTypeID> component_type_ids, u64 begin, u64 end) {
+	for (u32 component_stream_index = 0; component_stream_index < component_type_ids.count; component_stream_index += 1) {
+		auto component_type_id = component_type_ids[component_stream_index];
+		component_default_initialize_callbacks[component_type_id.index](component_streams[component_stream_index], begin, end);
+	}
 }
 
 static void AllocateEntityMapStreams(EntityTypeArray& array, HeapAllocator& heap, u32 old_capacity, u32 new_capacity) {
@@ -70,7 +78,7 @@ CreateEntitiesResult CreateEntities(StackAllocator* alloc, EntitySystem& system,
 		array.entity_id_to_stream_index[entity_id] = stream_offset + i;
 	}
 	
-	MemsetComponentStreams(array.component_streams, type_info.component_type_ids, stream_offset, entity_count, 0xCC);
+	DefaultInitializeStreams(array.component_streams, type_info.component_type_ids, stream_offset, stream_offset + entity_count);
 	
 	CreateEntitiesResult result;
 	result.entity_ids     = entity_ids;
@@ -177,7 +185,7 @@ void ExtractComponentStreams(EntityTypeArray* array, EntityQueryTypeID query_typ
 		} else if (match_component_index < array_component_index) {
 			match_key_index += 1; // Shouldn't ever happen if QueryEntities is correct.
 		} else {
-			u32 offset = component_stream_offset * component_type_info_table[match_component_index].size_bytes;
+			u64 offset = component_stream_offset * component_type_info_table[match_component_index].size_bytes;
 			output_component_streams[stream_indices[match_key_index]] = array->component_streams[array_key_index] + offset;
 			array_key_index += 1;
 			match_key_index += 1;
@@ -238,9 +246,19 @@ void SaveLoadEntitySystem(SaveLoadBuffer& buffer, EntitySystem& system) {
 	
 	buffer.heap = &system.heap;
 	
+	HashTable<u64, ComponentTypeID> component_type_hash_to_id;
+	if (buffer.is_loading) {
+		HashTableReserve(component_type_hash_to_id, buffer.alloc, component_type_info_table.count);
+		for (u32 component_type_index = 0; component_type_index < component_type_info_table.count; component_type_index += 1) {
+			u64 hash = component_type_info_table[component_type_index].type_hash;
+			HashTableAddOrFind(component_type_hash_to_id, hash, ComponentTypeID{ component_type_index });
+		}
+	}
+	
 	for (u32 entity_type_index = 0; entity_type_index < entity_type_info_table.count; entity_type_index += 1) {
 		auto& array = system.entity_type_arrays[entity_type_index];
-		auto& type_info = entity_type_info_table[entity_type_index];
+		auto& entity_type_info = entity_type_info_table[entity_type_index];
+		auto component_type_ids = entity_type_info.component_type_ids;
 		
 		u32 count = array.count;
 		SaveLoad(buffer, count);
@@ -248,25 +266,83 @@ void SaveLoadEntitySystem(SaveLoadBuffer& buffer, EntitySystem& system) {
 		if (buffer.is_loading) {
 			u32 new_capacity = AlignUp(count, base_allocation_count);
 			AllocateEntityMapStreams(array, system.heap, 0, new_capacity);
-			AllocateComponentStreams(array.component_streams, type_info.component_type_ids, system.heap, 0, new_capacity);
+			AllocateComponentStreams(array.component_streams, component_type_ids, system.heap, 0, new_capacity);
+			DefaultInitializeStreams(array.component_streams, component_type_ids, 0, count); // TODO: Only default initialize new component streams.
 			
 			array.capacity = new_capacity;
 			array.count    = count;
 		}
 		
-		auto component_type_ids = type_info.component_type_ids;
-		for (u32 component_stream_index = 0; component_stream_index < component_type_ids.count; component_stream_index += 1) {
-			auto component_type_id = component_type_ids[component_stream_index];
-			u8*  component_stream  = array.component_streams[component_stream_index];
-			
-			auto save_load_callback = component_save_load_callbacks[component_type_id.index];
-			auto type_info          = component_type_info_table[component_type_id.index];
-			
-			u64 version = type_info.version;
-			SaveLoad(buffer, version);
-			
-			for (u32 i = 0; i < array.count; i += 1) {
-				save_load_callback(buffer, component_stream + i * type_info.size_bytes, version);
+		u64 component_stream_count = component_type_ids.count;
+		SaveLoad(buffer, component_stream_count);
+		
+		// Table of stream sizes, potentially unaligned.
+		u8* stream_sizes = buffer.ReserveSaveLoadBytes(component_stream_count * sizeof(u32));
+		
+		if (buffer.is_loading) {
+			for (u32 i = 0; i < component_stream_count; i += 1) {
+				u64 type_hash = 0;
+				SaveLoad(buffer, type_hash);
+				
+				u64 version = 0;
+				SaveLoad(buffer, version);
+				
+				auto* element = HashTableFind(component_type_hash_to_id, type_hash);
+				
+				auto component_type_id = ComponentTypeID{ u32_max };
+				u32 component_stream_index = u32_max;
+				
+				if (element != nullptr) {
+					component_type_id = element->value;
+					for (u32 i = 0; i < component_type_ids.count; i += 1) {
+						if (component_type_ids[i].index == component_type_id.index) {
+							component_stream_index = i;
+							break;
+						}
+					}
+				}
+				
+				u32 stream_size = 0;
+				memcpy(&stream_size, stream_sizes + i * sizeof(u32), sizeof(u32));
+				
+				u32 begin_offset = buffer.global_offset;
+				if (component_stream_index != u32_max) {
+					auto save_load_callback = component_save_load_callbacks[component_type_id.index];
+					auto type_info          = component_type_info_table[component_type_id.index];
+					u8*  component_stream   = array.component_streams[component_stream_index];
+					
+					for (u32 i = 0; i < array.count; i += 1) {
+						save_load_callback(buffer, component_stream + i * type_info.size_bytes, version);
+					}
+				} else {
+					buffer.ReserveLoadBytes(stream_size);
+				}
+				u32 end_offset = buffer.global_offset;
+				
+				DebugAssert(end_offset - begin_offset == stream_size, "Incorrect number of bytes loaded from a component stream. (%/%).", end_offset - begin_offset, stream_size);
+			}
+		} else if (buffer.is_saving) {
+			for (u32 component_stream_index = 0; component_stream_index < component_type_ids.count; component_stream_index += 1) {
+				auto component_type_id = component_type_ids[component_stream_index];
+				u8*  component_stream  = array.component_streams[component_stream_index];
+				
+				auto save_load_callback = component_save_load_callbacks[component_type_id.index];
+				auto type_info          = component_type_info_table[component_type_id.index];
+				
+				u64 type_hash = type_info.type_hash;
+				SaveLoad(buffer, type_hash);
+				
+				u64 version = type_info.version;
+				SaveLoad(buffer, version);
+				
+				u32 begin_offset = buffer.global_offset;
+				for (u32 i = 0; i < array.count; i += 1) {
+					save_load_callback(buffer, component_stream + i * type_info.size_bytes, version);
+				}
+				u32 end_offset = buffer.global_offset;
+				
+				u32 component_stream_size = end_offset - begin_offset;
+				memcpy(stream_sizes + component_stream_index * sizeof(u32), &component_stream_size, sizeof(u32));
 			}
 		}
 		

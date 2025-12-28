@@ -841,13 +841,13 @@ s32 main(s32 argument_count, const char* arguments[]) {
 		builder.Indent();
 		for (auto* type_info : component_type_infos) {
 			u64 version = AddTypeInfoToSaveLoadHistory(&alloc, version_history, type_info);
-			builder.Append("{ %, % },\n"_sl, (u32)type_info->size, version);
+			builder.Append("{ %, %, 0x%x },\n"_sl, type_info->size, version, ComputeHash(type_info->name));
 		}
 		builder.Unindent();
 		builder.Append("};\n\n"_sl);
 		
 		for (auto* type_info : component_type_infos) {
-			builder.Append("void SaveLoad(SaveLoadBuffer& buffer, %& component, u64 version);\n"_sl, type_info->name);
+			builder.Append("extern void SaveLoad(SaveLoadBuffer& buffer, %& component, u64 version);\n"_sl, type_info->name);
 		}
 		builder.Append("\n"_sl);
 		
@@ -859,11 +859,20 @@ s32 main(s32 argument_count, const char* arguments[]) {
 		builder.Unindent();
 		builder.Append("};\n\n"_sl);
 		
+		builder.Append("DefaultInitializeCallback component_default_initialize_callbacks_internal[] = {\n"_sl);
+		builder.Indent();
+		for (auto* type_info : component_type_infos) {
+			builder.Append("[](void* data, u64 begin, u64 end) { for (u64 i = begin; i < end; i += 1) ((%*)data)[i] = {}; },\n"_sl, type_info->name);
+		}
+		builder.Unindent();
+		builder.Append("};\n\n"_sl);
+		
 		
 		builder.Append("ArrayView<EntityTypeInfo> entity_type_info_table = { entity_type_info_table_internal, % };\n"_sl, entity_type_infos.count);
 		builder.Append("ArrayView<EntityQueryTypeInfo> entity_query_type_info_table = { entity_query_type_info_table_internal, % };\n"_sl, entity_query_type_infos.count);
 		builder.Append("ArrayView<ComponentTypeInfo> component_type_info_table = { component_type_info_table_internal, % };\n"_sl, component_type_infos.count);
 		builder.Append("ArrayView<SaveLoadCallback> component_save_load_callbacks = { component_save_load_callbacks_internal, % };\n"_sl, component_type_infos.count);
+		builder.Append("ArrayView<DefaultInitializeCallback> component_default_initialize_callbacks = { component_default_initialize_callbacks_internal, % };\n"_sl, component_type_infos.count);
 	}
 	
 	{

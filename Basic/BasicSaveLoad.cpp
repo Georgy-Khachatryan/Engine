@@ -45,7 +45,7 @@ bool OpenSaveLoadBufferForLoading(StackAllocator* alloc, String path, SaveLoadBu
 	
 	u64 file_size = SystemFileSize(file);
 	buffer.cursor = (u8*)alloc->Allocate(file_size);
-	buffer.remaining_size = file_size;
+	buffer.remaining_size = (u32)file_size;
 	
 	return SystemReadFile(file, buffer.cursor, file_size, 0);
 }

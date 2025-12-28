@@ -528,12 +528,11 @@ s32 main() {
 		} else {
 			auto entity_result = CreateEntities<CameraEntityType>(&alloc, entity_system, 1);
 			auto* entity_array = QueryEntityTypeArray<CameraEntityType>(entity_system);
-			auto camera_entity = ExtractComponentStreams<PositionRotationCameraQuery>(entity_array, entity_result.stream_offset);
+			auto camera_entity = ExtractComponentStreams<RotationQuery>(entity_array, entity_result.stream_offset);
 			
-			camera_entity.camera->vertical_fov_degrees = 75.f;
-			camera_entity.camera->transform_type       = CameraTransformType::Perspective;
-			camera_entity.position->position = float3(0.f, 0.f, 0.f);
-			camera_entity.rotation->rotation = Math::AxisAngleToQuat(float3(1.f, 0.f, 0.f), 90.f * Math::degrees_to_radians) * Math::AxisAngleToQuat(float3(0.f, 0.f, 1.f), 90.f * Math::degrees_to_radians);
+			camera_entity.rotation->rotation =
+				Math::AxisAngleToQuat(float3(0.f, 0.f, 1.f), -90.f * Math::degrees_to_radians) *
+				Math::AxisAngleToQuat(float3(1.f, 0.f, 0.f), -90.f * Math::degrees_to_radians);
 			
 			ExtractComponentStreams<NameQuery>(entity_array, entity_result.stream_offset).name->name = StringCopy(&entity_system.heap, "Camera"_sl);
 		}
@@ -718,7 +717,7 @@ s32 main() {
 		auto camera_entity = QueryEntityByGUID<PositionRotationCameraQuery>(entity_system, camera_entity_guid);
 		auto& camera_transform_type       = camera_entity.camera->transform_type;
 		auto& vertical_fov_degrees        = camera_entity.camera->vertical_fov_degrees;
-		auto& world_to_view_quat          = camera_entity.rotation->rotation;
+		auto& view_to_world_quat          = camera_entity.rotation->rotation;
 		auto& world_space_camera_position = camera_entity.position->position;
 		
 		ImGui::Text("Initial Alloc Size: %llu", frame_initial_size);
@@ -833,7 +832,7 @@ s32 main() {
 			float base_speed = 10.f; // m/s
 			float sensetivity_scale = (ImGui::IsKeyDown(ImGuiMod_Shift) ? 5.f : 1.f) * (ImGui::IsKeyDown(ImGuiMod_Alt) ? 0.2f : 1.f);
 			
-			auto world_to_view = Math::QuatToRotationMatrix(world_to_view_quat);
+			auto  world_to_view = Math::QuatToRotationMatrix(Math::Conjugate(view_to_world_quat));
 			float move_distance = base_speed * sensetivity_scale * io.DeltaTime;
 			if (ImGui::IsKeyDown(ImGuiKey_D, ImGuiKeyOwner_NoOwner)) world_space_camera_position += world_to_view[0] * +move_distance;
 			if (ImGui::IsKeyDown(ImGuiKey_A, ImGuiKeyOwner_NoOwner)) world_space_camera_position += world_to_view[0] * -move_distance;
@@ -855,7 +854,7 @@ s32 main() {
 			auto uv = float2(ImGui::GetMousePos() - window_pos) / float2(window_size);
 			auto ray_info = Math::RayInfoFromScreenUv(uv, clip_to_view_coef);
 			
-			auto view_to_world = Math::Transpose(Math::QuatToRotationMatrix(world_to_view_quat));
+			auto view_to_world = Math::QuatToRotationMatrix(view_to_world_quat);
 			
 			float meters_per_click = 1.f;
 			float sensetivity_scale = (ImGui::IsKeyDown(ImGuiMod_Shift) ? 5.f : 1.f) * (ImGui::IsKeyDown(ImGuiMod_Alt) ? 0.2f : 1.f);
@@ -868,19 +867,19 @@ s32 main() {
 			float radians_per_pixel = 1.f / 240.f;
 			
 			compile_const float3 view_space_up = float3(0.f, -1.f, 0.f);
-			auto world_space_up = Math::Conjugate(world_to_view_quat) * view_space_up;
-			world_to_view_quat *= Math::AxisAngleToQuat(float3(0.f, 0.f, world_space_up.z < 0.f ? -1.f : 1.f), io.MouseDelta.x * radians_per_pixel);
+			auto world_space_up = view_to_world_quat * view_space_up;
+			view_to_world_quat = Math::AxisAngleToQuat(float3(0.f, 0.f, world_space_up.z < 0.f ? -1.f : 1.f), -io.MouseDelta.x * radians_per_pixel) * view_to_world_quat;
 			
 			// Compute view_to_world after we applied rotation around Z axis.
-			auto view_to_world = Math::Transpose(Math::QuatToRotationMatrix(world_to_view_quat));
-			world_to_view_quat *= Math::AxisAngleToQuat(view_to_world * float3(1.f, 0.f, 0.f), io.MouseDelta.y * radians_per_pixel);
+			auto view_to_world = Math::QuatToRotationMatrix(view_to_world_quat);
+			view_to_world_quat = Math::AxisAngleToQuat(view_to_world * float3(1.f, 0.f, 0.f), -io.MouseDelta.y * radians_per_pixel) * view_to_world_quat;
 			
-			world_to_view_quat = Math::Normalize(world_to_view_quat);
+			view_to_world_quat = Math::Normalize(view_to_world_quat);
 		} else if (mouse_lock.locked_mouse_button == ImGuiMouseButton_Right) {
 			float meters_per_pixel = 1.f / 240.f;
 			float sensetivity_scale = (ImGui::IsKeyDown(ImGuiMod_Shift) ? 5.f : 1.f) * (ImGui::IsKeyDown(ImGuiMod_Alt) ? 0.2f : 1.f);
 			
-			auto world_to_view = Math::QuatToRotationMatrix(world_to_view_quat);
+			auto world_to_view = Math::QuatToRotationMatrix(Math::Conjugate(view_to_world_quat));
 			world_space_camera_position += world_to_view[0] * ((meters_per_pixel * sensetivity_scale) * io.MouseDelta.x);
 			world_space_camera_position += world_to_view[1] * ((meters_per_pixel * sensetivity_scale) * io.MouseDelta.y);
 		}
@@ -896,16 +895,16 @@ s32 main() {
 			scene.clip_to_view_coef = Math::ViewToClipInverse(scene.view_to_clip_coef);
 		}
 		
-		auto world_to_view_rotation = Math::QuatToRotationMatrix(world_to_view_quat);
+		auto view_to_world_rotation = Math::QuatToRotationMatrix(view_to_world_quat);
+		scene.view_to_world[0] = float4(view_to_world_rotation[0], world_space_camera_position[0]);
+		scene.view_to_world[1] = float4(view_to_world_rotation[1], world_space_camera_position[1]);
+		scene.view_to_world[2] = float4(view_to_world_rotation[2], world_space_camera_position[2]);
+		
+		auto world_to_view_rotation = Math::Transpose(view_to_world_rotation);
 		auto view_space_camera_position = world_to_view_rotation * world_space_camera_position;
 		scene.world_to_view[0] = float4(world_to_view_rotation[0], -view_space_camera_position[0]);
 		scene.world_to_view[1] = float4(world_to_view_rotation[1], -view_space_camera_position[1]);
 		scene.world_to_view[2] = float4(world_to_view_rotation[2], -view_space_camera_position[2]);
-		
-		auto view_to_world_rotation = Math::Transpose(world_to_view_rotation);
-		scene.view_to_world[0] = float4(view_to_world_rotation[0], world_space_camera_position[0]);
-		scene.view_to_world[1] = float4(view_to_world_rotation[1], world_space_camera_position[1]);
-		scene.view_to_world[2] = float4(view_to_world_rotation[2], world_space_camera_position[2]);
 		
 		scene.world_to_pixel_scale = scene.view_to_clip_coef.x * scene.render_target_size.x * 0.5f / Max(meshlet_target_error_pixels, 1.f);
 		scene.world_space_camera_position = world_space_camera_position;
