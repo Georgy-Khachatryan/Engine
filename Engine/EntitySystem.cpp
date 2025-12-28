@@ -239,15 +239,26 @@ void ResetEntitySystem(EntitySystem& system) {
 	system.entity_type_arrays = entity_type_arrays;
 }
 
+// TODO: Simplify this function. There is a lot of code that handles remapping of entity/component
+// streams when they change order or are added/removed, but in most cases it's not necessary.
 void SaveLoadEntitySystem(SaveLoadBuffer& buffer, EntitySystem& system) {
+	TempAllocationScope(buffer.alloc);
+	
 	if (buffer.is_loading) {
 		ResetEntitySystem(system);
 	}
 	
 	buffer.heap = &system.heap;
 	
+	HashTable<u64, EntityTypeID>    entity_type_hash_to_id;
 	HashTable<u64, ComponentTypeID> component_type_hash_to_id;
 	if (buffer.is_loading) {
+		HashTableReserve(entity_type_hash_to_id, buffer.alloc, entity_type_info_table.count);
+		for (u32 entity_type_index = 0; entity_type_index < entity_type_info_table.count; entity_type_index += 1) {
+			u64 hash = entity_type_info_table[entity_type_index].type_hash;
+			HashTableAddOrFind(entity_type_hash_to_id, hash, EntityTypeID{ entity_type_index });
+		}
+		
 		HashTableReserve(component_type_hash_to_id, buffer.alloc, component_type_info_table.count);
 		for (u32 component_type_index = 0; component_type_index < component_type_info_table.count; component_type_index += 1) {
 			u64 hash = component_type_info_table[component_type_index].type_hash;
@@ -255,7 +266,38 @@ void SaveLoadEntitySystem(SaveLoadBuffer& buffer, EntitySystem& system) {
 		}
 	}
 	
-	for (u32 entity_type_index = 0; entity_type_index < entity_type_info_table.count; entity_type_index += 1) {
+	u64 entity_type_count = entity_type_info_table.count;
+	SaveLoad(buffer, entity_type_count);
+	
+	// Table of entity stream sizes, potentially unaligned.
+	u8* entity_stream_sizes = buffer.ReserveSaveLoadBytes(entity_type_count * sizeof(u32));
+	
+	for (u32 i = 0; i < entity_type_count; i += 1) {
+		u32 entity_type_index = u32_max;
+		
+		if (buffer.is_loading) {
+			u64 type_hash = 0;
+			SaveLoad(buffer, type_hash);
+			
+			auto* element = HashTableFind(entity_type_hash_to_id, type_hash);
+			entity_type_index = element ? element->value.index : u32_max;
+			
+			if (entity_type_index == u32_max) {
+				u32 stream_size = 0;
+				memcpy(&stream_size, entity_stream_sizes + i * sizeof(u32), sizeof(u32));
+				
+				buffer.ReserveLoadBytes(stream_size);
+				continue;
+			}
+		} else if (buffer.is_saving) {
+			u64 type_hash = entity_type_info_table[i].type_hash;
+			SaveLoad(buffer, type_hash);
+			
+			entity_type_index = i;
+		}
+		
+		u32 begin_entity_offset = buffer.global_offset;
+		
 		auto& array = system.entity_type_arrays[entity_type_index];
 		auto& entity_type_info = entity_type_info_table[entity_type_index];
 		auto component_type_ids = entity_type_info.component_type_ids;
@@ -276,73 +318,64 @@ void SaveLoadEntitySystem(SaveLoadBuffer& buffer, EntitySystem& system) {
 		u64 component_stream_count = component_type_ids.count;
 		SaveLoad(buffer, component_stream_count);
 		
-		// Table of stream sizes, potentially unaligned.
-		u8* stream_sizes = buffer.ReserveSaveLoadBytes(component_stream_count * sizeof(u32));
+		// Table of component stream sizes, potentially unaligned.
+		u8* component_stream_sizes = buffer.ReserveSaveLoadBytes(component_stream_count * sizeof(u32));
 		
-		if (buffer.is_loading) {
-			for (u32 i = 0; i < component_stream_count; i += 1) {
+		for (u32 i = 0; i < component_stream_count; i += 1) {
+			auto component_type_id = ComponentTypeID{ u32_max };
+			u32 component_stream_index = u32_max;
+			
+			if (buffer.is_loading) {
 				u64 type_hash = 0;
 				SaveLoad(buffer, type_hash);
 				
-				u64 version = 0;
-				SaveLoad(buffer, version);
-				
 				auto* element = HashTableFind(component_type_hash_to_id, type_hash);
-				
-				auto component_type_id = ComponentTypeID{ u32_max };
-				u32 component_stream_index = u32_max;
-				
-				if (element != nullptr) {
-					component_type_id = element->value;
-					for (u32 i = 0; i < component_type_ids.count; i += 1) {
-						if (component_type_ids[i].index == component_type_id.index) {
-							component_stream_index = i;
-							break;
-						}
+				component_type_id = element ? element->value : ComponentTypeID{ u32_max };
+				for (u32 i = 0; i < component_type_ids.count; i += 1) {
+					if (component_type_ids[i].index == component_type_id.index) {
+						component_stream_index = i;
+						break;
 					}
 				}
 				
-				u32 stream_size = 0;
-				memcpy(&stream_size, stream_sizes + i * sizeof(u32), sizeof(u32));
-				
-				u32 begin_offset = buffer.global_offset;
-				if (component_stream_index != u32_max) {
-					auto save_load_callback = component_save_load_callbacks[component_type_id.index];
-					auto type_info          = component_type_info_table[component_type_id.index];
-					u8*  component_stream   = array.component_streams[component_stream_index];
+				if (component_stream_index == u32_max) {
+					u32 stream_size = 0;
+					memcpy(&stream_size, component_stream_sizes + i * sizeof(u32), sizeof(u32));
 					
-					for (u32 i = 0; i < array.count; i += 1) {
-						save_load_callback(buffer, component_stream + i * type_info.size_bytes, version);
-					}
-				} else {
 					buffer.ReserveLoadBytes(stream_size);
+					continue;
 				}
-				u32 end_offset = buffer.global_offset;
+			} else if (buffer.is_saving) {
+				component_stream_index = i;
+				component_type_id = component_type_ids[component_stream_index];
 				
-				DebugAssert(end_offset - begin_offset == stream_size, "Incorrect number of bytes loaded from a component stream. (%/%).", end_offset - begin_offset, stream_size);
-			}
-		} else if (buffer.is_saving) {
-			for (u32 component_stream_index = 0; component_stream_index < component_type_ids.count; component_stream_index += 1) {
-				auto component_type_id = component_type_ids[component_stream_index];
-				u8*  component_stream  = array.component_streams[component_stream_index];
-				
-				auto save_load_callback = component_save_load_callbacks[component_type_id.index];
-				auto type_info          = component_type_info_table[component_type_id.index];
-				
-				u64 type_hash = type_info.type_hash;
+				u64 type_hash = component_type_info_table[component_type_id.index].type_hash;
 				SaveLoad(buffer, type_hash);
+			}
+			
+			u32 begin_component_offset = buffer.global_offset;
+			
+			auto save_load_callback = component_save_load_callbacks[component_type_id.index];
+			auto type_info          = component_type_info_table[component_type_id.index];
+			u8*  component_stream   = array.component_streams[component_stream_index];
+			
+			u64 version = type_info.version;
+			SaveLoad(buffer, version);
+			
+			for (u32 i = 0; i < array.count; i += 1) {
+				save_load_callback(buffer, component_stream + i * type_info.size_bytes, version);
+			}
+			u32 end_component_offset = buffer.global_offset;
+			
+			u32 component_stream_size = end_component_offset - begin_component_offset;
+			
+			if (buffer.is_loading) {
+				u32 stream_size = 0;
+				memcpy(&stream_size, component_stream_sizes + i * sizeof(u32), sizeof(u32));
 				
-				u64 version = type_info.version;
-				SaveLoad(buffer, version);
-				
-				u32 begin_offset = buffer.global_offset;
-				for (u32 i = 0; i < array.count; i += 1) {
-					save_load_callback(buffer, component_stream + i * type_info.size_bytes, version);
-				}
-				u32 end_offset = buffer.global_offset;
-				
-				u32 component_stream_size = end_offset - begin_offset;
-				memcpy(stream_sizes + component_stream_index * sizeof(u32), &component_stream_size, sizeof(u32));
+				DebugAssert(component_stream_size == stream_size, "Incorrect number of bytes loaded from a component stream. (%/%).", component_stream_size, stream_size);
+			} else if (buffer.is_saving) {
+				memcpy(component_stream_sizes + component_stream_index * sizeof(u32), &component_stream_size, sizeof(u32));
 			}
 		}
 		
@@ -351,11 +384,22 @@ void SaveLoadEntitySystem(SaveLoadBuffer& buffer, EntitySystem& system) {
 				array.stream_index_to_entity_id[i] = i;
 			}
 		}
+		
+		u32 end_entity_offset = buffer.global_offset;
+		
+		u32 entity_stream_size = end_entity_offset - begin_entity_offset;
+		
+		if (buffer.is_loading) {
+			u32 stream_size = 0;
+			memcpy(&stream_size, entity_stream_sizes + i * sizeof(u32), sizeof(u32));
+			
+			DebugAssert(entity_stream_size == stream_size, "Incorrect number of bytes loaded from an entity stream. (%/%).", entity_stream_size, stream_size);
+		} else if (buffer.is_saving) {
+			memcpy(entity_stream_sizes + entity_type_index * sizeof(u32), &entity_stream_size, sizeof(u32));
+		}
 	}
 	
 	if (buffer.is_loading) {
-		TempAllocationScope(buffer.alloc);
-		
 		auto guid_query = QueryEntities<GuidQuery>(buffer.alloc, system);
 		
 		u32 count = 0;

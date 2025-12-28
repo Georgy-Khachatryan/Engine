@@ -36,6 +36,7 @@ namespace Meta {
 
 struct EntityTypeInfo {
 	ArrayView<ComponentTypeID> component_type_ids;
+	u64 type_hash = 0;
 };
 
 struct EntityQueryTypeInfo {

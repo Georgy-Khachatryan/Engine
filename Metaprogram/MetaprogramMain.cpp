@@ -819,7 +819,7 @@ s32 main(s32 argument_count, const char* arguments[]) {
 			auto* type_info = entity_type_infos[entity_type_index];
 			auto& runtime_type_info = runtime_entity_type_infos[entity_type_index];
 			
-			builder.Append("{ { %_component_type_ids, % } },\n"_sl, type_info->name, (u32)runtime_type_info.component_type_ids.count);
+			builder.Append("{ { %_component_type_ids, % }, 0x%x },\n"_sl, type_info->name, (u32)runtime_type_info.component_type_ids.count, ComputeHash(type_info->name));
 		}
 		builder.Unindent();
 		builder.Append("};\n\n"_sl);
