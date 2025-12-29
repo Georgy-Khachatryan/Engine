@@ -89,7 +89,6 @@ struct alignas(64) SaveLoadBuffer {
 };
 static_assert(sizeof(SaveLoadBuffer) == 128, "Incorrect SaveLoad buffer size.");
 
-SaveLoadBuffer OpenSaveLoadBufferForSaving(StackAllocator* alloc);
 bool OpenSaveLoadBuffer(StackAllocator* alloc, String filepath, bool is_loading, SaveLoadBuffer& buffer);
 bool CloseSaveLoadBuffer(SaveLoadBuffer& buffer);
 

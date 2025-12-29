@@ -19,9 +19,6 @@ inline T* FindNote(ArrayView<TypeInfoNote> notes) {
 }
 
 template<typename T>
-inline T* FindNote(TypeInfoStruct* type_info) { return FindNote<T>(type_info->notes); }
-
-template<typename T>
 inline T* FindNote(TypeInfo* type_info) {
 	if (type_info == nullptr) return nullptr;
 	
@@ -31,6 +28,12 @@ inline T* FindNote(TypeInfo* type_info) {
 	default: return nullptr;
 	}
 }
+
+template<typename T>
+inline T* FindNote(TypeInfoStructField& field) { return FindNote<T>(field.notes); }
+
+template<typename T>
+inline T* FindNote(TypeInfoEnumField& field) { return FindNote<T>(field.notes); }
 
 
 TypeInfo* ExtractTemplateParameterType(TypeInfo* type_info, u32 index);

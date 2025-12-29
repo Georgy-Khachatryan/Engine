@@ -156,7 +156,7 @@ static AstNodeCodeBlock* ParseTemplate(Tokenizer& tokenizer) {
 	return code_block;
 }
 
-static AstNodeStruct* ParseStruct(Tokenizer& tokenizer, AstNodeNotes* notes) {
+static AstNodeStruct* ParseStruct(Tokenizer& tokenizer) {
 	tokenizer.ExpectKeyword(KeywordType::Struct);
 	
 	auto name = tokenizer.ExpectToken(TokenType::Identifier);
@@ -197,12 +197,11 @@ static AstNodeStruct* ParseStruct(Tokenizer& tokenizer, AstNodeNotes* notes) {
 	auto* ast_node_struct = AstNew<AstNodeStruct>(tokenizer.alloc);
 	ast_node_struct->name       = name.string;
 	ast_node_struct->code_block = code_block;
-	ast_node_struct->notes      = notes;
 	
 	return ast_node_struct;
 }
 
-static AstNodeEnum* ParseEnum(Tokenizer& tokenizer, AstNodeNotes* notes) {
+static AstNodeEnum* ParseEnum(Tokenizer& tokenizer) {
 	tokenizer.ExpectKeyword(KeywordType::Enum);
 	tokenizer.ExpectKeyword(KeywordType::Struct);
 	
@@ -227,9 +226,16 @@ static AstNodeEnum* ParseEnum(Tokenizer& tokenizer, AstNodeNotes* notes) {
 	
 	Array<AstNodeDeclaration*> declarations;
 	while (token.type != TokenType::None && token.type != TokenType::ClosingBrace) {
+		AstNodeNotes* notes = nullptr;
+		if (token.keyword == KeywordType::Notes) {
+			notes = ParseNotes(tokenizer);
+			token = tokenizer.PeekNextToken();
+		}
+		
 		auto* declaration = AstNew<AstNodeDeclaration>(tokenizer.alloc);
 		declaration->name = tokenizer.ExpectToken(TokenType::Identifier).string;
 		declaration->declaration_type = AstNodeDeclarationType::Constant;
+		declaration->notes = notes;
 		ArrayAppend(declarations, tokenizer.alloc, declaration);
 		
 		token = tokenizer.PeekNextToken();
@@ -259,7 +265,6 @@ static AstNodeEnum* ParseEnum(Tokenizer& tokenizer, AstNodeNotes* notes) {
 	ast_node_enum->name            = name.string;
 	ast_node_enum->underlying_type = underlying_type;
 	ast_node_enum->code_block      = code_block;
-	ast_node_enum->notes           = notes;
 	
 	return ast_node_enum;
 }
@@ -292,9 +297,10 @@ static AstNodeDeclaration* ParseDeclaration(Tokenizer& tokenizer) {
 	}
 	
 	auto* declaration = AstNew<AstNodeDeclaration>(tokenizer.alloc);
+	declaration->notes = notes;
 	
 	if (token.keyword == KeywordType::Struct) {
-		auto* ast_node_struct = ParseStruct(tokenizer, notes);
+		auto* ast_node_struct = ParseStruct(tokenizer);
 		ast_node_struct->template_code_block = template_code_block;
 		
 		tokenizer.ExpectToken(TokenType::Semicolon);
@@ -303,7 +309,7 @@ static AstNodeDeclaration* ParseDeclaration(Tokenizer& tokenizer) {
 		declaration->type_declaration = ast_node_struct;
 		declaration->declaration_type = AstNodeDeclarationType::Typename;
 	} else if (token.keyword == KeywordType::Enum) {
-		auto* ast_node_enum = ParseEnum(tokenizer, notes);
+		auto* ast_node_enum = ParseEnum(tokenizer);
 		tokenizer.ExpectToken(TokenType::Semicolon);
 		
 		declaration->name             = ast_node_enum->name;
@@ -444,30 +450,54 @@ static String TemplateExpressionArguments(StackAllocator* alloc, AstNodeCodeBloc
 	return StringJoin(alloc, arguments, ", "_sl);
 }
 
-static void GenerateCodeForNotes(StringBuilder& builder, AstNodeNotes* notes) {
-	if (notes == nullptr || notes->notes.count == 0) return;
-	
+static void GenerateCodeForNotes(StringBuilder& builder, AstNodeNotes* notes, AstNodeCodeBlock* code_block) {
 	u32 note_count = 0;
-	for (auto& note : notes->notes) {
-		builder.Append("static auto note_% = %;\n"_sl, note_count, note.expression);
-		note_count += 1;
+	if (notes != nullptr) {
+		notes->note_offset = note_count;
+		for (auto& note : notes->notes) {
+			builder.Append("static auto note_% = %;\n"_sl, note_count, note.expression);
+			note_count += 1;
+		}
 	}
+	
+	for (auto* declaration : code_block->declarations) {
+		if (declaration->notes == nullptr) continue;
+		
+		declaration->notes->note_offset = note_count;
+		for (auto& note : declaration->notes->notes) {
+			builder.Append("static auto note_% = %;\n"_sl, note_count, note.expression);
+			note_count += 1;
+		}
+	}
+	
+	if (note_count == 0) return;
+	
 	builder.Append("\n"_sl);
 	
 	builder.Append("static TypeInfoNote notes[] = {\n"_sl);
 	builder.Indent();
 	
 	note_count = 0;
-	for (auto& note : notes->notes) {
-		builder.Append("{ TypeInfoOf<decltype(note_%0)>(), &note_%0 },\n"_sl, note_count);
-		note_count += 1;
+	if (notes != nullptr) {
+		for (auto& note : notes->notes) {
+			builder.Append("{ TypeInfoOf<decltype(note_%0)>(), &note_%0 },\n"_sl, note_count);
+			note_count += 1;
+		}
+	}
+	
+	for (auto* declaration : code_block->declarations) {
+		if (declaration->notes == nullptr) continue;
+		for (auto& note : declaration->notes->notes) {
+			builder.Append("{ TypeInfoOf<decltype(note_%0)>(), &note_%0 },\n"_sl, note_count);
+			note_count += 1;
+		}
 	}
 	
 	builder.Unindent();
 	builder.Append("};\n\n"_sl);
 }
 
-static void GenerateCodeForStruct(StringBuilder& builder, AstNodeStruct* ast_node_struct, bool forward_declaration) {
+static void GenerateCodeForStruct(StringBuilder& builder, AstNodeStruct* ast_node_struct, AstNodeNotes* notes, bool forward_declaration) {
 	// Generate code for internal structs first.
 	auto* code_block = ast_node_struct->code_block;
 	GenerateCodeForCodeBlockTypeDeclarations(builder, code_block, forward_declaration);
@@ -500,8 +530,7 @@ static void GenerateCodeForStruct(StringBuilder& builder, AstNodeStruct* ast_nod
 	builder.Append("using TypeName = %;\n\n"_sl, name);
 	
 	// Array of notes.
-	auto* notes = ast_node_struct->notes;
-	GenerateCodeForNotes(builder, notes);
+	GenerateCodeForNotes(builder, notes, code_block);
 	
 	// Array of fields.
 	u32 field_count = 0;
@@ -511,18 +540,20 @@ static void GenerateCodeForStruct(StringBuilder& builder, AstNodeStruct* ast_nod
 		
 		if (template_code_block) {
 			for (auto* declaration : template_code_block->declarations) {
-				builder.Append("{ \"%0\"_sl, &type_info_type, 0, TypeInfoOf<%0>(), TypeInfoStructFieldFlags::TemplateParameter },\n"_sl, declaration->name);
+				builder.Append("{ \"%0\"_sl, &type_info_type, 0, {}, TypeInfoOf<%0>(), TypeInfoStructFieldFlags::TemplateParameter },\n"_sl, declaration->name);
 			}
 			field_count += (u32)template_code_block->declarations.count;
 		}
 		
 		for (auto* declaration : code_block->declarations) {
+			auto declaration_notes = declaration->notes ? StringFormat(builder.alloc, "{ notes + %, % }"_sl, declaration->notes->note_offset, declaration->notes->notes.count) : "{}"_sl;
+			
 			if (declaration->declaration_type == AstNodeDeclarationType::Variable) {
-				builder.Append("{ \"%0\"_sl, TypeInfoOf<decltype(TypeName::%0)>(), offsetof(TypeName, %0) },\n"_sl, declaration->name);
+				builder.Append("{ \"%0\"_sl, TypeInfoOf<decltype(TypeName::%0)>(), offsetof(TypeName, %0), %1 },\n"_sl, declaration->name, declaration_notes);
 			} else if (declaration->declaration_type == AstNodeDeclarationType::Constant) {
-				builder.Append("{ \"%0\"_sl, TypeInfoOf<decltype(TypeName::%0)>(), 0, &TypeName::%0 },\n"_sl, declaration->name);
+				builder.Append("{ \"%0\"_sl, TypeInfoOf<decltype(TypeName::%0)>(), 0, %1, &TypeName::%0 },\n"_sl, declaration->name, declaration_notes);
 			} else if (declaration->declaration_type == AstNodeDeclarationType::Typename) {
-				builder.Append("{ \"%0\"_sl, &type_info_type, 0, TypeInfoOf<TypeName::%0>() },\n"_sl, declaration->name);
+				builder.Append("{ \"%0\"_sl, &type_info_type, 0, %1, TypeInfoOf<TypeName::%0>() },\n"_sl, declaration->name, declaration_notes);
 			} else {
 				DebugAssertAlways("Unhanlded declaration type.");
 			}
@@ -543,15 +574,15 @@ static void GenerateCodeForStruct(StringBuilder& builder, AstNodeStruct* ast_nod
 		builder.Append("sizeof(TypeName),\n"_sl);
 		
 		if (field_count != 0) {
-			builder.Append("ArrayView<TypeInfoStructField>{ fields, % },\n"_sl, field_count);
+			builder.Append("{ fields, % },\n"_sl, field_count);
 		} else {
-			builder.Append("ArrayView<TypeInfoStructField>{},\n"_sl);
+			builder.Append("{},\n"_sl);
 		}
 		
 		if (notes && notes->notes.count != 0) {
-			builder.Append("ArrayView<TypeInfoNote>{ notes, % },\n"_sl, notes->notes.count);
+			builder.Append("{ notes, % },\n"_sl, notes->notes.count);
 		} else {
-			builder.Append("ArrayView<TypeInfoNote>{},\n"_sl);
+			builder.Append("{},\n"_sl);
 		}
 		
 		builder.Unindent();
@@ -563,7 +594,7 @@ static void GenerateCodeForStruct(StringBuilder& builder, AstNodeStruct* ast_nod
 	builder.Append("}\n\n"_sl);
 }
 
-static void GenerateCodeForEnum(StringBuilder& builder, AstNodeEnum* ast_node_enum, bool forward_declaration) {
+static void GenerateCodeForEnum(StringBuilder& builder, AstNodeEnum* ast_node_enum, AstNodeNotes* notes, bool forward_declaration) {
 	auto* code_block = ast_node_enum->code_block;
 	auto name = code_block->namespace_path;
 	
@@ -578,8 +609,7 @@ static void GenerateCodeForEnum(StringBuilder& builder, AstNodeEnum* ast_node_en
 	builder.Append("using TypeName = %;\n\n"_sl, name);
 	
 	// Array of notes.
-	auto* notes = ast_node_enum->notes;
-	GenerateCodeForNotes(builder, notes);
+	GenerateCodeForNotes(builder, notes, code_block);
 	
 	// Array of fields.
 	if (code_block->declarations.count != 0) {
@@ -587,7 +617,12 @@ static void GenerateCodeForEnum(StringBuilder& builder, AstNodeEnum* ast_node_en
 		builder.Indent();
 		
 		for (auto* declaration : code_block->declarations) {
-			builder.Append("{ \"%0\"_sl, (u64)TypeName::%0 },\n"_sl, declaration->name);
+			if (declaration->notes == nullptr) {
+				builder.Append("{ \"%0\"_sl, (u64)TypeName::%0 },\n"_sl, declaration->name);
+			} else {
+				auto* notes = declaration->notes;
+				builder.Append("{ \"%0\"_sl, (u64)TypeName::%0, { notes + %, % } },\n"_sl, declaration->name, notes->note_offset, notes->notes.count);
+			}
 		}
 		
 		builder.Unindent();
@@ -606,15 +641,15 @@ static void GenerateCodeForEnum(StringBuilder& builder, AstNodeEnum* ast_node_en
 		builder.Append("TypeInfoOf<%>(),\n"_sl, underlying_type);
 		
 		if (code_block->declarations.count != 0) {
-			builder.Append("ArrayView<TypeInfoEnumField>{ fields, % },\n"_sl, code_block->declarations.count);
+			builder.Append("{ fields, % },\n"_sl, code_block->declarations.count);
 		} else {
-			builder.Append("ArrayView<TypeInfoEnumField>{},\n"_sl);
+			builder.Append("{},\n"_sl);
 		}
 		
 		if (notes && notes->notes.count != 0) {
-			builder.Append("ArrayView<TypeInfoNote>{ notes, % },\n"_sl, notes->notes.count);
+			builder.Append("{ notes, % },\n"_sl, notes->notes.count);
 		} else {
-			builder.Append("ArrayView<TypeInfoNote>{},\n"_sl);
+			builder.Append("{},\n"_sl);
 		}
 		
 		builder.Unindent();
@@ -632,10 +667,10 @@ static void GenerateCodeForCodeBlockTypeDeclarations(StringBuilder& builder, Ast
 		
 		switch (declaration->type_declaration->type) {
 		case AstNodeType::Struct: {
-			GenerateCodeForStruct(builder, (AstNodeStruct*)declaration->type_declaration, forward_declaration);
+			GenerateCodeForStruct(builder, (AstNodeStruct*)declaration->type_declaration, declaration->notes, forward_declaration);
 			break;
 		} case AstNodeType::Enum: {
-			GenerateCodeForEnum(builder, (AstNodeEnum*)declaration->type_declaration, forward_declaration);
+			GenerateCodeForEnum(builder, (AstNodeEnum*)declaration->type_declaration, declaration->notes, forward_declaration);
 			break;
 		} default: {
 			DebugAssertAlways("Unhanlded type declaration ast node type.");

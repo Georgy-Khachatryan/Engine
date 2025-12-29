@@ -57,6 +57,7 @@ struct TypeInfoStructField {
 	
 	TypeInfo* type = nullptr;
 	u64 offset = 0;
+	ArrayView<TypeInfoNote> notes;
 	
 	const void* constant_value = nullptr;
 	
@@ -76,6 +77,7 @@ struct TypeInfoStruct : TypeInfo {
 struct TypeInfoEnumField {
 	String name;
 	u64 value = 0;
+	ArrayView<TypeInfoNote> notes;
 };
 
 struct TypeInfoEnum : TypeInfo {

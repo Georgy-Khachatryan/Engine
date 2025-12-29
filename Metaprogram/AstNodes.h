@@ -36,6 +36,7 @@ struct AstNodeNotes : AstNode {
 	compile_const AstNodeType my_type = AstNodeType::Notes;
 	
 	ArrayView<AstNoteInfo> notes;
+	u32 note_offset = 0;
 };
 
 enum struct AstNodeDeclarationType : u32 {
@@ -54,6 +55,7 @@ struct AstNodeDeclaration : AstNode {
 	AstNode* type_declaration = nullptr;
 	
 	AstNodeDeclarationType declaration_type = AstNodeDeclarationType::None;
+	AstNodeNotes* notes = nullptr;
 };
 
 struct AstNodeCodeBlock : AstNode {
@@ -72,7 +74,6 @@ struct AstNodeStruct : AstNode {
 	
 	AstNodeCodeBlock* template_code_block = nullptr;
 	AstNodeCodeBlock* code_block = nullptr;
-	AstNodeNotes* notes = nullptr;
 };
 
 struct AstNodeEnum : AstNode {
@@ -82,7 +83,6 @@ struct AstNodeEnum : AstNode {
 	
 	String underlying_type;
 	AstNodeCodeBlock* code_block = nullptr;
-	AstNodeNotes* notes = nullptr;
 };
 
 

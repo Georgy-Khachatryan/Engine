@@ -832,12 +832,12 @@ s32 main() {
 			
 			auto  world_to_view = Math::QuatToRotationMatrix(Math::Conjugate(view_to_world_quat));
 			float move_distance = base_speed * sensetivity_scale * io.DeltaTime;
-			if (ImGui::IsKeyDown(ImGuiKey_D, ImGuiKeyOwner_NoOwner)) world_space_camera_position += world_to_view[0] * +move_distance;
-			if (ImGui::IsKeyDown(ImGuiKey_A, ImGuiKeyOwner_NoOwner)) world_space_camera_position += world_to_view[0] * -move_distance;
-			if (ImGui::IsKeyDown(ImGuiKey_W, ImGuiKeyOwner_NoOwner)) world_space_camera_position += world_to_view[2] * +move_distance;
-			if (ImGui::IsKeyDown(ImGuiKey_S, ImGuiKeyOwner_NoOwner)) world_space_camera_position += world_to_view[2] * -move_distance;
-			if (ImGui::IsKeyDown(ImGuiKey_Q, ImGuiKeyOwner_NoOwner)) world_space_camera_position += world_to_view[1] * +move_distance;
-			if (ImGui::IsKeyDown(ImGuiKey_E, ImGuiKeyOwner_NoOwner)) world_space_camera_position += world_to_view[1] * -move_distance;
+			if (ImGui::IsKeyDown(ImGuiKey_D, ImGuiKeyOwner_NoOwner)) world_space_camera_position += world_to_view.r0 * +move_distance;
+			if (ImGui::IsKeyDown(ImGuiKey_A, ImGuiKeyOwner_NoOwner)) world_space_camera_position += world_to_view.r0 * -move_distance;
+			if (ImGui::IsKeyDown(ImGuiKey_W, ImGuiKeyOwner_NoOwner)) world_space_camera_position += world_to_view.r2 * +move_distance;
+			if (ImGui::IsKeyDown(ImGuiKey_S, ImGuiKeyOwner_NoOwner)) world_space_camera_position += world_to_view.r2 * -move_distance;
+			if (ImGui::IsKeyDown(ImGuiKey_Q, ImGuiKeyOwner_NoOwner)) world_space_camera_position += world_to_view.r1 * +move_distance;
+			if (ImGui::IsKeyDown(ImGuiKey_E, ImGuiKeyOwner_NoOwner)) world_space_camera_position += world_to_view.r1 * -move_distance;
 		}
 		
 		if (scene_hovered && io.MouseWheel != 0.f && mouse_lock.locked_mouse_button == ImGuiMouseButton_COUNT) {
@@ -878,8 +878,8 @@ s32 main() {
 			float sensetivity_scale = (ImGui::IsKeyDown(ImGuiMod_Shift) ? 5.f : 1.f) * (ImGui::IsKeyDown(ImGuiMod_Alt) ? 0.2f : 1.f);
 			
 			auto world_to_view = Math::QuatToRotationMatrix(Math::Conjugate(view_to_world_quat));
-			world_space_camera_position += world_to_view[0] * ((meters_per_pixel * sensetivity_scale) * io.MouseDelta.x);
-			world_space_camera_position += world_to_view[1] * ((meters_per_pixel * sensetivity_scale) * io.MouseDelta.y);
+			world_space_camera_position += world_to_view.r0 * ((meters_per_pixel * sensetivity_scale) * io.MouseDelta.x);
+			world_space_camera_position += world_to_view.r1 * ((meters_per_pixel * sensetivity_scale) * io.MouseDelta.y);
 		}
 		
 		SceneConstants scene;
@@ -894,15 +894,15 @@ s32 main() {
 		}
 		
 		auto view_to_world_rotation = Math::QuatToRotationMatrix(view_to_world_quat);
-		scene.view_to_world[0] = float4(view_to_world_rotation[0], world_space_camera_position[0]);
-		scene.view_to_world[1] = float4(view_to_world_rotation[1], world_space_camera_position[1]);
-		scene.view_to_world[2] = float4(view_to_world_rotation[2], world_space_camera_position[2]);
+		scene.view_to_world.r0 = float4(view_to_world_rotation.r0, world_space_camera_position.x);
+		scene.view_to_world.r1 = float4(view_to_world_rotation.r1, world_space_camera_position.y);
+		scene.view_to_world.r2 = float4(view_to_world_rotation.r2, world_space_camera_position.z);
 		
 		auto world_to_view_rotation = Math::Transpose(view_to_world_rotation);
 		auto view_space_camera_position = world_to_view_rotation * world_space_camera_position;
-		scene.world_to_view[0] = float4(world_to_view_rotation[0], -view_space_camera_position[0]);
-		scene.world_to_view[1] = float4(world_to_view_rotation[1], -view_space_camera_position[1]);
-		scene.world_to_view[2] = float4(world_to_view_rotation[2], -view_space_camera_position[2]);
+		scene.world_to_view.r0 = float4(world_to_view_rotation.r0, -view_space_camera_position.x);
+		scene.world_to_view.r1 = float4(world_to_view_rotation.r1, -view_space_camera_position.y);
+		scene.world_to_view.r2 = float4(world_to_view_rotation.r2, -view_space_camera_position.z);
 		
 		scene.world_to_pixel_scale = scene.view_to_clip_coef.x * scene.render_target_size.x * 0.5f / Max(meshlet_target_error_pixels, 1.f);
 		scene.world_space_camera_position = world_space_camera_position;

@@ -109,10 +109,13 @@ static void GenerateMatrixType(StringBuilder& builder, u32 rows, u32 cols, Strin
 	builder.Append("struct % {\n"_sl, name);
 	builder.Indent();
 	
-	builder.Append("% rows[%];\n\n"_sl, row, rows);
+	for (u32 i = 0; i < rows; i += 1) {
+		builder.Append("% r%;\n"_sl, row, i);
+	}
+	builder.Append("\n"_sl);
 	
-	builder.Append("%& operator[](u32 index) { return rows[index]; }\n"_sl, row);
-	builder.Append("const %& operator[](u32 index) const { return rows[index]; }\n\n"_sl, row);
+	builder.Append("%& operator[](u32 index) { return (&r0)[index]; }\n"_sl, row);
+	builder.Append("const %& operator[](u32 index) const { return (&r0)[index]; }\n\n"_sl, row);
 	
 	builder.Append("compile_const u32 element_count = %;\n"_sl, rows);
 	

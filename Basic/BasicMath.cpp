@@ -86,8 +86,8 @@ quat Math::AxisAngleToQuat(const float3& axis, float angle) {
 
 float3x3 Math::QuatToRotationMatrix(const quat& q) {
 	float3x3 result;
-	result[0] = float3(1.f - 2.f * (q.y * q.y + q.z * q.z),       2.f * (q.x * q.y - q.z * q.w),       2.f * (q.x * q.z + q.y * q.w));
-	result[1] = float3(      2.f * (q.x * q.y + q.z * q.w), 1.f - 2.f * (q.x * q.x + q.z * q.z),       2.f * (q.y * q.z - q.x * q.w));
-	result[2] = float3(      2.f * (q.x * q.z - q.y * q.w),       2.f * (q.y * q.z + q.x * q.w), 1.f - 2.f * (q.x * q.x + q.y * q.y));
+	result.r0 = float3(1.f - 2.f * (q.y * q.y + q.z * q.z),       2.f * (q.x * q.y - q.z * q.w),       2.f * (q.x * q.z + q.y * q.w));
+	result.r1 = float3(      2.f * (q.x * q.y + q.z * q.w), 1.f - 2.f * (q.x * q.x + q.z * q.z),       2.f * (q.y * q.z - q.x * q.w));
+	result.r2 = float3(      2.f * (q.x * q.z - q.y * q.w),       2.f * (q.y * q.z + q.x * q.w), 1.f - 2.f * (q.x * q.x + q.y * q.y));
 	return result;
 }
