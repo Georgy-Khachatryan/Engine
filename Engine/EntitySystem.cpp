@@ -1,5 +1,6 @@
 #include "EntitySystem.h"
 #include "Basic/BasicSaveLoad.h"
+#include "Basic/BasicBitArray.h"
 
 extern ArrayView<EntityTypeInfo>      entity_type_info_table;
 extern ArrayView<EntityQueryTypeInfo> entity_query_type_info_table;
@@ -40,6 +41,14 @@ static void DefaultInitializeStreams(ArrayView<ComponentStream> component_stream
 static void AllocateEntityMapStreams(EntityTypeArray& array, HeapAllocator& heap, u32 old_capacity, u32 new_capacity) {
 	array.entity_id_to_stream_index = (u32*)heap.Reallocate(array.entity_id_to_stream_index, old_capacity * sizeof(u32), new_capacity * sizeof(u32), 64u);
 	array.stream_index_to_entity_id = (u32*)heap.Reallocate(array.stream_index_to_entity_id, old_capacity * sizeof(u32), new_capacity * sizeof(u32), 64u);
+	
+	u64 old_dirty_mask_count = array.dirty_mask.count;
+	u64 new_dirty_mask_count = DivideAndRoundUp(new_capacity, 64u);
+	
+	array.dirty_mask.data  = (u64*)heap.Reallocate(array.dirty_mask.data, old_dirty_mask_count * sizeof(u64), new_dirty_mask_count * sizeof(u64), 64u);
+	array.dirty_mask.count = new_dirty_mask_count;
+	
+	memset(array.dirty_mask.data + old_dirty_mask_count, 0, (new_dirty_mask_count - old_dirty_mask_count) * sizeof(u64));
 }
 
 CreateEntitiesResult CreateEntities(StackAllocator* alloc, EntitySystem& system, EntityTypeID entity_type_id, u32 entity_count) {
@@ -72,6 +81,8 @@ CreateEntitiesResult CreateEntities(StackAllocator* alloc, EntitySystem& system,
 		
 		array.entity_id_to_stream_index[entity_id] = stream_offset + i;
 	}
+	
+	BitArraySetBitRange(array.dirty_mask, stream_offset, entity_count);
 	
 	DefaultInitializeStreams(array.component_streams, type_info, stream_offset, stream_offset + entity_count);
 	
@@ -114,6 +125,7 @@ void RemoveEntityByGUID(EntitySystem& system, u64 guid) {
 		array.stream_index_to_entity_id[stream_index] = back_entity_id;
 		array.entity_id_to_stream_index[back_entity_id] = stream_index;
 		array.stream_index_to_entity_id[back_stream_index] = entity_id;
+		BitArraySetBit(array.dirty_mask, stream_index);
 		
 		MemcpyComponentStreams(array.component_streams, type_info, stream_index, back_stream_index);
 	}
@@ -223,12 +235,18 @@ void InitializeEntitySystem(EntitySystem& system) {
 	CreateEntityTypeArrays(system);
 }
 
-void ResetEntitySystem(EntitySystem& system) {
+static void ResetEntitySystem(EntitySystem& system) {
 	system.entity_guid_to_entity_id = {};
 	system.entity_type_arrays = {};
 	system.heap.DeallocateAll();
 	
 	CreateEntityTypeArrays(system);
+}
+
+void ClearEntityDirtyMasks(EntitySystem& system) {
+	for (auto& array : system.entity_type_arrays) {
+		memset(array.dirty_mask.data, 0, array.dirty_mask.count * sizeof(u64));
+	}
 }
 
 // TODO: Simplify this function. There is a lot of code that handles remapping of entity/component
@@ -372,7 +390,9 @@ void SaveLoadEntitySystem(SaveLoadBuffer& buffer, EntitySystem& system) {
 		if (buffer.is_loading) {
 			for (u32 i = 0; i < array.capacity; i += 1) {
 				array.stream_index_to_entity_id[i] = i;
+				array.entity_id_to_stream_index[i] = i;
 			}
+			BitArraySetBitRange(array.dirty_mask, 0, array.count);
 		}
 		
 		u32 end_entity_offset = buffer.global_offset;

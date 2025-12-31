@@ -1,6 +1,7 @@
 #include "ShaderCompiler.h"
 #include "Basic/BasicMemory.h"
 #include "Basic/BasicArray.h"
+#include "Basic/BasicBitArray.h"
 #include "Basic/BasicFiles.h"
 #include "Basic/BasicHashTable.h"
 #include "Basic/BasicSaveLoad.h"
@@ -275,8 +276,8 @@ ArrayView<u64> CompileDirtyShaderPermutations(ShaderCompiler* compiler, StackAll
 	Array<u64> compiled_shader_mask;
 	ArrayResizeMemset(compiled_shader_mask, alloc, DivideAndRoundUp((u32)compiler->shader_permutation_table.count, 64u));
 	
-	for (auto& [key, value] : compiler->shader_permutation_table) {
-		auto& shader = compiler->shaders[value];
+	for (auto& [key, shader_index] : compiler->shader_permutation_table) {
+		auto& shader = compiler->shaders[shader_index];
 		bool shader_compiled = false;
 		
 		bool should_recompile = shader.is_dirty;
@@ -293,7 +294,7 @@ ArrayView<u64> CompileDirtyShaderPermutations(ShaderCompiler* compiler, StackAll
 		}
 		
 		if (shader_compiled) {
-			compiled_shader_mask[value / 64] |= (1llu << (value % 64));
+			BitArraySetBit(compiled_shader_mask, shader_index);
 		}
 	}
 	
@@ -307,7 +308,7 @@ PipelineShaderBytecode GetShadersForPipelineIndex(ShaderCompiler* compiler, u64 
 	PipelineShaderBytecode result;
 	for (u32 shader_type_index : BitScanLow32((u32)pipeline_definition.shader_type_mask)) {
 		u32 shader_index = pipeline_shader_indices[shader_type_index];
-		result.is_dirty |= ((compiled_shader_mask[shader_index / 64] >> (shader_index % 64)) & 0x1) != 0;
+		result.is_dirty |= BitArrayTestBit(compiled_shader_mask, shader_index);
 		
 		auto& shader = compiler->shaders[shader_index];
 		result.bytecode[shader_type_index] = shader.bytecode_blob;

@@ -39,6 +39,7 @@
   <ItemGroup>
     <ClInclude Include="Basic/Basic.h" />
     <ClInclude Include="Basic/BasicArray.h" />
+    <ClInclude Include="Basic/BasicBitArray.h" />
     <ClInclude Include="Basic/BasicFiles.h" />
     <ClInclude Include="Basic/BasicHashTable.h" />
     <ClInclude Include="Basic/BasicMath.h" />

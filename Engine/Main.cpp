@@ -1,15 +1,16 @@
 #include "Basic/Basic.h"
-#include "Basic/BasicMemory.h"
 #include "Basic/BasicArray.h"
-#include "Basic/BasicString.h"
+#include "Basic/BasicBitArray.h"
 #include "Basic/BasicHashTable.h"
+#include "Basic/BasicMemory.h"
 #include "Basic/BasicSaveLoad.h"
-#include "SystemWindow.h"
-#include "RenderPasses.h"
+#include "Basic/BasicString.h"
+#include "Entities.h"
+#include "EntitySystem.h"
 #include "GraphicsApi/GraphicsApi.h"
 #include "GraphicsApi/RecordContext.h"
-#include "EntitySystem.h"
-#include "Entities.h"
+#include "RenderPasses.h"
+#include "SystemWindow.h"
 
 #include <SDK/imgui/imgui.h>
 #include <SDK/imgui/imgui_internal.h>
@@ -943,16 +944,19 @@ s32 main() {
 		
 		Array<GpuComponentUploadBuffer> gpu_uploads;
 		for (auto* entity_array : QueryEntities<PositionRotationScaleGpuTransformQuery>(&alloc, entity_system)) {
+			u32 dirty_entity_count = (u32)BitArrayCountSetBits(entity_array->dirty_mask);
+			if (dirty_entity_count == 0) continue;
+			
 			auto streams = ExtractComponentStreams<PositionRotationScaleGpuTransformQuery>(entity_array);
 			
-			auto gpu_transform = AllocateGpuComponentUploadBuffer(&record_context, entity_array->count, streams.gpu_transform);
+			auto gpu_transform = AllocateGpuComponentUploadBuffer(&record_context, dirty_entity_count, streams.gpu_transform);
 			
-			for (u32 i = 0; i < entity_array->count; i += 1) {
+			for (u64 i : BitArrayIt(entity_array->dirty_mask)) {
 				GpuTransform transform;
 				transform.position = streams.position[i].position;
 				transform.scale    = streams.scale[i].scale;
 				transform.rotation = streams.rotation[i].rotation;
-				QueueGpuUpload(gpu_transform, i, transform);
+				QueueGpuUpload(gpu_transform, (u32)i, transform);
 			}
 			ArrayAppend(gpu_uploads, &alloc, gpu_transform);
 		}
@@ -1017,6 +1021,8 @@ s32 main() {
 		ImGuiRenderPass{}.RecordPass(&record_context);
 		
 		WindowSwapChainEndFrame(swap_chain, graphics_context, &alloc, record_context);
+		
+		ClearEntityDirtyMasks(entity_system);
 		
 		frame_allocation_size = (alloc.total_allocated_size - frame_initial_size);
 		transient_upload_allocation_size = record_context.upload_buffer_offset;

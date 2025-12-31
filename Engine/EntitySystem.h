@@ -1,8 +1,8 @@
 #pragma once
 #include "Basic/Basic.h"
 #include "Basic/BasicArray.h"
-#include "Basic/BasicMemory.h"
 #include "Basic/BasicHashTable.h"
+#include "Basic/BasicMemory.h"
 
 struct SaveLoadBuffer;
 enum struct VirtualResourceID : u32;
@@ -80,6 +80,8 @@ struct EntityTypeArray {
 	u32* entity_id_to_stream_index = nullptr;
 	u32* stream_index_to_entity_id = nullptr;
 	
+	ArrayView<u64> dirty_mask;
+	
 	ArrayView<ComponentStream> component_streams;
 	EntityTypeID entity_type_id;
 };
@@ -100,6 +102,7 @@ struct CreateEntitiesResult {
 
 void InitializeEntitySystem(EntitySystem& system);
 void SaveLoadEntitySystem(SaveLoadBuffer& buffer, EntitySystem& system);
+void ClearEntityDirtyMasks(EntitySystem& system);
 
 CreateEntitiesResult CreateEntities(StackAllocator* alloc, EntitySystem& system, EntityTypeID entity_type_id, u32 entity_count);
 void RemoveEntityByGUID(EntitySystem& system, u64 guid);

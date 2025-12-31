@@ -13,6 +13,7 @@ inline bool IsPowerOfTwo32(u32 value) { return CountSetBits32(value) == 1; }
 inline u32 RoundUpToPowerOfTwo32(u32 value) { return 1u << (32 - CountLeadingZeros32(value - 1)); }
 inline u32 DepositBits32(u32 value, u32 mask) { return _pdep_u32(value, mask); }
 inline u32 ExtractBits32(u32 value, u32 mask) { return _pext_u32(value, mask); }
+inline u32 CreateBitMask32(u32 bit_count) { return bit_count >= 32 ? u32_max : ((1u << bit_count) - 1); }
 
 inline u64 FirstBitLow(u64 mask)  { return _tzcnt_u64(mask); }
 inline u64 FirstBitHigh(u64 mask) { return 63 - _lzcnt_u64(mask); }
@@ -22,6 +23,7 @@ inline bool IsPowerOfTwo(u64 value) { return CountSetBits(value) == 1; }
 inline u64 RoundUpToPowerOfTwo(u64 value) { return 1llu << (64 - CountLeadingZeros(value - 1)); }
 inline u64 DepositBits(u64 value, u64 mask) { return _pdep_u64(value, mask); }
 inline u64 ExtractBits(u64 value, u64 mask) { return _pext_u64(value, mask); }
+inline u64 CreateBitMask(u64 bit_count) { return bit_count >= 64 ? u64_max : ((1llu << bit_count) - 1); }
 
 inline u64 AlignUp(u64 size, u64 alignment) { DebugAssert(IsPowerOfTwo(alignment), "Invalid alignment '0x%x'. Alignment must be a power of 2.", alignment); return (size + alignment - 1) & ~(alignment - 1); }
 inline u32 AlignUp(u32 size, u32 alignment) { DebugAssert(IsPowerOfTwo32(alignment), "Invalid alignment '0x%x'. Alignment must be a power of 2.", alignment); return (size + alignment - 1) & ~(alignment - 1); }
