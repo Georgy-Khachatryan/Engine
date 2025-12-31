@@ -10,17 +10,18 @@ enum struct CommandType : u16 {
 	DrawIndexedInstanced  = 5,
 	ExecuteIndirect       = 6,
 	CopyBufferToTexture   = 7,
-	ClearRenderTarget     = 8,
-	ClearDepthStencil     = 9,
-	SetRenderTargets      = 10,
-	SetViewport           = 11,
-	SetScissor            = 12,
-	SetIndexBufferView    = 13,
-	SetRootSignature      = 14,
-	SetPipelineState      = 15,
-	SetDescriptorTable    = 16,
-	SetPushConstants      = 17,
-	SetConstantBuffer     = 18,
+	CopyBufferToBuffer    = 8,
+	ClearRenderTarget     = 9,
+	ClearDepthStencil     = 10,
+	SetRenderTargets      = 11,
+	SetViewport           = 12,
+	SetScissor            = 13,
+	SetIndexBufferView    = 14,
+	SetRootSignature      = 15,
+	SetPipelineState      = 16,
+	SetDescriptorTable    = 17,
+	SetPushConstants      = 18,
+	SetConstantBuffer     = 19,
 	
 	Count
 };
@@ -85,6 +86,14 @@ struct CmdCopyBufferToTexturePacket : RecordContextCommandPacket {
 	
 	u32 dst_subresource_index = 0;
 	uint3 dst_offset = 0;
+};
+
+struct CmdCopyBufferToBufferPacket : RecordContextCommandPacket {
+	compile_const CommandType my_type = CommandType::CopyBufferToBuffer;
+	
+	GpuAddress src_gpu_address = {};
+	GpuAddress dst_gpu_address = {};
+	u32 size = 0;
 };
 
 struct CmdClearRenderTargetPacket : RecordContextCommandPacket {

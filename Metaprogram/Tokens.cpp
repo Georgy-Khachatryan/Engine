@@ -145,6 +145,9 @@ Token Tokenizer::FindNextToken() {
 			if (CheckKeyword(token, "static", 6, KeywordType::Static)) break;
 			if (CheckKeyword(token, "inline", 6, KeywordType::Inline)) break;
 			break;
+		} case 7: {
+			if (CheckKeyword(token, "alignas", 7, KeywordType::AlignAs)) break;
+			break;
 		} case 8: {
 			if (CheckKeyword(token, "template", 8, KeywordType::Template)) break;
 			if (CheckKeyword(token, "typename", 8, KeywordType::Typename)) break;
@@ -291,6 +294,7 @@ String keyword_type_names[] = {
 	"Namespace"_sl,
 	"CompileConst"_sl,
 	"Operator"_sl,
+	"AlignAs"_sl,
 };
 static_assert(ArraySize(keyword_type_names) == (u32)KeywordType::Count, "Mismatching keyword_type_names count.");
 

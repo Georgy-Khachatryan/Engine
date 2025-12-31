@@ -242,6 +242,13 @@ static void CmdCopyBufferToTextureD3D12(CmdCopyBufferToTexturePacket* packet, ID
 	command_list->CopyTextureRegion(&dst, packet->dst_offset.x, packet->dst_offset.y, packet->dst_offset.z, &src, nullptr);
 }
 
+static void CmdCopyBufferToBufferD3D12(CmdCopyBufferToBufferPacket* packet, ID3D12GraphicsCommandList7* command_list, ArrayView<VirtualResource> resources) {
+	auto& src_resource = resources[(u32)packet->src_gpu_address.resource_id];
+	auto& dst_resource = resources[(u32)packet->dst_gpu_address.resource_id];
+	
+	command_list->CopyBufferRegion(dst_resource.buffer.resource.d3d12, packet->dst_gpu_address.offset, src_resource.buffer.resource.d3d12, packet->src_gpu_address.offset, packet->size);
+}
+
 static void CmdSetRootSignatureD3D12(CmdSetRootSignaturePacket* packet, ID3D12GraphicsCommandList7* command_list, GraphicsContextD3D12* context) {
 	if (packet->pass_type == CommandQueueType::Compute) {
 		command_list->SetComputeRootSignature(context->root_signature_table[packet->root_signature_id.index]);
@@ -529,6 +536,7 @@ void ReplayRecordContext(GraphicsContext* api_context, RecordContext* record_con
 			case CommandType::DrawIndexedInstanced:  CmdDrawIndexedInstancedD3D12((CmdDrawIndexedInstancedPacket*)packet, command_list); break;
 			case CommandType::ExecuteIndirect:       CmdExecuteIndirectD3D12((CmdExecuteIndirectPacket*)packet, command_list, context, resources); break;
 			case CommandType::CopyBufferToTexture:   CmdCopyBufferToTextureD3D12((CmdCopyBufferToTexturePacket*)packet, command_list, resources); break;
+			case CommandType::CopyBufferToBuffer:    CmdCopyBufferToBufferD3D12((CmdCopyBufferToBufferPacket*)packet, command_list, resources); break;
 			case CommandType::ClearRenderTarget:     CmdClearRenderTargetD3D12((CmdClearRenderTargetPacket*)packet, command_list, context, resources); break;
 			case CommandType::ClearDepthStencil:     CmdClearDepthStencilD3D12((CmdClearDepthStencilPacket*)packet, command_list, context, resources); break;
 			case CommandType::SetRenderTargets:      CmdSetRenderTargetsD3D12((CmdSetRenderTargetsPacket*)packet, command_list, context, resources); break;

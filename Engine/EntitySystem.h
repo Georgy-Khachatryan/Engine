@@ -3,10 +3,9 @@
 #include "Basic/BasicArray.h"
 #include "Basic/BasicMemory.h"
 #include "Basic/BasicHashTable.h"
-#include "Basic/BasicMath.h"
-#include "Basic/BasicString.h"
 
 struct SaveLoadBuffer;
+enum struct VirtualResourceID : u32;
 
 struct EntityTypeID      { u32 index = 0; };
 struct EntityQueryTypeID { u32 index = 0; };
@@ -14,20 +13,37 @@ struct ComponentTypeID   { u32 index = 0; };
 struct EntityID          { u32 index = 0; };
 struct TypedEntityID     { EntityID entity_id; EntityTypeID entity_type_id; };
 
-namespace ESC {
-	NOTES()
-	enum struct ComponentType : u32 {
-		CPU = 0,
-		GPU = 1,
+NOTES()
+enum struct ComponentType : u32 {
+	CPU = 0,
+	GPU = 1,
+};
+
+namespace ECS {
+	NOTES(ComponentType::CPU)
+	template<typename T>
+	struct alignas(void*) Component {
+		T* data = nullptr;
+		T& operator[] (u64 index) { return data[index]; }
 	};
 	
-	NOTES(ESC::ComponentType::CPU) template<typename T> struct Component {};
-	NOTES(ESC::ComponentType::GPU) template<typename T> struct GpuComponent {};
+	NOTES(ComponentType::GPU)
+	template<typename T>
+	struct alignas(void*) GpuComponent {
+		u32 offset = 0;
+		VirtualResourceID resource_id = (VirtualResourceID)0;
+	};
 	
 	template<typename T> struct GetEntityTypeID      { static EntityTypeID      id; };
 	template<typename T> struct GetEntityQueryTypeID { static EntityQueryTypeID id; };
 	template<typename T> struct GetComponentTypeID   { static ComponentTypeID   id; };
 }
+
+union alignas(void*) ComponentStream {
+	u64 handle = 0;
+	ECS::Component<u8> cpu;
+	ECS::GpuComponent<u8> gpu;
+};
 
 namespace Meta {
 	NOTES() struct EntityType {};
@@ -36,6 +52,10 @@ namespace Meta {
 
 struct EntityTypeInfo {
 	ArrayView<ComponentTypeID> component_type_ids;
+	ArrayView<u32>           virtual_resource_ids;
+	u32 cpu_component_count = 0;
+	u32 gpu_component_count = 0;
+	
 	u64 type_hash = 0;
 };
 
@@ -48,6 +68,7 @@ struct ComponentTypeInfo {
 	u64 size_bytes = 0;
 	u64 version    = 0;
 	u64 type_hash  = 0;
+	ComponentType component_type = ComponentType::CPU;
 };
 
 using DefaultInitializeCallback = void (*)(void* data, u64 begin, u64 end);
@@ -59,7 +80,7 @@ struct EntityTypeArray {
 	u32* entity_id_to_stream_index = nullptr;
 	u32* stream_index_to_entity_id = nullptr;
 	
-	ArrayView<u8*> component_streams;
+	ArrayView<ComponentStream> component_streams;
 	EntityTypeID entity_type_id;
 };
 
@@ -84,30 +105,30 @@ CreateEntitiesResult CreateEntities(StackAllocator* alloc, EntitySystem& system,
 void RemoveEntityByGUID(EntitySystem& system, u64 guid);
 
 ArrayView<EntityTypeArray*> QueryEntities(StackAllocator* alloc, EntitySystem& system, EntityQueryTypeID query_type_id);
-void ExtractComponentStreams(EntityTypeArray* array, EntityQueryTypeID query_type_id, ArrayView<u8*> output_streams, u32 component_stream_offset = 0);
+void ExtractComponentStreams(EntityTypeArray* array, EntityQueryTypeID query_type_id, ArrayView<ComponentStream> output_streams, u32 component_stream_offset = 0);
 
 
 template<typename EntityTypeT>
 CreateEntitiesResult CreateEntities(StackAllocator* alloc, EntitySystem& system, u32 entity_count) {
-	return CreateEntities(alloc, system, ESC::GetEntityTypeID<EntityTypeT>::id, entity_count);
+	return CreateEntities(alloc, system, ECS::GetEntityTypeID<EntityTypeT>::id, entity_count);
 }
 
 template<typename QueryTypeT>
 ArrayView<EntityTypeArray*> QueryEntities(StackAllocator* alloc, EntitySystem& system) {
-	return QueryEntities(alloc, system, ESC::GetEntityQueryTypeID<QueryTypeT>::id);
+	return QueryEntities(alloc, system, ECS::GetEntityQueryTypeID<QueryTypeT>::id);
 }
 
 template<typename EntityTypeT>
 EntityTypeArray* QueryEntityTypeArray(EntitySystem& system) {
-	return &system.entity_type_arrays[ESC::GetEntityTypeID<EntityTypeT>::id.index];
+	return &system.entity_type_arrays[ECS::GetEntityTypeID<EntityTypeT>::id.index];
 }
 
 template<typename QueryTypeT>
 QueryTypeT ExtractComponentStreams(EntityTypeArray* array, u32 component_stream_offset = 0) {
-	FixedCountArray<u8*, sizeof(QueryTypeT) / sizeof(u8*)> component_streams;
+	FixedCountArray<ComponentStream, sizeof(QueryTypeT) / sizeof(ComponentStream)> component_streams;
 	static_assert(sizeof(component_streams) == sizeof(QueryTypeT));
 	
-	ExtractComponentStreams(array, ESC::GetEntityQueryTypeID<QueryTypeT>::id, component_streams, component_stream_offset);
+	ExtractComponentStreams(array, ECS::GetEntityQueryTypeID<QueryTypeT>::id, component_streams, component_stream_offset);
 	
 	QueryTypeT result;
 	memcpy(&result, component_streams.data, sizeof(result));

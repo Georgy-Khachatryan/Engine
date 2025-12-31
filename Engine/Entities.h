@@ -14,12 +14,15 @@ NOTES() struct ScaleComponent    { float  scale    = 1.f; };
 
 NOTES(Meta::EntityType{})
 struct MeshEntityType {
-	ESC::Component<GuidComponent> guid;
-	ESC::Component<NameComponent> name;
+	ECS::Component<GuidComponent> guid;
+	ECS::Component<NameComponent> name;
 	
-	ESC::Component<PositionComponent> position;
-	ESC::Component<RotationComponent> rotation;
-	ESC::Component<ScaleComponent>    scale;
+	ECS::Component<PositionComponent> position;
+	ECS::Component<RotationComponent> rotation;
+	ECS::Component<ScaleComponent>    scale;
+	
+	NOTES(VirtualResourceID::MeshEntityGpuTransform)
+	ECS::GpuComponent<float3x4> gpu_transform;
 };
 
 
@@ -37,12 +40,12 @@ struct CameraComponent {
 
 NOTES(Meta::EntityType{})
 struct CameraEntityType {
-	ESC::Component<GuidComponent> guid;
-	ESC::Component<NameComponent> name;
+	ECS::Component<GuidComponent> guid;
+	ECS::Component<NameComponent> name;
 	
-	ESC::Component<PositionComponent> position;
-	ESC::Component<RotationComponent> rotation;
-	ESC::Component<CameraComponent>   camera;
+	ECS::Component<PositionComponent> position;
+	ECS::Component<RotationComponent> rotation;
+	ECS::Component<CameraComponent>   camera;
 };
 
 
@@ -77,4 +80,13 @@ struct PositionRotationCameraQuery {
 	PositionComponent* position = nullptr;
 	RotationComponent* rotation = nullptr;
 	CameraComponent*   camera   = nullptr;
+};
+
+NOTES(Meta::ComponentQuery{})
+struct PositionRotationScaleGpuTransformQuery {
+	PositionComponent* position = nullptr;
+	RotationComponent* rotation = nullptr;
+	ScaleComponent*    scale    = nullptr;
+	
+	ECS::GpuComponent<float3x4> gpu_transform;
 };

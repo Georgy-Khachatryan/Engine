@@ -390,44 +390,18 @@ static void GenerateCodeForShaderDefinition(StackAllocator* alloc, ShaderDefinit
 	ArrayAppend(shader_definition_file.shader_definitions, alloc, shader_definition);
 }
 
-static void RadixSort(StackAllocator* alloc, ArrayView<ComponentTypeID> keys, ArrayView<u32> values) {
-	TempAllocationScope(alloc);
-	
-	DebugAssert(keys.count == values.count, "Mismatch between sort key and value count.");
-	
-	auto keys_swap   = ArrayViewAllocate<ComponentTypeID>(alloc, keys.count);
-	auto values_swap = ArrayViewAllocate<u32>(alloc, keys.count);
-	
-	for (u32 offset = 0; offset < 32; offset += 8) {
-		u32 prefix_sum[256] = {};
-		
-		for (u32 i = 0; i < keys.count; i += 1) {
-			auto key = keys[i];
-			u32 radix = (key.index >> offset) & 0xFF;
-			prefix_sum[radix] += 1;
-		}
-		
-		u32 running_prefix_sum = 0;
-		for (u32 radix = 0; radix < 256; radix += 1) {
-			u32 radix_count = prefix_sum[radix];
-			prefix_sum[radix] = running_prefix_sum;
-			running_prefix_sum += radix_count;
-		}
-		
-		for (u32 i = 0; i < keys.count; i += 1) {
-			auto key = keys[i];
-			u32 radix = (key.index >> offset) & 0xFF;
-			u32 output_index = prefix_sum[radix]++;
-			
-			keys_swap[output_index] = key;
-			values_swap[output_index] = values[i];
-		}
-		
-		Swap(keys_swap.data, keys.data);
-		Swap(values_swap.data, values.data);
-	}
-}
 
+struct ComponentTypeInfoKey {
+	TypeInfoStruct* type_info = nullptr;
+	ComponentType component_type = ComponentType::CPU;
+	u32 name_hash = 0;
+	
+	bool operator== (const ComponentTypeInfoKey& other) const { return type_info == other.type_info && component_type == other.component_type; }
+};
+
+static u64 ComputeHash(const ComponentTypeInfoKey& key) {
+	return ComputeHash64((u64)key.type_info, (u64)key.component_type);
+}
 
 struct VersionedField {
 	String name;
@@ -695,118 +669,204 @@ s32 main(s32 argument_count, const char* arguments[]) {
 	auto version_history = ParseSaveLoadVersionHistory(&alloc);
 	
 	{
-		HashTable<TypeInfoStruct*, u32> component_types;
-		Array<TypeInfoStruct*>     component_type_infos;
+		struct EntityComponentMetadata {
+			TypeInfoStruct* type_info = nullptr;
+			ComponentType component_type = ComponentType::CPU;
+			
+			ComponentTypeID component_type_id;
+			VirtualResourceID resource_id = (VirtualResourceID)0;
+		};
 		
-		Array<EntityTypeInfo> runtime_entity_type_infos;
-		ArrayReserve(runtime_entity_type_infos, &alloc, entity_type_infos.count);
+		struct EntityTypeMetadata {
+			TypeInfoStruct* type_info = nullptr;
+			ArrayView<EntityComponentMetadata> components;
+			u32 cpu_component_count = 0;
+			u32 gpu_component_count = 0;
+		};
+		
+		
+		HashTable<ComponentTypeInfoKey, u32> component_types;
+		Array<ComponentTypeInfoKey> component_type_infos;
+		
+		Array<EntityTypeMetadata> entity_type_metadata;
+		ArrayReserve(entity_type_metadata, &alloc, entity_type_infos.count);
+		
+		u32 cpu_component_count = 0;
+		u32 gpu_component_count = 0;
 		
 		for (auto* type_info : entity_type_infos) {
-			Array<ComponentTypeID> component_type_ids;
-			ArrayReserve(component_type_ids, &alloc, type_info->fields.count);
+			Array<EntityComponentMetadata> entity_components;
+			ArrayReserve(entity_components, &alloc, type_info->fields.count);
 			
+			EntityTypeMetadata entity_type_info;
+			entity_type_info.type_info  = type_info;
 			for (auto& field : type_info->fields) {
 				auto* component_type_info = TypeInfoCast<TypeInfoStruct>(ExtractTemplateParameterType(field.type, 0));
 				DebugAssert(component_type_info, "Unknown component type.");
 				
-				auto [element, is_added] = HashTableAddOrFind(component_types, &alloc, component_type_info, (u32)component_types.count);
-				if (is_added) ArrayAppend(component_type_infos, &alloc, component_type_info);
+				auto* component_type_note = FindNote<ComponentType>(field.type);
+				DebugAssert(component_type_note, "Unknown component type.");
 				
-				ArrayAppend(component_type_ids, { element->value });
+				EntityComponentMetadata component_metadata;
+				component_metadata.type_info      = component_type_info;
+				component_metadata.component_type = *component_type_note;
+				
+				if (component_metadata.component_type == ComponentType::GPU) {
+					auto* note = FindNote<VirtualResourceID>(field);
+					DebugAssert(note, "Missing VirtualResourceID note on GPU component '%'.", field.name);
+					
+					component_metadata.resource_id = *note;
+					entity_type_info.gpu_component_count += 1;
+				} else {
+					entity_type_info.cpu_component_count += 1;
+				}
+				ArrayAppend(entity_components, component_metadata);
+				
+				
+				ComponentTypeInfoKey component_type_info_key;
+				component_type_info_key.type_info      = component_type_info;
+				component_type_info_key.component_type = *component_type_note;
+				component_type_info_key.name_hash      = (u32)ComputeHash(component_type_info->name);
+				
+				auto [element, is_added] = HashTableAddOrFind(component_types, &alloc, component_type_info_key, 0u);
+				if (is_added) {
+					ArrayAppend(component_type_infos, &alloc, component_type_info_key);
+					
+					if (component_type_info_key.component_type == ComponentType::GPU) {
+						gpu_component_count += 1;
+					} else {
+						cpu_component_count += 1;
+					}
+				}
 			}
+			entity_type_info.components = entity_components;
 			
-			Array<u32> component_stream_indices;
-			ArrayResize(component_stream_indices, &alloc, component_type_ids.count);
-			for (u32 i = 0; i < component_stream_indices.count; i += 1) {
-				component_stream_indices[i] = i;
-			}
-			
-			RadixSort(&alloc, component_type_ids, component_stream_indices);
-			
-			EntityTypeInfo entity_type_info;
-			entity_type_info.component_type_ids = component_type_ids;
-			ArrayAppend(runtime_entity_type_infos, entity_type_info);
+			ArrayAppend(entity_type_metadata, entity_type_info);
 		}
 		
-		Array<EntityQueryTypeInfo> runtime_entity_query_type_infos;
-		ArrayReserve(runtime_entity_query_type_infos, &alloc, entity_query_type_infos.count);
+		HeapSort<ComponentTypeInfoKey>(component_type_infos, [](auto& lh, auto& rh)-> bool {
+			return lh.component_type == rh.component_type ? lh.name_hash < rh.name_hash : (u32)lh.component_type < (u32)rh.component_type;
+		});
+		
+		auto cpu_component_type_infos = ArrayView<ComponentTypeInfoKey>{ component_type_infos.data, cpu_component_count };
+		
+		for (u32 i = 0; i < component_type_infos.count; i += 1) {
+			auto* element = HashTableFind(component_types, component_type_infos[i]);
+			element->value = i;
+		}
+		
+		for (auto& entity_type_info : entity_type_metadata) {
+			for (auto& component : entity_type_info.components) {
+				auto* element = HashTableFind(component_types, { component.type_info, component.component_type });
+				component.component_type_id = { element->value };
+			}
+			
+			HeapSort(entity_type_info.components, [](auto& lh, auto& rh)-> bool {
+				return lh.component_type_id.index < rh.component_type_id.index;
+			});
+		}
+		
+		struct QueryComponentMetadata {
+			ComponentTypeID component_type_id;
+			u32 component_stream_index = 0;
+		};
+		
+		struct QueryTypeMetadata {
+			TypeInfoStruct* type_info = nullptr;
+			ArrayView<QueryComponentMetadata> components;
+		};
+		
+		Array<QueryTypeMetadata> query_type_metadata;
+		ArrayReserve(query_type_metadata, &alloc, entity_query_type_infos.count);
 		
 		for (auto* type_info : entity_query_type_infos) {
-			Array<ComponentTypeID> component_type_ids;
-			ArrayReserve(component_type_ids, &alloc, type_info->fields.count);
+			Array<QueryComponentMetadata> component_type_infos;
+			ArrayReserve(component_type_infos, &alloc, type_info->fields.count);
 			
+			u32 stream_index = 0;
 			for (auto& field : type_info->fields) {
-				auto* component_stream_type_info = TypeInfoCast<TypeInfoPointer>(field.type);
-				DebugAssert(component_stream_type_info, "Unknown component type");
+				ComponentTypeInfoKey component_type_info_key;
+				if (auto* component_type_note = FindNote<ComponentType>(field.type)) {
+					auto* component_type_info = TypeInfoCast<TypeInfoStruct>(ExtractTemplateParameterType(field.type, 0));
+					DebugAssert(component_type_info, "Unknown component type.");
+					
+					component_type_info_key.type_info      = component_type_info;
+					component_type_info_key.component_type = *component_type_note;
+				} else if (auto* component_stream_type_info = TypeInfoCast<TypeInfoPointer>(field.type)) {
+					DebugAssert(component_stream_type_info, "Unknown component type.");
+					
+					auto* component_type_info = TypeInfoCast<TypeInfoStruct>(component_stream_type_info->pointer_to);
+					DebugAssert(component_type_info, "Unknown component type.");
+					
+					component_type_info_key.type_info      = component_type_info;
+					component_type_info_key.component_type = ComponentType::CPU;
+				} else {
+					DebugAssertAlways("Unknown component type.");
+				}
 				
-				auto* component_type_info = TypeInfoCast<TypeInfoStruct>(component_stream_type_info->pointer_to);
-				DebugAssert(component_type_info, "Unknown component type");
+				auto* element = HashTableFind(component_types, component_type_info_key);
 				
-				auto [element, is_added] = HashTableAddOrFind(component_types, &alloc, component_type_info, (u32)component_types.count);
-				if (is_added) ArrayAppend(component_type_infos, &alloc, component_type_info);
+				QueryComponentMetadata component_metadata;
+				component_metadata.component_type_id.index = element ? element->value : u32_max;
+				component_metadata.component_stream_index  = stream_index++;
 				
-				ArrayAppend(component_type_ids, { element->value });
+				ArrayAppend(component_type_infos, component_metadata);
 			}
 			
-			Array<u32> component_stream_indices;
-			ArrayResize(component_stream_indices, &alloc, component_type_ids.count);
-			for (u32 i = 0; i < component_stream_indices.count; i += 1) {
-				component_stream_indices[i] = i;
-			}
+			HeapSort<QueryComponentMetadata>(component_type_infos, [](auto& lh, auto& rh)-> u32 {
+				return lh.component_type_id.index < rh.component_type_id.index;
+			});
 			
-			RadixSort(&alloc, component_type_ids, component_stream_indices);
-			
-			EntityQueryTypeInfo entity_query_type_info;
-			entity_query_type_info.component_type_ids       = component_type_ids;
-			entity_query_type_info.component_stream_indices = component_stream_indices;
-			ArrayAppend(runtime_entity_query_type_infos, entity_query_type_info);
+			QueryTypeMetadata entity_query_type_info;
+			entity_query_type_info.type_info  = type_info;
+			entity_query_type_info.components = component_type_infos;
+			ArrayAppend(query_type_metadata, entity_query_type_info);
 		}
 		
 		auto& builder = entity_system_builder;
 		for (u32 entity_type_index = 0; entity_type_index < entity_type_infos.count; entity_type_index += 1) {
 			auto* type_info = entity_type_infos[entity_type_index];
-			builder.Append("EntityTypeID ESC::GetEntityTypeID<%>::id = { % };\n"_sl, type_info->name, entity_type_index);
+			builder.Append("EntityTypeID ECS::GetEntityTypeID<%>::id = { % };\n"_sl, type_info->name, entity_type_index);
 		}
 		builder.Append("\n"_sl);
 		
 		for (u32 entity_query_type_index = 0; entity_query_type_index < entity_query_type_infos.count; entity_query_type_index += 1) {
 			auto* type_info = entity_query_type_infos[entity_query_type_index];
-			builder.Append("EntityQueryTypeID ESC::GetEntityQueryTypeID<%>::id = { % };\n"_sl, type_info->name, entity_query_type_index);
+			builder.Append("EntityQueryTypeID ECS::GetEntityQueryTypeID<%>::id = { % };\n"_sl, type_info->name, entity_query_type_index);
 		}
 		builder.Append("\n"_sl);
 		
 		for (u32 component_type_index = 0; component_type_index < component_type_infos.count; component_type_index += 1) {
-			auto* type_info = component_type_infos[component_type_index];
-			builder.Append("ComponentTypeID ESC::GetComponentTypeID<%>::id = { % };\n"_sl, type_info->name, component_type_index);
+			auto* type_info = component_type_infos[component_type_index].type_info;
+			builder.Append("ComponentTypeID ECS::GetComponentTypeID<%>::id = { % };\n"_sl, type_info->name, component_type_index);
 		}
 		builder.Append("\n"_sl);
 		
-		
-		for (u32 entity_type_index = 0; entity_type_index < entity_type_infos.count; entity_type_index += 1) {
-			auto* type_info = entity_type_infos[entity_type_index];
-			auto& runtime_type_info = runtime_entity_type_infos[entity_type_index];
+		for (auto& runtime_type_info : entity_type_metadata) {
+			builder.Append("static ComponentTypeID %_component_type_ids[] = { "_sl, runtime_type_info.type_info->name);
+			for (auto& component : runtime_type_info.components) {
+				builder.Append("%, "_sl, component.component_type_id.index);
+			}
+			builder.Append("};\n"_sl);
 			
-			builder.Append("static ComponentTypeID %_component_type_ids[] = { "_sl, type_info->name);
-			for (auto component_type_id : runtime_type_info.component_type_ids) {
-				builder.Append("%, "_sl, component_type_id.index);
+			builder.Append("static u32 %_virtual_resource_ids[] = { "_sl, runtime_type_info.type_info->name);
+			for (auto& component : runtime_type_info.components) {
+				builder.Append("%, "_sl, (u32)component.resource_id);
 			}
 			builder.Append("};\n"_sl);
 		}
 		builder.Append("\n"_sl);
 		
-		for (u32 entity_query_type_index = 0; entity_query_type_index < entity_query_type_infos.count; entity_query_type_index += 1) {
-			auto* type_info = entity_query_type_infos[entity_query_type_index];
-			auto& runtime_type_info = runtime_entity_query_type_infos[entity_query_type_index];
-			
-			builder.Append("static ComponentTypeID %_component_type_ids[] = { "_sl, type_info->name);
-			for (auto component_type_id : runtime_type_info.component_type_ids) {
-				builder.Append("%, "_sl, component_type_id.index);
+		for (auto& runtime_type_info : query_type_metadata) {
+			builder.Append("static ComponentTypeID %_component_type_ids[] = { "_sl, runtime_type_info.type_info->name);
+			for (auto& component : runtime_type_info.components) {
+				builder.Append("%, "_sl, component.component_type_id.index);
 			}
 			builder.Append("};\n"_sl);
 			
-			builder.Append("static u32 %_component_stream_indices[] = { "_sl, type_info->name);
-			for (u32 component_stream_index : runtime_type_info.component_stream_indices) {
-				builder.Append("%, "_sl, component_stream_index);
+			builder.Append("static u32 %_component_stream_indices[] = { "_sl, runtime_type_info.type_info->name);
+			for (auto& component : runtime_type_info.components) {
+				builder.Append("%, "_sl, component.component_stream_index);
 			}
 			builder.Append("};\n"_sl);
 		}
@@ -815,11 +875,8 @@ s32 main(s32 argument_count, const char* arguments[]) {
 		
 		builder.Append("static EntityTypeInfo entity_type_info_table_internal[] = {\n"_sl);
 		builder.Indent();
-		for (u32 entity_type_index = 0; entity_type_index < entity_type_infos.count; entity_type_index += 1) {
-			auto* type_info = entity_type_infos[entity_type_index];
-			auto& runtime_type_info = runtime_entity_type_infos[entity_type_index];
-			
-			builder.Append("{ { %_component_type_ids, % }, 0x%x },\n"_sl, type_info->name, (u32)runtime_type_info.component_type_ids.count, ComputeHash(type_info->name));
+		for (auto& runtime_type_info : entity_type_metadata) {
+			builder.Append("{ { %0_component_type_ids, %1 }, { %0_virtual_resource_ids, %1 }, %2, %3, 0x%4x },\n"_sl, runtime_type_info.type_info->name, runtime_type_info.components.count, runtime_type_info.cpu_component_count, runtime_type_info.gpu_component_count, ComputeHash(runtime_type_info.type_info->name));
 		}
 		builder.Unindent();
 		builder.Append("};\n\n"_sl);
@@ -827,42 +884,43 @@ s32 main(s32 argument_count, const char* arguments[]) {
 		
 		builder.Append("static EntityQueryTypeInfo entity_query_type_info_table_internal[] = {\n"_sl);
 		builder.Indent();
-		for (u32 entity_query_type_index = 0; entity_query_type_index < entity_query_type_infos.count; entity_query_type_index += 1) {
-			auto* type_info = entity_query_type_infos[entity_query_type_index];
-			auto& runtime_type_info = runtime_entity_query_type_infos[entity_query_type_index];
-			
-			u32 component_count = (u32)runtime_type_info.component_type_ids.count;
-			builder.Append("{ { %0_component_type_ids, %1 }, { %0_component_stream_indices, %1 } },\n"_sl, type_info->name, component_count);
+		for (auto& runtime_type_info : query_type_metadata) {
+			builder.Append("{ { %0_component_type_ids, %1 }, { %0_component_stream_indices, %1 } },\n"_sl, runtime_type_info.type_info->name, runtime_type_info.components.count);
 		}
 		builder.Unindent();
 		builder.Append("};\n\n"_sl);
 		
 		builder.Append("ComponentTypeInfo component_type_info_table_internal[] = {\n"_sl);
 		builder.Indent();
-		for (auto* type_info : component_type_infos) {
-			u64 version = AddTypeInfoToSaveLoadHistory(&alloc, version_history, type_info);
-			builder.Append("{ %, %, 0x%x },\n"_sl, type_info->size, version, ComputeHash(type_info->name));
+		for (auto& component : component_type_infos) {
+			u64 version = 0;
+			if (component.component_type == ComponentType::CPU) {
+				version = AddTypeInfoToSaveLoadHistory(&alloc, version_history, component.type_info);
+			}
+			
+			auto component_type_value = PrintTypeValue(&alloc, TypeInfoOf<ComponentType>(), &component.component_type); 
+			builder.Append("{ %, %, 0x%x, % },\n"_sl, component.type_info->size, version, ComputeHash(component.type_info->name), component_type_value);
 		}
 		builder.Unindent();
 		builder.Append("};\n\n"_sl);
 		
-		for (auto* type_info : component_type_infos) {
-			builder.Append("extern void SaveLoad(SaveLoadBuffer& buffer, %& component, u64 version);\n"_sl, type_info->name);
+		for (auto& component : cpu_component_type_infos) {
+			builder.Append("extern void SaveLoad(SaveLoadBuffer& buffer, %& component, u64 version);\n"_sl, component.type_info->name);
 		}
 		builder.Append("\n"_sl);
 		
 		builder.Append("SaveLoadCallback component_save_load_callbacks_internal[] = {\n"_sl);
 		builder.Indent();
-		for (auto* type_info : component_type_infos) {
-			builder.Append("[](SaveLoadBuffer& buffer, void* data, u64 version) { SaveLoad(buffer, *(%*)data, version); },\n"_sl, type_info->name);
+		for (auto& component : cpu_component_type_infos) {
+			builder.Append("[](SaveLoadBuffer& buffer, void* data, u64 version) { SaveLoad(buffer, *(%*)data, version); },\n"_sl, component.type_info->name);
 		}
 		builder.Unindent();
 		builder.Append("};\n\n"_sl);
 		
 		builder.Append("DefaultInitializeCallback component_default_initialize_callbacks_internal[] = {\n"_sl);
 		builder.Indent();
-		for (auto* type_info : component_type_infos) {
-			builder.Append("[](void* data, u64 begin, u64 end) { for (u64 i = begin; i < end; i += 1) ((%*)data)[i] = {}; },\n"_sl, type_info->name);
+		for (auto& component : cpu_component_type_infos) {
+			builder.Append("[](void* data, u64 begin, u64 end) { for (u64 i = begin; i < end; i += 1) ((%*)data)[i] = {}; },\n"_sl, component.type_info->name);
 		}
 		builder.Unindent();
 		builder.Append("};\n\n"_sl);
@@ -871,8 +929,8 @@ s32 main(s32 argument_count, const char* arguments[]) {
 		builder.Append("ArrayView<EntityTypeInfo> entity_type_info_table = { entity_type_info_table_internal, % };\n"_sl, entity_type_infos.count);
 		builder.Append("ArrayView<EntityQueryTypeInfo> entity_query_type_info_table = { entity_query_type_info_table_internal, % };\n"_sl, entity_query_type_infos.count);
 		builder.Append("ArrayView<ComponentTypeInfo> component_type_info_table = { component_type_info_table_internal, % };\n"_sl, component_type_infos.count);
-		builder.Append("ArrayView<SaveLoadCallback> component_save_load_callbacks = { component_save_load_callbacks_internal, % };\n"_sl, component_type_infos.count);
-		builder.Append("ArrayView<DefaultInitializeCallback> component_default_initialize_callbacks = { component_default_initialize_callbacks_internal, % };\n"_sl, component_type_infos.count);
+		builder.Append("ArrayView<SaveLoadCallback> component_save_load_callbacks = { component_save_load_callbacks_internal, % };\n"_sl, cpu_component_type_infos.count);
+		builder.Append("ArrayView<DefaultInitializeCallback> component_default_initialize_callbacks = { component_default_initialize_callbacks_internal, % };\n"_sl, cpu_component_type_infos.count);
 	}
 	
 	{

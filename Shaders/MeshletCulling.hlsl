@@ -29,10 +29,10 @@ bool LodCullCoarserLevelError(float2 error_metric) { return (error_metric.x <= e
 
 
 [ThreadGroupSize(256, 1, 1)]
-void MainCS(uint thread_id : SV_DispatchThreadID) {
-	BasicMeshlet meshlet = meshlets[thread_id];
+void MainCS(uint2 thread_id : SV_DispatchThreadID) {
+	BasicMeshlet meshlet = meshlets[thread_id.x];
 	
-	float3x4 model_to_world = float3x4(float4(1.0, 0.0, 0.0, 10.0), float4(0.0, 1.0, 0.0, 0.0), float4(0.0, 0.0, 1.0, 0.0));
+	float3x4 model_to_world = mesh_transforms[thread_id.y];
 	float model_to_world_scale = 1.0;
 	
 	float2 current_level_error_metric = EvaluateMeshletErrorMetric(meshlet.current_level_error_metric, model_to_world, model_to_world_scale);

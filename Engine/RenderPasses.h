@@ -5,8 +5,11 @@
 #include "GraphicsApi/GraphicsApiTypes.h"
 
 
+NOTES()
 enum struct VirtualResourceID : u32 {
 	None = 0,
+	
+	MeshEntityGpuTransform,
 	
 	// Core resources:
 	CurrentBackBuffer,
@@ -76,6 +79,51 @@ struct SceneConstants {
 	
 	float world_to_pixel_scale;
 	float3 world_space_camera_position;
+};
+
+
+NOTES(Meta::ShaderName{ "EntitySystemUpdate.hlsl"_sl })
+enum struct EntitySystemUpdateShaders : u32 {};
+SHADER_DEFINITION_GENERATED_CODE(EntitySystemUpdateShaders);
+
+struct EntitySystem;
+struct GpuComponentUploadBuffer {
+	u32 count  = 0;
+	u32 stride = 0;
+	
+	u8*  data_cpu_address    = nullptr;
+	u32* indices_cpu_address = nullptr;
+	
+	GpuAddress data_gpu_address;
+	GpuAddress indices_gpu_address;
+	GpuAddress dst_data_gpu_address;
+};
+
+NOTES(Meta::HlslFile{ "EntitySystemUpdateData.hlsl"_sl })
+struct EntitySystemUpdatePushConstants {
+	u32 count  = 0;
+	u32 stride = 0;
+};
+
+NOTES(Meta::RenderPass{})
+struct EntitySystemUpdateRenderPass {
+	RENDER_PASS_GENERATED_CODE();
+	
+	EntitySystem* entity_system = nullptr;
+	ArrayView<GpuComponentUploadBuffer> upload_buffers;
+	
+	struct Descriptors : HLSL::BaseDescriptorTable {
+		HLSL::ByteBuffer   src_data;
+		HLSL::ByteBuffer   dst_indices;
+		HLSL::RWByteBuffer dst_data;
+	};
+	
+	struct RootSignature : HLSL::BaseRootSignature {
+		HLSL::PushConstantBuffer<EntitySystemUpdatePushConstants> constants;
+		HLSL::DescriptorTable<Descriptors> descriptor_table;
+	};
+	
+	inline static PipelineID pipeline_id;
 };
 
 
@@ -223,9 +271,11 @@ struct MeshletCullingRenderPass {
 	GpuAddress scene_constants;
 	GpuAddress meshlet_buffer;
 	u32 meshlet_count = 0;
+	u32 instance_count = 0;
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
-		HLSL::RWRegularBuffer<u32>   visible_meshlets   = VirtualResourceID::VisibleMeshlets;
+		HLSL::RegularBuffer<float3x4> mesh_transforms   = VirtualResourceID::MeshEntityGpuTransform;
+		HLSL::RWRegularBuffer<uint2> visible_meshlets   = VirtualResourceID::VisibleMeshlets;
 		HLSL::RWRegularBuffer<uint4> indirect_arguments = VirtualResourceID::MeshletIndirectArguments;
 		HLSL::RegularBuffer<BasicMeshlet> meshlets;
 	};
@@ -258,7 +308,8 @@ struct BasicMeshRenderPass {
 	u32 index_buffer_size = 0;
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
-		HLSL::RegularBuffer<u32> visible_meshlets = VirtualResourceID::VisibleMeshlets;
+		HLSL::RegularBuffer<float3x4> mesh_transforms = VirtualResourceID::MeshEntityGpuTransform;
+		HLSL::RegularBuffer<uint2> visible_meshlets = VirtualResourceID::VisibleMeshlets;
 		HLSL::RegularBuffer<BasicVertex>  vertices;
 		HLSL::RegularBuffer<BasicMeshlet> meshlets;
 		HLSL::ByteBuffer              index_buffer;

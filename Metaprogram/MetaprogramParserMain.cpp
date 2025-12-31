@@ -159,11 +159,17 @@ static AstNodeCodeBlock* ParseTemplate(Tokenizer& tokenizer) {
 static AstNodeStruct* ParseStruct(Tokenizer& tokenizer) {
 	tokenizer.ExpectKeyword(KeywordType::Struct);
 	
+	auto token = tokenizer.PeekNextToken();
+	if (token.keyword == KeywordType::AlignAs) {
+		tokenizer.FindNextToken();
+		SkipTokensWithNestingTracking(tokenizer, TokenType::OpeningParen, TokenType::ClosingParen);
+	}
+	
 	auto name = tokenizer.ExpectToken(TokenType::Identifier);
 	ArrayAppend(tokenizer.namespace_stack, tokenizer.alloc, name.string);
 	defer{ ArrayPopLast(tokenizer.namespace_stack); };
 	
-	auto token = tokenizer.PeekNextToken();
+	token = tokenizer.PeekNextToken();
 	if (token.type == TokenType::Colon) {
 		tokenizer.FindNextToken();
 		ParseIdentifierWithNamespace(tokenizer);

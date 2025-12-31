@@ -52,6 +52,7 @@ enum struct KeywordType : u32 {
 	Namespace    = 9,
 	CompileConst = 10,
 	Operator     = 11,
+	AlignAs      = 12,
 	
 	Count
 };

@@ -27,8 +27,8 @@ void WaitForNextFrame(GraphicsContext* context);
 
 NativeTextureResource CreateTextureResource(GraphicsContext* context, TextureSize size);
 NativeBufferResource CreateBufferResource(GraphicsContext* context, u32 size, GpuMemoryAccessType memory_access_type = GpuMemoryAccessType::Default, u8** cpu_address = nullptr);
-void ReleaseTextureResource(GraphicsContext* context, NativeTextureResource resource);
-void ReleaseBufferResource(GraphicsContext* context, NativeBufferResource resource);
+void ReleaseTextureResource(GraphicsContext* context, NativeTextureResource resource, ResourceReleaseCondition condition = ResourceReleaseCondition::None);
+void ReleaseBufferResource(GraphicsContext* context, NativeBufferResource resource, ResourceReleaseCondition condition = ResourceReleaseCondition::None);
 
 WindowSwapChain* CreateWindowSwapChain(StackAllocator* alloc, GraphicsContext* context, void* hwnd, TextureFormat format);
 void ReleaseWindowSwapChain(WindowSwapChain* swap_chain, GraphicsContext* context);
@@ -110,6 +110,18 @@ struct VirtualResourceTable {
 		resource.texture.resource       = native_resource;
 		resource.texture.size           = size;
 		resource.texture.allocated_size = size;
+		
+		return resource_id;
+	}
+	
+	VirtualResourceID AddTransient(NativeBufferResource native_resource, u32 size) {
+		auto resource_id = (VirtualResourceID)virtual_resources.count;
+		
+		auto& resource = ArrayEmplace(virtual_resources);
+		resource.type = VirtualResource::Type::NativeBuffer;
+		resource.buffer.resource       = native_resource;
+		resource.buffer.size           = size;
+		resource.buffer.allocated_size = size;
 		
 		return resource_id;
 	}

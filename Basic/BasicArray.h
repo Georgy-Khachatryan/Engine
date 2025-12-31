@@ -166,3 +166,35 @@ ArrayView<T> ArrayViewAllocate(AllocatorT* alloc, u64 count) {
 	
 	return result;
 }
+
+
+template<typename T, typename LessThan = typename bool(*)(const T&, const T&)>
+void HeapSort(ArrayView<T> array, LessThan&& less = [](const T& lh, const T& rh)-> bool { return lh < rh; }) {
+	u64 begin = array.count / 2;
+	u64 end   = array.count;
+	
+	while (end > 1) {
+		if (begin != 0) {
+			begin -= 1;
+		} else {
+			end -= 1;
+			Swap(array[0], array[end]);
+		}
+		
+		u64 root = begin;
+		while ((root * 2 + 1) < end) {
+			u64 child = (root * 2 + 1);
+			
+			if (child + 1 < end && less(array[child], array[child + 1])) {
+				child += 1;
+			}
+			
+			if (less(array[root], array[child])) {
+				Swap(array[root], array[child]);
+				root = child;
+			} else {
+				break;
+			}
+		}
+	}
+}

@@ -182,6 +182,14 @@ struct VirtualResource {
 };
 
 
+enum struct ResourceReleaseCondition : u32 {
+	None              = 0,
+	EndOfLastGpuFrame = 1,
+	EndOfThisGpuFrame = 2,
+	EndOfNextGpuFrame = 3,
+};
+
+
 NOTES()
 enum struct ResourceDescriptorType : u16 {
 	AnyTexture  = 1u << 0,

@@ -32,7 +32,7 @@ void MeshletCullingRenderPass::RecordPass(RecordContext* record_context) {
 	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
 	CmdSetRootArgument(record_context, root_signature.scene, scene_constants);
 	
-	CmdDispatch(record_context, DivideAndRoundUp(meshlet_count, 256u));
+	CmdDispatch(record_context, DivideAndRoundUp(meshlet_count, 256u), instance_count);
 }
 
 

@@ -10,36 +10,31 @@ extern ArrayView<DefaultInitializeCallback> component_default_initialize_callbac
 compile_const u32 base_allocation_count = 1024;
 
 template<typename Lambda>
-static void IterateComponentStreams(ArrayView<u8*> component_streams, ArrayView<ComponentTypeID> component_type_ids, Lambda&& lambda) {
-	for (u32 component_stream_index = 0; component_stream_index < component_type_ids.count; component_stream_index += 1) {
-		auto component_type_id = component_type_ids[component_stream_index];
-		lambda(component_streams[component_stream_index], component_type_info_table[component_type_id.index]);
+static void IterateComponentStreams(ArrayView<ComponentStream> component_streams, EntityTypeInfo& type_info, Lambda&& lambda) {
+	for (u32 component_stream_index = 0; component_stream_index < type_info.cpu_component_count; component_stream_index += 1) {
+		lambda(component_streams[component_stream_index].cpu.data, type_info.component_type_ids[component_stream_index]);
 	}
 }
 
-static void AllocateComponentStreams(ArrayView<u8*> component_streams, ArrayView<ComponentTypeID> component_type_ids, HeapAllocator& heap, u32 old_capacity, u32 new_capacity) {
-	IterateComponentStreams(component_streams, component_type_ids, [&](u8*& stream, ComponentTypeInfo type_info) {
+static void AllocateComponentStreams(ArrayView<ComponentStream> component_streams, EntityTypeInfo& type_info, HeapAllocator& heap, u32 old_capacity, u32 new_capacity) {
+	IterateComponentStreams(component_streams, type_info, [&](u8*& stream, ComponentTypeID component_type_id) {
+		auto type_info = component_type_info_table[component_type_id.index];
 		stream = (u8*)heap.Reallocate(stream, old_capacity * type_info.size_bytes, new_capacity * type_info.size_bytes, 64u);
 	});
 }
 
-static void MemsetComponentStreams(ArrayView<u8*> component_streams, ArrayView<ComponentTypeID> component_type_ids, u32 stream_offset, u32 entity_count, u8 pattern) {
-	IterateComponentStreams(component_streams, component_type_ids, [&](u8* stream, ComponentTypeInfo type_info) {
-		memset(stream + stream_offset * type_info.size_bytes, pattern, entity_count * type_info.size_bytes);
-	});
-}
-
-static void MemcpyComponentStreams(ArrayView<u8*> component_streams, ArrayView<ComponentTypeID> component_type_ids, u32 dst_index, u32 src_index) {
-	IterateComponentStreams(component_streams, component_type_ids, [&](u8* stream, ComponentTypeInfo type_info) {
+static void MemcpyComponentStreams(ArrayView<ComponentStream> component_streams, EntityTypeInfo& type_info, u32 dst_index, u32 src_index) {
+	IterateComponentStreams(component_streams, type_info, [&](u8* stream, ComponentTypeID component_type_id) {
+		auto type_info = component_type_info_table[component_type_id.index];
 		memcpy(stream + dst_index * type_info.size_bytes, stream + src_index * type_info.size_bytes, type_info.size_bytes);
 	});
 }
 
-static void DefaultInitializeStreams(ArrayView<u8*> component_streams, ArrayView<ComponentTypeID> component_type_ids, u64 begin, u64 end) {
-	for (u32 component_stream_index = 0; component_stream_index < component_type_ids.count; component_stream_index += 1) {
-		auto component_type_id = component_type_ids[component_stream_index];
-		component_default_initialize_callbacks[component_type_id.index](component_streams[component_stream_index], begin, end);
-	}
+static void DefaultInitializeStreams(ArrayView<ComponentStream> component_streams, EntityTypeInfo& type_info, u64 begin, u64 end) {
+	IterateComponentStreams(component_streams, type_info, [&](u8* stream, ComponentTypeID component_type_id) {
+		auto default_initialize = component_default_initialize_callbacks[component_type_id.index];
+		default_initialize(stream, begin, end);
+	});
 }
 
 static void AllocateEntityMapStreams(EntityTypeArray& array, HeapAllocator& heap, u32 old_capacity, u32 new_capacity) {
@@ -56,7 +51,7 @@ CreateEntitiesResult CreateEntities(StackAllocator* alloc, EntitySystem& system,
 		u32 new_capacity = AlignUp(old_capacity ? old_capacity * 3 / 2 + entity_count : entity_count, base_allocation_count);
 		
 		AllocateEntityMapStreams(array, system.heap, old_capacity, new_capacity);
-		AllocateComponentStreams(array.component_streams, type_info.component_type_ids, system.heap, old_capacity, new_capacity);
+		AllocateComponentStreams(array.component_streams, type_info, system.heap, old_capacity, new_capacity);
 		
 		for (u32 i = old_capacity; i < new_capacity; i += 1) {
 			array.stream_index_to_entity_id[i] = i;
@@ -78,7 +73,7 @@ CreateEntitiesResult CreateEntities(StackAllocator* alloc, EntitySystem& system,
 		array.entity_id_to_stream_index[entity_id] = stream_offset + i;
 	}
 	
-	DefaultInitializeStreams(array.component_streams, type_info.component_type_ids, stream_offset, stream_offset + entity_count);
+	DefaultInitializeStreams(array.component_streams, type_info, stream_offset, stream_offset + entity_count);
 	
 	CreateEntitiesResult result;
 	result.entity_ids     = entity_ids;
@@ -120,7 +115,7 @@ void RemoveEntityByGUID(EntitySystem& system, u64 guid) {
 		array.entity_id_to_stream_index[back_entity_id] = stream_index;
 		array.stream_index_to_entity_id[back_stream_index] = entity_id;
 		
-		MemcpyComponentStreams(array.component_streams, type_info.component_type_ids, stream_index, back_stream_index);
+		MemcpyComponentStreams(array.component_streams, type_info, stream_index, back_stream_index);
 	}
 	
 	array.count -= 1;
@@ -156,16 +151,14 @@ ArrayView<EntityTypeArray*> QueryEntities(StackAllocator* alloc, EntitySystem& s
 		}
 		
 		if (match_count == match_key_size) {
-			auto& array = system.entity_type_arrays[entity_type_index];
-			array.entity_type_id.index = entity_type_index;
-			ArrayAppend(result, alloc, &array);
+			ArrayAppend(result, alloc, &system.entity_type_arrays[entity_type_index]);
 		}
 	}
 	
 	return result;
 }
 
-void ExtractComponentStreams(EntityTypeArray* array, EntityQueryTypeID query_type_id, ArrayView<u8*> output_component_streams, u32 component_stream_offset) {
+void ExtractComponentStreams(EntityTypeArray* array, EntityQueryTypeID query_type_id, ArrayView<ComponentStream> output_component_streams, u32 component_stream_offset) {
 	auto array_key = entity_type_info_table[array->entity_type_id.index].component_type_ids;
 	auto match_key = entity_query_type_info_table[query_type_id.index].component_type_ids;
 	
@@ -186,7 +179,7 @@ void ExtractComponentStreams(EntityTypeArray* array, EntityQueryTypeID query_typ
 			match_key_index += 1; // Shouldn't ever happen if QueryEntities is correct.
 		} else {
 			u64 offset = component_stream_offset * component_type_info_table[match_component_index].size_bytes;
-			output_component_streams[stream_indices[match_key_index]] = array->component_streams[array_key_index] + offset;
+			output_component_streams[stream_indices[match_key_index]].handle = array->component_streams[array_key_index].handle + offset;
 			array_key_index += 1;
 			match_key_index += 1;
 		}
@@ -194,12 +187,7 @@ void ExtractComponentStreams(EntityTypeArray* array, EntityQueryTypeID query_typ
 }
 
 
-void InitializeEntitySystem(EntitySystem& system) {
-	system.heap = CreateHeapAllocator(2 * 1024 * 1024);
-	
-	bool random_success = _rdrand64_step(&system.guid_random_seed) != 0;
-	DebugAssert(random_success, "Failed to initialize random number generator.");
-	
+static void CreateEntityTypeArrays(EntitySystem& system) {
 	Array<EntityTypeArray> entity_type_arrays;
 	ArrayResize(entity_type_arrays, &system.heap, entity_type_info_table.count);
 	
@@ -207,8 +195,17 @@ void InitializeEntitySystem(EntitySystem& system) {
 		auto& array     = entity_type_arrays[entity_type_index];
 		auto& type_info = entity_type_info_table[entity_type_index];
 		
-		Array<u8*> component_streams;
+		Array<ComponentStream> component_streams;
 		ArrayResize(component_streams, &system.heap, type_info.component_type_ids.count);
+		
+		for (u32 i = 0; i < type_info.virtual_resource_ids.count; i += 1) {
+			u32 resource_id = type_info.virtual_resource_ids[i];
+			if (resource_id != 0) {
+				component_streams[i].gpu = { 0, (VirtualResourceID)resource_id };
+			} else {
+				component_streams[i].cpu = { nullptr };
+			}
+		}
 		
 		array.component_streams    = component_streams;
 		array.entity_type_id.index = entity_type_index;
@@ -217,26 +214,21 @@ void InitializeEntitySystem(EntitySystem& system) {
 	system.entity_type_arrays = entity_type_arrays;
 }
 
+void InitializeEntitySystem(EntitySystem& system) {
+	system.heap = CreateHeapAllocator(2 * 1024 * 1024);
+	
+	bool random_success = _rdrand64_step(&system.guid_random_seed) != 0;
+	DebugAssert(random_success, "Failed to initialize random number generator.");
+	
+	CreateEntityTypeArrays(system);
+}
+
 void ResetEntitySystem(EntitySystem& system) {
 	system.entity_guid_to_entity_id = {};
 	system.entity_type_arrays = {};
 	system.heap.DeallocateAll();
 	
-	Array<EntityTypeArray> entity_type_arrays;
-	ArrayResize(entity_type_arrays, &system.heap, entity_type_info_table.count);
-	
-	for (u32 entity_type_index = 0; entity_type_index < entity_type_info_table.count; entity_type_index += 1) {
-		auto& array     = entity_type_arrays[entity_type_index];
-		auto& type_info = entity_type_info_table[entity_type_index];
-		
-		Array<u8*> component_streams;
-		ArrayResize(component_streams, &system.heap, type_info.component_type_ids.count);
-		
-		array.component_streams    = component_streams;
-		array.entity_type_id.index = entity_type_index;
-	}
-	
-	system.entity_type_arrays = entity_type_arrays;
+	CreateEntityTypeArrays(system);
 }
 
 // TODO: Simplify this function. There is a lot of code that handles remapping of entity/component
@@ -306,14 +298,14 @@ void SaveLoadEntitySystem(SaveLoadBuffer& buffer, EntitySystem& system) {
 		if (buffer.is_loading) {
 			u32 new_capacity = AlignUp(count, base_allocation_count);
 			AllocateEntityMapStreams(array, system.heap, 0, new_capacity);
-			AllocateComponentStreams(array.component_streams, component_type_ids, system.heap, 0, new_capacity);
-			DefaultInitializeStreams(array.component_streams, component_type_ids, 0, count); // TODO: Only default initialize new component streams.
+			AllocateComponentStreams(array.component_streams, entity_type_info, system.heap, 0, new_capacity);
+			DefaultInitializeStreams(array.component_streams, entity_type_info, 0, count); // TODO: Only default initialize new component streams.
 			
 			array.capacity = new_capacity;
 			array.count    = count;
 		}
 		
-		u64 component_stream_count = component_type_ids.count;
+		u64 component_stream_count = entity_type_info.cpu_component_count;
 		SaveLoad(buffer, component_stream_count);
 		
 		// Table of component stream sizes, potentially unaligned.
@@ -353,13 +345,13 @@ void SaveLoadEntitySystem(SaveLoadBuffer& buffer, EntitySystem& system) {
 			
 			u32 begin_component_offset = buffer.global_offset;
 			
-			auto save_load_callback = component_save_load_callbacks[component_type_id.index];
-			auto type_info          = component_type_info_table[component_type_id.index];
-			u8*  component_stream   = array.component_streams[component_stream_index];
+			auto type_info = component_type_info_table[component_type_id.index];
 			
 			u64 version = type_info.version;
 			SaveLoad(buffer, version);
 			
+			auto save_load_callback = component_save_load_callbacks[component_type_id.index];
+			u8* component_stream = array.component_streams[component_stream_index].cpu.data;
 			for (u32 i = 0; i < array.count; i += 1) {
 				save_load_callback(buffer, component_stream + i * type_info.size_bytes, version);
 			}

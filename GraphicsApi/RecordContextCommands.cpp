@@ -248,6 +248,19 @@ void CmdCopyBufferToTexture(RecordContext* record_context, GpuAddress src_buffer
 	AppendResourceAccesses(record_context, resource_accesses);
 }
 
+void CmdCopyBufferToBuffer(RecordContext* record_context, GpuAddress src_gpu_address, GpuAddress dst_gpu_address, u32 size) {
+	auto& packet = AppendPacket<CmdCopyBufferToBufferPacket>(record_context);
+	packet.src_gpu_address = src_gpu_address;
+	packet.dst_gpu_address = dst_gpu_address;
+	packet.size = size;
+	
+	FixedCountArray<ResourceAccessDefinition, 2> resource_accesses;
+	resource_accesses[0] = CreateBufferResourceAccess(src_gpu_address.resource_id, PipelineStagesMask::Copy, ResourceAccessMask::CopySrc);
+	resource_accesses[1] = CreateBufferResourceAccess(dst_gpu_address.resource_id, PipelineStagesMask::Copy, ResourceAccessMask::CopyDst);
+	
+	AppendResourceAccesses(record_context, resource_accesses);
+}
+
 
 void CmdClearRenderTarget(RecordContext* record_context, VirtualResourceID resource_id) {
 	auto& packet = AppendPacket<CmdClearRenderTargetPacket>(record_context);

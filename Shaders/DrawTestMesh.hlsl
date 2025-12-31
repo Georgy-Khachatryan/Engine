@@ -20,10 +20,11 @@ void MainMS(
 	out indices uint3 result_indices[128],
 	out primitives InputPrimitivePS result_primitives[128]) {
 	
-	uint meshlet_index = visible_meshlets[group_id];
+	uint2 meshlet_instance = visible_meshlets[group_id]; 
+	uint meshlet_index = meshlet_instance.x;
 	BasicMeshlet meshlet = meshlets[meshlet_index];
 	
-	float3x4 model_to_world = float3x4(float4(1.0, 0.0, 0.0, 10.0), float4(0.0, 1.0, 0.0, 0.0), float4(0.0, 0.0, 1.0, 0.0));
+	float3x4 model_to_world = mesh_transforms[meshlet_instance.y];
 	
 	SetMeshOutputCounts(meshlet.vertex_count, meshlet.triangle_count);
 	

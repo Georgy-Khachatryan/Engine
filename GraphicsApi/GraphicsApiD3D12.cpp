@@ -162,6 +162,13 @@ GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
 		BuildPipelineStates(context, alloc, false);
 	}
 	
+	{
+		compile_const u32 release_queue_capacity = 512;
+		ArrayReserve(context->release_queue_last_frame, alloc, release_queue_capacity);
+		ArrayReserve(context->release_queue_this_frame, alloc, release_queue_capacity);
+		ArrayReserve(context->release_queue_next_frame, alloc, release_queue_capacity);
+	}
+	
 	return context;
 }
 
@@ -635,8 +642,35 @@ NativeBufferResource CreateBufferResource(GraphicsContext* api_context, u32 size
 	return resource;
 }
 
-void ReleaseTextureResource(GraphicsContext* context, NativeTextureResource resource) { SafeRelease(resource.d3d12); }
-void ReleaseBufferResource(GraphicsContext* context, NativeBufferResource resource)   { SafeRelease(resource.d3d12); }
+static void ReleaseResource(GraphicsContextD3D12* context, ID3D12Resource* resource, ResourceReleaseCondition condition) {
+	if (resource == nullptr) return;
+	
+	switch (condition) {
+	case ResourceReleaseCondition::None: resource->Release(); break;
+	case ResourceReleaseCondition::EndOfLastGpuFrame: ArrayAppend(context->release_queue_last_frame, resource); break;
+	case ResourceReleaseCondition::EndOfThisGpuFrame: ArrayAppend(context->release_queue_this_frame, resource); break;
+	case ResourceReleaseCondition::EndOfNextGpuFrame: ArrayAppend(context->release_queue_next_frame, resource); break;
+	}
+}
+
+static void CycleResourceReleaseQueues(GraphicsContextD3D12* context) {
+	static_assert(number_of_frames_in_flight == 2);
+	for (auto* resource : context->release_queue_last_frame) {
+		resource->Release();
+	}
+	context->release_queue_last_frame.count = 0;
+	
+	Swap(context->release_queue_last_frame, context->release_queue_next_frame);
+	Swap(context->release_queue_this_frame, context->release_queue_last_frame);
+}
+
+void ReleaseTextureResource(GraphicsContext* context, NativeTextureResource resource, ResourceReleaseCondition condition) {
+	ReleaseResource((GraphicsContextD3D12*)context, resource.d3d12, condition);
+}
+
+void ReleaseBufferResource(GraphicsContext* context, NativeBufferResource resource, ResourceReleaseCondition condition) {
+	ReleaseResource((GraphicsContextD3D12*)context, resource.d3d12, condition);
+}
 
 u32 AllocateTransientSrvDescriptorTable(GraphicsContext* api_context, u32 count) {
 	auto* context = (GraphicsContextD3D12*)api_context;
@@ -768,6 +802,8 @@ void WindowSwapChainBeginFrame(WindowSwapChain* api_swap_chain, GraphicsContext*
 	auto* context = (GraphicsContextD3D12*)api_context;
 	WaitForNextFrame(context);
 	
+	CycleResourceReleaseQueues(context);
+	
 	if (CheckShaderFileChanges(shader_compiler, alloc)) {
 		WaitForLastFrame(context);
 		BuildPipelineStates(context, alloc);
@@ -789,31 +825,22 @@ void WindowSwapChainEndFrame(WindowSwapChain* api_swap_chain, GraphicsContext* a
 	auto& back_buffer = swap_chain->back_buffers[swap_chain->dxgi_swap_chain->GetCurrentBackBufferIndex()];
 	auto* command_list = context->command_list;
 	
-	Array<ID3D12Resource*> resources_to_deallocate;
 	auto& resource_table = record_context.resource_table->virtual_resources;
 	for (auto& resource : resource_table) {
 		if (resource.type == VirtualResource::Type::VirtualTexture && resource.texture.size != resource.texture.allocated_size) {
 			if (resource.texture.resource.d3d12 != nullptr) {
-				ArrayAppend(resources_to_deallocate, alloc, resource.texture.resource.d3d12);
+				ReleaseTextureResource(context, resource.texture.resource, ResourceReleaseCondition::EndOfThisGpuFrame);
 			}
 			
 			resource.texture.resource = CreateTextureResource(context, resource.texture.size);
 			resource.texture.allocated_size = resource.texture.size;
 		} else if (resource.type == VirtualResource::Type::VirtualBuffer && resource.buffer.size != resource.buffer.allocated_size) {
 			if (resource.buffer.resource.d3d12 != nullptr) {
-				ArrayAppend(resources_to_deallocate, alloc, resource.buffer.resource.d3d12);
+				ReleaseBufferResource(context, resource.buffer.resource, ResourceReleaseCondition::EndOfThisGpuFrame);
 			}
 			
 			resource.buffer.resource = CreateBufferResource(context, resource.buffer.size);
 			resource.buffer.allocated_size = resource.buffer.size;
-		}
-	}
-	
-	if (resources_to_deallocate.count != 0) {
-		// TODO: Defer resource deallocation.
-		WaitForLastFrame(context);
-		for (auto* resource : resources_to_deallocate) {
-			SafeRelease(resource);
 		}
 	}
 	

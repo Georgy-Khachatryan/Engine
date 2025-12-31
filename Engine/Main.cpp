@@ -16,6 +16,7 @@
 #include <SDK/imgui/backends/imgui_impl_win32.h>
 
 static void BasicExamples(StackAllocator* alloc) {
+#if ENABLE_FEATURE(ASSERTS)
 	// Stack allocator:
 	{
 		TempAllocationScopeNamed(initial_size, alloc);
@@ -125,6 +126,23 @@ static void BasicExamples(StackAllocator* alloc) {
 		
 		u32 last = ArrayLastElement(values);
 		DebugAssert(last == 9, "Incorrect last value.");
+	}
+	
+	{
+		FixedCountArray<u32, 5> values;
+		values[0] = 10;
+		values[1] = 4;
+		values[2] = 19;
+		values[3] = 7;
+		values[4] = 8;
+		
+		HeapSort(ArrayView<u32>(values));
+		
+		DebugAssert(values[0] == 4, "Array is incorrectly sorted.");
+		DebugAssert(values[1] == 7, "Array is incorrectly sorted.");
+		DebugAssert(values[2] == 8, "Array is incorrectly sorted.");
+		DebugAssert(values[3] == 10, "Array is incorrectly sorted.");
+		DebugAssert(values[4] == 19, "Array is incorrectly sorted.");
 	}
 	
 	{
@@ -318,6 +336,7 @@ static void BasicExamples(StackAllocator* alloc) {
 			}
 		}
 	}
+#endif // ENABLE_FEATURE(ASSERTS)
 }
 
 static void ImGuiSetCustomStyle() {
@@ -438,6 +457,30 @@ struct ImGuiMouseLock {
 #define ImGuiScopeID(...) ImGui::PushID(__VA_ARGS__); defer{ ImGui::PopID(); }
 
 
+template<typename T>
+static GpuComponentUploadBuffer AllocateGpuComponentUploadBuffer(RecordContext* record_context, u32 count, ECS::GpuComponent<T> buffer) {
+	auto [data_gpu_address,    data_cpu_address]    = AllocateTransientUploadBuffer<T,   16u>(record_context, count);
+	auto [indices_gpu_address, indices_cpu_address] = AllocateTransientUploadBuffer<u32, 16u>(record_context, count);
+	
+	GpuComponentUploadBuffer result;
+	result.count  = 0;
+	result.stride = sizeof(T);
+	result.data_cpu_address     = (u8*)data_cpu_address;
+	result.indices_cpu_address  = indices_cpu_address;
+	result.dst_data_gpu_address = buffer.resource_id;
+	result.data_gpu_address     = data_gpu_address;
+	result.indices_gpu_address  = indices_gpu_address;
+	
+	return result;
+};
+
+template<typename T>
+static void QueueGpuUpload(GpuComponentUploadBuffer& view, u32 dst_index, const T& element) {
+	u32 src_index = view.count++;
+	((T*)view.data_cpu_address)[src_index] = element;
+	view.indices_cpu_address[src_index]    = dst_index;
+};
+
 s32 main() {
 	auto alloc = CreateStackAllocator(64 * 1024 * 1024, 512 * 1024);
 	defer{ ReleaseStackAllocator(alloc); };
@@ -518,6 +561,8 @@ s32 main() {
 	InitializeEntitySystem(entity_system);
 	defer{ ReleaseHeapAllocator(entity_system.heap); };
 	
+	compile_const u32 mesh_grid_size = 16;
+	compile_const u32 mesh_instance_count = mesh_grid_size * mesh_grid_size;
 	
 	auto scene_save_load_path = "./Assets/Scene.csb"_sl;
 	{
@@ -527,15 +572,29 @@ s32 main() {
 			SaveLoadEntitySystem(buffer, entity_system);
 			CloseSaveLoadBuffer(buffer);
 		} else {
-			auto entity_result = CreateEntities<CameraEntityType>(&alloc, entity_system, 1);
-			auto* entity_array = QueryEntityTypeArray<CameraEntityType>(entity_system);
-			auto camera_entity = ExtractComponentStreams<RotationQuery>(entity_array, entity_result.stream_offset);
+			{
+				auto entity_result = CreateEntities<CameraEntityType>(&alloc, entity_system, 1);
+				auto* entity_array = QueryEntityTypeArray<CameraEntityType>(entity_system);
+				auto camera_entity = ExtractComponentStreams<RotationQuery>(entity_array, entity_result.stream_offset);
+				
+				camera_entity.rotation->rotation =
+					Math::AxisAngleToQuat(float3(0.f, 0.f, 1.f), -90.f * Math::degrees_to_radians) *
+					Math::AxisAngleToQuat(float3(1.f, 0.f, 0.f), -90.f * Math::degrees_to_radians);
+				
+				ExtractComponentStreams<NameQuery>(entity_array, entity_result.stream_offset).name->name = StringCopy(&entity_system.heap, "Camera"_sl);
+			}
 			
-			camera_entity.rotation->rotation =
-				Math::AxisAngleToQuat(float3(0.f, 0.f, 1.f), -90.f * Math::degrees_to_radians) *
-				Math::AxisAngleToQuat(float3(1.f, 0.f, 0.f), -90.f * Math::degrees_to_radians);
-			
-			ExtractComponentStreams<NameQuery>(entity_array, entity_result.stream_offset).name->name = StringCopy(&entity_system.heap, "Camera"_sl);
+			{
+				auto entity_result = CreateEntities<MeshEntityType>(&alloc, entity_system, mesh_instance_count);
+				auto* entity_array = QueryEntityTypeArray<MeshEntityType>(entity_system);
+				auto mesh_entities = ExtractComponentStreams<PositionQuery>(entity_array, entity_result.stream_offset);
+				
+				compile_const float spacing = 2.f;
+				compile_const float center_offset = -(float)mesh_grid_size * 0.5f * spacing;
+				for (u32 i = 0; i < mesh_instance_count; i += 1) {
+					mesh_entities.position[i].position = float3((i % mesh_grid_size) * spacing + center_offset, (i / mesh_grid_size) * spacing + center_offset, 0.f);
+				}
+			}
 		}
 	}
 	
@@ -661,7 +720,7 @@ s32 main() {
 		resource_table.Set(VirtualResourceID::CurrentBackBuffer, WindowSwapGetCurrentBackBuffer(swap_chain), swap_chain->size);
 		resource_table.Set(VirtualResourceID::TransientUploadBuffer, upload_buffers[upload_buffer_index], upload_buffer_size, upload_buffer_cpu_addresses[upload_buffer_index]);
 		upload_buffer_index = (upload_buffer_index + 1) % number_of_frames_in_flight;
-		resource_table.Set(VirtualResourceID::VisibleMeshlets, (u32)(meshlets.count * sizeof(u32)));
+		resource_table.Set(VirtualResourceID::VisibleMeshlets, (u32)(meshlets.count * mesh_instance_count * sizeof(uint2)));
 		resource_table.Set(VirtualResourceID::MeshletIndirectArguments, sizeof(uint4));
 		
 		struct ImGuiDescriptorTable : HLSL::BaseDescriptorTable {
@@ -882,6 +941,28 @@ s32 main() {
 			world_space_camera_position += world_to_view.r1 * ((meters_per_pixel * sensetivity_scale) * io.MouseDelta.y);
 		}
 		
+		Array<GpuComponentUploadBuffer> gpu_uploads;
+		for (auto* entity_array : QueryEntities<PositionRotationScaleGpuTransformQuery>(&alloc, entity_system)) {
+			auto streams = ExtractComponentStreams<PositionRotationScaleGpuTransformQuery>(entity_array);
+			
+			auto gpu_transform = AllocateGpuComponentUploadBuffer(&record_context, entity_array->count, streams.gpu_transform);
+			
+			for (u32 i = 0; i < entity_array->count; i += 1) {
+				auto& [position] = streams.position[i];
+				auto& [rotation] = streams.rotation[i];
+				auto& [scale]    = streams.scale[i];
+				
+				auto view_to_world_rotation = Math::QuatToRotationMatrix(rotation);
+				
+				float3x4 model_to_world;
+				model_to_world.r0 = float4(view_to_world_rotation.r0 * scale, position.x);
+				model_to_world.r1 = float4(view_to_world_rotation.r1 * scale, position.y);
+				model_to_world.r2 = float4(view_to_world_rotation.r2 * scale, position.z);
+				QueueGpuUpload(gpu_transform, i, model_to_world);
+			}
+			ArrayAppend(gpu_uploads, &alloc, gpu_transform);
+		}
+		
 		SceneConstants scene;
 		scene.render_target_size     = float2(render_target_size);
 		scene.inv_render_target_size = float2(1.f) / scene.render_target_size;
@@ -920,6 +1001,7 @@ s32 main() {
 		*scene_constants_cpu_address = scene;
 		*atmosphere_parameters_cpu_address = atmosphere_parameters;
 		
+		EntitySystemUpdateRenderPass{ &entity_system, gpu_uploads }.RecordPass(&record_context);
 		TransmittanceLutRenderPass{ atmosphere_parameters_gpu_address }.RecordPass(&record_context);
 		MultipleScatteringLutRenderPass{ atmosphere_parameters_gpu_address }.RecordPass(&record_context);
 		SkyPanoramaLutRenderPass{ atmosphere_parameters_gpu_address }.RecordPass(&record_context);
@@ -934,7 +1016,7 @@ s32 main() {
 			memcpy(ib_cpu_address, indices.data,  indices.count  * sizeof(u8));
 			
 			MeshletClearBuffersRenderPass{}.RecordPass(&record_context);
-			MeshletCullingRenderPass{ scene_constants_gpu_address, mb_gpu_address, (u32)meshlets.count }.RecordPass(&record_context);
+			MeshletCullingRenderPass{ scene_constants_gpu_address, mb_gpu_address, (u32)meshlets.count, mesh_instance_count }.RecordPass(&record_context);
 			BasicMeshRenderPass{ scene_constants_gpu_address, vb_gpu_address, mb_gpu_address, ib_gpu_address, (u32)vertices.count, (u32)meshlets.count, (u32)indices.count }.RecordPass(&record_context);
 		}
 		
@@ -954,6 +1036,8 @@ s32 main() {
 			ReleaseTextureResource(graphics_context, resource.texture.resource);
 		}
 	}
+	
+	ReleaseBufferResource(graphics_context, resource_table.virtual_resources[(u32)VirtualResourceID::MeshEntityGpuTransform].buffer.resource);
 	
 	for (auto& buffer : upload_buffers) {
 		ReleaseBufferResource(graphics_context, buffer);
