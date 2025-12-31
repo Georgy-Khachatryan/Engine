@@ -8,13 +8,13 @@ void MainCS(uint thread_id : SV_DispatchThreadID) {
 #endif // defined(CLEAR_BUFFERS)
 
 #if defined(MESHLET_CULLING)
-float2 EvaluateMeshletErrorMetric(MeshletErrorMetric error_metric, float3x4 model_to_world, float model_to_world_scale) {
+float2 EvaluateMeshletErrorMetric(MeshletErrorMetric error_metric, GpuTransform model_to_world) {
 	float2 result;
-	result.x = model_to_world_scale * error_metric.error * scene.world_to_pixel_scale;
+	result.x = model_to_world.scale * error_metric.error * scene.world_to_pixel_scale;
 	
 	if (IsPerspectiveMatrix(scene.view_to_clip_coef)) {
-		float3 center_world_space = mul(model_to_world, float4(error_metric.center, 1.0));
-		float  radius_world_space = error_metric.radius * model_to_world_scale;
+		float3 center_world_space = QuatMul(model_to_world.rotation, error_metric.center * model_to_world.scale) + model_to_world.position;
+		float  radius_world_space = error_metric.radius * model_to_world.scale;
 		
 		result.y = max(length(center_world_space - scene.world_space_camera_position) - radius_world_space, 0.f);
 	} else {
@@ -32,11 +32,10 @@ bool LodCullCoarserLevelError(float2 error_metric) { return (error_metric.x <= e
 void MainCS(uint2 thread_id : SV_DispatchThreadID) {
 	BasicMeshlet meshlet = meshlets[thread_id.x];
 	
-	float3x4 model_to_world = mesh_transforms[thread_id.y];
-	float model_to_world_scale = 1.0;
+	GpuTransform model_to_world = mesh_transforms[thread_id.y];
 	
-	float2 current_level_error_metric = EvaluateMeshletErrorMetric(meshlet.current_level_error_metric, model_to_world, model_to_world_scale);
-	float2 coarser_level_error_metric = EvaluateMeshletErrorMetric(meshlet.coarser_level_error_metric, model_to_world, model_to_world_scale);
+	float2 current_level_error_metric = EvaluateMeshletErrorMetric(meshlet.current_level_error_metric, model_to_world);
+	float2 coarser_level_error_metric = EvaluateMeshletErrorMetric(meshlet.coarser_level_error_metric, model_to_world);
 	
 	bool is_visible = LodCullCurrentLevelError(current_level_error_metric) && LodCullCoarserLevelError(coarser_level_error_metric);
 	if (is_visible == false) return;

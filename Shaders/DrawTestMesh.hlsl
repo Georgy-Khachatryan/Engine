@@ -24,14 +24,14 @@ void MainMS(
 	uint meshlet_index = meshlet_instance.x;
 	BasicMeshlet meshlet = meshlets[meshlet_index];
 	
-	float3x4 model_to_world = mesh_transforms[meshlet_instance.y];
+	GpuTransform model_to_world = mesh_transforms[meshlet_instance.y];
 	
 	SetMeshOutputCounts(meshlet.vertex_count, meshlet.triangle_count);
 	
 	if (thread_index < meshlet.vertex_count) {
 		BasicVertex vertex = vertices[meshlet.vertex_buffer_offset + thread_index];
 		
-		float3 world_space_position = mul(model_to_world, float4(vertex.position, 1.0));
+		float3 world_space_position = QuatMul(model_to_world.rotation, vertex.position * model_to_world.scale) + model_to_world.position;
 		float3 view_space_position  = mul(scene.world_to_view, float4(world_space_position, 1.0));
 		
 		InputPS output;

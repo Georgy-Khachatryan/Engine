@@ -19,6 +19,7 @@ using u32 = uint32_t;
 using s32 = int32_t;
 using u64 = uint64_t;
 using s64 = int64_t;
+using quat = float4;
 
 #include ROOT_SIGNATURE_FILEPATH
 
@@ -113,6 +114,13 @@ float4 TransformViewToClipSpace(float3 view_space_position, float4 view_to_clip_
 	}
 	
 	return result;
+}
+
+float3 QuatMul(quat q, float3 v) {
+	// Rotate a vector with a quaternion. Equivalent to QuatToRotationMatrix(q) * v
+	// https://fgiesen.wordpress.com/2019/02/09/rotating-a-single-vector-using-a-quaternion/
+	float3 t = cross(q.xyz, v) * 2.0;
+	return v + t * q.w + cross(q.xyz, t);
 }
 
 #endif // BASIC_HLSL

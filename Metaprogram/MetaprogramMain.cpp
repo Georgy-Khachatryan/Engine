@@ -637,6 +637,7 @@ s32 main(s32 argument_count, const char* arguments[]) {
 	StringBuilder entity_system_builder;
 	entity_system_builder.alloc = &alloc;
 	entity_system_builder.Append("#include \"Basic/Basic.h\"\n"_sl);
+	entity_system_builder.Append("#include \"Basic/BasicSaveLoad.h\"\n"_sl);
 	entity_system_builder.Append("#include \"Engine/Entities.h\"\n\n"_sl);
 	
 	extern ArrayView<TypeInfo*> type_table;

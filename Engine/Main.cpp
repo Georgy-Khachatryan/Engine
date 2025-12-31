@@ -948,17 +948,11 @@ s32 main() {
 			auto gpu_transform = AllocateGpuComponentUploadBuffer(&record_context, entity_array->count, streams.gpu_transform);
 			
 			for (u32 i = 0; i < entity_array->count; i += 1) {
-				auto& [position] = streams.position[i];
-				auto& [rotation] = streams.rotation[i];
-				auto& [scale]    = streams.scale[i];
-				
-				auto view_to_world_rotation = Math::QuatToRotationMatrix(rotation);
-				
-				float3x4 model_to_world;
-				model_to_world.r0 = float4(view_to_world_rotation.r0 * scale, position.x);
-				model_to_world.r1 = float4(view_to_world_rotation.r1 * scale, position.y);
-				model_to_world.r2 = float4(view_to_world_rotation.r2 * scale, position.z);
-				QueueGpuUpload(gpu_transform, i, model_to_world);
+				GpuTransform transform;
+				transform.position = streams.position[i].position;
+				transform.scale    = streams.scale[i].scale;
+				transform.rotation = streams.rotation[i].rotation;
+				QueueGpuUpload(gpu_transform, i, transform);
 			}
 			ArrayAppend(gpu_uploads, &alloc, gpu_transform);
 		}

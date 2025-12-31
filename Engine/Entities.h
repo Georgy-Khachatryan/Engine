@@ -1,15 +1,8 @@
 #pragma once
 #include "Basic/Basic.h"
 #include "Basic/BasicString.h"
-#include "Basic/BasicSaveLoad.h"
 #include "EntitySystem.h"
-
-NOTES() struct NameComponent { String name; };
-
-// Transform components represent model_to_world or view_to_world translation (world space position), rotation, and scale.
-NOTES() struct PositionComponent { float3 position = {};  };
-NOTES() struct RotationComponent { quat   rotation = {};  };
-NOTES() struct ScaleComponent    { float  scale    = 1.f; };
+#include "Components.h"
 
 
 NOTES(Meta::EntityType{})
@@ -22,7 +15,7 @@ struct MeshEntityType {
 	ECS::Component<ScaleComponent>    scale;
 	
 	NOTES(VirtualResourceID::MeshEntityGpuTransform)
-	ECS::GpuComponent<float3x4> gpu_transform;
+	ECS::GpuComponent<GpuTransform> gpu_transform;
 };
 
 
@@ -88,5 +81,5 @@ struct PositionRotationScaleGpuTransformQuery {
 	RotationComponent* rotation = nullptr;
 	ScaleComponent*    scale    = nullptr;
 	
-	ECS::GpuComponent<float3x4> gpu_transform;
+	ECS::GpuComponent<GpuTransform> gpu_transform;
 };

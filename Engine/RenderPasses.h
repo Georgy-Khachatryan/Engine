@@ -3,7 +3,7 @@
 #include "Basic/BasicString.h"
 #include "Basic/BasicMath.h"
 #include "GraphicsApi/GraphicsApiTypes.h"
-
+#include "Components.h"
 
 NOTES()
 enum struct VirtualResourceID : u32 {
@@ -274,7 +274,7 @@ struct MeshletCullingRenderPass {
 	u32 instance_count = 0;
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
-		HLSL::RegularBuffer<float3x4> mesh_transforms   = VirtualResourceID::MeshEntityGpuTransform;
+		HLSL::RegularBuffer<GpuTransform> mesh_transforms = VirtualResourceID::MeshEntityGpuTransform;
 		HLSL::RWRegularBuffer<uint2> visible_meshlets   = VirtualResourceID::VisibleMeshlets;
 		HLSL::RWRegularBuffer<uint4> indirect_arguments = VirtualResourceID::MeshletIndirectArguments;
 		HLSL::RegularBuffer<BasicMeshlet> meshlets;
@@ -308,7 +308,7 @@ struct BasicMeshRenderPass {
 	u32 index_buffer_size = 0;
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
-		HLSL::RegularBuffer<float3x4> mesh_transforms = VirtualResourceID::MeshEntityGpuTransform;
+		HLSL::RegularBuffer<GpuTransform> mesh_transforms = VirtualResourceID::MeshEntityGpuTransform;
 		HLSL::RegularBuffer<uint2> visible_meshlets = VirtualResourceID::VisibleMeshlets;
 		HLSL::RegularBuffer<BasicVertex>  vertices;
 		HLSL::RegularBuffer<BasicMeshlet> meshlets;
