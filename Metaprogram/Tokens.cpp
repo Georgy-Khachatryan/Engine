@@ -1,4 +1,5 @@
 #include "Tokens.h"
+#include "Basic/BasicMath.h"
 #include "Basic/BasicMemory.h"
 #include "Basic/BasicFiles.h"
 
@@ -190,8 +191,18 @@ Token Tokenizer::ExpectKeyword(KeywordType expected_keyword) {
 }
 
 
-void Tokenizer::ReportMessage(Token token, String message) {
+u64 ErrorReportContext::StringToSourceLocation(String string) {
+	DebugAssert(string.count == 0 || string.data >= file.data && string.data + string.count <= file.data + file.count, "Source location string '%' is outside of the source file range.", string);
+	
+	u64 length = Min(string.count, (u64)u16_max);
+	u64 offset = length ? Min(string.data - file.data, (u64)u32_max) : 0;
+	return (file_index << 48) | (length << 32) | offset;
+}
+
+void ErrorReportContext::ReportMessage(StackAllocator* alloc, String string, String message) {
 	TempAllocationScope(alloc);
+	
+	DebugAssert(string.count == 0 || string.data >= file.data && string.data + string.count <= file.data + file.count, "Source location string '%' is outside of the source file range.", string);
 	
 	StringBuilder builder;
 	builder.alloc = alloc;
@@ -200,21 +211,21 @@ void Tokenizer::ReportMessage(Token token, String message) {
 	
 	u32 line   = 0;
 	u32 column = 0;
-	const char* string = file.data;
-	while (*string && string < token.string.data) {
-		if (*string == '\n') {
+	const char* file_string = file.data;
+	while (file_string < string.data && *file_string) {
+		if (*file_string == '\n') {
 			line  += 1;
 			column = 0;
 		} else {
-			column += (*string == '\t') ? tab_width : 1;
+			column += (*file_string == '\t') ? tab_width : 1;
 		}
-		string += 1;
+		file_string += 1;
 	}
 	
 	builder.Append("%(%,%): error: %\n"_sl, filepath, line + 1, column + 1, message);
 	
-	if (token.string.data != nullptr) {
-		auto error_line = token.string;
+	if (string.data != nullptr) {
+		auto error_line = string;
 		u64 error_line_skip_count = 0;
 		
 		// Extend the token string to the beginning of the line.
@@ -229,9 +240,9 @@ void Tokenizer::ReportMessage(Token token, String message) {
 			error_line.count += 1;
 		}
 		
-		auto highlight_line = StringAllocate(alloc, error_line_skip_count + token.string.count);
+		auto highlight_line = StringAllocate(alloc, error_line_skip_count + string.count);
 		memset(highlight_line.data, ' ', error_line_skip_count);
-		memset(highlight_line.data + error_line_skip_count, '^', token.string.count);
+		memset(highlight_line.data + error_line_skip_count, '^', string.count);
 		
 		auto error_line_with_spaces = StringReplaceTabsWithSpaces(alloc, error_line, tab_width);
 		builder.Append("%\n%\n"_sl, error_line_with_spaces, highlight_line);
@@ -240,9 +251,9 @@ void Tokenizer::ReportMessage(Token token, String message) {
 	SystemWriteToConsole(builder.ToString());
 }
 
-void Tokenizer::ReportErrorV(Token token, String format, ArrayView<StringFormatArgument> arguments) {
+void ErrorReportContext::ReportErrorV(StackAllocator* alloc, String string, String format, ArrayView<StringFormatArgument> arguments) {
 	TempAllocationScope(alloc);
-	ReportMessage(token, StringFormatV(alloc, format, arguments));
+	ReportMessage(alloc, string, StringFormatV(alloc, format, arguments));
 	SystemExitProcess(1);
 }
 

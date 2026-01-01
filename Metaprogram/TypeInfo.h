@@ -44,6 +44,7 @@ struct TypeInfoPointer : TypeInfo {
 struct TypeInfoNote {
 	TypeInfo* type = nullptr;
 	const void* value = nullptr;
+	u64 source_location = 0;
 };
 
 enum struct TypeInfoStructFieldFlags : u32 {
@@ -54,6 +55,7 @@ ENUM_FLAGS_OPERATORS(TypeInfoStructFieldFlags);
 
 struct TypeInfoStructField {
 	String name;
+	u64 source_location = 0;
 	
 	TypeInfo* type = nullptr;
 	u64 offset = 0;
@@ -68,14 +70,17 @@ struct TypeInfoStruct : TypeInfo {
 	compile_const TypeInfoType my_type = TypeInfoType::Struct;
 	
 	String name;
-	u64 size = 0;
+	u64 source_location = 0;
 	
+	u64 size = 0;
 	ArrayView<TypeInfoStructField> fields;
 	ArrayView<TypeInfoNote> notes;
 };
 
 struct TypeInfoEnumField {
 	String name;
+	u64 source_location = 0;
+	
 	u64 value = 0;
 	ArrayView<TypeInfoNote> notes;
 };
@@ -84,10 +89,17 @@ struct TypeInfoEnum : TypeInfo {
 	compile_const TypeInfoType my_type = TypeInfoType::Enum;
 	
 	String name;
+	u64 source_location = 0;
+	
 	TypeInfoInteger* underlying_type = nullptr;
 	
 	ArrayView<TypeInfoEnumField> fields;
 	ArrayView<TypeInfoNote> notes;
+};
+
+struct TypeInfoSourceFile {
+	String filepath;
+	u64 hash = 0;
 };
 
 
@@ -162,6 +174,7 @@ template<> struct TypeInfoOfInternal<const bool>   { static TypeInfoInteger* Get
 template<> struct TypeInfoOfInternal<const float>  { static TypeInfoFloat*   Get() { return &type_info_float32; } };
 template<> struct TypeInfoOfInternal<const double> { static TypeInfoFloat*   Get() { return &type_info_float64; } };
 template<> struct TypeInfoOfInternal<const String> { static TypeInfo*        Get() { return &type_info_string;  } };
+template<> struct TypeInfoOfInternal<const void>   { static TypeInfo*        Get() { return &type_info_void;    } };
 
 namespace Math { struct Vec2f; struct Vec3f; struct Vec4f; struct Vec2u32; struct Vec3u32; struct Vec4u32; struct Quatf; struct Mat4x4f; struct Mat3x4f; struct Mat3x3f; }
 template<> struct TypeInfoOfInternal<const Math::Vec2f>   { static TypeInfoStruct* Get() { return &type_info_float2;   } };

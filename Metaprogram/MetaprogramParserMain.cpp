@@ -80,9 +80,9 @@ static AstNoteInfo ParseNote(Tokenizer& tokenizer) {
 	}
 	
 	AstNoteInfo note;
-	note.type_name        = token_0.string;
 	note.expression.data  = token_0.string.data;
 	note.expression.count = token_1.string.data - token_0.string.data;
+	note.source_location  = tokenizer.error_context.StringToSourceLocation(note.expression);
 	
 	return note;
 }
@@ -135,7 +135,8 @@ static AstNodeCodeBlock* ParseTemplate(Tokenizer& tokenizer) {
 		auto name = tokenizer.ExpectToken(TokenType::Identifier);
 		
 		auto* declaration = AstNew<AstNodeDeclaration>(tokenizer.alloc);
-		declaration->name = name.string;
+		declaration->name             = name.string;
+		declaration->source_location  = tokenizer.error_context.StringToSourceLocation(name.string);
 		declaration->declaration_type = AstNodeDeclarationType::Typename;
 		ArrayAppend(declarations, tokenizer.alloc, declaration);
 		
@@ -201,8 +202,9 @@ static AstNodeStruct* ParseStruct(Tokenizer& tokenizer) {
 	tokenizer.ExpectToken(TokenType::ClosingBrace);
 	
 	auto* ast_node_struct = AstNew<AstNodeStruct>(tokenizer.alloc);
-	ast_node_struct->name       = name.string;
-	ast_node_struct->code_block = code_block;
+	ast_node_struct->name            = name.string;
+	ast_node_struct->source_location = tokenizer.error_context.StringToSourceLocation(name.string);
+	ast_node_struct->code_block      = code_block;
 	
 	return ast_node_struct;
 }
@@ -239,9 +241,10 @@ static AstNodeEnum* ParseEnum(Tokenizer& tokenizer) {
 		}
 		
 		auto* declaration = AstNew<AstNodeDeclaration>(tokenizer.alloc);
-		declaration->name = tokenizer.ExpectToken(TokenType::Identifier).string;
+		declaration->name             = tokenizer.ExpectToken(TokenType::Identifier).string;
+		declaration->source_location  = tokenizer.error_context.StringToSourceLocation(declaration->name);
 		declaration->declaration_type = AstNodeDeclarationType::Constant;
-		declaration->notes = notes;
+		declaration->notes            = notes;
 		ArrayAppend(declarations, tokenizer.alloc, declaration);
 		
 		token = tokenizer.PeekNextToken();
@@ -269,6 +272,7 @@ static AstNodeEnum* ParseEnum(Tokenizer& tokenizer) {
 	
 	auto* ast_node_enum = AstNew<AstNodeEnum>(tokenizer.alloc);
 	ast_node_enum->name            = name.string;
+	ast_node_enum->source_location = tokenizer.error_context.StringToSourceLocation(name.string);
 	ast_node_enum->underlying_type = underlying_type;
 	ast_node_enum->code_block      = code_block;
 	
@@ -312,6 +316,7 @@ static AstNodeDeclaration* ParseDeclaration(Tokenizer& tokenizer) {
 		tokenizer.ExpectToken(TokenType::Semicolon);
 		
 		declaration->name             = ast_node_struct->name;
+		declaration->source_location  = ast_node_struct->source_location;
 		declaration->type_declaration = ast_node_struct;
 		declaration->declaration_type = AstNodeDeclarationType::Typename;
 	} else if (token.keyword == KeywordType::Enum) {
@@ -319,6 +324,7 @@ static AstNodeDeclaration* ParseDeclaration(Tokenizer& tokenizer) {
 		tokenizer.ExpectToken(TokenType::Semicolon);
 		
 		declaration->name             = ast_node_enum->name;
+		declaration->source_location  = ast_node_enum->source_location;
 		declaration->type_declaration = ast_node_enum;
 		declaration->declaration_type = AstNodeDeclarationType::Typename;
 	} else if (token.keyword == KeywordType::CompileConst || token.type == TokenType::Identifier) {
@@ -358,7 +364,8 @@ static AstNodeDeclaration* ParseDeclaration(Tokenizer& tokenizer) {
 		
 		// Extract declaration name.
 		if (token.type != TokenType::OpeningParen) {
-			declaration->name = tokenizer.ExpectToken(TokenType::Identifier).string;
+			declaration->name             = tokenizer.ExpectToken(TokenType::Identifier).string;
+			declaration->source_location  = tokenizer.error_context.StringToSourceLocation(declaration->name);
 			declaration->declaration_type = is_constant ? AstNodeDeclarationType::Constant : AstNodeDeclarationType::Variable;
 		}
 		
@@ -386,12 +393,13 @@ static AstNodeDeclaration* ParseDeclaration(Tokenizer& tokenizer) {
 	return is_static ? nullptr : declaration;
 }
 
-static AstNodeCodeBlock* ParseFile(StackAllocator* alloc, String file, String filepath) {
+static AstNodeCodeBlock* ParseFile(StackAllocator* alloc, String file, String filepath, u64 file_index) {
 	Tokenizer tokenizer;
-	tokenizer.file     = file;
-	tokenizer.filepath = filepath;
 	tokenizer.string   = file.data;
 	tokenizer.alloc    = alloc;
+	tokenizer.error_context.file     = file;
+	tokenizer.error_context.filepath = filepath;
+	tokenizer.error_context.file_index = file_index;
 	
 	auto* code_block = AstNew<AstNodeCodeBlock>(alloc);
 	Array<AstNodeDeclaration*> declarations;
@@ -486,7 +494,7 @@ static void GenerateCodeForNotes(StringBuilder& builder, AstNodeNotes* notes, As
 	note_count = 0;
 	if (notes != nullptr) {
 		for (auto& note : notes->notes) {
-			builder.Append("{ TypeInfoOf<decltype(note_%0)>(), &note_%0 },\n"_sl, note_count);
+			builder.Append("{ TypeInfoOf<decltype(note_%0)>(), &note_%0, 0x%1x },\n"_sl, note_count, note.source_location);
 			note_count += 1;
 		}
 	}
@@ -494,7 +502,7 @@ static void GenerateCodeForNotes(StringBuilder& builder, AstNodeNotes* notes, As
 	for (auto* declaration : code_block->declarations) {
 		if (declaration->notes == nullptr) continue;
 		for (auto& note : declaration->notes->notes) {
-			builder.Append("{ TypeInfoOf<decltype(note_%0)>(), &note_%0 },\n"_sl, note_count);
+			builder.Append("{ TypeInfoOf<decltype(note_%0)>(), &note_%0, 0x%1x },\n"_sl, note_count, note.source_location);
 			note_count += 1;
 		}
 	}
@@ -546,7 +554,7 @@ static void GenerateCodeForStruct(StringBuilder& builder, AstNodeStruct* ast_nod
 		
 		if (template_code_block) {
 			for (auto* declaration : template_code_block->declarations) {
-				builder.Append("{ \"%0\"_sl, &type_info_type, 0, {}, TypeInfoOf<%0>(), TypeInfoStructFieldFlags::TemplateParameter },\n"_sl, declaration->name);
+				builder.Append("{ \"%0\"_sl, 0x%1x, &type_info_type, 0, {}, TypeInfoOf<%0>(), TypeInfoStructFieldFlags::TemplateParameter },\n"_sl, declaration->name, declaration->source_location);
 			}
 			field_count += (u32)template_code_block->declarations.count;
 		}
@@ -555,11 +563,11 @@ static void GenerateCodeForStruct(StringBuilder& builder, AstNodeStruct* ast_nod
 			auto declaration_notes = declaration->notes ? StringFormat(builder.alloc, "{ notes + %, % }"_sl, declaration->notes->note_offset, declaration->notes->notes.count) : "{}"_sl;
 			
 			if (declaration->declaration_type == AstNodeDeclarationType::Variable) {
-				builder.Append("{ \"%0\"_sl, TypeInfoOf<decltype(TypeName::%0)>(), offsetof(TypeName, %0), %1 },\n"_sl, declaration->name, declaration_notes);
+				builder.Append("{ \"%0\"_sl, 0x%1x, TypeInfoOf<decltype(TypeName::%0)>(), offsetof(TypeName, %0), %2 },\n"_sl, declaration->name, declaration->source_location, declaration_notes);
 			} else if (declaration->declaration_type == AstNodeDeclarationType::Constant) {
-				builder.Append("{ \"%0\"_sl, TypeInfoOf<decltype(TypeName::%0)>(), 0, %1, &TypeName::%0 },\n"_sl, declaration->name, declaration_notes);
+				builder.Append("{ \"%0\"_sl, 0x%1x, TypeInfoOf<decltype(TypeName::%0)>(), 0, %2, &TypeName::%0 },\n"_sl, declaration->name, declaration->source_location, declaration_notes);
 			} else if (declaration->declaration_type == AstNodeDeclarationType::Typename) {
-				builder.Append("{ \"%0\"_sl, &type_info_type, 0, %1, TypeInfoOf<TypeName::%0>() },\n"_sl, declaration->name, declaration_notes);
+				builder.Append("{ \"%0\"_sl, 0x%1x, &type_info_type, 0, %2, TypeInfoOf<TypeName::%0>() },\n"_sl, declaration->name, declaration->source_location, declaration_notes);
 			} else {
 				DebugAssertAlways("Unhanlded declaration type.");
 			}
@@ -577,6 +585,7 @@ static void GenerateCodeForStruct(StringBuilder& builder, AstNodeStruct* ast_nod
 		
 		builder.Append("TypeInfoType::Struct,\n"_sl);
 		builder.Append("\"%0\"_sl,\n"_sl, name);
+		builder.Append("0x%x,\n"_sl, ast_node_struct->source_location);
 		builder.Append("sizeof(TypeName),\n"_sl);
 		
 		if (field_count != 0) {
@@ -624,10 +633,10 @@ static void GenerateCodeForEnum(StringBuilder& builder, AstNodeEnum* ast_node_en
 		
 		for (auto* declaration : code_block->declarations) {
 			if (declaration->notes == nullptr) {
-				builder.Append("{ \"%0\"_sl, (u64)TypeName::%0 },\n"_sl, declaration->name);
+				builder.Append("{ \"%0\"_sl, 0x%1x, (u64)TypeName::%0 },\n"_sl, declaration->name, declaration->source_location);
 			} else {
 				auto* notes = declaration->notes;
-				builder.Append("{ \"%0\"_sl, (u64)TypeName::%0, { notes + %, % } },\n"_sl, declaration->name, notes->note_offset, notes->notes.count);
+				builder.Append("{ \"%0\"_sl, 0x%1x, (u64)TypeName::%0, { notes + %, % } },\n"_sl, declaration->name, declaration->source_location, notes->note_offset, notes->notes.count);
 			}
 		}
 		
@@ -642,6 +651,7 @@ static void GenerateCodeForEnum(StringBuilder& builder, AstNodeEnum* ast_node_en
 		
 		builder.Append("TypeInfoType::Enum,\n"_sl);
 		builder.Append("\"%\"_sl,\n"_sl, name);
+		builder.Append("0x%x,\n"_sl, ast_node_enum->source_location);
 		
 		auto underlying_type = ast_node_enum->underlying_type.count ? ast_node_enum->underlying_type : "s32"_sl;
 		builder.Append("TypeInfoOf<%>(),\n"_sl, underlying_type);
@@ -688,6 +698,8 @@ static void GenerateCodeForCodeBlockTypeDeclarations(StringBuilder& builder, Ast
 
 struct ParsedFileData {
 	String filepath;
+	u64 hash = 0;
+	
 	AstNodeCodeBlock* top_level_code_block = nullptr;
 };
 
@@ -726,7 +738,19 @@ static void GenerateCodeForTypeTable(StringBuilder& builder, ArrayView<ParsedFil
 	builder.Unindent();
 	builder.Append("};\n\n"_sl);
 	
-	builder.Append("ArrayView<TypeInfo*> type_table = { type_table_internal, % };\n\n"_sl, type_table_size);
+	
+	builder.Append("static TypeInfoSourceFile source_file_table_internal[] = {\n"_sl);
+	builder.Indent();
+	
+	for (auto& file : files) {
+		builder.Append("{ \"%\"_sl, 0x%x },\n"_sl, file.filepath, file.hash);
+	}
+	
+	builder.Unindent();
+	builder.Append("};\n\n"_sl);
+	
+	builder.Append("ArrayView<TypeInfo*> type_table = { type_table_internal, % };\n"_sl, type_table_size);
+	builder.Append("ArrayView<TypeInfoSourceFile> source_file_table = { source_file_table_internal, % };\n\n"_sl, files.count);
 }
 
 
@@ -743,6 +767,8 @@ s32 main(s32 argument_count, const char* arguments[]) {
 	
 	
 	Array<ParsedFileData> parsed_files;
+	ArrayReserve(parsed_files, &alloc, filepaths.count);
+	
 	for (auto filepath : filepaths) {
 		auto file = SystemReadFileToString(&alloc, filepath);
 		if (file.data == nullptr) {
@@ -754,7 +780,8 @@ s32 main(s32 argument_count, const char* arguments[]) {
 		
 		ParsedFileData ast_node_file;
 		ast_node_file.filepath = filepath;
-		ast_node_file.top_level_code_block = ParseFile(&alloc, file, filepath);
+		ast_node_file.hash     = ComputeHash(file);
+		ast_node_file.top_level_code_block = ParseFile(&alloc, file, filepath, parsed_files.count);
 		ArrayAppend(parsed_files, &alloc, ast_node_file);
 	}
 	

@@ -38,6 +38,39 @@ struct ShaderDefinitionFileData {
 	Array<ShaderDefinitionData> shader_definitions;
 };
 
+static void ReportErrorV(StackAllocator* alloc, u64 source_location, String format, ArrayView<StringFormatArgument> arguments) {
+	extern ArrayView<TypeInfoSourceFile> source_file_table;
+	
+	u64 file_index = (source_location >> 48);
+	u64 length = (source_location >> 32) & u16_max;
+	u64 offset = (source_location >> 0 ) & u32_max;
+	
+	auto source_file = source_file_table[file_index];
+	auto file = SystemReadFileToString(alloc, source_file.filepath);
+	
+	ErrorReportContext error_context;
+	error_context.file       = file;
+	error_context.filepath   = source_file_table[file_index].filepath;
+	error_context.file_index = file_index;
+	
+	if (file.data == nullptr) {
+		error_context.ReportMessage(alloc, {}, "Failed to open source file. The following error source location will be incorrect."_sl);
+	} else if (source_file.hash != ComputeHash(file)) {
+		error_context.ReportMessage(alloc, {}, "Source file hash mismatch. The following error source location might be incorrect."_sl);
+	}
+	
+	error_context.ReportErrorV(alloc, String{ file.data + offset, length }, format, arguments);
+}
+
+template<typename ... Args>
+static void ReportError(StackAllocator* alloc, u64 source_location, String format, Args ... args) { FORMAT_PROC_BODY(ReportErrorV, alloc, source_location, format); }
+
+static void CheckFieldIsReflected(StackAllocator* alloc, TypeInfoStruct* type_info, TypeInfoStructField& field) {
+	if (field.type == nullptr) {
+		ReportError(alloc, field.source_location, "Type of field '%' in struct '%' is not reflected."_sl, field.name, type_info->name);
+	}
+}
+
 static void GatherIncludesForDependentTypes(StackAllocator* alloc, HashTable<String, void>& includes, TypeInfoStruct* type_info) {
 	if (type_info == nullptr) return;
 	
@@ -63,11 +96,8 @@ static void GatherIncludesForDependentTypes(StackAllocator* alloc, HashTable<Str
 	}
 }
 
-static void GenerateCodeForHlslFile(StackAllocator* alloc, HlslFileData& hlsl_file, TypeInfo* type_info) {
+static void GenerateCodeForHlslFile(StackAllocator* alloc, HlslFileData& hlsl_file, TypeInfoStruct* type_info_struct) {
 	auto& builder = hlsl_file.builder;
-	
-	auto* type_info_struct = TypeInfoCast<TypeInfoStruct>(type_info);
-	DebugAssert(type_info_struct, "Meta::HlslFile must be applied to an struct.");
 	
 	auto name = ExtractNameWithoutNamespace(type_info_struct->name);
 	
@@ -78,11 +108,14 @@ static void GenerateCodeForHlslFile(StackAllocator* alloc, HlslFileData& hlsl_fi
 	
 	u32 constant_count = 0;
 	for (auto& field : type_info_struct->fields) {
-		DebugAssert(field.type != nullptr, "Type of field '%' in struct '%' is not reflected.", field.name, name);
+		CheckFieldIsReflected(alloc, type_info_struct, field);
 		
 		if (field.type == &type_info_type) {
-			builder.Append("\n"_sl);
-			GenerateCodeForHlslFile(alloc, hlsl_file, (TypeInfo*)field.constant_value);
+			auto* field_type = TypeInfoCast<TypeInfoStruct>((TypeInfo*)field.constant_value);
+			if (field_type != nullptr) {
+				builder.Append("\n"_sl);
+				GenerateCodeForHlslFile(alloc, hlsl_file, field_type);
+			}
 		} else if (field.constant_value) {
 			auto type_name = PrintTypeName(alloc, field.type);
 			builder.Append("compile_const % %;\n"_sl, type_name, field.name);
@@ -99,7 +132,7 @@ static void GenerateCodeForHlslFile(StackAllocator* alloc, HlslFileData& hlsl_fi
 	// Hlsl doesn't support inline constant declarations for non trivial types. Output them after the struct.
 	if (constant_count != 0) {
 		for (auto& field : type_info_struct->fields) {
-			if (field.constant_value == nullptr) continue;
+			if (field.type == &type_info_type || field.constant_value == nullptr) continue;
 			
 			auto type_name  = PrintTypeName(alloc, field.type);
 			auto type_value = PrintTypeValue(alloc, field.type, field.constant_value);
@@ -119,7 +152,7 @@ static HlslFileData& AddOrFindHlslFile(StackAllocator* alloc, HashTable<String, 
 	return hlsl_file;
 }
 
-static void GenerateCodeForHlslFile(StackAllocator* alloc, HashTable<String, HlslFileData>& hlsl_files, TypeInfo* type_info, Meta::HlslFile* hlsl_file_note) {
+static void GenerateCodeForHlslFile(StackAllocator* alloc, HashTable<String, HlslFileData>& hlsl_files, TypeInfoStruct* type_info, Meta::HlslFile* hlsl_file_note) {
 	auto& hlsl_file = AddOrFindHlslFile(alloc, hlsl_files, hlsl_file_note->filename);
 	
 	GenerateCodeForHlslFile(alloc, hlsl_file, type_info);
@@ -169,7 +202,9 @@ static void GenerateCodeForRenderPass(StackAllocator* alloc, String filename, Hl
 			break;
 		}
 	}
-	DebugAssert(root_signature_type != nullptr, "RenderPass '%' is missing root signature.", name);
+	if (root_signature_type == nullptr) {
+		ReportError(alloc, type_info_struct->source_location, "RenderPass '%' is missing a root signature."_sl, name);
+	}
 	
 	// Validate root signature:
 	for (auto& field : root_signature_type->fields) {
@@ -178,26 +213,31 @@ static void GenerateCodeForRenderPass(StackAllocator* alloc, String filename, Hl
 		auto* root_argument_type_note = FindNote<RootArgumentType>(field.type);
 		if (root_argument_type_note == nullptr) {
 			auto type_name = PrintTypeName(alloc, field.type);
-			DebugAssertAlways("Unexpected field '%' of type '%' used in a root signature of pass '%'. Only root arguments are allowed.", field.name, type_name, name);
-			continue;
+			ReportError(alloc, field.source_location, "Unexpected field '%' of type '%' used in a root signature of render pass '%'. Only root arguments are allowed."_sl, field.name, type_name, name);
 		}
 		auto root_argument_type = *root_argument_type_note;
 		
 		auto* template_type = TypeInfoCast<TypeInfoStruct>(ExtractTemplateParameterType(field.type, 0));
 		if (root_argument_type == RootArgumentType::DescriptorTable) {
-			DebugAssert(template_type, "Template type of DescriptorTable '%' in render pass '%' is not reflected.", field.name, name);
+			if (template_type == nullptr) {
+				ReportError(alloc, field.source_location, "Template type of DescriptorTable '%' in render pass '%' is not reflected."_sl, field.name, name);
+			}
 			
 			for (auto& field : template_type->fields) {
 				auto* descriptor_type_note = FindNote<ResourceDescriptorType>(field.type);
 				if (descriptor_type_note == nullptr) {
 					auto type_name = PrintTypeName(alloc, field.type);
-					DebugAssertAlways("Unexpected field '%' of type '%' used in a descriptor table of pass '%'. Only descriptors are allowed.", field.name, type_name, name);
+					ReportError(alloc, field.source_location, "Unexpected field '%' of type '%' used in a descriptor table of pass '%'. Only descriptors are allowed."_sl, field.name, type_name, name);
 				}
 			}
 		} else if (root_argument_type == RootArgumentType::ConstantBuffer) {
-			DebugAssert(template_type, "Template type of ConstantBuffer '%' in render pass '%' is not reflected.", field.name, name);
+			if (template_type == nullptr) {
+				ReportError(alloc, field.source_location, "Template type of ConstantBuffer '%' in render pass '%' is not reflected."_sl, field.name, name);
+			}
 		} else if (root_argument_type == RootArgumentType::PushConstantBuffer) {
-			DebugAssert(template_type, "Template type of PushConstantBuffer '%' in render pass '%' is not reflected.", field.name, name);
+			if (template_type == nullptr) {
+				ReportError(alloc, field.source_location, "Template type of PushConstantBuffer '%' in render pass '%' is not reflected."_sl, field.name, name);
+			}
 		}
 	}
 	
@@ -324,10 +364,7 @@ static void GenerateCodeForRenderPass(StackAllocator* alloc, String filename, Hl
 	ArrayAppend(root_signature_file.root_signatures, alloc, root_signature);
 }
 
-static void GenerateCodeForRenderPass(StackAllocator* alloc, HashTable<String, HlslFileData>& hlsl_bindings_files, RootSignatureFileData& root_signature_file, TypeInfo* type_info, Meta::RenderPass* render_pass_note) {
-	auto* type_info_struct = TypeInfoCast<TypeInfoStruct>(type_info);
-	DebugAssert(type_info_struct, "Meta::RenderPass must be applied to an struct.");
-	
+static void GenerateCodeForRenderPass(StackAllocator* alloc, HashTable<String, HlslFileData>& hlsl_bindings_files, RootSignatureFileData& root_signature_file, TypeInfoStruct* type_info_struct, Meta::RenderPass* render_pass_note) {
 	auto render_pass_name = ExtractNameWithoutNamespace(type_info_struct->name);
 	auto filename = StringFormat(alloc, "%..hlsl"_sl, render_pass_name);
 	
@@ -336,10 +373,7 @@ static void GenerateCodeForRenderPass(StackAllocator* alloc, HashTable<String, H
 	GenerateCodeForRenderPass(alloc, filename, hlsl_file, root_signature_file, type_info_struct, render_pass_note);
 }
 
-static void GenerateCodeForShaderDefinition(StackAllocator* alloc, ShaderDefinitionFileData& shader_definition_file, TypeInfo* type_info, Meta::ShaderName* note) {
-	auto* type_info_enum = TypeInfoCast<TypeInfoEnum>(type_info);
-	DebugAssert(type_info_enum, "Meta::ShaderName must be applied to an enum.");
-	
+static void GenerateCodeForShaderDefinition(StackAllocator* alloc, ShaderDefinitionFileData& shader_definition_file, TypeInfoEnum* type_info_enum, Meta::ShaderName* note) {
 	auto name = type_info_enum->name;
 	
 	auto& builder = shader_definition_file.builder;
@@ -351,7 +385,9 @@ static void GenerateCodeForShaderDefinition(StackAllocator* alloc, ShaderDefinit
 		for (auto& field : type_info_enum->fields) {
 			if (CountSetBits(field.value) != 1) continue;
 			
-			DebugAssert(FirstBitLow(field.value) == define_count, "Out of order shader definition '%' in shader '%'. Position in enum: '%', Value: '1u << %'.", field.name, name, define_count, FirstBitLow(field.value));
+			if (FirstBitLow(field.value) != define_count) {
+				ReportError(alloc, field.source_location, "Out of order shader definition '%' in shader '%'. Position in enum: '%', Value: '1u << %'."_sl, field.name, name, define_count, FirstBitLow(field.value));
+			}
 			
 			u64 underscore_count = 0;
 			for (u64 i = 0; i < field.name.count - 1; i += 1) {
@@ -434,8 +470,8 @@ HashTable<String, VersionedTypeInfo> ParseSaveLoadVersionHistory(StackAllocator*
 	auto file = SystemReadFileToString(alloc, save_load_versions_filepath);
 	
 	Tokenizer tokenizer;
-	tokenizer.file     = file;
-	tokenizer.filepath = save_load_versions_filepath;
+	tokenizer.error_context.file     = file;
+	tokenizer.error_context.filepath = save_load_versions_filepath;
 	tokenizer.string   = file.data;
 	tokenizer.alloc    = alloc;
 	
@@ -555,8 +591,12 @@ u64 AddTypeInfoToSaveLoadHistory(StackAllocator* alloc, HashTable<String, Versio
 		for (auto& field : type_info_struct->fields) {
 			if (field.type == &type_info_type) continue;
 			
-			DebugAssert(field.type != nullptr, "Type of field '%' in struct '%' is not reflected.", field.name, type_info_struct->name);
-			DebugAssert(field.type->info_type != TypeInfoType::Pointer, "Pointer SaveLoad is not supported. Field '%' in struct '%'.", field.name, type_info_struct->name);
+			CheckFieldIsReflected(alloc, type_info_struct, field);
+			
+			if (field.type->info_type == TypeInfoType::Pointer) {
+				auto type_name = PrintTypeName(alloc, field.type);
+				ReportError(alloc, field.source_location, "Cannot SaveLoad field '%' of pointer type '% in struct '%'."_sl, field.name, type_name, type_info_struct->name);
+			}
 			
 			u64 type_version = AddTypeInfoToSaveLoadHistory(alloc, version_history, field.type);
 			
@@ -641,28 +681,47 @@ s32 main(s32 argument_count, const char* arguments[]) {
 	entity_system_builder.Append("#include \"Engine/Entities.h\"\n\n"_sl);
 	
 	extern ArrayView<TypeInfo*> type_table;
+	
 	for (auto* type_info : type_table) {
-		if (auto* note = FindNote<Meta::HlslFile>(type_info)) {
-			GenerateCodeForHlslFile(&alloc, hlsl_files, type_info, note);
-		}
+		u64 source_location = 0;
 		
-		if (auto* note = FindNote<Meta::RenderPass>(type_info)) {
-			GenerateCodeForRenderPass(&alloc, hlsl_bindings_files, root_signature_file, type_info, note);
-		}
-		
-		if (auto* note = FindNote<Meta::ShaderName>(type_info)) {
-			GenerateCodeForShaderDefinition(&alloc, shader_definition_file, type_info, note);
-		}
-		
-		if (auto* note = FindNote<Meta::EntityType>(type_info)) {
+		if (auto* note = FindNote<Meta::HlslFile>(type_info, &source_location)) {
 			auto* type_info_struct = TypeInfoCast<TypeInfoStruct>(type_info);
-			DebugAssert(type_info_struct, "Meta::EntityType must be applied to a struct.");
+			if (type_info_struct == nullptr) {
+				ReportError(&alloc, source_location, "Meta::HlslFile must be applied to a struct."_sl);
+			}
+			GenerateCodeForHlslFile(&alloc, hlsl_files, type_info_struct, note);
+		}
+		
+		if (auto* note = FindNote<Meta::RenderPass>(type_info, &source_location)) {
+			auto* type_info_struct = TypeInfoCast<TypeInfoStruct>(type_info);
+			if (type_info_struct == nullptr) {
+				ReportError(&alloc, source_location, "Meta::RenderPass must be applied to a struct."_sl);
+			}
+			GenerateCodeForRenderPass(&alloc, hlsl_bindings_files, root_signature_file, type_info_struct, note);
+		}
+		
+		if (auto* note = FindNote<Meta::ShaderName>(type_info, &source_location)) {
+			auto* type_info_enum = TypeInfoCast<TypeInfoEnum>(type_info);
+			if (type_info_enum == nullptr) {
+				ReportError(&alloc, source_location, "Meta::ShaderName must be applied to an enum."_sl);
+			}
+			GenerateCodeForShaderDefinition(&alloc, shader_definition_file, type_info_enum, note);
+		}
+		
+		if (auto* note = FindNote<Meta::EntityType>(type_info, &source_location)) {
+			auto* type_info_struct = TypeInfoCast<TypeInfoStruct>(type_info);
+			if (type_info_struct == nullptr) {
+				ReportError(&alloc, source_location, "Meta::EntityType must be applied to a struct."_sl);
+			}
 			ArrayAppend(entity_type_infos, &alloc, type_info_struct);
 		}
 		
-		if (auto* note = FindNote<Meta::ComponentQuery>(type_info)) {
+		if (auto* note = FindNote<Meta::ComponentQuery>(type_info, &source_location)) {
 			auto* type_info_struct = TypeInfoCast<TypeInfoStruct>(type_info);
-			DebugAssert(type_info_struct, "Meta::ComponentQuery must be applied to a struct.");
+			if (type_info_struct == nullptr) {
+				ReportError(&alloc, source_location, "Meta::ComponentQuery must be applied to a struct."_sl);
+			}
 			ArrayAppend(entity_query_type_infos, &alloc, type_info_struct);
 		}
 	}
@@ -702,11 +761,16 @@ s32 main(s32 argument_count, const char* arguments[]) {
 			EntityTypeMetadata entity_type_info;
 			entity_type_info.type_info  = type_info;
 			for (auto& field : type_info->fields) {
-				auto* component_type_info = TypeInfoCast<TypeInfoStruct>(ExtractTemplateParameterType(field.type, 0));
-				DebugAssert(component_type_info, "Unknown component type.");
-				
 				auto* component_type_note = FindNote<ComponentType>(field.type);
-				DebugAssert(component_type_note, "Unknown component type.");
+				if (component_type_note == nullptr) {
+					auto type_name = PrintTypeName(&alloc, field.type);
+					ReportError(&alloc, field.source_location, "Unexpected field '%' of type '%' used in entity type '%'. Only components are allowed."_sl, field.name, type_name, type_info->name);
+				}
+				
+				auto* component_type_info = TypeInfoCast<TypeInfoStruct>(ExtractTemplateParameterType(field.type, 0));
+				if (component_type_info == nullptr) {
+					ReportError(&alloc, field.source_location, "Template type of Component '%' in entity type '%' is not reflected."_sl, field.name, type_info->name);
+				}
 				
 				EntityComponentMetadata component_metadata;
 				component_metadata.type_info      = component_type_info;
@@ -714,7 +778,9 @@ s32 main(s32 argument_count, const char* arguments[]) {
 				
 				if (component_metadata.component_type == ComponentType::GPU) {
 					auto* note = FindNote<VirtualResourceID>(field);
-					DebugAssert(note, "Missing VirtualResourceID note on GPU component '%'.", field.name);
+					if (note == nullptr) {
+						ReportError(&alloc, field.source_location, "Missing 'VirtualResourceID' note on GPU component."_sl);
+					}
 					
 					component_metadata.resource_id = *note;
 					entity_type_info.gpu_component_count += 1;
@@ -786,24 +852,21 @@ s32 main(s32 argument_count, const char* arguments[]) {
 			
 			u32 stream_index = 0;
 			for (auto& field : type_info->fields) {
-				ComponentTypeInfoKey component_type_info_key;
-				if (auto* component_type_note = FindNote<ComponentType>(field.type)) {
-					auto* component_type_info = TypeInfoCast<TypeInfoStruct>(ExtractTemplateParameterType(field.type, 0));
-					DebugAssert(component_type_info, "Unknown component type.");
-					
-					component_type_info_key.type_info      = component_type_info;
-					component_type_info_key.component_type = *component_type_note;
-				} else if (auto* component_stream_type_info = TypeInfoCast<TypeInfoPointer>(field.type)) {
-					DebugAssert(component_stream_type_info, "Unknown component type.");
-					
-					auto* component_type_info = TypeInfoCast<TypeInfoStruct>(component_stream_type_info->pointer_to);
-					DebugAssert(component_type_info, "Unknown component type.");
-					
-					component_type_info_key.type_info      = component_type_info;
-					component_type_info_key.component_type = ComponentType::CPU;
-				} else {
-					DebugAssertAlways("Unknown component type.");
+				auto* component_type_note = FindNote<ComponentType>(field.type);
+				auto* component_stream_type_info = TypeInfoCast<TypeInfoPointer>(field.type);
+				if (component_type_note == nullptr && component_stream_type_info == nullptr) {
+					auto type_name = PrintTypeName(&alloc, field.type);
+					ReportError(&alloc, field.source_location, "Unexpected field '%' of type '%' used in entity query type '%'. Only components and pointers to components are allowed."_sl, field.name, type_name, type_info->name);
 				}
+				
+				auto* component_type_info = TypeInfoCast<TypeInfoStruct>(component_type_note ? ExtractTemplateParameterType(field.type, 0) : component_stream_type_info->pointer_to);
+				if (component_type_info == nullptr) {
+					ReportError(&alloc, field.source_location, "Template type of Component '%' in entity type '%' is not reflected."_sl, field.name, type_info->name);
+				}
+				
+				ComponentTypeInfoKey component_type_info_key;
+				component_type_info_key.type_info      = component_type_info;
+				component_type_info_key.component_type = component_type_note ? *component_type_note : ComponentType::CPU;
 				
 				auto* element = HashTableFind(component_types, component_type_info_key);
 				

@@ -65,20 +65,31 @@ struct Token {
 	KeywordType keyword = KeywordType::None;
 };
 
+struct ErrorReportContext {
+	String file;
+	String filepath;
+	u64 file_index = 0;
+	
+	void ReportMessage(StackAllocator* alloc, String string, String message);
+	void ReportErrorV(StackAllocator* alloc, String string, String format, ArrayView<StringFormatArgument> arguments);
+	
+	template<typename ... Args> void ReportError(StackAllocator* alloc, String string, String format, Args ... args) { FORMAT_PROC_BODY(ReportErrorV, alloc, string, format); }
+	
+	u64 StringToSourceLocation(String string);
+};
+
 struct Tokenizer {
 	const char* string = nullptr;
 	
 	StackAllocator* alloc = nullptr;
-	String file;
-	String filepath;
 	Array<String> namespace_stack;
+	
+	ErrorReportContext error_context;
 	
 	Token FindNextToken();
 	Token PeekNextToken();
 	Token ExpectToken(TokenType expected_type);
 	Token ExpectKeyword(KeywordType expected_keyword);
 	
-	void ReportMessage(Token token, String message);
-	void ReportErrorV(Token token, String format, ArrayView<StringFormatArgument> arguments);
-	template<typename ... Args> void ReportError(Token token, String format, Args ... args) { FORMAT_PROC_BODY(ReportErrorV, token, format); }
+	template<typename ... Args> void ReportError(Token token, String format, Args ... args) { FORMAT_PROC_BODY(error_context.ReportErrorV, alloc, token.string, format); }
 };

@@ -8,32 +8,37 @@ inline T* TypeInfoCast(TypeInfo* type_info) {
 }
 
 template<typename T>
-inline T* FindNote(ArrayView<TypeInfoNote> notes) {
+inline T* FindNote(ArrayView<TypeInfoNote> notes, u64* source_location = nullptr) {
 	auto* type_info = TypeInfoOf<T>();
 	if (type_info == nullptr) return nullptr;
 	
 	for (auto& note : notes) {
-		if (note.type == type_info) return (T*)note.value;
+		if (note.type == type_info) {
+			if (source_location) {
+				*source_location = note.source_location;
+			}
+			return (T*)note.value;
+		}
 	}
 	return nullptr;
 }
 
 template<typename T>
-inline T* FindNote(TypeInfo* type_info) {
+inline T* FindNote(TypeInfo* type_info, u64* source_location = nullptr) {
 	if (type_info == nullptr) return nullptr;
 	
 	switch (type_info->info_type) {
-	case TypeInfoType::Struct: return FindNote<T>(static_cast<TypeInfoStruct*>(type_info)->notes);
-	case TypeInfoType::Enum:   return FindNote<T>(static_cast<TypeInfoEnum*>(type_info)->notes);
+	case TypeInfoType::Struct: return FindNote<T>(static_cast<TypeInfoStruct*>(type_info)->notes, source_location);
+	case TypeInfoType::Enum:   return FindNote<T>(static_cast<TypeInfoEnum*>(type_info)->notes, source_location);
 	default: return nullptr;
 	}
 }
 
 template<typename T>
-inline T* FindNote(TypeInfoStructField& field) { return FindNote<T>(field.notes); }
+inline T* FindNote(TypeInfoStructField& field, u64* source_location = nullptr) { return FindNote<T>(field.notes, source_location); }
 
 template<typename T>
-inline T* FindNote(TypeInfoEnumField& field) { return FindNote<T>(field.notes); }
+inline T* FindNote(TypeInfoEnumField& field, u64* source_location = nullptr) { return FindNote<T>(field.notes, source_location); }
 
 
 TypeInfo* ExtractTemplateParameterType(TypeInfo* type_info, u32 index);

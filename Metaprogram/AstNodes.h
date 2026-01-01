@@ -28,8 +28,8 @@ struct AstNode {
 };
 
 struct AstNoteInfo {
-	String type_name;
 	String expression;
+	u64 source_location = 0;
 };
 
 struct AstNodeNotes : AstNode {
@@ -52,6 +52,8 @@ struct AstNodeDeclaration : AstNode {
 	compile_const AstNodeType my_type = AstNodeType::Declaration;
 	
 	String name;
+	u64 source_location = 0;
+	
 	AstNode* type_declaration = nullptr;
 	
 	AstNodeDeclarationType declaration_type = AstNodeDeclarationType::None;
@@ -71,6 +73,7 @@ struct AstNodeStruct : AstNode {
 	compile_const AstNodeType my_type = AstNodeType::Struct;
 	
 	String name;
+	u64 source_location = 0;
 	
 	AstNodeCodeBlock* template_code_block = nullptr;
 	AstNodeCodeBlock* code_block = nullptr;
@@ -80,6 +83,7 @@ struct AstNodeEnum : AstNode {
 	compile_const AstNodeType my_type = AstNodeType::Enum;
 	
 	String name;
+	u64 source_location = 0;
 	
 	String underlying_type;
 	AstNodeCodeBlock* code_block = nullptr;
