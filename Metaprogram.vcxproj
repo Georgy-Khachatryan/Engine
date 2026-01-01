@@ -44,14 +44,21 @@
     
     <ClCompile Include="Metaprogram/MetaprogramCommon.cpp" />
     <ClCompile Include="Metaprogram/MetaprogramMain.cpp" />
-    <ClCompile Include="Metaprogram/MetaprogramMath.cpp" />
     <ClCompile Include="Metaprogram/Tokens.cpp" />
     <ClCompile Include="Metaprogram/TypeInfo.cpp" />
+    
+    <ClCompile Include="Metaprogram/MetaprogramEntitySystem.cpp" />
+    <ClCompile Include="Metaprogram/MetaprogramMath.cpp" />
+    <ClCompile Include="Metaprogram/MetaprogramRenderPasses.cpp" />
+    <ClCompile Include="Metaprogram/MetaprogramSaveLoad.cpp" />
+    <ClCompile Include="Metaprogram/MetaprogramShaders.cpp" />
   </ItemGroup>
   
   <ItemGroup>
     <ClInclude Include="@(ReflectedFiles)" />
     <ClInclude Include="Metaprogram/MetaprogramCommon.h" />
+    <ClInclude Include="Metaprogram/MetaprogramSystems.h" />
+    <ClInclude Include="Metaprogram/MetaprogramSaveLoad.h" />
     <ClInclude Include="Metaprogram/Tokens.h" />
     <ClInclude Include="Metaprogram/TypeInfo.h" />
   </ItemGroup>

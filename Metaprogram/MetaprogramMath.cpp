@@ -230,7 +230,7 @@ static void GenerateVectorFunctions(StringBuilder& builder, u32 count, String ty
 	builder.Append("inline %0 Normalize(const %0& v) { return v * (1.%1 / Length(v)); }\n\n"_sl, name, suffix);
 }
 
-void GenerateMathLibrary(StackAllocator* alloc) {
+void WriteCodeForMathLibrary(StackAllocator* alloc) {
 	StringBuilder builder;
 	builder.alloc = alloc;
 	
