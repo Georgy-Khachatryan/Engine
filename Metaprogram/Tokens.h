@@ -34,6 +34,7 @@ enum struct TokenType : u32 {
 	Identifier     = 27, // 'main'
 	Keyword        = 28, // 'struct'
 	String         = 29, // '"hello"'
+	Arrow          = 30, // '->'
 	
 	Count
 };

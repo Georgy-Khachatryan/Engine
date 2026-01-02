@@ -3,6 +3,17 @@ struct CameraComponent {
 		vertical_fov_degrees float 0;
 		transform_type CameraTransformType 2;
 	}
+	/*Version*/ 5 {
+		vertical_fov_degrees float 0;
+		near_depth float 0;
+		transform_type CameraTransformType 2;
+	}
+}
+
+struct CameraEntityGUID {
+	/*Version*/ 0 {
+		guid u64 0;
+	}
 }
 
 struct GuidComponent {

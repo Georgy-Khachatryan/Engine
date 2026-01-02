@@ -5,6 +5,32 @@
 #include "Components.h"
 
 
+NOTES()
+struct CameraEntityGUID {
+	u64 guid = 0;
+};
+
+NOTES(Meta::NoSaveLoad{})
+struct RendererWorld {
+	float2 window_size = float2(1.f, 1.f);
+	float sun_elevation_degrees = 3.f;
+	float meshlet_target_error_pixels = 1.f;
+	
+	ArrayView<struct GpuComponentUploadBuffer> gpu_uploads;
+	ArrayView<struct BasicVertex>  vertices;
+	ArrayView<struct BasicMeshlet> meshlets;
+	ArrayView<u8>                  indices;
+};
+
+NOTES(Meta::EntityType{ 1 }, Meta::ComponentQuery{})
+struct WorldEntityType {
+	ECS::Component<GuidComponent> guid;
+	
+	ECS::Component<CameraEntityGUID> camera_entity;
+	ECS::Component<RendererWorld> renderer_world;
+};
+
+
 NOTES(Meta::EntityType{})
 struct MeshEntityType {
 	ECS::Component<GuidComponent> guid;
@@ -28,10 +54,11 @@ enum struct CameraTransformType : u32 {
 NOTES()
 struct CameraComponent {
 	float vertical_fov_degrees = 75.f;
+	float near_depth           = 0.1f;
 	CameraTransformType transform_type = CameraTransformType::Perspective;
 };
 
-NOTES(Meta::EntityType{})
+NOTES(Meta::EntityType{}, Meta::ComponentQuery{})
 struct CameraEntityType {
 	ECS::Component<GuidComponent> guid;
 	ECS::Component<NameComponent> name;

@@ -49,10 +49,11 @@
     <ClCompile Include="GraphicsApi/TextureFormat.cpp" />
     
     <!-- Render Passes. -->
+    <ClCompile Include="Engine/RenderPasses.cpp" />
     <ClCompile Include="Engine/AtmosphereRenderPasses.cpp" />
+    <ClCompile Include="Engine/EntitySystemUpdateRenderPasses.cpp" />
     <ClCompile Include="Engine/ImGuiRenderPass.cpp" />
     <ClCompile Include="Engine/MeshRenderPasses.cpp" />
-    <ClCompile Include="Engine/EntitySystemUpdateRenderPasses.cpp" />
     
     <!-- Entity System. -->
     <ClCompile Include="Engine/EntitySystem.cpp" />

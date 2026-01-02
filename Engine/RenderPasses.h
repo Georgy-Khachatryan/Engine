@@ -31,6 +31,8 @@ enum struct VirtualResourceID : u32 {
 	Count
 };
 
+struct EntitySystem;
+void BuildRenderPassesForFrame(RecordContext* record_context, EntitySystem* entity_system, u64 world_entity_guid);
 
 NOTES(Meta::HlslFile{ "AtmosphereData.hlsl"_sl })
 struct AtmosphereParameters {
@@ -86,7 +88,6 @@ NOTES(Meta::ShaderName{ "EntitySystemUpdate.hlsl"_sl })
 enum struct EntitySystemUpdateShaders : u32 {};
 SHADER_DEFINITION_GENERATED_CODE(EntitySystemUpdateShaders);
 
-struct EntitySystem;
 struct GpuComponentUploadBuffer {
 	u32 count  = 0;
 	u32 stride = 0;

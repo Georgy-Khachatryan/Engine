@@ -8,8 +8,6 @@ extern ArrayView<ComponentTypeInfo>   component_type_info_table;
 extern ArrayView<SaveLoadCallback>    component_save_load_callbacks;
 extern ArrayView<DefaultInitializeCallback> component_default_initialize_callbacks;
 
-compile_const u32 base_allocation_count = 1024;
-
 template<typename Lambda>
 static void IterateComponentStreams(ArrayView<ComponentStream> component_streams, EntityTypeInfo& type_info, Lambda&& lambda) {
 	for (u32 component_stream_index = 0; component_stream_index < type_info.cpu_component_count; component_stream_index += 1) {
@@ -57,7 +55,7 @@ CreateEntitiesResult CreateEntities(StackAllocator* alloc, EntitySystem& system,
 	
 	if (array.count + entity_count > array.capacity) {
 		u32 old_capacity = array.capacity;
-		u32 new_capacity = AlignUp(old_capacity ? old_capacity * 3 / 2 + entity_count : entity_count, base_allocation_count);
+		u32 new_capacity = AlignUp(old_capacity ? old_capacity * 3 / 2 + entity_count : entity_count, type_info.base_allocation_count);
 		
 		AllocateEntityMapStreams(array, system.heap, old_capacity, new_capacity);
 		AllocateComponentStreams(array.component_streams, type_info, system.heap, old_capacity, new_capacity);
@@ -314,7 +312,7 @@ void SaveLoadEntitySystem(SaveLoadBuffer& buffer, EntitySystem& system) {
 		SaveLoad(buffer, count);
 		
 		if (buffer.is_loading) {
-			u32 new_capacity = AlignUp(count, base_allocation_count);
+			u32 new_capacity = AlignUp(count, entity_type_info.base_allocation_count);
 			AllocateEntityMapStreams(array, system.heap, 0, new_capacity);
 			AllocateComponentStreams(array.component_streams, entity_type_info, system.heap, 0, new_capacity);
 			DefaultInitializeStreams(array.component_streams, entity_type_info, 0, count); // TODO: Only default initialize new component streams.
@@ -369,9 +367,11 @@ void SaveLoadEntitySystem(SaveLoadBuffer& buffer, EntitySystem& system) {
 			SaveLoad(buffer, version);
 			
 			auto save_load_callback = component_save_load_callbacks[component_type_id.index];
-			u8* component_stream = array.component_streams[component_stream_index].cpu.data;
-			for (u32 i = 0; i < array.count; i += 1) {
-				save_load_callback(buffer, component_stream + i * type_info.size_bytes, version);
+			if (save_load_callback != nullptr) {
+				u8* component_stream = array.component_streams[component_stream_index].cpu.data;
+				for (u32 i = 0; i < array.count; i += 1) {
+					save_load_callback(buffer, component_stream + i * type_info.size_bytes, version);
+				}
 			}
 			u32 end_component_offset = buffer.global_offset;
 			

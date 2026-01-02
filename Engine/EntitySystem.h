@@ -13,6 +13,8 @@ struct ComponentTypeID   { u32 index = 0; };
 struct EntityID          { u32 index = 0; };
 struct TypedEntityID     { EntityID entity_id; EntityTypeID entity_type_id; };
 
+compile_const u32 entity_system_base_allocation_count = 1024;
+
 NOTES()
 enum struct ComponentType : u32 {
 	CPU = 0,
@@ -25,6 +27,7 @@ namespace ECS {
 	struct alignas(void*) Component {
 		T* data = nullptr;
 		T& operator[] (u64 index) { return data[index]; }
+		T* operator-> () { return data; }
 	};
 	
 	NOTES(ComponentType::GPU)
@@ -46,7 +49,8 @@ union alignas(void*) ComponentStream {
 };
 
 namespace Meta {
-	NOTES() struct EntityType {};
+	NOTES() struct NoSaveLoad {};
+	NOTES() struct EntityType { u32 base_allocation_count = entity_system_base_allocation_count; };
 	NOTES() struct ComponentQuery {};
 }
 
@@ -56,6 +60,7 @@ struct EntityTypeInfo {
 	u32 cpu_component_count = 0;
 	u32 gpu_component_count = 0;
 	
+	u32 base_allocation_count = 0;
 	u64 type_hash = 0;
 };
 

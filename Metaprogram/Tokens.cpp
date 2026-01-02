@@ -91,7 +91,7 @@ Token Tokenizer::FindNextToken() {
 	char leading_char = *string;
 	switch (leading_char) {
 	case '+': return MakeToken(string, 1, TokenType::Plus);
-	case '-': return MakeToken(string, 1, TokenType::Minus);
+	case '-': return string[1] == '>' ? MakeToken(string, 2, TokenType::Arrow) : MakeToken(string, 1, TokenType::Minus);
 	case '*': return MakeToken(string, 1, TokenType::Times);
 	case '/': return MakeToken(string, 1, TokenType::Divide);
 	case '%': return MakeToken(string, 1, TokenType::Modulo);
@@ -289,6 +289,7 @@ String token_type_names[] = {
 	"Identifier"_sl,
 	"Keyword"_sl,
 	"String"_sl,
+	"Arrow"_sl,
 };
 static_assert(ArraySize(token_type_names) == (u32)TokenType::Count, "Mismatching token_type_name count.");
 
