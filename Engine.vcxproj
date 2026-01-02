@@ -37,6 +37,8 @@
   
   <ItemGroup>
     <ClCompile Include="Engine/Main.cpp" />
+    <ClCompile Include="Engine/ImGuiCustomWidgets.cpp" />
+    <ClCompile Include="Engine/ImGuiWindow.cpp" />
     <ClCompile Include="Engine/MeshAssetImporter.cpp" />
     <ClCompile Include="Engine/ShaderCompilerDXC.cpp" />
     <ClCompile Include="Engine/SystemWindowWin32.cpp" />
@@ -66,9 +68,10 @@
   </ItemGroup>
   
   <ItemGroup>
+    <ClInclude Include="Engine/ImGuiCustomWidgets.h" />
+    <ClInclude Include="Engine/RenderPasses.h" />
     <ClInclude Include="Engine/ShaderCompiler.h" />
     <ClInclude Include="Engine/SystemWindow.h" />
-    <ClInclude Include="Engine/RenderPasses.h" />
     
     <ClInclude Include="GraphicsApi/GraphicsApi.h" />
     <ClInclude Include="GraphicsApi/GraphicsApiTypes.h" />

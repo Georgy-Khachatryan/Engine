@@ -9,130 +9,12 @@
 #include "EntitySystem.h"
 #include "GraphicsApi/GraphicsApi.h"
 #include "GraphicsApi/RecordContext.h"
+#include "ImGuiCustomWidgets.h"
 #include "RenderPasses.h"
 #include "SystemWindow.h"
 
 #include <SDK/imgui/imgui.h>
 #include <SDK/imgui/imgui_internal.h>
-#include <SDK/imgui/backends/imgui_impl_win32.h>
-
-
-static void ImGuiSetCustomStyle() {
-	auto& style = ImGui::GetStyle();
-	style.WindowRounding = 4.f;
-	style.ChildRounding  = 4.f;
-	style.FrameRounding  = 4.f;
-	style.PopupRounding  = 4.f;
-	style.GrabRounding   = 2.f;
-	
-	auto colors = ArrayView<ImVec4>{ style.Colors, ArraySize(style.Colors) };
-	colors[ImGuiCol_Text]                   = ImVec4(1.00f, 1.00f, 1.00f, 1.00f);
-	colors[ImGuiCol_TextDisabled]           = ImVec4(0.50f, 0.50f, 0.50f, 1.00f);
-	colors[ImGuiCol_WindowBg]               = ImVec4(0.06f, 0.06f, 0.06f, 0.96f);
-	colors[ImGuiCol_ChildBg]                = ImVec4(0.15f, 0.15f, 0.15f, 1.00f);
-	colors[ImGuiCol_PopupBg]                = ImVec4(0.08f, 0.08f, 0.08f, 0.94f);
-	colors[ImGuiCol_Border]                 = ImVec4(0.22f, 0.22f, 0.22f, 1.00f);
-	colors[ImGuiCol_BorderShadow]           = ImVec4(0.00f, 0.00f, 0.00f, 0.00f);
-	colors[ImGuiCol_FrameBg]                = ImVec4(0.10f, 0.10f, 0.10f, 1.00f);
-	colors[ImGuiCol_FrameBgHovered]         = ImVec4(0.22f, 0.22f, 0.22f, 1.00f);
-	colors[ImGuiCol_FrameBgActive]          = ImVec4(0.32f, 0.32f, 0.32f, 1.00f);
-	colors[ImGuiCol_TitleBg]                = ImVec4(0.22f, 0.22f, 0.22f, 1.00f);
-	colors[ImGuiCol_TitleBgActive]          = ImVec4(0.32f, 0.32f, 0.32f, 1.00f);
-	colors[ImGuiCol_TitleBgCollapsed]       = ImVec4(0.10f, 0.10f, 0.10f, 1.00f);
-	colors[ImGuiCol_MenuBarBg]              = ImVec4(0.10f, 0.10f, 0.10f, 1.00f);
-	colors[ImGuiCol_ScrollbarBg]            = ImVec4(0.10f, 0.10f, 0.10f, 1.00f);
-	colors[ImGuiCol_ScrollbarGrab]          = ImVec4(0.22f, 0.22f, 0.22f, 1.00f);
-	colors[ImGuiCol_ScrollbarGrabHovered]   = ImVec4(0.32f, 0.32f, 0.32f, 1.00f);
-	colors[ImGuiCol_ScrollbarGrabActive]    = ImVec4(0.42f, 0.42f, 0.42f, 1.00f);
-	colors[ImGuiCol_CheckMark]              = ImVec4(0.95f, 0.83f, 0.66f, 1.00f);
-	colors[ImGuiCol_SliderGrab]             = ImVec4(0.70f, 0.61f, 0.47f, 1.00f);
-	colors[ImGuiCol_SliderGrabActive]       = ImVec4(0.95f, 0.83f, 0.66f, 1.00f);
-	colors[ImGuiCol_Button]                 = ImVec4(0.22f, 0.22f, 0.22f, 1.00f);
-	colors[ImGuiCol_ButtonHovered]          = ImVec4(0.32f, 0.32f, 0.32f, 1.00f);
-	colors[ImGuiCol_ButtonActive]           = ImVec4(0.42f, 0.42f, 0.42f, 1.00f);
-	colors[ImGuiCol_Header]                 = ImVec4(0.22f, 0.22f, 0.22f, 1.00f);
-	colors[ImGuiCol_HeaderHovered]          = ImVec4(0.32f, 0.32f, 0.32f, 1.00f);
-	colors[ImGuiCol_HeaderActive]           = ImVec4(0.42f, 0.42f, 0.42f, 1.00f);
-	colors[ImGuiCol_Separator]              = ImVec4(0.22f, 0.22f, 0.22f, 1.00f);
-	colors[ImGuiCol_SeparatorHovered]       = ImVec4(0.32f, 0.32f, 0.32f, 1.00f);
-	colors[ImGuiCol_SeparatorActive]        = ImVec4(0.42f, 0.42f, 0.42f, 1.00f);
-	colors[ImGuiCol_ResizeGrip]             = ImVec4(0.22f, 0.22f, 0.22f, 1.00f);
-	colors[ImGuiCol_ResizeGripHovered]      = ImVec4(0.32f, 0.32f, 0.32f, 1.00f);
-	colors[ImGuiCol_ResizeGripActive]       = ImVec4(0.42f, 0.42f, 0.42f, 1.00f);
-	colors[ImGuiCol_InputTextCursor]        = ImVec4(1.00f, 1.00f, 1.00f, 1.00f);
-	colors[ImGuiCol_TabHovered]             = ImVec4(0.32f, 0.32f, 0.32f, 1.00f);
-	colors[ImGuiCol_Tab]                    = ImVec4(0.22f, 0.22f, 0.22f, 1.00f);
-	colors[ImGuiCol_TabSelected]            = ImVec4(0.42f, 0.42f, 0.42f, 1.00f);
-	colors[ImGuiCol_TabSelectedOverline]    = ImVec4(0.00f, 0.00f, 0.00f, 0.00f);
-	colors[ImGuiCol_TabDimmed]              = ImVec4(0.22f, 0.22f, 0.22f, 0.78f);
-	colors[ImGuiCol_TabDimmedSelected]      = ImVec4(0.42f, 0.42f, 0.42f, 0.78f);
-	colors[ImGuiCol_TabDimmedSelectedOverline] = ImVec4(0.50f, 0.50f, 0.50f, 0.00f);
-	colors[ImGuiCol_DockingPreview]         = ImVec4(0.70f, 0.61f, 0.47f, 1.00f);
-	colors[ImGuiCol_DockingEmptyBg]         = ImVec4(0.20f, 0.20f, 0.20f, 1.00f);
-	colors[ImGuiCol_PlotLines]              = ImVec4(0.70f, 0.61f, 0.47f, 1.00f);
-	colors[ImGuiCol_PlotLinesHovered]       = ImVec4(0.95f, 0.83f, 0.66f, 1.00f);
-	colors[ImGuiCol_PlotHistogram]          = ImVec4(0.70f, 0.61f, 0.47f, 1.00f);
-	colors[ImGuiCol_PlotHistogramHovered]   = ImVec4(0.95f, 0.83f, 0.66f, 1.00f);
-	colors[ImGuiCol_TableHeaderBg]          = ImVec4(0.19f, 0.19f, 0.20f, 1.00f);
-	colors[ImGuiCol_TableBorderStrong]      = ImVec4(0.31f, 0.31f, 0.35f, 1.00f);
-	colors[ImGuiCol_TableBorderLight]       = ImVec4(0.23f, 0.23f, 0.25f, 1.00f);
-	colors[ImGuiCol_TableRowBg]             = ImVec4(0.00f, 0.00f, 0.00f, 0.00f);
-	colors[ImGuiCol_TableRowBgAlt]          = ImVec4(1.00f, 1.00f, 1.00f, 0.06f);
-	colors[ImGuiCol_TextLink]               = ImVec4(0.26f, 0.59f, 0.98f, 1.00f);
-	colors[ImGuiCol_TextSelectedBg]         = ImVec4(0.32f, 0.32f, 0.32f, 1.00f);
-	colors[ImGuiCol_TreeLines]              = ImVec4(0.43f, 0.43f, 0.50f, 0.50f);
-	colors[ImGuiCol_DragDropTarget]         = ImVec4(0.95f, 0.83f, 0.66f, 1.00f);
-	colors[ImGuiCol_NavCursor]              = ImVec4(0.95f, 0.83f, 0.66f, 1.00f);
-	colors[ImGuiCol_NavWindowingHighlight]  = ImVec4(1.00f, 1.00f, 1.00f, 0.70f);
-	colors[ImGuiCol_NavWindowingDimBg]      = ImVec4(0.80f, 0.80f, 0.80f, 0.20f);
-	colors[ImGuiCol_ModalWindowDimBg]       = ImVec4(0.80f, 0.80f, 0.80f, 0.35f);
-}
-
-void ImGuiWrapMousePosition(const ImRect& inclusive_wrap_rect) {
-	auto& io = ImGui::GetIO();
-	auto* viewport = ImGui::GetWindowViewport();
-	
-	auto wrap_rect = ImRect(inclusive_wrap_rect.Min, inclusive_wrap_rect.Max - ImVec2(1.f, 1.f));
-	wrap_rect.Floor();
-	wrap_rect.ClipWithFull(ImRect(viewport->Pos, viewport->Pos + viewport->Size - ImVec2(1.f, 1.f)));
-	
-	auto mouse_pos = io.MousePos;
-	for (u32 axis = 0; axis < 2; axis += 1) {
-		if (mouse_pos[axis] >= wrap_rect.Max[axis]) {
-			mouse_pos[axis] = wrap_rect.Min[axis] + 1.f;
-		} else if (mouse_pos[axis] <= wrap_rect.Min[axis]) {
-			mouse_pos[axis] = wrap_rect.Max[axis] - 1.f;
-		}
-	}
-	
-	if (mouse_pos.x != io.MousePos.x || mouse_pos.y != io.MousePos.y) {
-		ImGui::TeleportMousePos(mouse_pos);
-	}
-}
-
-struct ImGuiMouseLock {
-	ImGuiMouseButton locked_mouse_button = ImGuiMouseButton_COUNT;
-	ImVec2 locked_mouse_pos;
-	
-	void Update(ImGuiMouseButton button, bool should_lock_mouse, const ImRect& inclusive_lock_rect) {
-		if (should_lock_mouse && locked_mouse_button == ImGuiMouseButton_COUNT && ImGui::IsMouseClicked(button)) {
-			locked_mouse_button = button;
-			locked_mouse_pos = ImGui::GetMousePos();
-		}
-		
-		if (locked_mouse_button == button && ImGui::IsMouseDown(button) == false) {
-			locked_mouse_button = ImGuiMouseButton_COUNT;
-			ImGui::TeleportMousePos(locked_mouse_pos);
-		}
-		
-		if (locked_mouse_button == button) {
-			ImGuiWrapMousePosition(inclusive_lock_rect);
-			ImGui::SetMouseCursor(ImGuiMouseCursor_None);
-		}
-	}
-};
-
-#define ImGuiScopeID(...) ImGui::PushID(__VA_ARGS__); defer{ ImGui::PopID(); }
 
 
 template<typename T>
@@ -166,18 +48,6 @@ s32 main() {
 	extern void BasicExamples(StackAllocator* alloc);
 	BasicExamples(&alloc);
 	
-	auto imgui_heap = CreateHeapAllocator(2 * 1024 * 1024);
-	ImGui::SetAllocatorFunctions(
-		[](u64   size,   void* heap) { return ((HeapAllocator*)heap)->Allocate(size);     },
-		[](void* memory, void* heap) { return ((HeapAllocator*)heap)->Deallocate(memory); },
-		&imgui_heap
-	);
-	
-	ImGui_ImplWin32_EnableDpiAwareness();
-	
-	ImGui::CreateContext();
-	defer{ ImGui::DestroyContext(); };
-	
 	Array<BasicVertex>  vertices;
 	Array<BasicMeshlet> meshlets;
 	Array<u8>           indices;
@@ -186,31 +56,25 @@ s32 main() {
 		ImportFbxMeshFile(&alloc, "./Assets/Source/Torus/Torus.fbx"_sl, vertices, meshlets, indices);
 	}
 	
-	auto& io = ImGui::GetIO();
-	io.IniFilename = "./Build/ImGuiSettings.ini";
-	io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
-	io.BackendFlags |= ImGuiBackendFlags_RendererHasVtxOffset | ImGuiBackendFlags_RendererHasTextures;
+	auto imgui_heap = CreateHeapAllocator(2 * 1024 * 1024);
+	defer{ ReleaseHeapAllocator(imgui_heap); };
 	
-	ImFontConfig font_config = {};
-	font_config.GlyphOffset.y = -1.f;
-	io.Fonts->Flags |= ImFontAtlasFlags_NoMouseCursors;
-	io.Fonts->AddFontFromFileTTF("./Assets/OpenSans-Regular.ttf", 18.f, &font_config);
+	ImGuiInitializeContext(&imgui_heap);
 	
 	auto* window = SystemCreateWindow(&alloc, "Engine"_sl);
 	defer{ SystemReleaseWindow(window); };
 	
-	ImGui_ImplWin32_Init(window->hwnd);
-	defer{ ImGui_ImplWin32_Shutdown(); };
+	ImGuiInitializeWindow(window);
 	
 	auto* graphics_context = CreateGraphicsContext(&alloc);
 	defer{ ReleaseGraphicsContext(graphics_context, &alloc); };
+	defer{ ImGuiReleaseContext(graphics_context); };
 	
 	// TODO: Dynamically switch between HDR and SDR, add tone mappers for both.
 	auto* swap_chain = CreateWindowSwapChain(&alloc, graphics_context, window->hwnd, TextureFormat::R16G16B16A16_FLOAT);
 	// auto* swap_chain = CreateWindowSwapChain(&alloc, graphics_context, window->hwnd, TextureFormat::R8G8B8A8_UNORM_SRGB);
 	defer{ ReleaseWindowSwapChain(swap_chain, graphics_context); };
 	
-	ImGuiSetCustomStyle();
 	
 	FixedCountArray<NativeBufferResource, number_of_frames_in_flight> upload_buffers;
 	FixedCountArray<u8*, number_of_frames_in_flight> upload_buffer_cpu_addresses;
@@ -286,123 +150,22 @@ s32 main() {
 		TempAllocationScopeNamed(frame_initial_size, &alloc);
 		
 		SystemPollWindowEvents(window);
-		
 		ResizeWindowSwapChain(swap_chain, graphics_context, window->size);
-		
 		WindowSwapChainBeginFrame(swap_chain, graphics_context, &alloc);
-		ImGui_ImplWin32_NewFrame();
-		ImGui::NewFrame();
+		ImGuiBeginFrame(window);
 		
-		ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.f);
-		
-		// Must be scaled by DPI.
-		compile_const float default_icon_size          = 9.f;
-		compile_const float default_button_width       = 47.f;
-		compile_const float default_title_bar_height   = 30.f;
-		compile_const float maximized_title_bar_height = 23.f;
-		
-		float dpi_scale = ImGui_ImplWin32_GetDpiScaleForHwnd(window->hwnd);
-		float title_bar_height = (window->state == WindowState::Maximized ? maximized_title_bar_height : default_title_bar_height) * dpi_scale;
-		float button_width = default_button_width * dpi_scale;
-		
-		auto half_button_size = ImVec2(ceilf(button_width * 0.5f), floorf(title_bar_height * 0.5f));
-		auto button_size      = half_button_size * 2.f;
-		
-		ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(ImGui::GetStyle().FramePadding.x, floorf((button_size.y - ImGui::GetFontSize()) * 0.5f)));
-		ImGui::BeginMainMenuBar();
-		ImGui::PopStyleVar();
-		
-		window->titlebar_hovered = ImGui::IsWindowHovered() && (ImGui::IsAnyItemHovered() == false);
-		
-		ImGui::Dummy(ImVec2(ImGui::GetContentRegionAvail().x - button_size.x * 3.f, 0.f));
-		
-		ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.f, 0.f));
-		ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, half_button_size.y);
-		ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.f, 0.f, 0.f, 0.f));
-		auto* draw_list = ImGui::GetWindowDrawList();
-		
-		float icon_size = (default_icon_size * dpi_scale);
-		float half_icon_size = floorf(icon_size * 0.5f) + 0.5f + (1.f / 128.f);
-		float icon_line_thickness = floorf(dpi_scale);
-		
-		auto button_center = ImGui::GetCursorScreenPos() + half_button_size;
-		if (ImGui::Button("##Minimize", button_size)) {
-			window->requested_state = WindowState::Minimized;
-		}
-		
-		{
-			draw_list->PathLineTo(button_center + ImVec2(+half_icon_size, 0.5f));
-			draw_list->PathLineTo(button_center + ImVec2(-half_icon_size, 0.5f));
-			draw_list->PathStroke(ImGui::GetColorU32(ImGuiCol_Text), ImDrawFlags_None, icon_line_thickness);
-		}
-		
-		
-		button_center = ImGui::GetCursorScreenPos() + half_button_size;
-		if (ImGui::Button("##MaximizeOrRestore", button_size)) {
-			window->requested_state = window->state == WindowState::Maximized ? WindowState::Floating : WindowState::Maximized;
-		}
-		
-		{
-			float offset = 0.f;
-			if (window->state == WindowState::Maximized) {
-				offset = floorf(icon_size * 0.25f);
-				draw_list->PathLineTo(button_center + ImVec2(+half_icon_size, +half_icon_size) + ImVec2(-offset, -offset));
-				draw_list->PathLineTo(button_center + ImVec2(+half_icon_size, +half_icon_size) + ImVec2(0.f, -offset));
-				draw_list->PathLineTo(button_center + ImVec2(+half_icon_size, -half_icon_size));
-				draw_list->PathLineTo(button_center + ImVec2(-half_icon_size, -half_icon_size) + ImVec2(+offset, 0.f));
-				draw_list->PathLineTo(button_center + ImVec2(-half_icon_size, -half_icon_size) + ImVec2(+offset, +offset));
-				draw_list->PathStroke(ImGui::GetColorU32(ImGuiCol_Text), ImDrawFlags_None, icon_line_thickness);
-			}
-			
-			draw_list->PathLineTo(button_center + ImVec2(+half_icon_size, +half_icon_size) + ImVec2(-offset, 0.f));
-			draw_list->PathLineTo(button_center + ImVec2(-half_icon_size, +half_icon_size));
-			draw_list->PathLineTo(button_center + ImVec2(-half_icon_size, -half_icon_size) + ImVec2(0.f, +offset));
-			draw_list->PathLineTo(button_center + ImVec2(+half_icon_size, -half_icon_size) + ImVec2(-offset, +offset));
-			draw_list->PathStroke(ImGui::GetColorU32(ImGuiCol_Text), ImDrawFlags_Closed, icon_line_thickness);
-		}
-		
-		button_center = ImGui::GetCursorScreenPos() + half_button_size;
-		ImGui::PushStyleColor(ImGuiCol_ButtonHovered, 0xFF1C2BC4);
-		ImGui::PushStyleColor(ImGuiCol_ButtonActive,  0xFF3040C8);
-		if (ImGui::Button("##Close", button_size)) {
-			window->should_close = true;
-		}
-		ImGui::PopStyleColor(2);
-		
-		{
-			draw_list->PathLineTo(button_center + ImVec2(+half_icon_size, +half_icon_size));
-			draw_list->PathLineTo(button_center + ImVec2(-half_icon_size, -half_icon_size));
-			draw_list->PathStroke(ImGui::GetColorU32(ImGuiCol_Text), ImDrawFlags_None, icon_line_thickness);
-			
-			draw_list->PathLineTo(button_center + ImVec2(-half_icon_size, +half_icon_size));
-			draw_list->PathLineTo(button_center + ImVec2(+half_icon_size, -half_icon_size));
-			draw_list->PathStroke(ImGui::GetColorU32(ImGuiCol_Text), ImDrawFlags_None, icon_line_thickness);
-		}
-		
-		ImGui::PopStyleColor();
-		ImGui::PopStyleVar(2);
-		ImGui::EndMainMenuBar();
-		ImGui::PopStyleVar();
-		
-		ImGui::ShowDemoWindow(nullptr);
-		ImGui::DockSpaceOverViewport(0, ImGui::GetMainViewport(), ImGuiDockNodeFlags_AutoHideTabBar);
 		
 		RecordContext record_context;
 		record_context.alloc   = &alloc;
 		record_context.context = graphics_context;
 		record_context.resource_table = &resource_table;
 		
-		resource_table.virtual_resources.count = (u64)VirtualResourceID::Count;
 		resource_table.Set(VirtualResourceID::CurrentBackBuffer, WindowSwapGetCurrentBackBuffer(swap_chain), swap_chain->size);
 		resource_table.Set(VirtualResourceID::TransientUploadBuffer, upload_buffers[upload_buffer_index], upload_buffer_size, upload_buffer_cpu_addresses[upload_buffer_index]);
 		upload_buffer_index = (upload_buffer_index + 1) % number_of_frames_in_flight;
 		
-		struct ImGuiDescriptorTable : HLSL::BaseDescriptorTable {
-			HLSL::Texture2D<float4> scene_radiance = VirtualResourceID::SceneRadiance;
-		};
-		HLSL::DescriptorTable<ImGuiDescriptorTable> root_descriptor_table = { 0, 1 };
 		
-		auto& descriptor_table = AllocateDescriptorTable(&record_context, root_descriptor_table);
+		u32 scene_descriptor_heap_offset = CreateResourceDescriptor(&record_context, HLSL::Texture2D<float4>(VirtualResourceID::SceneRadiance));
 		
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.f, 0.f));
 		ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,  ImVec2(0.f, 0.f));
@@ -410,15 +173,14 @@ s32 main() {
 		
 		auto window_size = float2(ImGui::GetContentRegionAvail());
 		auto window_pos  = ImGui::GetWindowPos();
-		ImGui::ImageButton("Scene", descriptor_table.descriptor_heap_offset, ImVec2(window_size.x, window_size.y));
+		ImGui::ImageButton("Scene", scene_descriptor_heap_offset, ImVec2(window_size.x, window_size.y));
 		bool scene_hovered = ImGui::IsItemHovered();
 		bool scene_focused = ImGui::IsItemFocused();
 		
-		ImRect mouse_lock_rect;
-		mouse_lock_rect.Min = window_pos;
-		mouse_lock_rect.Max = window_pos + ImGui::GetWindowSize();
-		mouse_lock.Update(ImGuiMouseButton_Left,  scene_hovered, mouse_lock_rect);
-		mouse_lock.Update(ImGuiMouseButton_Right, scene_hovered, mouse_lock_rect);
+		auto mouse_lock_rect_min = window_pos;
+		auto mouse_lock_rect_max = window_pos + ImGui::GetWindowSize();
+		mouse_lock.Update(ImGuiMouseButton_Left,  scene_hovered, mouse_lock_rect_min, mouse_lock_rect_max);
+		mouse_lock.Update(ImGuiMouseButton_Right, scene_hovered, mouse_lock_rect_min, mouse_lock_rect_max);
 		
 		ImGui::End();
 		ImGui::PopStyleVar(2);
@@ -555,6 +317,8 @@ s32 main() {
 		
 		ImGui::End();
 		
+		auto& io = ImGui::GetIO();
+		
 		if (scene_focused) {
 			float base_speed = 10.f; // m/s
 			float sensetivity_scale = (ImGui::IsKeyDown(ImGuiMod_Shift) ? 5.f : 1.f) * (ImGui::IsKeyDown(ImGuiMod_Alt) ? 0.2f : 1.f);
@@ -611,10 +375,6 @@ s32 main() {
 			world_space_camera_position += world_to_view.r1 * ((meters_per_pixel * sensetivity_scale) * io.MouseDelta.y);
 		}
 		
-		if (ImGui::IsKeyChordPressed(ImGuiMod_Alt | ImGuiKey_F4)) {
-			window->should_close = true;
-		}
-		
 		
 		Array<GpuComponentUploadBuffer> gpu_uploads;
 		for (auto* entity_array : QueryEntities<PositionRotationScaleGpuTransformQuery>(&alloc, entity_system)) {
@@ -665,10 +425,6 @@ s32 main() {
 	
 	for (auto& buffer : upload_buffers) {
 		ReleaseBufferResource(graphics_context, buffer);
-	}
-	
-	for (auto* texture : ImGui::GetPlatformIO().Textures) {
-		ReleaseTextureResource(graphics_context, { texture->BackendUserData });
 	}
 	
 	return 0;

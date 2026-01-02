@@ -3,6 +3,7 @@
 #include "Basic/BasicArray.h"
 #include "Basic/BasicMath.h"
 #include "GraphicsApiTypes.h"
+#include "GraphicsApi.h"
 
 struct GraphicsContext;
 struct VirtualResourceTable;
@@ -109,14 +110,20 @@ inline T& AllocateDescriptorTable(RecordContext* record_context, const HLSL::Des
 }
 
 template<typename T>
-inline void CreateResourceDescriptor(RecordContext* record_context, const T& descriptor, u32 descriptor_heap_index) {
+inline u32 CreateResourceDescriptor(RecordContext* record_context, const T& descriptor, u32 descriptor_heap_index = u32_max) {
 	struct DescriptorTable : HLSL::BaseDescriptorTable { T descriptor; };
+	
+	if (descriptor_heap_index == u32_max) {
+		descriptor_heap_index = AllocateTransientSrvDescriptorTable(record_context->context, 1);
+	}
 	
 	auto* descriptor_table = NewFromAlloc(record_context->alloc, DescriptorTable);
 	descriptor_table->descriptor_heap_offset = descriptor_heap_index;
 	descriptor_table->descriptor_count       = 1;
 	descriptor_table->descriptor             = descriptor;
 	ArrayAppend(record_context->descriptor_tables, record_context->alloc, descriptor_table);
+	
+	return descriptor_heap_index;
 }
 
 TextureSize GetTextureSize(RecordContext* record_context, VirtualResourceID resource_id);
