@@ -21,6 +21,19 @@ using u64 = uint64_t;
 using s64 = int64_t;
 using quat = float4;
 
+compile_const u16 u16_max = (u16)0xFFFF;
+compile_const u16 u16_min = (u16)0x0000;
+compile_const s16 s16_max = (s16)0x7FFF;
+compile_const s16 s16_min = (s16)0x8000;
+compile_const u32 u32_max = (u32)0xFFFFFFFF;
+compile_const u32 u32_min = (u32)0x00000000;
+compile_const s32 s32_max = (s32)0x7FFFFFFF;
+compile_const s32 s32_min = (s32)0x80000000;
+compile_const u64 u64_max = (u64)0xFFFFFFFFFFFFFFFF;
+compile_const u64 u64_min = (u64)0x0000000000000000;
+compile_const s64 s64_max = (s64)0x7FFFFFFFFFFFFFFF;
+compile_const s64 s64_min = (s64)0x8000000000000000;
+
 #include ROOT_SIGNATURE_FILEPATH
 
 

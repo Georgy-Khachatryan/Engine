@@ -18,3 +18,7 @@ struct GpuTransform {
 	quat rotation;
 };
 
+NOTES(Meta::HlslFile{ "MeshData.hlsl"_sl })
+struct GpuMeshEntityData {
+	u32 mesh_asset_entity_id = 0;
+};

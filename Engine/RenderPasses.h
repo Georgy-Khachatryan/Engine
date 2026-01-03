@@ -12,6 +12,7 @@ enum struct VirtualResourceID : u32 {
 	
 	// GPU components:
 	MeshEntityGpuTransform,
+	GpuMeshEntityData,
 	GpuMeshAssetData,
 	
 	// Streaming buffers:
@@ -257,6 +258,7 @@ struct MeshletCullingRenderPass {
 	struct Descriptors : HLSL::BaseDescriptorTable {
 		HLSL::RegularBuffer<GpuTransform>     mesh_transforms = VirtualResourceID::MeshEntityGpuTransform;
 		HLSL::RegularBuffer<GpuMeshAssetData> mesh_asset_data = VirtualResourceID::GpuMeshAssetData;
+		HLSL::RegularBuffer<GpuMeshEntityData> mesh_entity_data = VirtualResourceID::GpuMeshEntityData;
 		HLSL::ByteBuffer             mesh_asset_buffer  = VirtualResourceID::MeshAssetBuffer;
 		HLSL::RWRegularBuffer<uint2> visible_meshlets   = VirtualResourceID::VisibleMeshlets;
 		HLSL::RWRegularBuffer<uint4> indirect_arguments = VirtualResourceID::MeshletIndirectArguments;
@@ -284,6 +286,7 @@ struct BasicMeshRenderPass {
 	struct Descriptors : HLSL::BaseDescriptorTable {
 		HLSL::RegularBuffer<GpuTransform>     mesh_transforms = VirtualResourceID::MeshEntityGpuTransform;
 		HLSL::RegularBuffer<GpuMeshAssetData> mesh_asset_data = VirtualResourceID::GpuMeshAssetData;
+		HLSL::RegularBuffer<GpuMeshEntityData> mesh_entity_data = VirtualResourceID::GpuMeshEntityData;
 		HLSL::ByteBuffer           mesh_asset_buffer = VirtualResourceID::MeshAssetBuffer;
 		HLSL::RegularBuffer<uint2> visible_meshlets  = VirtualResourceID::VisibleMeshlets;
 	};

@@ -22,12 +22,12 @@ void MainMS(
 	
 	uint2 meshlet_instance = visible_meshlets[group_id]; 
 	
-	uint mesh_instance_index = meshlet_instance.y;
-	uint meshlet_index       = meshlet_instance.x;
-	uint asset_entity_id     = 0;
+	uint mesh_entity_index    = meshlet_instance.y;
+	uint meshlet_index        = meshlet_instance.x;
+	uint mesh_asset_entity_id = mesh_entity_data[mesh_entity_index].mesh_asset_entity_id;
 	
-	GpuTransform model_to_world = mesh_transforms[mesh_instance_index];
-	GpuMeshAssetData mesh_asset = mesh_asset_data[asset_entity_id];
+	GpuTransform model_to_world = mesh_transforms[mesh_entity_index];
+	GpuMeshAssetData mesh_asset = mesh_asset_data[mesh_asset_entity_id];
 	
 	BasicMeshlet meshlet = mesh_asset_buffer.Load<BasicMeshlet>(mesh_asset.meshlet_buffer_offset + meshlet_index * sizeof(BasicMeshlet));
 	

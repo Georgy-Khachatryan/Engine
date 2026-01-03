@@ -38,8 +38,13 @@ struct MeshEntityType {
 	ECS::Component<RotationComponent> rotation;
 	ECS::Component<ScaleComponent>    scale;
 	
+	ECS::Component<MeshAssetGUID> mesh_asset;
+	
 	NOTES(VirtualResourceID::MeshEntityGpuTransform)
 	ECS::GpuComponent<GpuTransform> gpu_transform;
+	
+	NOTES(VirtualResourceID::GpuMeshEntityData)
+	ECS::GpuComponent<GpuMeshEntityData> gpu_mesh_entity_data;
 };
 
 
@@ -71,40 +76,4 @@ NOTES(Meta::ComponentQuery{})
 struct GuidNameQuery {
 	GuidComponent* guid = nullptr;
 	NameComponent* name = nullptr;
-};
-
-NOTES(Meta::ComponentQuery{})
-struct PositionQuery {
-	PositionComponent* position = nullptr;
-};
-
-NOTES(Meta::ComponentQuery{})
-struct RotationQuery {
-	RotationComponent* rotation = nullptr;
-};
-
-NOTES(Meta::ComponentQuery{})
-struct ScaleQuery {
-	ScaleComponent* scale = nullptr;
-};
-
-NOTES(Meta::ComponentQuery{})
-struct NameQuery {
-	NameComponent* name = nullptr;
-};
-
-NOTES(Meta::ComponentQuery{})
-struct PositionRotationCameraQuery {
-	PositionComponent* position = nullptr;
-	RotationComponent* rotation = nullptr;
-	CameraComponent*   camera   = nullptr;
-};
-
-NOTES(Meta::ComponentQuery{})
-struct PositionRotationScaleGpuTransformQuery {
-	PositionComponent* position = nullptr;
-	RotationComponent* rotation = nullptr;
-	ScaleComponent*    scale    = nullptr;
-	
-	ECS::GpuComponent<GpuTransform> gpu_transform;
 };

@@ -117,14 +117,6 @@ s32 main() {
 			}
 			
 			{
-				compile_const float spacing = 2.f;
-				compile_const float center_offset = -(float)mesh_grid_size * 0.5f * spacing;
-				for (u32 i = 0; i < mesh_instance_count; i += 1) {
-					mesh_entities.position[i].position = float3((i % mesh_grid_size) * spacing + center_offset, (i / mesh_grid_size) * spacing + center_offset, 0.f);
-				}
-			}
-			
-			{
 				extern MeshRuntimeDataLayout ImportFbxMeshFile(StackAllocator* alloc, String filepath, u64 runtime_data_guid);
 				
 				TempAllocationScope(&alloc);
@@ -136,6 +128,17 @@ s32 main() {
 				mesh_asset.name->name            = StringCopy(&entity_system.heap, "Torus"_sl);
 				mesh_asset.source_data->filepath = StringCopy(&entity_system.heap, source_data_filepath);
 				*mesh_asset.runtime_data_layout  = runtime_data_layout;
+			}
+			
+			{
+				compile_const float spacing = 2.f;
+				compile_const float center_offset = -(float)mesh_grid_size * 0.5f * spacing;
+				
+				u64 mesh_asset_guid = mesh_asset.guid->guid;
+				for (u32 i = 0; i < mesh_instance_count; i += 1) {
+					mesh_entities.position[i].position = float3((i % mesh_grid_size) * spacing + center_offset, (i / mesh_grid_size) * spacing + center_offset, 0.f);
+					mesh_entities.mesh_asset[i].guid = mesh_asset_guid;
+				}
 			}
 		}
 	}
@@ -382,14 +385,15 @@ s32 main() {
 		
 		
 		Array<GpuComponentUploadBuffer> gpu_uploads;
-		for (auto* entity_array : QueryEntities<PositionRotationScaleGpuTransformQuery>(&alloc, entity_system)) {
+		for (auto* entity_array : QueryEntities<MeshEntityType>(&alloc, entity_system)) {
+			ProfilerScope("MeshEntityGpuComponentUpdate");
+			
 			u32 dirty_entity_count = (u32)BitArrayCountSetBits(entity_array->dirty_mask);
 			if (dirty_entity_count == 0) continue;
 			
-			auto streams = ExtractComponentStreams<PositionRotationScaleGpuTransformQuery>(entity_array);
+			auto streams = ExtractComponentStreams<MeshEntityType>(entity_array);
 			
 			auto gpu_transform = AllocateGpuComponentUploadBuffer(&record_context, dirty_entity_count, streams.gpu_transform);
-			
 			for (u64 i : BitArrayIt(entity_array->dirty_mask)) {
 				GpuTransform transform;
 				transform.position = streams.position[i].position;
@@ -398,9 +402,21 @@ s32 main() {
 				QueueGpuUpload(gpu_transform, (u32)i, transform);
 			}
 			ArrayAppend(gpu_uploads, &alloc, gpu_transform);
+			
+			auto gpu_mesh_entity_data = AllocateGpuComponentUploadBuffer(&record_context, dirty_entity_count, streams.gpu_mesh_entity_data);
+			for (u64 i : BitArrayIt(entity_array->dirty_mask)) {
+				auto* element = HashTableFind(entity_system.entity_guid_to_entity_id, streams.mesh_asset[i].guid);
+				
+				GpuMeshEntityData mesh_entity;
+				mesh_entity.mesh_asset_entity_id = element ? element->value.entity_id.index : u32_max;
+				QueueGpuUpload(gpu_mesh_entity_data, (u32)i, mesh_entity);
+			}
+			ArrayAppend(gpu_uploads, &alloc, gpu_mesh_entity_data);
 		}
 		
 		for (auto* entity_array : QueryEntities<MeshAssetType>(&alloc, entity_system)) {
+			ProfilerScope("MeshAssetTypeGpuComponentUpdate");
+			
 			u32 dirty_entity_count = (u32)BitArrayCountSetBits(entity_array->dirty_mask);
 			if (dirty_entity_count == 0) continue;
 			
@@ -466,6 +482,7 @@ s32 main() {
 	}
 	
 	ReleaseBufferResource(graphics_context, resource_table.virtual_resources[(u32)VirtualResourceID::MeshEntityGpuTransform].buffer.resource);
+	ReleaseBufferResource(graphics_context, resource_table.virtual_resources[(u32)VirtualResourceID::GpuMeshEntityData].buffer.resource);
 	ReleaseBufferResource(graphics_context, resource_table.virtual_resources[(u32)VirtualResourceID::GpuMeshAssetData].buffer.resource);
 	ReleaseBufferResource(graphics_context, mesh_asset_buffer);
 	

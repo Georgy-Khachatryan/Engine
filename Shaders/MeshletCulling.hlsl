@@ -31,11 +31,12 @@ compile_const uint thread_group_size = 256;
 
 [ThreadGroupSize(thread_group_size, 1, 1)]
 void MainCS(uint2 thread_id : SV_DispatchThreadID) {
-	uint mesh_instance_index = thread_id.y;
-	uint asset_entity_id     = 0;
+	uint mesh_entity_index = thread_id.y;
+	uint mesh_asset_entity_id = mesh_entity_data[mesh_entity_index].mesh_asset_entity_id;
+	if (mesh_asset_entity_id == u32_max) return;
 	
-	GpuMeshAssetData mesh_asset = mesh_asset_data[asset_entity_id];
-	GpuTransform model_to_world = mesh_transforms[mesh_instance_index];
+	GpuMeshAssetData mesh_asset = mesh_asset_data[mesh_asset_entity_id];
+	GpuTransform model_to_world = mesh_transforms[mesh_entity_index];
 	
 	for (uint meshlet_index = thread_id.x; meshlet_index < mesh_asset.meshlet_count; meshlet_index += thread_group_size) {
 		BasicMeshlet meshlet = mesh_asset_buffer.Load<BasicMeshlet>(mesh_asset.meshlet_buffer_offset + meshlet_index * sizeof(BasicMeshlet));
@@ -50,7 +51,7 @@ void MainCS(uint2 thread_id : SV_DispatchThreadID) {
 		InterlockedAdd(indirect_arguments[0].x, 1u, visible_meshlet_index);
 		
 		if (visible_meshlet_index < SceneConstants::visible_meshlet_buffer_count) {
-			visible_meshlets[visible_meshlet_index] = uint2(meshlet_index, mesh_instance_index);
+			visible_meshlets[visible_meshlet_index] = uint2(meshlet_index, mesh_entity_index);
 		} else {
 			InterlockedAdd(indirect_arguments[0].x, -1);
 		}

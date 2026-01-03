@@ -41,6 +41,12 @@ struct quat {
 	}
 }
 
+struct MeshAssetGUID {
+	/*Version*/ 0 {
+		guid u64 0;
+	}
+}
+
 struct ScaleComponent {
 	/*Version*/ 0 {
 		scale float 0;

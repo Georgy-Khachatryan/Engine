@@ -68,6 +68,11 @@ struct MeshRuntimeAllocation {
 	u32 base_offset = 0;
 };
 
+NOTES()
+struct MeshAssetGUID {
+	u64 guid = 0;
+};
+
 NOTES(Meta::EntityType{}, Meta::ComponentQuery{})
 struct MeshAssetType {
 	ECS::Component<GuidComponent> guid;
