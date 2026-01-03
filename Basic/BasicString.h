@@ -30,6 +30,8 @@ String StringAllocate(StackAllocator* alloc, u64 count);
 String StringAllocate(HeapAllocator* alloc, u64 count);
 String StringReplaceTabsWithSpaces(StackAllocator* alloc, String source, u32 tab_width);
 String StringJoin(StackAllocator* alloc, ArrayView<String> source_strings, String separator = ""_sl);
+bool StringStartsWith(String string, String prefix);
+bool StringEndsWith(String string, String suffix);
 u64 StringFormatToMemory(String output, String format, ArrayView<StringFormatArgument> arguments);
 String StringFormatV(StackAllocator* alloc, String format, ArrayView<StringFormatArgument> arguments);
 template<typename ... Args> String StringFormat(StackAllocator* alloc, String format, Args ... args) { FORMAT_PROC_BODY(StringFormatV, alloc, format); }

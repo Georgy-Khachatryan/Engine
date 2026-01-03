@@ -1,4 +1,5 @@
 #include "Basic/Basic.h"
+#include "Basic/BasicString.h"
 #include "ImGuiCustomWidgets.h"
 
 #include <SDK/imgui/imgui_internal.h>
@@ -42,3 +43,56 @@ void ImGuiMouseLock::Update(ImGuiMouseButton button, bool should_lock_mouse, ImV
 	}
 }
 
+
+struct InputTextHeapStringCallbackData {
+	String string;
+	u64 capacity = 0;
+	HeapAllocator* heap = nullptr;
+	
+	ImGuiInputTextCallback callback = nullptr;
+	void* user_data = nullptr;
+};
+
+static s32 InputTextHeapStringCallback(ImGuiInputTextCallbackData* data) {
+	auto& callback_data = *(InputTextHeapStringCallbackData*)data->UserData;
+	
+	if (data->EventFlag == ImGuiInputTextFlags_CallbackResize) {
+		if (data->BufTextLen + 1 > callback_data.capacity) {
+			u64 new_capacity = Max(data->BufTextLen + 1, callback_data.capacity * 3 / 2);
+			callback_data.string.data = (char*)callback_data.heap->Reallocate(callback_data.string.data, callback_data.capacity, new_capacity);
+			callback_data.capacity = new_capacity;
+		}
+		
+		callback_data.string.count = data->BufTextLen;
+		data->Buf = callback_data.string.data;
+	} else if (callback_data.callback) {
+		data->UserData = callback_data.user_data;
+		callback_data.callback(data);
+	}
+	
+	return 0;
+}
+
+bool ImGui::InputText(const char* label, String& string, HeapAllocator& heap, ImGuiInputTextFlags flags, ImGuiInputTextCallback callback, void* user_data) {
+	InputTextHeapStringCallbackData callback_data;
+	callback_data.string    = string;
+	callback_data.capacity  = HeapAllocator::GetMemoryBlockSize(string.data); // Including null terminator.
+	callback_data.heap      = &heap;
+	callback_data.callback  = callback;
+	callback_data.user_data = user_data;
+	
+	// ImGui doesn't like when a (null, 0) string buffer is passed in.
+	// As a workaround supply a dummy ('\0', 1) buffer which will never be written to.
+	char dummy_string_data = '\0';
+	bool result = ImGui::InputText(
+		label,
+		string.data ? string.data : &dummy_string_data,
+		string.data ? callback_data.capacity : 1,
+		flags | ImGuiInputTextFlags_CallbackResize,
+		&InputTextHeapStringCallback,
+		&callback_data
+	);
+	string = callback_data.string;
+	
+	return result;
+}

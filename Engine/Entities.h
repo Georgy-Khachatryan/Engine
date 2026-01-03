@@ -77,3 +77,15 @@ struct GuidNameQuery {
 	GuidComponent* guid = nullptr;
 	NameComponent* name = nullptr;
 };
+
+NOTES(Meta::ComponentQuery{})
+struct EntityEditorQuery {
+	GuidComponent* guid = nullptr;
+	NameComponent* name = nullptr;
+	
+	PositionComponent* position = nullptr;
+	RotationComponent* rotation = nullptr;
+	ScaleComponent*    scale    = nullptr;
+	
+	CameraComponent* camera = nullptr;
+};

@@ -6,6 +6,9 @@
 #include "TypeInfo.h"
 #include "Engine/EntitySystem.h"
 
+compile_const auto entity_type_suffix = "EntityType"_sl;
+compile_const auto asset_type_suffix  = "AssetType"_sl;
+
 struct ComponentTypeInfoKey {
 	TypeInfoStruct* type_info = nullptr;
 	ComponentType component_type = ComponentType::CPU;
@@ -243,6 +246,23 @@ void WriteEntitySystemMetadata(StackAllocator* alloc, ArrayView<TypeInfoStruct*>
 	builder.Append("\n"_sl);
 	
 	
+	builder.Append("static String entity_type_name_table_internal[] = {\n"_sl);
+	builder.Indent();
+	for (auto& runtime_type_info : entity_type_metadata) {
+		auto name = runtime_type_info.type_info->name;
+		
+		if (StringEndsWith(name, entity_type_suffix)) {
+			name.count -= entity_type_suffix.count;
+		} else if (StringEndsWith(name, asset_type_suffix)) {
+			name.count -= asset_type_suffix.count;
+		}
+		
+		builder.Append("\"%\"_sl,\n"_sl, name);
+	}
+	builder.Unindent();
+	builder.Append("};\n\n"_sl);
+	
+	
 	builder.Append("static EntityTypeInfo entity_type_info_table_internal[] = {\n"_sl);
 	builder.Indent();
 	for (auto& runtime_type_info : entity_type_metadata) {
@@ -302,6 +322,7 @@ void WriteEntitySystemMetadata(StackAllocator* alloc, ArrayView<TypeInfoStruct*>
 	builder.Append("};\n\n"_sl);
 	
 	
+	builder.Append("ArrayView<String> entity_type_name_table = { entity_type_name_table_internal, % };\n"_sl, entity_type_infos.count);
 	builder.Append("ArrayView<EntityTypeInfo> entity_type_info_table = { entity_type_info_table_internal, % };\n"_sl, entity_type_infos.count);
 	builder.Append("ArrayView<EntityQueryTypeInfo> entity_query_type_info_table = { entity_query_type_info_table_internal, % };\n"_sl, entity_query_type_infos.count);
 	builder.Append("ArrayView<ComponentTypeInfo> component_type_info_table = { component_type_info_table_internal, % };\n"_sl, component_type_infos.count);

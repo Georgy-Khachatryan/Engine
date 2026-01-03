@@ -7,6 +7,7 @@
 struct GraphicsContext;
 struct HeapAllocator;
 struct SystemWindow;
+struct String;
 
 void ImGuiInitializeContext(HeapAllocator* heap);
 void ImGuiInitializeWindow(SystemWindow* window);
@@ -22,3 +23,7 @@ struct ImGuiMouseLock {
 };
 
 #define ImGuiScopeID(...) ImGui::PushID(__VA_ARGS__); defer{ ImGui::PopID(); }
+
+namespace ImGui {
+	bool InputText(const char* label, String& string, HeapAllocator& heap, ImGuiInputTextFlags flags = 0, ImGuiInputTextCallback callback = nullptr, void* user_data = nullptr);
+}

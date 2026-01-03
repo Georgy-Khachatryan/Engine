@@ -114,6 +114,14 @@ String StringJoin(StackAllocator* alloc, ArrayView<String> source_strings, Strin
 	return result;
 }
 
+bool StringStartsWith(String string, String prefix) {
+	return (string.count >= prefix.count) && (String{ string.data, prefix.count } == prefix);
+}
+
+bool StringEndsWith(String string, String suffix) {
+	return (string.count >= suffix.count) && (String{ string.data + (string.count - suffix.count), suffix.count } == suffix);
+}
+
 struct StringBuilderEntry {
 	StringBuilderEntry* next_entry = nullptr;
 	u64 size = 0;

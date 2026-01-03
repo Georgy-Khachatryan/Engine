@@ -150,6 +150,7 @@ QueryTypeT QueryEntityByGUID(EntitySystem& system, u64 entity_guid) {
 	return ExtractComponentStreams<QueryTypeT>(&array, array.entity_id_to_stream_index[typed_entity_id.entity_id.index]);
 }
 
+extern ArrayView<struct String> entity_type_name_table;
 
 NOTES()
 struct GuidComponent {

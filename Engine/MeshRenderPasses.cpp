@@ -33,7 +33,9 @@ void MeshletCullingRenderPass::RecordPass(RecordContext* record_context) {
 	CmdSetRootArgument(record_context, root_signature.scene, scene_constants);
 	
 	auto* mesh_entities = QueryEntityTypeArray<MeshEntityType>(*entity_system);
-	CmdDispatch(record_context, 1u, mesh_entities->count);
+	if (mesh_entities->count != 0) {
+		CmdDispatch(record_context, 1u, mesh_entities->count);
+	}
 }
 
 
