@@ -26,10 +26,15 @@
     <Import Project="Props/BuildConfiguration.props" />
   </ImportGroup>
   
+  <ImportGroup Label="PropertySheets">
+    <Import Project="Props/WinPixEventRuntime.props" />
+  </ImportGroup>
+  
   <ItemGroup>
     <ClCompile Include="Basic/Assert.cpp" />
     <ClCompile Include="Basic/BasicExamples.cpp" />
     <ClCompile Include="Basic/BasicMath.cpp" />
+    <ClCompile Include="Basic/BasicProfilerPIX.cpp" />
     <ClCompile Include="Basic/BasicSaveLoad.cpp" />
     <ClCompile Include="Basic/BasicString.cpp" />
     <ClCompile Include="Basic/HeapAllocator.cpp" />
@@ -53,6 +58,10 @@
   <ItemGroup>
     <Natvis Include="Basic/Basic.natvis" />
   </ItemGroup>
+  
+  <Target Name="PostBuild" AfterTargets="PostBuildEvent">
+    <Exec Command="%(DeployCommands.Identity)" />
+  </Target>
   
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>

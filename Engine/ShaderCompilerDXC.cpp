@@ -170,6 +170,7 @@ struct IncludeHandler : IDxcIncludeHandler {
 };
 
 static bool CompileShaderToBlob(ShaderCompiler* compiler, StackAllocator* alloc, const ShaderPermutationKey& key, ShaderPermutation& shader) {
+	ProfilerScope("CompileShaderToBlob");
 	TempAllocationScope(alloc);
 	
 	auto& definition = compiler->shader_definitions[key.shader_id.index];
@@ -209,7 +210,7 @@ static bool CompileShaderToBlob(ShaderCompiler* compiler, StackAllocator* alloc,
 #elif BUILD_TYPE(PROFILE)
 	ArrayAppend(arguments, L"-Qstrip_reflect"); // In profile build remove both PDBs and reflection.
 #else // !BUILD_TYPE(PROFILE)
-	#error "Unknown BUILD_TYPE"
+	#error "Unknown BUILD_TYPE."
 #endif // !BUILD_TYPE(PROFILE)
 	
 	for (u64 i : BitScanLow(key.permutation)) {
@@ -273,6 +274,8 @@ static bool CompileShaderToBlob(ShaderCompiler* compiler, StackAllocator* alloc,
 
 
 ArrayView<u64> CompileDirtyShaderPermutations(ShaderCompiler* compiler, StackAllocator* alloc) {
+	ProfilerScope("CompileDirtyShaderPermutations");
+	
 	Array<u64> compiled_shader_mask;
 	ArrayResizeMemset(compiled_shader_mask, alloc, DivideAndRoundUp((u32)compiler->shader_permutation_table.count, 64u));
 	
@@ -328,6 +331,8 @@ String GetShaderPermutationName(StackAllocator* alloc, const ShaderDefinition& d
 }
 
 ShaderCompiler* CreateShaderCompiler(StackAllocator* alloc, ArrayView<String> root_signature_filenames, ArrayView<ShaderDefinition> shader_definitions, ArrayView<PipelineDefinition> pipeline_definitions) {
+	ProfilerScope("CreateShaderCompiler");
+	
 	auto* compiler = NewFromAlloc(alloc, ShaderCompiler);
 	
 	compiler->root_signature_filenames = root_signature_filenames;
@@ -426,6 +431,8 @@ struct ShaderCache {
 
 // TODO: Simplify shader cache validation.
 static void ValidateShaderCache(StackAllocator* alloc, ShaderCache& old_cache, ShaderCache& new_cache) {
+	ProfilerScope("ValidateShaderCache");
+	
 	HashTable<String, u32> shader_definition_table;
 	HashTableReserve(shader_definition_table, alloc, new_cache.shader_definitions.count);
 	for (u32 i = 0; i < new_cache.shader_definitions.count; i += 1) {
@@ -521,6 +528,7 @@ static void SaveLoad(SaveLoadBuffer& buffer, ShaderCache& cache) {
 }
 
 void SaveLoadShaderCache(ShaderCompiler* compiler, StackAllocator* alloc, bool should_load_shader_cache) {
+	ProfilerScope("SaveLoadShaderCache");
 	TempAllocationScope(alloc);
 	
 	SaveLoadBuffer buffer;

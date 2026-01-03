@@ -10,12 +10,16 @@ extern "C" __declspec(dllexport) extern const char* D3D12SDKPath    = u8".\\D3D1
 static ShaderCompiler* shader_compiler = nullptr;
 
 void WaitForLastFrame(GraphicsContext* api_context) {
+	ProfilerScope("WaitForLastFrame");
+	
 	auto* context = (GraphicsContextD3D12*)api_context;
 	if (context->frame_index <= 1) return;
 	context->frame_sync_fence->SetEventOnCompletion(context->frame_index - 1, nullptr);
 }
 
 void WaitForNextFrame(GraphicsContext* api_context) {
+	ProfilerScope("WaitForNextFrame");
+	
 	auto* context = (GraphicsContextD3D12*)api_context;
 	if (context->frame_index <= number_of_frames_in_flight) return;
 	context->frame_sync_fence->SetEventOnCompletion(context->frame_index - number_of_frames_in_flight, nullptr);
@@ -26,19 +30,31 @@ static void BuildRootSignatures(GraphicsContextD3D12* context, StackAllocator* a
 static ID3D12CommandSignature* CreateCommandSignature(ID3D12Device10* device, D3D12_INDIRECT_ARGUMENT_TYPE type, u32 byte_stride);
 
 GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
+	ProfilerScope("CreateGraphicsContext");
+	
 	auto* context = NewFromAlloc(alloc, GraphicsContextD3D12);
 	
 	ID3D12Debug* debug = nullptr;
 	if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debug)))) {
+#if BUILD_TYPE(DEBUG) || BUILD_TYPE(DEV)
 		debug->EnableDebugLayer();
+#elif BUILD_TYPE(PROFILE)
+		// Don't enable debug layer in profile builds.
+#else // !BUILD_TYPE(PROFILE)
+		#error "Unknown BUILD_TYPE."
+#endif // !BUILD_TYPE(PROFILE)
 	}
 	
 	ID3D12Device10* device = nullptr;
-	if (FAILED(D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_12_1, IID_PPV_ARGS(&device)))) {
-		DebugAssertAlways("D3D12CreateDevice failed.");
-		return nullptr;
+	{
+		ProfilerScope("CreateDevice");
+		
+		if (FAILED(D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_12_1, IID_PPV_ARGS(&device)))) {
+			DebugAssertAlways("D3D12CreateDevice failed.");
+			return nullptr;
+		}
+		context->device = device;
 	}
-	context->device = device;
 	
 	if (debug != nullptr) {
 		ID3D12InfoQueue* info_queue = nullptr;
@@ -53,6 +69,8 @@ GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
 	
 	
 	for (u32 i = 0; i < (u32)DescriptorHeapType::Count; i += 1) {
+		ProfilerScope("CreateDescriptorHeap");
+		
 		compile_const D3D12_DESCRIPTOR_HEAP_TYPE heap_type_map[(u32)DescriptorHeapType::Count] = {
 			D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV,
 			D3D12_DESCRIPTOR_HEAP_TYPE_RTV,
@@ -97,6 +115,8 @@ GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
 	
 	
 	{
+		ProfilerScope("CreateCommandQueue");
+		
 		D3D12_COMMAND_QUEUE_DESC queue_desc = {};
 		queue_desc.Type     = D3D12_COMMAND_LIST_TYPE_DIRECT;
 		queue_desc.Priority = D3D12_COMMAND_QUEUE_PRIORITY_NORMAL;
@@ -124,6 +144,8 @@ GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
 	
 	
 	for (auto& command_allocator : context->command_allocators) {
+		ProfilerScope("CreateCommandAllocator");
+		
 		if (FAILED(device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&command_allocator)))) {
 			DebugAssertAlways("CreateCommandAllocator failed.");
 			return nullptr;
@@ -131,6 +153,7 @@ GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
 	}
 	
 	{
+		ProfilerScope("CreateCommandSignatures");
 		context->dispatch_command_signature = CreateCommandSignature(device, D3D12_INDIRECT_ARGUMENT_TYPE_DISPATCH, 16);
 		context->dispatch_mesh_command_signature = CreateCommandSignature(device, D3D12_INDIRECT_ARGUMENT_TYPE_DISPATCH_MESH, 16);
 		context->draw_instanced_command_signature = CreateCommandSignature(device, D3D12_INDIRECT_ARGUMENT_TYPE_DRAW, 16);
@@ -139,6 +162,8 @@ GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
 	
 	
 	{
+		ProfilerScope("CreateCommandList");
+		
 		ID3D12GraphicsCommandList7* command_list = nullptr;
 		if (FAILED(device->CreateCommandList1(0, D3D12_COMMAND_LIST_TYPE_DIRECT, D3D12_COMMAND_LIST_FLAG_NONE, IID_PPV_ARGS(&command_list)))) {
 			DebugAssertAlways("CreateCommandList failed.");
@@ -209,6 +234,8 @@ static T& AppendSubobject(FixedCapacityArray<u8, fixed_stream_capacity>& stream,
 }
 
 static void CreateComputePipelineState(GraphicsContextD3D12* context, const ShaderBytecode& bytecode, u32 root_signature_index, u32 pipeline_state_index) {
+	ProfilerScope("CreateComputePipelineState");
+	
 	FixedCapacityArray<u8, 40> stream;
 	
 	auto& root_signature = AppendSubobject<ID3D12RootSignature*>(stream, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_ROOT_SIGNATURE);
@@ -286,6 +313,8 @@ static D3D12_DEPTH_STENCILOP_DESC TranslateStencilFaceOps(PipelineDepthStencil::
 }
 
 static void CreateGraphicsPipelineState(GraphicsContextD3D12* context, const PipelineStateDescription& pipeline_state_description, const ShaderBytecode& bytecode, u32 root_signature_index, u32 pipeline_state_index) {
+	ProfilerScope("CreateGraphicsPipelineState");
+	
 	FixedCapacityArray<u8, 560> stream;
 	
 	auto& root_signature = AppendSubobject<ID3D12RootSignature*>(stream, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_ROOT_SIGNATURE);
@@ -383,6 +412,8 @@ static void CreateGraphicsPipelineState(GraphicsContextD3D12* context, const Pip
 }
 
 static void BuildPipelineStates(GraphicsContextD3D12* context, StackAllocator* alloc, bool build_only_dirty_pipelines) {
+	ProfilerScope("BuildPipelineStates");
+	
 	TempAllocationScope(alloc);
 	auto compiled_shader_mask = CompileDirtyShaderPermutations(shader_compiler, alloc);
 	
@@ -401,6 +432,8 @@ static void BuildPipelineStates(GraphicsContextD3D12* context, StackAllocator* a
 }
 
 static void BuildRootSignatures(GraphicsContextD3D12* context, StackAllocator* alloc, ArrayView<ArrayView<u32>> root_signature_streams) {
+	ProfilerScope("BuildRootSignatures");
+	
 	FixedCapacityArray<D3D12_STATIC_SAMPLER_DESC1, 7> sampler_descs;
 	auto append_sampler = [&](D3D12_FILTER filter, D3D12_TEXTURE_ADDRESS_MODE address_mode, u32 max_anisotropy = 0) {
 		auto& desc = ArrayEmplace(sampler_descs);
@@ -547,6 +580,8 @@ void ReleaseGraphicsContext(GraphicsContext* api_context, StackAllocator* alloc)
 }
 
 NativeTextureResource CreateTextureResource(GraphicsContext* api_context, TextureSize size) {
+	ProfilerScope("CreateTextureResource");
+	
 	auto* context = (GraphicsContextD3D12*)api_context;
 	
 	D3D12_HEAP_PROPERTIES heap_properties = {};
@@ -594,6 +629,8 @@ NativeTextureResource CreateTextureResource(GraphicsContext* api_context, Textur
 }
 
 NativeBufferResource CreateBufferResource(GraphicsContext* api_context, u32 size, GpuMemoryAccessType memory_access_type, u8** cpu_address) {
+	ProfilerScope("CreateBufferResource");
+	
 	auto* context = (GraphicsContextD3D12*)api_context;
 	
 	compile_const D3D12_HEAP_TYPE memory_access_type_map[(u32)GpuMemoryAccessType::Count] = {
@@ -646,6 +683,8 @@ NativeBufferResource CreateBufferResource(GraphicsContext* api_context, u32 size
 static void ReleaseResource(GraphicsContextD3D12* context, ID3D12Resource* resource, ResourceReleaseCondition condition) {
 	if (resource == nullptr) return;
 	
+	ProfilerScope("ReleaseResource");
+	
 	switch (condition) {
 	case ResourceReleaseCondition::None: resource->Release(); break;
 	case ResourceReleaseCondition::EndOfLastGpuFrame: ArrayAppend(context->release_queue_last_frame, resource); break;
@@ -655,6 +694,8 @@ static void ReleaseResource(GraphicsContextD3D12* context, ID3D12Resource* resou
 }
 
 static void CycleResourceReleaseQueues(GraphicsContextD3D12* context) {
+	ProfilerScope("CycleResourceReleaseQueues");
+	
 	static_assert(number_of_frames_in_flight == 2);
 	for (auto* resource : context->release_queue_last_frame) {
 		resource->Release();
@@ -709,6 +750,8 @@ static void ReleaseSwapChainBackBuffers(WindowSwapChainD3D12* swap_chain) {
 }
 
 WindowSwapChain* CreateWindowSwapChain(StackAllocator* alloc, GraphicsContext* api_context, void* hwnd, TextureFormat format) {
+	ProfilerScope("CreateWindowSwapChain");
+	
 	auto* context = (GraphicsContextD3D12*)api_context;
 	
 	auto* swap_chain = NewFromAlloc(alloc, WindowSwapChainD3D12);
@@ -777,6 +820,8 @@ void ReleaseWindowSwapChain(WindowSwapChain* api_swap_chain, GraphicsContext* ap
 void ResizeWindowSwapChain(WindowSwapChain* api_swap_chain, GraphicsContext* api_context, uint2 size) {
 	if (api_swap_chain->size.x == size.x && api_swap_chain->size.y == size.y) return;
 	
+	ProfilerScope("ResizeWindowSwapChain");
+	
 	auto* context = (GraphicsContextD3D12*)api_context;
 	WaitForLastFrame(context);
 	
@@ -800,6 +845,8 @@ NativeTextureResource WindowSwapGetCurrentBackBuffer(WindowSwapChain* api_swap_c
 }
 
 void WindowSwapChainBeginFrame(WindowSwapChain* api_swap_chain, GraphicsContext* api_context, StackAllocator* alloc) {
+	ProfilerScope("WindowSwapChainBeginFrame");
+	
 	auto* context = (GraphicsContextD3D12*)api_context;
 	WaitForNextFrame(context);
 	
@@ -820,6 +867,8 @@ void WindowSwapChainBeginFrame(WindowSwapChain* api_swap_chain, GraphicsContext*
 }
 
 void WindowSwapChainEndFrame(WindowSwapChain* api_swap_chain, GraphicsContext* api_context, StackAllocator* alloc, RecordContext& record_context) {
+	ProfilerScope("WindowSwapChainEndFrame");
+	
 	auto* swap_chain = (WindowSwapChainD3D12*)api_swap_chain;
 	auto* context = (GraphicsContextD3D12*)api_context;
 	

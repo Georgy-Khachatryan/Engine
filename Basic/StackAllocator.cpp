@@ -11,6 +11,8 @@ struct StackAllocatorBlock {
 compile_const u64 allocation_granularity = 64 * 1024;
 
 static StackAllocatorBlock* AllocateNewBlock(u64 reserved_size, u64 committed_size, StackAllocatorBlock* last_block) {
+	ProfilerScope("StackAllocator::AllocateNewBlock");
+	
 	reserved_size  = reserved_size  < allocation_granularity ? allocation_granularity : AlignUp(reserved_size,  allocation_granularity);
 	committed_size = committed_size < allocation_granularity ? allocation_granularity : AlignUp(committed_size, allocation_granularity);
 	

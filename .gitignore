@@ -16,6 +16,7 @@ Shaders/Generated/
 ; Third party SDKs:
 SDK/DXC
 SDK/D3D12
+SDK/WinPixEventRuntime
 
 ; Visual studio files:
 .vs/

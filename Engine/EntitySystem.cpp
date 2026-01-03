@@ -50,10 +50,14 @@ static void AllocateEntityMapStreams(EntityTypeArray& array, HeapAllocator& heap
 }
 
 u32 CreateEntities(EntitySystem& system, EntityTypeID entity_type_id, u32 entity_count) {
+	ProfilerScope("CreateEntities");
+	
 	auto& array = system.entity_type_arrays[entity_type_id.index];
 	auto& type_info = entity_type_info_table[entity_type_id.index];
 	
 	if (array.count + entity_count > array.capacity) {
+		ProfilerScope("ReallocateComponentStreams");
+		
 		u32 old_capacity = array.capacity;
 		u32 new_capacity = AlignUp(old_capacity ? old_capacity * 3 / 2 + entity_count : entity_count, type_info.base_allocation_count);
 		
@@ -125,6 +129,8 @@ void RemoveEntityByGUID(EntitySystem& system, u64 guid) {
 
 
 ArrayView<EntityTypeArray*> QueryEntities(StackAllocator* alloc, EntitySystem& system, EntityQueryTypeID query_type_id) {
+	ProfilerScope("QueryEntities");
+	
 	Array<EntityTypeArray*> result;
 	
 	auto match_key = entity_query_type_info_table[query_type_id.index].component_type_ids;
@@ -242,6 +248,8 @@ void ClearEntityDirtyMasks(EntitySystem& system) {
 // TODO: Simplify this function. There is a lot of code that handles remapping of entity/component
 // streams when they change order or are added/removed, but in most cases it's not necessary.
 void SaveLoadEntitySystem(SaveLoadBuffer& buffer, EntitySystem& system) {
+	ProfilerScope("SaveLoadEntitySystem");
+	
 	if (buffer.is_loading) {
 		ResetEntitySystem(system);
 	}

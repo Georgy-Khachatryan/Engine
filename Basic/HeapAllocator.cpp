@@ -170,6 +170,8 @@ static void PushNewPageFreeBlock(HeapAllocator* heap, HeapAllocatorPage* page, u
 }
 
 static void AllocateNewPage(HeapAllocator* heap, u64 reserved_size) {
+	ProfilerScope("HeapAllocator::AllocateNewPage");
+	
 	reserved_size = reserved_size < allocation_granularity ? allocation_granularity : AlignUp(reserved_size, allocation_granularity);
 	
 	auto* memory = SystemAllocateAddressSpace(reserved_size);

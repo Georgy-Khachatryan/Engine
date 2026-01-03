@@ -17,6 +17,7 @@ static float3x4 LoadUfbxMatrix(const ufbx_matrix& m) {
 }
 
 MeshRuntimeDataLayout ImportFbxMeshFile(StackAllocator* alloc, String filepath, u64 runtime_data_guid) {
+	ProfilerScope("ImportFbxMeshFile");
 	TempAllocationScope(alloc);
 	
 	auto file_data = SystemReadFileToString(alloc, filepath);

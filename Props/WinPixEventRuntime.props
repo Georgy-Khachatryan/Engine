@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?> 
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+    
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <PreprocessorDefinitions>
+        USE_PIX;
+        %(PreprocessorDefinitions)
+      </PreprocessorDefinitions>
+    </ClCompile>
+    
+    <Lib>
+      <AdditionalLibraryDirectories>
+        $(SdkDir)WinPixEventRuntime\bin;
+        %(AdditionalLibraryDirectories)
+      </AdditionalLibraryDirectories>
+      
+      <AdditionalDependencies>
+        WinPixEventRuntime.lib;
+        %(AdditionalDependencies)
+      </AdditionalDependencies>
+    </Lib>
+  </ItemDefinitionGroup>
+  
+  <ItemGroup>
+    <DeployCommands Include="xcopy /y /d $(SdkDir)WinPixEventRuntime\bin\WinPixEventRuntime.dll $(OutDir)" />
+  </ItemGroup>
+  
+  <ItemGroup>
+    <ClInclude Include="$(SdkDir)WinPixEventRuntime/include/pix3.h" />
+    <ClInclude Include="$(SdkDir)WinPixEventRuntime/include/pix3_win.h" />
+    <ClInclude Include="$(SdkDir)WinPixEventRuntime/include/PIXEvents.h" />
+    <ClInclude Include="$(SdkDir)WinPixEventRuntime/include/PIXEventsCommon.h" />
+    <ClInclude Include="$(SdkDir)WinPixEventRuntime/include/PIXEventsLegacy.h" />
+  </ItemGroup>
+  
+</Project>

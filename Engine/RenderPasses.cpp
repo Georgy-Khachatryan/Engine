@@ -23,6 +23,8 @@ static void BuildResourceTable(RecordContext* record_context, EntitySystem* enti
 }
 
 void BuildRenderPassesForFrame(RecordContext* record_context, EntitySystem* entity_system, u64 world_entity_guid) {
+	ProfilerScope("BuildRenderPassesForFrame");
+	
 	auto world_entity = QueryEntityByGUID<WorldEntityType>(*entity_system, world_entity_guid);
 	auto camera_entity = QueryEntityByGUID<CameraEntityType>(*entity_system, world_entity.camera_entity->guid);
 	

@@ -4,6 +4,8 @@
 
 
 bool OpenSaveLoadBuffer(StackAllocator* alloc, String filepath, bool is_loading, SaveLoadBuffer& buffer) {
+	ProfilerScope("OpenSaveLoadBuffer");
+	
 	buffer = {};
 	buffer.alloc      = alloc;
 	buffer.is_saving  = is_loading == false;
@@ -27,6 +29,8 @@ bool OpenSaveLoadBuffer(StackAllocator* alloc, String filepath, bool is_loading,
 }
 
 bool CloseSaveLoadBuffer(SaveLoadBuffer& buffer) {
+	ProfilerScope("CloseSaveLoadBuffer");
+	
 	if (buffer.is_saving) {
 		auto file = SystemOpenFile(buffer.alloc, buffer.filepath, OpenFileFlags::Write);
 		if (file.handle == nullptr) return false;

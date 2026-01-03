@@ -2,6 +2,8 @@
 #include "RecordContext.h"
 
 Array<PipelineDefinition> GatherPipelineDefinitions(StackAllocator* alloc) {
+	ProfilerScope("GatherPipelineDefinitions");
+	
 	PipelineLibrary lib;
 	lib.alloc = alloc;
 	

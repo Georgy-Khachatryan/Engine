@@ -6,6 +6,8 @@
 
 
 static void CreateDescriptorTables(GraphicsContextD3D12* context, ArrayView<HLSL::BaseDescriptorTable*> descriptor_tables, ArrayView<VirtualResource> resources) {
+	ProfilerScope("CreateDescriptorTables");
+	
 	auto cpu_base_handle = context->cpu_base_handles[(u32)DescriptorHeapType::SRV];
 	auto descriptor_size = context->descriptor_sizes[(u32)DescriptorHeapType::SRV];
 	auto* device = context->device;
@@ -500,6 +502,8 @@ static Array<ResourceAccessDefinition*> ResolveResourceAccesses(StackAllocator* 
 }
 
 void ReplayRecordContext(GraphicsContext* api_context, RecordContext* record_context) {
+	ProfilerScope("ReplayRecordContext");
+	
 	auto* context = (GraphicsContextD3D12*)api_context;
 	
 	auto* alloc = record_context->alloc;
@@ -521,6 +525,8 @@ void ReplayRecordContext(GraphicsContext* api_context, RecordContext* record_con
 	u32 begin_command_index = 0;
 	for (u64 i = 0; i < command_prefix_sum.count; i += 1) {
 		u32 end_command_index = command_prefix_sum[i];
+		
+		ProfilerScope("ReplayRenderPass", command_list);
 		
 		CmdBarriersD3D12(alloc, resource_accesses[i], command_list, resources);
 		

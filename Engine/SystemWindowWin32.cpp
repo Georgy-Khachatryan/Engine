@@ -158,6 +158,8 @@ void SystemReleaseWindow(SystemWindow* window) {
 }
 
 void SystemPollWindowEvents(SystemWindow* window) {
+	ProfilerScope("SystemPollWindowEvents");
+	
 	if (window->requested_state == WindowState::Maximized && window->state != WindowState::Maximized) {
 		ShowWindow((HWND)window->hwnd, SW_MAXIMIZE);
 	} else if (window->requested_state == WindowState::Minimized && window->state != WindowState::Minimized) {

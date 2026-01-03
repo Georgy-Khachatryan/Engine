@@ -149,6 +149,8 @@ s32 main() {
 	u64 frame_allocation_size = 0;
 	u64 transient_upload_allocation_size = 0;
 	while (window->should_close == false) {
+		ProfilerScope("Frame");
+		
 		TempAllocationScopeNamed(frame_initial_size, &alloc);
 		
 		SystemPollWindowEvents(window);

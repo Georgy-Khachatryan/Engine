@@ -169,3 +169,8 @@ SAVE_LOAD_AS_BYTES(s64);
 SAVE_LOAD_AS_BYTES(float32);
 SAVE_LOAD_AS_BYTES(float64);
 
+
+extern void ProfilerBeginScope(const char* label);
+extern void ProfilerEndScope();
+
+#define ProfilerScope(label, ...) ProfilerBeginScope(label, __VA_ARGS__); defer{ ProfilerEndScope(__VA_ARGS__); }

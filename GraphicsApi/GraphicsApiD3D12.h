@@ -66,3 +66,8 @@ struct GraphicsContextD3D12 : GraphicsContext {
 	Array<ID3D12Resource*> release_queue_next_frame;
 };
 
+extern void ProfilerBeginScope(const char* label, ID3D12GraphicsCommandList* command_list);
+extern void ProfilerEndScope(ID3D12GraphicsCommandList* command_list);
+
+extern void ProfilerBeginScope(const char* label, ID3D12CommandQueue* command_list);
+extern void ProfilerEndScope(ID3D12CommandQueue* command_list);
