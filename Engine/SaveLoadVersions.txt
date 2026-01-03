@@ -1,3 +1,5 @@
+// Generated SaveLoad Version History:
+
 struct CameraComponent {
 	/*Version*/ 4 {
 		vertical_fov_degrees float 0;
@@ -45,9 +47,24 @@ struct ScaleComponent {
 	}
 }
 
+struct MeshSourceData {
+	/*Version*/ 0 {
+		filepath String 0;
+	}
+}
+
 struct PositionComponent {
 	/*Version*/ 0 {
 		position float3 0;
+	}
+}
+
+struct MeshRuntimeDataLayout {
+	/*Version*/ 0 {
+		file_guid u64 0;
+		vertex_count u32 0;
+		meshlet_count u32 0;
+		indices_count u32 0;
 	}
 }
 

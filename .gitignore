@@ -1,6 +1,7 @@
 
 ; Assets:
 Assets/Source/
+Assets/Runtime/
 *.csb
 
 ; Build artifacts:

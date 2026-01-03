@@ -82,6 +82,7 @@
     <!-- Entity System. -->
     <ClInclude Include="Engine/EntitySystem.h" />
     <ClInclude Include="Engine/Entities.h" />
+    <ClInclude Include="Engine/MeshAsset.h" />
     
     <ClInclude Include="GraphicsApi/GraphicsApiD3D12.h" />
   </ItemGroup>

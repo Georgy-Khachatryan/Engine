@@ -49,7 +49,7 @@ static void AllocateEntityMapStreams(EntityTypeArray& array, HeapAllocator& heap
 	memset(array.dirty_mask.data + old_dirty_mask_count, 0, (new_dirty_mask_count - old_dirty_mask_count) * sizeof(u64));
 }
 
-CreateEntitiesResult CreateEntities(StackAllocator* alloc, EntitySystem& system, EntityTypeID entity_type_id, u32 entity_count) {
+u32 CreateEntities(EntitySystem& system, EntityTypeID entity_type_id, u32 entity_count) {
 	auto& array = system.entity_type_arrays[entity_type_id.index];
 	auto& type_info = entity_type_info_table[entity_type_id.index];
 	
@@ -67,16 +67,11 @@ CreateEntitiesResult CreateEntities(StackAllocator* alloc, EntitySystem& system,
 		array.capacity = new_capacity;
 	}
 	
-	Array<EntityID> entity_ids;
-	ArrayResize(entity_ids, alloc, entity_count);
-	
 	u32 stream_offset = array.count;
 	array.count += entity_count;
 	
 	for (u32 i = 0; i < entity_count; i += 1) {
 		u32 entity_id = array.stream_index_to_entity_id[stream_offset + i];
-		entity_ids[i] = EntityID{ entity_id };
-		
 		array.entity_id_to_stream_index[entity_id] = stream_offset + i;
 	}
 	
@@ -84,23 +79,20 @@ CreateEntitiesResult CreateEntities(StackAllocator* alloc, EntitySystem& system,
 	
 	DefaultInitializeStreams(array.component_streams, type_info, stream_offset, stream_offset + entity_count);
 	
-	CreateEntitiesResult result;
-	result.entity_ids     = entity_ids;
-	result.stream_offset  = stream_offset;
-	result.entity_type_id = entity_type_id;
-	
 	auto streams = ExtractComponentStreams<GuidQuery>(&array, stream_offset);
 	if (streams.guid) {
 		for (u32 i = 0; i < entity_count; i += 1) {
 			u64 guid = GenerateRandomNumber64(system.guid_random_seed);
 			streams.guid[i].guid = guid;
 			
-			auto typed_entity_id = TypedEntityID{ entity_ids[i], entity_type_id };
+			auto entity_id = EntityID{ array.stream_index_to_entity_id[stream_offset + i] };
+			
+			auto typed_entity_id = TypedEntityID{ entity_id, entity_type_id };
 			HashTableAddOrFind(system.entity_guid_to_entity_id, &system.heap, guid, typed_entity_id);
 		}
 	}
 	
-	return result;
+	return stream_offset;
 }
 
 void RemoveEntityByGUID(EntitySystem& system, u64 guid) {
@@ -423,10 +415,10 @@ void SaveLoadEntitySystem(SaveLoadBuffer& buffer, EntitySystem& system) {
 			auto streams = ExtractComponentStreams<GuidQuery>(entity_array);
 			
 			auto entity_type_id = entity_array->entity_type_id;
-			auto* entity_ids = entity_array->stream_index_to_entity_id;
+			u32* stream_index_to_entity_id = entity_array->stream_index_to_entity_id;
 			for (u32 index = 0; index < entity_array->count; index += 1) {
 				auto& [guid] = streams.guid[index];
-				auto entity_id = EntityID{ entity_ids[index] };
+				auto entity_id = EntityID{ stream_index_to_entity_id[index] };
 				
 				HashTableAddOrFind(system.entity_guid_to_entity_id, guid, TypedEntityID{ entity_id, entity_type_id });
 			}

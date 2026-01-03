@@ -15,7 +15,7 @@ static void BuildResourceTable(RecordContext* record_context, EntitySystem* enti
 	table.Set(ID::SkyPanoramaLut,        TextureSize(TextureFormat::R16G16B16A16_FLOAT, AtmosphereParameters::sky_panorama_lut_size));
 	
 	auto* mesh_entities = QueryEntityTypeArray<MeshEntityType>(*entity_system);
-	table.Set(ID::VisibleMeshlets, (u32)(renderer_world->meshlets.count * mesh_entities->count * sizeof(uint2)));
+	table.Set(ID::VisibleMeshlets, SceneConstants::visible_meshlet_buffer_count * sizeof(uint2));
 	table.Set(ID::MeshletIndirectArguments, sizeof(uint4));
 	
 	table.Set(ID::SceneRadiance, TextureSize(TextureFormat::R16G16B16A16_FLOAT, render_target_size));
@@ -76,20 +76,9 @@ void BuildRenderPassesForFrame(RecordContext* record_context, EntitySystem* enti
 	SkyPanoramaLutRenderPass{ atmosphere_parameters_gpu_address }.RecordPass(record_context);
 	AtmosphereCompositeRenderPass{ atmosphere_parameters_gpu_address, scene_constants_gpu_address }.RecordPass(record_context);
 	
-	{
-		auto [vb_gpu_address, vb_cpu_address] = AllocateTransientUploadBuffer<BasicVertex,  sizeof(BasicVertex)>(record_context,  (u32)renderer_world.vertices.count);
-		auto [mb_gpu_address, mb_cpu_address] = AllocateTransientUploadBuffer<BasicMeshlet, sizeof(BasicMeshlet)>(record_context, (u32)renderer_world.meshlets.count);
-		auto [ib_gpu_address, ib_cpu_address] = AllocateTransientUploadBuffer<u8, sizeof(uint4)>(record_context, (u32)renderer_world.indices.count);
-		memcpy(vb_cpu_address, renderer_world.vertices.data, renderer_world.vertices.count * sizeof(BasicVertex));
-		memcpy(mb_cpu_address, renderer_world.meshlets.data, renderer_world.meshlets.count * sizeof(BasicMeshlet));
-		memcpy(ib_cpu_address, renderer_world.indices.data,  renderer_world.indices.count  * sizeof(u8));
-		
-		auto* mesh_entities = QueryEntityTypeArray<MeshEntityType>(*entity_system);
-		
-		MeshletClearBuffersRenderPass{}.RecordPass(record_context);
-		MeshletCullingRenderPass{ scene_constants_gpu_address, mb_gpu_address, (u32)renderer_world.meshlets.count, mesh_entities->count }.RecordPass(record_context);
-		BasicMeshRenderPass{ scene_constants_gpu_address, vb_gpu_address, mb_gpu_address, ib_gpu_address, (u32)renderer_world.vertices.count, (u32)renderer_world.meshlets.count, (u32)renderer_world.indices.count }.RecordPass(record_context);
-	}
+	MeshletClearBuffersRenderPass{}.RecordPass(record_context);
+	MeshletCullingRenderPass{ scene_constants_gpu_address, entity_system }.RecordPass(record_context);
+	BasicMeshRenderPass{ scene_constants_gpu_address }.RecordPass(record_context);
 	
 	ImGuiRenderPass{}.RecordPass(record_context);
 }

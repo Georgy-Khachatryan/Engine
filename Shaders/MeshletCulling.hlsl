@@ -27,22 +27,33 @@ float2 EvaluateMeshletErrorMetric(MeshletErrorMetric error_metric, GpuTransform 
 bool LodCullCurrentLevelError(float2 error_metric) { return (error_metric.x <= error_metric.y); }
 bool LodCullCoarserLevelError(float2 error_metric) { return (error_metric.x <= error_metric.y) == false; }
 
+compile_const uint thread_group_size = 256;
 
-[ThreadGroupSize(256, 1, 1)]
+[ThreadGroupSize(thread_group_size, 1, 1)]
 void MainCS(uint2 thread_id : SV_DispatchThreadID) {
-	BasicMeshlet meshlet = meshlets[thread_id.x];
+	uint mesh_instance_index = thread_id.y;
+	uint asset_entity_id     = 0;
 	
-	GpuTransform model_to_world = mesh_transforms[thread_id.y];
+	GpuMeshAssetData mesh_asset = mesh_asset_data[asset_entity_id];
+	GpuTransform model_to_world = mesh_transforms[mesh_instance_index];
 	
-	float2 current_level_error_metric = EvaluateMeshletErrorMetric(meshlet.current_level_error_metric, model_to_world);
-	float2 coarser_level_error_metric = EvaluateMeshletErrorMetric(meshlet.coarser_level_error_metric, model_to_world);
-	
-	bool is_visible = LodCullCurrentLevelError(current_level_error_metric) && LodCullCoarserLevelError(coarser_level_error_metric);
-	if (is_visible == false) return;
-	
-	uint meshlet_index = 0;
-	InterlockedAdd(indirect_arguments[0].x, 1u, meshlet_index);
-	
-	visible_meshlets[meshlet_index] = thread_id;
+	for (uint meshlet_index = thread_id.x; meshlet_index < mesh_asset.meshlet_count; meshlet_index += thread_group_size) {
+		BasicMeshlet meshlet = mesh_asset_buffer.Load<BasicMeshlet>(mesh_asset.meshlet_buffer_offset + meshlet_index * sizeof(BasicMeshlet));
+		
+		float2 current_level_error_metric = EvaluateMeshletErrorMetric(meshlet.current_level_error_metric, model_to_world);
+		float2 coarser_level_error_metric = EvaluateMeshletErrorMetric(meshlet.coarser_level_error_metric, model_to_world);
+		
+		bool is_visible = LodCullCurrentLevelError(current_level_error_metric) && LodCullCoarserLevelError(coarser_level_error_metric);
+		if (is_visible == false) continue;
+		
+		uint visible_meshlet_index = 0;
+		InterlockedAdd(indirect_arguments[0].x, 1u, visible_meshlet_index);
+		
+		if (visible_meshlet_index < SceneConstants::visible_meshlet_buffer_count) {
+			visible_meshlets[visible_meshlet_index] = uint2(meshlet_index, mesh_instance_index);
+		} else {
+			InterlockedAdd(indirect_arguments[0].x, -1);
+		}
+	}
 }
 #endif // defined(MESHLET_CULLING)

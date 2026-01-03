@@ -336,6 +336,8 @@ void WriteSaveLoadVersionHistory(StackAllocator* alloc, HashTable<String, Versio
 	StringBuilder builder;
 	builder.alloc = alloc;
 	
+	builder.Append("// Generated SaveLoad Version History:\n\n"_sl);
+	
 	for (auto& [name, type] : version_history) {
 		bool is_enum = type.info_type == TypeInfoType::Enum;
 		

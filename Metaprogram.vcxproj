@@ -37,6 +37,7 @@
     <ReflectedFiles Include="Engine/Components.h" />
     <ReflectedFiles Include="Engine/Entities.h" />
     <ReflectedFiles Include="Engine/EntitySystem.h" />
+    <ReflectedFiles Include="Engine/MeshAsset.h" />
   </ItemGroup>
   
   <ItemGroup>

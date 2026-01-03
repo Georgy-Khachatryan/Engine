@@ -3,20 +3,22 @@
 #include "Basic/BasicMemory.h"
 #include "Basic/BasicFiles.h"
 #include "Basic/BasicMath.h"
-#include "RenderPasses.h"
+#include "MeshAsset.h"
 
 #include <SDK/ufbx/ufbx.h>
 #include <SDK/MeshDecimationTools/MeshDecimationTools.h>
 
 static float3x4 LoadUfbxMatrix(const ufbx_matrix& m) {
 	float3x4 result;
-	result[0] = float4(m.m00, m.m01, m.m02, m.m03);
-	result[1] = float4(m.m10, m.m11, m.m12, m.m13);
-	result[2] = float4(m.m20, m.m21, m.m22, m.m23);
+	result.r0 = float4(m.m00, m.m01, m.m02, m.m03);
+	result.r1 = float4(m.m10, m.m11, m.m12, m.m13);
+	result.r2 = float4(m.m20, m.m21, m.m22, m.m23);
 	return result;
 }
 
-void ImportFbxMeshFile(StackAllocator* alloc, String filepath, Array<BasicVertex>& result_vertices, Array<BasicMeshlet>& result_meshlets, Array<u8>& result_indices) {
+MeshRuntimeDataLayout ImportFbxMeshFile(StackAllocator* alloc, String filepath, u64 runtime_data_guid) {
+	TempAllocationScope(alloc);
+	
 	auto file_data = SystemReadFileToString(alloc, filepath);
 	DebugAssert(file_data.data != nullptr, "Failed to load mesh file '%'", filepath);
 	
@@ -143,9 +145,9 @@ void ImportFbxMeshFile(StackAllocator* alloc, String filepath, Array<BasicVertex
 	auto mdt_meshlet_vertices       = ArrayView<BasicVertex>{ (BasicVertex*)result.vertices, result.vertex_count };
 	auto mdt_levels_of_detail       = ArrayView<MdtContinuousLodLevel>{ result.levels, result.level_count };
 	
-	ArrayResize(result_vertices, alloc, mdt_meshlet_vertex_indices.count);
-	ArrayResize(result_meshlets, alloc, mdt_meshlets.count);
-	ArrayResize(result_indices,  alloc, mdt_meshlet_triangles.count * 3);
+	auto result_vertices = ArrayViewAllocate<BasicVertex>(alloc, mdt_meshlet_vertex_indices.count);
+	auto result_meshlets = ArrayViewAllocate<BasicMeshlet>(alloc, mdt_meshlets.count);
+	auto result_indices  = ArrayViewAllocate<u8>(alloc, mdt_meshlet_triangles.count * 3);
 	
 	memcpy(result_indices.data, mdt_meshlet_triangles.data, mdt_meshlet_triangles.count * sizeof(MdtMeshletTriangle));
 	static_assert(sizeof(MdtMeshletTriangle) == 3);
@@ -172,4 +174,23 @@ void ImportFbxMeshFile(StackAllocator* alloc, String filepath, Array<BasicVertex
 	}
 	
 	MdtFreeContinuousLodBuildResult(&result, &callbacks);
+	
+	
+	auto runtime_filepath = StringFormat(alloc, "./Assets/Runtime/%x..mrd"_sl, runtime_data_guid);
+	
+	auto runtime_file = SystemOpenFile(alloc, runtime_filepath, OpenFileFlags::Write);
+	DebugAssert(runtime_file.handle, "Failed to open mesh output file.");
+	defer{ SystemCloseFile(runtime_file); };
+	
+	MeshRuntimeDataLayout runtime_data_layout;
+	runtime_data_layout.file_guid     = runtime_data_guid;
+	runtime_data_layout.vertex_count  = (u32)result_vertices.count;
+	runtime_data_layout.meshlet_count = (u32)result_meshlets.count;
+	runtime_data_layout.indices_count = (u32)result_indices.count;
+	
+	SystemWriteFile(runtime_file, result_vertices.data, result_vertices.count * sizeof(BasicVertex),  runtime_data_layout.VertexBufferOffset());
+	SystemWriteFile(runtime_file, result_meshlets.data, result_meshlets.count * sizeof(BasicMeshlet), runtime_data_layout.MeshletBufferOffset());
+	SystemWriteFile(runtime_file, result_indices.data,  result_indices.count  * sizeof(u8),           runtime_data_layout.IndexBufferOffset());
+	
+	return runtime_data_layout;
 }

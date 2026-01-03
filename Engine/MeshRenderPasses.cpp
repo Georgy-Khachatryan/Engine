@@ -1,6 +1,8 @@
 #include "RenderPasses.h"
 #include "GraphicsApi/GraphicsApi.h"
 #include "GraphicsApi/RecordContext.h"
+#include "EntitySystem.h"
+#include "Entities.h"
 
 void MeshletClearBuffersRenderPass::CreatePipelines(PipelineLibrary* lib) {
 	pipeline_id = CreateComputePipeline(lib, MeshletCullingShadersID, MeshletCullingShaders::ClearBuffers);
@@ -24,15 +26,14 @@ void MeshletCullingRenderPass::CreatePipelines(PipelineLibrary* lib) {
 
 void MeshletCullingRenderPass::RecordPass(RecordContext* record_context) {
 	auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
-	descriptor_table.meshlets.Bind(meshlet_buffer, meshlet_count * sizeof(BasicMeshlet));
-	
 	CmdSetRootSignature(record_context, root_signature);
 	CmdSetPipelineState(record_context, pipeline_id);
 	
 	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
 	CmdSetRootArgument(record_context, root_signature.scene, scene_constants);
 	
-	CmdDispatch(record_context, DivideAndRoundUp(meshlet_count, 256u), instance_count);
+	auto* mesh_entities = QueryEntityTypeArray<MeshEntityType>(*entity_system);
+	CmdDispatch(record_context, 1u, mesh_entities->count);
 }
 
 
@@ -56,10 +57,6 @@ void BasicMeshRenderPass::RecordPass(RecordContext* record_context) {
 	CmdSetRenderTargets(record_context, VirtualResourceID::SceneRadiance, VirtualResourceID::DepthStencil);
 	
 	auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
-	descriptor_table.vertices.Bind(vertex_buffer, vertex_count * sizeof(BasicVertex));
-	descriptor_table.meshlets.Bind(meshlet_buffer, meshlet_count * sizeof(BasicMeshlet));
-	descriptor_table.index_buffer.Bind(index_buffer, AlignUp(index_buffer_size, (u32)sizeof(u32)));
-	
 	CmdSetRootSignature(record_context, root_signature);
 	CmdSetPipelineState(record_context, pipeline_id);
 	

@@ -4,12 +4,18 @@
 #include "Basic/BasicMath.h"
 #include "GraphicsApi/GraphicsApiTypes.h"
 #include "Components.h"
+#include "MeshAsset.h"
 
 NOTES()
 enum struct VirtualResourceID : u32 {
 	None = 0,
 	
+	// GPU components:
 	MeshEntityGpuTransform,
+	GpuMeshAssetData,
+	
+	// Streaming buffers:
+	MeshAssetBuffer,
 	
 	// Core resources:
 	CurrentBackBuffer,
@@ -81,6 +87,8 @@ struct SceneConstants {
 	
 	float world_to_pixel_scale;
 	float3 world_space_camera_position;
+	
+	compile_const u32 visible_meshlet_buffer_count = 1024 * 1024;
 };
 
 
@@ -217,32 +225,6 @@ struct AtmosphereCompositeRenderPass {
 };
 
 
-
-NOTES(Meta::HlslFile{ "MeshData.hlsl"_sl })
-struct BasicVertex {
-	float3 position;
-	float3 normal;
-	float2 texcoord;
-};
-
-NOTES(Meta::HlslFile{ "MeshData.hlsl"_sl })
-struct MeshletErrorMetric {
-	float3 center = 0.f;
-	float  radius = 0.f;
-	float  error  = 0.f;
-};
-
-NOTES(Meta::HlslFile{ "MeshData.hlsl"_sl })
-struct BasicMeshlet {
-	u32 index_buffer_offset  = 0;
-	u32 vertex_buffer_offset = 0;
-	u32 triangle_count = 0;
-	u32 vertex_count   = 0;
-	
-	MeshletErrorMetric current_level_error_metric;
-	MeshletErrorMetric coarser_level_error_metric;
-};
-
 NOTES(Meta::ShaderName{ "MeshletCulling.hlsl"_sl })
 enum struct MeshletCullingShaders : u32 {
 	ClearBuffers   = 1u << 0,
@@ -270,15 +252,14 @@ struct MeshletCullingRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
 	GpuAddress scene_constants;
-	GpuAddress meshlet_buffer;
-	u32 meshlet_count = 0;
-	u32 instance_count = 0;
+	EntitySystem* entity_system = nullptr;
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
-		HLSL::RegularBuffer<GpuTransform> mesh_transforms = VirtualResourceID::MeshEntityGpuTransform;
+		HLSL::RegularBuffer<GpuTransform>     mesh_transforms = VirtualResourceID::MeshEntityGpuTransform;
+		HLSL::RegularBuffer<GpuMeshAssetData> mesh_asset_data = VirtualResourceID::GpuMeshAssetData;
+		HLSL::ByteBuffer             mesh_asset_buffer  = VirtualResourceID::MeshAssetBuffer;
 		HLSL::RWRegularBuffer<uint2> visible_meshlets   = VirtualResourceID::VisibleMeshlets;
 		HLSL::RWRegularBuffer<uint4> indirect_arguments = VirtualResourceID::MeshletIndirectArguments;
-		HLSL::RegularBuffer<BasicMeshlet> meshlets;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {
@@ -300,20 +281,11 @@ struct BasicMeshRenderPass {
 	
 	GpuAddress scene_constants;
 	
-	GpuAddress vertex_buffer;
-	GpuAddress meshlet_buffer;
-	GpuAddress index_buffer;
-	
-	u32 vertex_count  = 0;
-	u32 meshlet_count = 0;
-	u32 index_buffer_size = 0;
-	
 	struct Descriptors : HLSL::BaseDescriptorTable {
-		HLSL::RegularBuffer<GpuTransform> mesh_transforms = VirtualResourceID::MeshEntityGpuTransform;
-		HLSL::RegularBuffer<uint2> visible_meshlets = VirtualResourceID::VisibleMeshlets;
-		HLSL::RegularBuffer<BasicVertex>  vertices;
-		HLSL::RegularBuffer<BasicMeshlet> meshlets;
-		HLSL::ByteBuffer              index_buffer;
+		HLSL::RegularBuffer<GpuTransform>     mesh_transforms = VirtualResourceID::MeshEntityGpuTransform;
+		HLSL::RegularBuffer<GpuMeshAssetData> mesh_asset_data = VirtualResourceID::GpuMeshAssetData;
+		HLSL::ByteBuffer           mesh_asset_buffer = VirtualResourceID::MeshAssetBuffer;
+		HLSL::RegularBuffer<uint2> visible_meshlets  = VirtualResourceID::VisibleMeshlets;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {

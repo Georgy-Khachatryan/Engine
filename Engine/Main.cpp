@@ -48,14 +48,6 @@ s32 main() {
 	extern void BasicExamples(StackAllocator* alloc);
 	BasicExamples(&alloc);
 	
-	Array<BasicVertex>  vertices;
-	Array<BasicMeshlet> meshlets;
-	Array<u8>           indices;
-	{
-		extern void ImportFbxMeshFile(StackAllocator* alloc, String filepath, Array<BasicVertex>& result_vertices, Array<BasicMeshlet>& result_meshlets, Array<u8>& result_indices);
-		ImportFbxMeshFile(&alloc, "./Assets/Source/Torus/Torus.fbx"_sl, vertices, meshlets, indices);
-	}
-	
 	auto imgui_heap = CreateHeapAllocator(2 * 1024 * 1024);
 	defer{ ReleaseHeapAllocator(imgui_heap); };
 	
@@ -78,12 +70,18 @@ s32 main() {
 	
 	FixedCountArray<NativeBufferResource, number_of_frames_in_flight> upload_buffers;
 	FixedCountArray<u8*, number_of_frames_in_flight> upload_buffer_cpu_addresses;
-	compile_const u32 upload_buffer_size = 32 * 1024 * 1024;
+	compile_const u32 upload_buffer_size = 8 * 1024 * 1024;
 	
 	for (u32 i = 0; i < number_of_frames_in_flight; i += 1) {
 		upload_buffers[i] = CreateBufferResource(graphics_context, upload_buffer_size, GpuMemoryAccessType::Upload, &upload_buffer_cpu_addresses[i]);
 	}
 	u32 upload_buffer_index = 0;
+	
+	compile_const u32 mesh_asset_buffer_size = 32 * 1024 * 1024;
+	u8* mesh_asset_buffer_cpu_address = nullptr;
+	u32 mesh_asset_buffer_offset = 0;
+	auto mesh_asset_buffer = CreateBufferResource(graphics_context, mesh_asset_buffer_size, GpuMemoryAccessType::Upload, &mesh_asset_buffer_cpu_address);
+	
 	
 	VirtualResourceTable resource_table;
 	ArrayReserve(resource_table.virtual_resources, &alloc, (u64)VirtualResourceID::Count + 16);
@@ -104,18 +102,12 @@ s32 main() {
 			SaveLoadEntitySystem(buffer, entity_system);
 			CloseSaveLoadBuffer(buffer);
 		} else {
-			WorldEntityType world_entity;
-			{
-				auto entity_result = CreateEntities<WorldEntityType>(&alloc, entity_system, 1);
-				auto* entity_array = QueryEntityTypeArray<WorldEntityType>(entity_system);
-				world_entity = ExtractComponentStreams<WorldEntityType>(entity_array, entity_result.stream_offset);
-			}
+			auto world_entity  = CreateEntities<WorldEntityType>(entity_system, 1);
+			auto camera_entity = CreateEntities<CameraEntityType>(entity_system, 1);
+			auto mesh_asset    = CreateEntities<MeshAssetType>(entity_system, 1);
+			auto mesh_entities = CreateEntities<MeshEntityType>(entity_system, mesh_instance_count);
 			
 			{
-				auto entity_result = CreateEntities<CameraEntityType>(&alloc, entity_system, 1);
-				auto* entity_array = QueryEntityTypeArray<CameraEntityType>(entity_system);
-				auto camera_entity = ExtractComponentStreams<CameraEntityType>(entity_array, entity_result.stream_offset);
-				
 				camera_entity.rotation->rotation =
 					Math::AxisAngleToQuat(float3(0.f, 0.f, 1.f), -90.f * Math::degrees_to_radians) *
 					Math::AxisAngleToQuat(float3(1.f, 0.f, 0.f), -90.f * Math::degrees_to_radians);
@@ -125,15 +117,25 @@ s32 main() {
 			}
 			
 			{
-				auto entity_result = CreateEntities<MeshEntityType>(&alloc, entity_system, mesh_instance_count);
-				auto* entity_array = QueryEntityTypeArray<MeshEntityType>(entity_system);
-				auto mesh_entities = ExtractComponentStreams<PositionQuery>(entity_array, entity_result.stream_offset);
-				
 				compile_const float spacing = 2.f;
 				compile_const float center_offset = -(float)mesh_grid_size * 0.5f * spacing;
 				for (u32 i = 0; i < mesh_instance_count; i += 1) {
 					mesh_entities.position[i].position = float3((i % mesh_grid_size) * spacing + center_offset, (i / mesh_grid_size) * spacing + center_offset, 0.f);
 				}
+			}
+			
+			{
+				extern MeshRuntimeDataLayout ImportFbxMeshFile(StackAllocator* alloc, String filepath, u64 runtime_data_guid);
+				
+				TempAllocationScope(&alloc);
+				auto source_data_filepath = "./Assets/Source/Torus/Torus.fbx"_sl;
+				u64 runtime_data_guid = GenerateRandomNumber64(entity_system.guid_random_seed);
+				auto runtime_data_layout = ImportFbxMeshFile(&alloc, source_data_filepath, runtime_data_guid);
+				
+				auto runtime_data_filepath = StringFormat(&alloc, "./Assets/Runtime/%x..mrd"_sl, runtime_data_layout.file_guid);
+				mesh_asset.name->name            = StringCopy(&entity_system.heap, "Torus"_sl);
+				mesh_asset.source_data->filepath = StringCopy(&entity_system.heap, source_data_filepath);
+				*mesh_asset.runtime_data_layout  = runtime_data_layout;
 			}
 		}
 	}
@@ -161,6 +163,7 @@ s32 main() {
 		record_context.resource_table = &resource_table;
 		
 		resource_table.Set(VirtualResourceID::CurrentBackBuffer, WindowSwapGetCurrentBackBuffer(swap_chain), swap_chain->size);
+		resource_table.Set(VirtualResourceID::MeshAssetBuffer, mesh_asset_buffer, mesh_asset_buffer_size, mesh_asset_buffer_cpu_address);
 		resource_table.Set(VirtualResourceID::TransientUploadBuffer, upload_buffers[upload_buffer_index], upload_buffer_size, upload_buffer_cpu_addresses[upload_buffer_index]);
 		upload_buffer_index = (upload_buffer_index + 1) % number_of_frames_in_flight;
 		
@@ -395,12 +398,51 @@ s32 main() {
 			ArrayAppend(gpu_uploads, &alloc, gpu_transform);
 		}
 		
+		for (auto* entity_array : QueryEntities<MeshAssetType>(&alloc, entity_system)) {
+			u32 dirty_entity_count = (u32)BitArrayCountSetBits(entity_array->dirty_mask);
+			if (dirty_entity_count == 0) continue;
+			
+			auto streams = ExtractComponentStreams<MeshAssetType>(entity_array);
+			
+			for (u64 i : BitArrayIt(entity_array->dirty_mask)) {
+				u32 data_size = streams.runtime_data_layout[i].AllocationSize();
+				
+				u32 allocation_size = AlignUp(data_size, 256u);
+				u32 allocation_offset = mesh_asset_buffer_offset;
+				
+				mesh_asset_buffer_offset += allocation_size;
+				streams.allocation[i].base_offset = allocation_offset;
+				
+				u64 guid = streams.runtime_data_layout[i].file_guid;
+				auto file = SystemOpenFile(&alloc, StringFormat(&alloc, "./Assets/Runtime/%x..mrd"_sl, guid), OpenFileFlags::Read);
+				
+				streams.runtime_file[i].file = file;
+				
+				auto* cpu_address = mesh_asset_buffer_cpu_address + streams.allocation[i].base_offset;
+				SystemReadFile(file, cpu_address, data_size, 0);
+			}
+			
+			auto gpu_mesh_asset_data = AllocateGpuComponentUploadBuffer(&record_context, dirty_entity_count, streams.gpu_mesh_asset_data);
+			
+			u32* stream_index_to_entity_id = entity_array->stream_index_to_entity_id;
+			for (u64 i : BitArrayIt(entity_array->dirty_mask)) {
+				auto layout = streams.runtime_data_layout[i];
+				u32 base_offset = streams.allocation[i].base_offset;
+				
+				GpuMeshAssetData mesh_asset;
+				mesh_asset.vertex_buffer_offset  = base_offset + layout.VertexBufferOffset();
+				mesh_asset.meshlet_buffer_offset = base_offset + layout.MeshletBufferOffset();
+				mesh_asset.index_buffer_offset   = base_offset + layout.IndexBufferOffset();
+				mesh_asset.meshlet_count         = layout.meshlet_count;
+				QueueGpuUpload(gpu_mesh_asset_data, stream_index_to_entity_id[i], mesh_asset);
+			}
+			ArrayAppend(gpu_uploads, &alloc, gpu_mesh_asset_data);
+		}
+		
+		
 		auto renderer_world = world_entity.renderer_world;
 		renderer_world->window_size = window_size;
 		renderer_world->gpu_uploads = gpu_uploads;
-		renderer_world->vertices = vertices;
-		renderer_world->meshlets = meshlets;
-		renderer_world->indices  = indices;
 		
 		BuildRenderPassesForFrame(&record_context, &entity_system, world_entity_guid);
 		
@@ -422,6 +464,8 @@ s32 main() {
 	}
 	
 	ReleaseBufferResource(graphics_context, resource_table.virtual_resources[(u32)VirtualResourceID::MeshEntityGpuTransform].buffer.resource);
+	ReleaseBufferResource(graphics_context, resource_table.virtual_resources[(u32)VirtualResourceID::GpuMeshAssetData].buffer.resource);
+	ReleaseBufferResource(graphics_context, mesh_asset_buffer);
 	
 	for (auto& buffer : upload_buffers) {
 		ReleaseBufferResource(graphics_context, buffer);

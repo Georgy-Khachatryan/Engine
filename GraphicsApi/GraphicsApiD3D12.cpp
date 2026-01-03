@@ -451,13 +451,14 @@ static void BuildRootSignatures(GraphicsContextD3D12* context, StackAllocator* a
 					
 					bool is_srv = HasAnyFlags(descriptor_type, ResourceDescriptorType::AnySRV);
 					auto range_type = is_srv ? D3D12_DESCRIPTOR_RANGE_TYPE_SRV : D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
+					u32 base_shader_register = is_srv ? srv_index++ : uav_index++;
 					
 					if (last_range_type != range_type) {
 						last_range_type = range_type;
 						auto& descriptor_range = ArrayEmplace(descriptor_ranges, alloc);
 						descriptor_range.RangeType          = range_type;
 						descriptor_range.NumDescriptors     = 0;
-						descriptor_range.BaseShaderRegister = is_srv ? srv_index++ : uav_index++;
+						descriptor_range.BaseShaderRegister = base_shader_register;
 						descriptor_range.RegisterSpace      = 0;
 						descriptor_range.Flags              = D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC_WHILE_SET_AT_EXECUTE | D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_STATIC_KEEPING_BUFFER_BOUNDS_CHECKS;
 						descriptor_range.OffsetInDescriptorsFromTableStart = descriptor_index;

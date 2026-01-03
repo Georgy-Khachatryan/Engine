@@ -28,6 +28,7 @@ namespace ECS {
 		T* data = nullptr;
 		T& operator[] (u64 index) { return data[index]; }
 		T* operator-> () { return data; }
+		T& operator* () { return *data; }
 	};
 	
 	NOTES(ComponentType::GPU)
@@ -99,37 +100,15 @@ struct EntitySystem {
 	HeapAllocator heap;
 };
 
-struct CreateEntitiesResult {
-	Array<EntityID> entity_ids;
-	u32 stream_offset = 0;
-	EntityTypeID entity_type_id;
-};
-
 void InitializeEntitySystem(EntitySystem& system);
 void SaveLoadEntitySystem(SaveLoadBuffer& buffer, EntitySystem& system);
 void ClearEntityDirtyMasks(EntitySystem& system);
 
-CreateEntitiesResult CreateEntities(StackAllocator* alloc, EntitySystem& system, EntityTypeID entity_type_id, u32 entity_count);
+u32 CreateEntities(EntitySystem& system, EntityTypeID entity_type_id, u32 entity_count);
 void RemoveEntityByGUID(EntitySystem& system, u64 guid);
 
 ArrayView<EntityTypeArray*> QueryEntities(StackAllocator* alloc, EntitySystem& system, EntityQueryTypeID query_type_id);
 void ExtractComponentStreams(EntityTypeArray* array, EntityQueryTypeID query_type_id, ArrayView<ComponentStream> output_streams, u32 component_stream_offset = 0);
-
-
-template<typename EntityTypeT>
-CreateEntitiesResult CreateEntities(StackAllocator* alloc, EntitySystem& system, u32 entity_count) {
-	return CreateEntities(alloc, system, ECS::GetEntityTypeID<EntityTypeT>::id, entity_count);
-}
-
-template<typename QueryTypeT>
-ArrayView<EntityTypeArray*> QueryEntities(StackAllocator* alloc, EntitySystem& system) {
-	return QueryEntities(alloc, system, ECS::GetEntityQueryTypeID<QueryTypeT>::id);
-}
-
-template<typename EntityTypeT>
-EntityTypeArray* QueryEntityTypeArray(EntitySystem& system) {
-	return &system.entity_type_arrays[ECS::GetEntityTypeID<EntityTypeT>::id.index];
-}
 
 template<typename QueryTypeT>
 QueryTypeT ExtractComponentStreams(EntityTypeArray* array, u32 component_stream_offset = 0) {
@@ -142,6 +121,22 @@ QueryTypeT ExtractComponentStreams(EntityTypeArray* array, u32 component_stream_
 	memcpy(&result, component_streams.data, sizeof(result));
 	
 	return result;
+}
+
+template<typename EntityTypeT>
+EntityTypeArray* QueryEntityTypeArray(EntitySystem& system) {
+	return &system.entity_type_arrays[ECS::GetEntityTypeID<EntityTypeT>::id.index];
+}
+
+template<typename EntityTypeT>
+EntityTypeT CreateEntities(EntitySystem& system, u32 entity_count) {
+	u32 stream_offset = CreateEntities(system, ECS::GetEntityTypeID<EntityTypeT>::id, entity_count);
+	return ExtractComponentStreams<EntityTypeT>(QueryEntityTypeArray<EntityTypeT>(system), stream_offset);
+}
+
+template<typename QueryTypeT>
+ArrayView<EntityTypeArray*> QueryEntities(StackAllocator* alloc, EntitySystem& system) {
+	return QueryEntities(alloc, system, ECS::GetEntityQueryTypeID<QueryTypeT>::id);
 }
 
 template<typename QueryTypeT>

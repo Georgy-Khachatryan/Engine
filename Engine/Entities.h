@@ -1,8 +1,9 @@
 #pragma once
 #include "Basic/Basic.h"
 #include "Basic/BasicString.h"
-#include "EntitySystem.h"
 #include "Components.h"
+#include "EntitySystem.h"
+#include "MeshAsset.h"
 
 
 NOTES()
@@ -17,9 +18,6 @@ struct RendererWorld {
 	float meshlet_target_error_pixels = 1.f;
 	
 	ArrayView<struct GpuComponentUploadBuffer> gpu_uploads;
-	ArrayView<struct BasicVertex>  vertices;
-	ArrayView<struct BasicMeshlet> meshlets;
-	ArrayView<u8>                  indices;
 };
 
 NOTES(Meta::EntityType{ 1 }, Meta::ComponentQuery{})
@@ -31,7 +29,7 @@ struct WorldEntityType {
 };
 
 
-NOTES(Meta::EntityType{})
+NOTES(Meta::EntityType{}, Meta::ComponentQuery{})
 struct MeshEntityType {
 	ECS::Component<GuidComponent> guid;
 	ECS::Component<NameComponent> name;
