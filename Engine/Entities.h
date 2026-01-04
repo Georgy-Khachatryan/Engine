@@ -73,12 +73,6 @@ struct CameraEntityType {
 
 
 NOTES(Meta::ComponentQuery{})
-struct GuidNameQuery {
-	GuidComponent* guid = nullptr;
-	NameComponent* name = nullptr;
-};
-
-NOTES(Meta::ComponentQuery{})
 struct EntityEditorQuery {
 	GuidComponent* guid = nullptr;
 	NameComponent* name = nullptr;
@@ -90,4 +84,6 @@ struct EntityEditorQuery {
 	MeshAssetGUID* mesh_asset = nullptr;
 	
 	CameraComponent* camera = nullptr;
+	
+	MeshSourceData* mesh_source_data = nullptr;
 };

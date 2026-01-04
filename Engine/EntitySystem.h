@@ -3,6 +3,7 @@
 #include "Basic/BasicArray.h"
 #include "Basic/BasicHashTable.h"
 #include "Basic/BasicMemory.h"
+#include "Basic/BasicString.h"
 
 struct SaveLoadBuffer;
 enum struct VirtualResourceID : u32;
@@ -150,14 +151,19 @@ QueryTypeT QueryEntityByGUID(EntitySystem& system, u64 entity_guid) {
 	return ExtractComponentStreams<QueryTypeT>(&array, array.entity_id_to_stream_index[typed_entity_id.entity_id.index]);
 }
 
-extern ArrayView<struct String> entity_type_name_table;
+extern ArrayView<String> entity_type_name_table;
 
-NOTES()
-struct GuidComponent {
-	u64 guid = 0;
-};
+NOTES() struct GuidComponent { u64 guid = 0; };
+NOTES() struct NameComponent { String name;  };
 
 NOTES(Meta::ComponentQuery{})
 struct GuidQuery {
 	GuidComponent* guid = nullptr;
 };
+
+NOTES(Meta::ComponentQuery{})
+struct GuidNameQuery {
+	GuidComponent* guid = nullptr;
+	NameComponent* name = nullptr;
+};
+

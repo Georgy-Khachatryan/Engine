@@ -65,7 +65,7 @@ struct MeshRuntimeFile {
 
 NOTES(Meta::NoSaveLoad{})
 struct MeshRuntimeAllocation {
-	u32 base_offset = 0;
+	u32 base_offset = u32_max;
 };
 
 NOTES()

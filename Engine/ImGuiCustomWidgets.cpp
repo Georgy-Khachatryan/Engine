@@ -1,6 +1,7 @@
 #include "Basic/Basic.h"
 #include "Basic/BasicString.h"
 #include "ImGuiCustomWidgets.h"
+#include "EntitySystem.h"
 
 #include <SDK/imgui/imgui_internal.h>
 
@@ -74,6 +75,8 @@ static s32 InputTextHeapStringCallback(ImGuiInputTextCallbackData* data) {
 }
 
 bool ImGui::InputText(const char* label, String& string, HeapAllocator* heap, ImGuiInputTextFlags flags, ImGuiInputTextCallback callback, void* user_data) {
+	if (heap == nullptr) flags |= ImGuiInputTextFlags_ReadOnly;
+	
 	InputTextHeapStringCallbackData callback_data;
 	callback_data.string    = string;
 	callback_data.capacity  = HeapAllocator::GetMemoryBlockSize(string.data); // Including null terminator.
@@ -83,7 +86,9 @@ bool ImGui::InputText(const char* label, String& string, HeapAllocator* heap, Im
 	
 	// ImGui doesn't like when a (null, 0) string buffer is passed in.
 	// As a workaround supply a dummy ('\0', 1) buffer which will never be written to.
+	// This is similar to what ImGuiTextBuffer does.
 	char dummy_string_data = '\0';
+	
 	bool result = ImGui::InputText(
 		label,
 		string.data ? string.data : &dummy_string_data,
@@ -162,6 +167,49 @@ bool ImGui::DragFloatWithReset(const char* label, float* data, u32 component_cou
 	return value_changed;
 }
 
+bool ImGui::EntityComboBox(const char* label, EntitySystem* entity_system, u64* selected_guid, EntityTypeID entity_type_id) {
+	u64 current_guid = *selected_guid;
+	const char* current_name = "";
+	
+	auto* element = HashTableFind(entity_system->entity_guid_to_entity_id, current_guid);
+	if (element) {
+		auto typed_entity_id = element->value;
+		auto* array = &entity_system->entity_type_arrays[typed_entity_id.entity_type_id.index];
+		u32 entity_stream_index = array->entity_id_to_stream_index[typed_entity_id.entity_id.index];
+		
+		auto entity = ExtractComponentStreams<GuidNameQuery>(array, entity_stream_index);
+		if (entity.name->name.data) current_name = entity.name->name.data;
+	}
+	
+	if (ImGui::BeginCombo(label, current_name)) {
+		auto* array = &entity_system->entity_type_arrays[entity_type_id.index];
+		auto streams = ExtractComponentStreams<GuidNameQuery>(array);
+		
+		auto entity_type_name = entity_type_name_table[entity_type_id.index];
+		
+		ImGuiListClipper clipper;
+		clipper.Begin(array->count);
+		
+		while (clipper.Step()) {
+			for (s32 i = clipper.DisplayStart; i < clipper.DisplayEnd; i += 1) {
+				auto& [guid] = streams.guid[i];
+				auto& [name] = streams.name[i];
+				
+				ImGuiScopeID(i);
+				
+				bool is_selected = (guid == current_guid);
+				if (ImGui::Selectable(name.count ? name.data : entity_type_name.data, is_selected)) {
+					*selected_guid = guid;
+				}
+			}
+		}
+		
+		ImGui::EndCombo();
+	}
+	
+	return (current_guid != *selected_guid);
+}
+
 
 bool ImGui::BeginTableItem(const char* label) {
 	ImGui::TableNextRow();
@@ -213,6 +261,15 @@ bool ImGui::TableCombo(const char* label, s32* current_item, const char* items_s
 	bool result = false;
 	if (ImGui::BeginTableItem(label)) {
 		result = ImGui::Combo("", current_item, items_separated_by_zeros, popup_max_height_in_items);
+		ImGui::EndTableItem();
+	}
+	return result;
+}
+
+bool ImGui::TableEntityComboBox(const char* label, EntitySystem* entity_system, u64* guid, EntityTypeID entity_type_id) {
+	bool result = false;
+	if (ImGui::BeginTableItem(label)) {
+		result |= ImGui::EntityComboBox("", entity_system, guid, entity_type_id);
 		ImGui::EndTableItem();
 	}
 	return result;

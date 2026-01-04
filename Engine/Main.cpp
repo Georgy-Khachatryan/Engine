@@ -438,7 +438,7 @@ s32 main() {
 				
 				if (entity.guid) {
 					auto guid_string = StringFormat(&alloc, "0x%"_sl, (void*)entity.guid->guid);
-					ImGui::TableInputText("GUID", guid_string, nullptr, ImGuiInputTextFlags_ReadOnly);
+					ImGui::TableInputText("GUID", guid_string, nullptr);
 				}
 				
 				if (entity.name) {
@@ -468,19 +468,17 @@ s32 main() {
 				}
 				
 				if (entity.mesh_asset) {
-					auto guid_string = StringFormat(&alloc, "0x%x"_sl, entity.mesh_asset->guid);
-					ImGui::TableInputText("Mesh Asset", guid_string, nullptr, ImGuiInputTextFlags_ReadOnly);
+					is_dirty |= ImGui::TableEntityComboBox("Mesh Asset", &entity_system, &entity.mesh_asset->guid, ECS::GetEntityTypeID<MeshAssetType>::id);
 				}
 				
 				if (entity.camera) {
-					ImGui::TableNextRow();
-					ImGui::TableSetColumnIndex(0);
-					
-					if (ImGui::CollapsingHeader("Camera", ImGuiTreeNodeFlags_SpanAllColumns | ImGuiTreeNodeFlags_LabelSpanAllColumns)) {
-						is_dirty |= ImGui::TableCombo("Camera Transform Type", (s32*)&entity.camera->transform_type, "Perspective\0Orthographic\0");
-						is_dirty |= ImGui::TableSliderFloat("Vertical Field Of View", &entity.camera->vertical_fov_degrees, 10.f, 135.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
-						is_dirty |= ImGui::TableSliderFloat("Camera Near Depth", &entity.camera->near_depth, 0.01f, 1.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
-					}
+					is_dirty |= ImGui::TableCombo("Camera Transform Type", (s32*)&entity.camera->transform_type, "Perspective\0Orthographic\0");
+					is_dirty |= ImGui::TableSliderFloat("Vertical Field Of View", &entity.camera->vertical_fov_degrees, 10.f, 135.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+					is_dirty |= ImGui::TableSliderFloat("Camera Near Depth", &entity.camera->near_depth, 0.01f, 1.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+				}
+				
+				if (entity.mesh_source_data) {
+					ImGui::TableInputText("Mesh Source Data", entity.mesh_source_data->filepath, nullptr);
 				}
 				
 				if (is_dirty) {
@@ -533,6 +531,8 @@ s32 main() {
 			auto streams = ExtractComponentStreams<MeshAssetType>(entity_array);
 			
 			for (u64 i : BitArrayIt(entity_array->dirty_mask)) {
+				if (streams.allocation[i].base_offset != u32_max) continue;
+				
 				u32 data_size = streams.runtime_data_layout[i].AllocationSize();
 				
 				u32 allocation_size = AlignUp(data_size, 256u);
