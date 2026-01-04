@@ -410,8 +410,8 @@ s32 main() {
 				defer{ ImGui::EndTable(); };
 				
 				ImGui::TableSetupScrollFreeze(0, 1); // Freeze header row.
-				ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch, 2.f);
-				ImGui::TableSetupColumn("Data", ImGuiTableColumnFlags_WidthStretch, 3.f);
+				ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch, 1.f);
+				ImGui::TableSetupColumn("Data", ImGuiTableColumnFlags_WidthStretch, 2.f);
 				ImGui::TableHeadersRow();
 				
 				// Items should span full width of the column.
@@ -471,7 +471,7 @@ s32 main() {
 					
 					if (ImGui::TableSetColumnIndex(1)) {
 						auto& position = entity.position->position;
-						is_dirty |= ImGui::DragFloat3("##Position", &position.x, 0.1f);
+						is_dirty |= ImGui::DragFloatWithReset("##Position", &position.x, 3, 0.1f);
 					}
 				}
 				
@@ -484,13 +484,10 @@ s32 main() {
 					
 					if (ImGui::TableSetColumnIndex(1)) {
 						auto& rotation = entity.rotation->rotation;
-						if (ImGui::DragFloat4("##Rotation", &rotation.x, 0.1f)) { // TODO: Use Euler angles for UI.
-							float length = Math::Length(rotation);
-							if (length > 0.f) {
-								rotation *= (1.f / length);
-							} else {
-								rotation = {};
-							}
+						
+						auto euler_angles = Math::QuatToEulerXyzAngles(rotation) * Math::radians_to_degress;
+						if (ImGui::DragFloatWithReset("##Rotation", &euler_angles.x, 3, 1.f)) {
+							rotation = Math::EulerXyzAnglesToQuat(euler_angles * Math::degrees_to_radians);
 							is_dirty = true;
 						}
 					}
@@ -504,7 +501,9 @@ s32 main() {
 					}
 					
 					if (ImGui::TableSetColumnIndex(1)) {
-						is_dirty |= ImGui::DragFloat("##Scale", &entity.scale->scale, 0.1f, 0.f, 8.f);
+						const char* label = "S";
+						const float default_values = 1.f;
+						is_dirty |= ImGui::DragFloatWithReset("##Scale", &entity.scale->scale, 1, 0.1f, 0.f, 8.f, "%.3f", 0, &label, &default_values);
 					}
 				}
 				

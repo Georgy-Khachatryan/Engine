@@ -96,3 +96,68 @@ bool ImGui::InputText(const char* label, String& string, HeapAllocator* heap, Im
 	
 	return result;
 }
+
+// Based on ImGui::DragScalarN(...).
+bool ImGui::DragFloatWithReset(const char* label, float* data, u32 component_count, float v_speed, float v_min, float v_max, const char* format, ImGuiSliderFlags flags, const char* const* component_labels, const float* default_values) {
+	auto* window = ImGui::GetCurrentWindow();
+	if (window->SkipItems) return false;
+	
+	auto& style = ImGui::GetStyle();
+	
+	ImGui::BeginGroup();
+	ImGui::PushID(label);
+	
+	ImGui::PushMultiItemsWidths(component_count, ImGui::CalcItemWidth());
+	float frame_height = ImGui::GetFrameHeight();
+	
+	compile_const u32 col_button[4]         = { IM_COL32(220,20,20,255), IM_COL32(20,180,20,255), IM_COL32(20,20,220,255), IM_COL32(140,140,140,255) };
+	compile_const u32 col_button_hovered[4] = { IM_COL32(235,20,20,255), IM_COL32(20,195,20,255), IM_COL32(20,20,235,255), IM_COL32(160,160,160,255) };
+	compile_const u32 col_button_active[4]  = { IM_COL32(250,20,20,255), IM_COL32(20,210,20,255), IM_COL32(20,20,250,255), IM_COL32(180,180,180,255) };
+	compile_const char* xyzw_component_labels[4] = { "X", "Y", "Z", "W" };
+	compile_const float zero_default_values[4]   = { 0.f, 0.f, 0.f, 0.f };
+	
+	if (component_labels == nullptr) {
+		component_labels = xyzw_component_labels;
+	}
+	
+	if (default_values == nullptr) {
+		default_values = zero_default_values;
+	}
+	
+	bool value_changed = false;
+	for (u32 i = 0; i < component_count; i += 1) {
+		ImGui::PushID(i);
+		
+		if (i != 0) ImGui::SameLine(0.f, style.ItemInnerSpacing.x);
+		
+		ImGui::PushStyleColor(ImGuiCol_Button, col_button[i]);
+		ImGui::PushStyleColor(ImGuiCol_ButtonHovered, col_button_hovered[i]);
+		ImGui::PushStyleColor(ImGuiCol_ButtonActive, col_button_active[i]);
+		if (ImGui::Button(component_labels[i], ImVec2(frame_height, frame_height))) {
+			data[i] = default_values[i];
+			value_changed = true;
+		}
+		ImGui::PopStyleColor(3);
+		
+		ImGui::SameLine(0.f, style.ItemInnerSpacing.x);
+		
+		ImGui::SetNextItemWidth(ImMax(ImGui::CalcItemWidth() - frame_height - style.ItemInnerSpacing.x, 1.f));
+		value_changed |= ImGui::DragFloat("", &data[i], v_speed, v_min, v_max, format, flags);
+		
+		ImGui::PopID();
+		
+		ImGui::PopItemWidth();
+	}
+	ImGui::PopID();
+	
+	const char* label_end = ImGui::FindRenderedTextEnd(label);
+	if (label != label_end) {
+		ImGui::SameLine(0.f, style.ItemInnerSpacing.x);
+		ImGui::TextEx(label, label_end);
+	}
+	
+	ImGui::EndGroup();
+	
+	return value_changed;
+}
+

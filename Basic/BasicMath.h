@@ -159,4 +159,6 @@ namespace Math {
 	
 	quat AxisAngleToQuat(const float3& axis, float angle);
 	float3x3 QuatToRotationMatrix(const quat& q);
+	float3 QuatToEulerXyzAngles(const quat& q); // Extrinsic XYZ angles, the same as intrinsic ZYX angles. float3(Roll, Pitch, Yaw)
+	quat EulerXyzAnglesToQuat(const float3& e);
 }
