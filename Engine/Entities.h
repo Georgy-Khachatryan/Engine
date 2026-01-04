@@ -87,5 +87,7 @@ struct EntityEditorQuery {
 	RotationComponent* rotation = nullptr;
 	ScaleComponent*    scale    = nullptr;
 	
+	MeshAssetGUID* mesh_asset = nullptr;
+	
 	CameraComponent* camera = nullptr;
 };

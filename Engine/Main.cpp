@@ -284,6 +284,8 @@ s32 main() {
 		ImGui::SliderFloat("Sun Elevation", &world_entity.renderer_world->sun_elevation_degrees, -10.f, +190.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
 		
 		{
+			ProfilerScope("SceneView");
+			
 			u32 entity_count = 0;
 			
 			auto entity_view = QueryEntities<GuidNameQuery>(&alloc, entity_system);
@@ -330,6 +332,8 @@ s32 main() {
 			
 			
 			if (ImGui::BeginTable("SceneView", 3, ImGuiTableFlags_Resizable | ImGuiTableFlags_NoSavedSettings | ImGuiTableFlags_BordersInner | ImGuiTableFlags_PadOuterX | ImGuiTableFlags_ScrollY)) {
+				defer{ ImGui::EndTable(); };
+				
 				ImGui::TableSetupScrollFreeze(0, 1); // Freeze header row.
 				ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch, 2.f);
 				ImGui::TableSetupColumn("GUID", ImGuiTableColumnFlags_WidthStretch, 2.f);
@@ -385,8 +389,6 @@ s32 main() {
 				
 				ms_io = ImGui::EndMultiSelect();
 				apply_requests(ms_io);
-				
-				ImGui::EndTable();
 			}
 			
 			
@@ -400,64 +402,164 @@ s32 main() {
 		
 		ImGui::End();
 		
-		if (selected_entities_hash_table.count == 1) {
+		if (selected_entities_hash_table.count != 0) {
 			ImGui::Begin("Entity Editor", nullptr, ImGuiWindowFlags_NoFocusOnAppearing);
 			defer{ ImGui::End(); };
 			
-			u64 entity_guid = (*selected_entities_hash_table.begin()).key;
-			ImGuiScopeID((void*)entity_guid);
-			
-			// TODO: Make use of QueryEntityByGUID.
-			auto* element = HashTableFind(entity_system.entity_guid_to_entity_id, entity_guid);
-			DebugAssert(element, "Failed to find entity by guid 0x%x.", entity_guid);
-			
-			auto typed_entity_id = element->value;
-			auto* array = &entity_system.entity_type_arrays[typed_entity_id.entity_type_id.index];
-			u32 entity_stream_index = array->entity_id_to_stream_index[typed_entity_id.entity_id.index];
-			auto entity = ExtractComponentStreams<EntityEditorQuery>(array, entity_stream_index);
-			
-			
-			bool is_dirty = false;
-			
-			if (entity.guid) {
-				ImGui::Text("0x%016llx", entity.guid->guid);
-			}
-			
-			if (entity.name) {
-				auto& name = entity.name->name;
-				ImGui::InputText("Name", name, entity_system.heap);
-			}
-			
-			if (entity.position) {
-				auto& position = entity.position->position;
-				is_dirty |= ImGui::DragFloat3("Position", &position.x, 0.1f);
-			}
-			
-			if (entity.rotation) {
-				auto& rotation = entity.rotation->rotation;
-				if (ImGui::DragFloat4("Rotation", &rotation.x, 0.1f)) { // TODO: Use Euler angles for UI.
-					float length = Math::Length(rotation);
-					if (length > 0.f) {
-						rotation *= (1.f / length);
-					} else {
-						rotation = {};
+			if (ImGui::BeginTable("Components", 2, ImGuiTableFlags_NoSavedSettings | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_PadOuterX | ImGuiTableFlags_ScrollY)) {
+				defer{ ImGui::EndTable(); };
+				
+				ImGui::TableSetupScrollFreeze(0, 1); // Freeze header row.
+				ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch, 2.f);
+				ImGui::TableSetupColumn("Data", ImGuiTableColumnFlags_WidthStretch, 3.f);
+				ImGui::TableHeadersRow();
+				
+				// Items should span full width of the column.
+				ImGui::PushItemWidth(-FLT_MIN);
+				defer{ ImGui::PopItemWidth(); };
+				
+				u64 entity_guid = (*selected_entities_hash_table.begin()).key;
+				ImGuiScopeID((void*)entity_guid);
+				
+				ImGui::BeginDisabled(selected_entities_hash_table.count >= 2);
+				defer{ ImGui::EndDisabled(); };
+				
+				// TODO: Make use of QueryEntityByGUID.
+				auto* element = HashTableFind(entity_system.entity_guid_to_entity_id, entity_guid);
+				DebugAssert(element, "Failed to find entity by guid 0x%x.", entity_guid);
+				
+				auto typed_entity_id = element->value;
+				auto* array = &entity_system.entity_type_arrays[typed_entity_id.entity_type_id.index];
+				u32 entity_stream_index = array->entity_id_to_stream_index[typed_entity_id.entity_id.index];
+				auto entity = ExtractComponentStreams<EntityEditorQuery>(array, entity_stream_index);
+				
+				
+				bool is_dirty = false;
+				
+				if (entity.guid) {
+					ImGui::TableNextRow();
+					if (ImGui::TableSetColumnIndex(0)) {
+						ImGui::AlignTextToFramePadding();
+						ImGui::Text("GUID");
 					}
-					is_dirty = true;
+					
+					if (ImGui::TableSetColumnIndex(1)) {
+						auto guid_string = StringFormat(&alloc, "0x%"_sl, (void*)entity.guid->guid);
+						ImGui::InputText("##GUID", guid_string, nullptr, ImGuiInputTextFlags_ReadOnly);
+					}
 				}
-			}
-			
-			if (entity.scale) {
-				is_dirty |= ImGui::DragFloat("Scale", &entity.scale->scale, 0.1f, 0.f, 8.f);
-			}
-			
-			if (entity.camera) {
-				is_dirty |= ImGui::Combo("Camera Transform Type", (s32*)&entity.camera->transform_type, "Perspective\0Orthographic\0");
-				is_dirty |= ImGui::SliderFloat("Vertical Field Of View", &entity.camera->vertical_fov_degrees, 10.f, 135.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
-				is_dirty |= ImGui::SliderFloat("Camera Near Depth", &entity.camera->near_depth, 0.01f, 1.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
-			}
-			
-			if (is_dirty) {
-				BitArraySetBit(array->dirty_mask, entity_stream_index);
+				
+				if (entity.name) {
+					ImGui::TableNextRow();
+					if (ImGui::TableSetColumnIndex(0)) {
+						ImGui::AlignTextToFramePadding();
+						ImGui::Text("Name");
+					}
+					
+					if (ImGui::TableSetColumnIndex(1)) {
+						auto& name = entity.name->name;
+						ImGui::InputText("##InputText", name, &entity_system.heap);
+					}
+				}
+				
+				if (entity.position) {
+					ImGui::TableNextRow();
+					if (ImGui::TableSetColumnIndex(0)) {
+						ImGui::AlignTextToFramePadding();
+						ImGui::Text("Position");
+					}
+					
+					if (ImGui::TableSetColumnIndex(1)) {
+						auto& position = entity.position->position;
+						is_dirty |= ImGui::DragFloat3("##Position", &position.x, 0.1f);
+					}
+				}
+				
+				if (entity.rotation) {
+					ImGui::TableNextRow();
+					if (ImGui::TableSetColumnIndex(0)) {
+						ImGui::AlignTextToFramePadding();
+						ImGui::Text("Rotation");
+					}
+					
+					if (ImGui::TableSetColumnIndex(1)) {
+						auto& rotation = entity.rotation->rotation;
+						if (ImGui::DragFloat4("##Rotation", &rotation.x, 0.1f)) { // TODO: Use Euler angles for UI.
+							float length = Math::Length(rotation);
+							if (length > 0.f) {
+								rotation *= (1.f / length);
+							} else {
+								rotation = {};
+							}
+							is_dirty = true;
+						}
+					}
+				}
+				
+				if (entity.scale) {
+					ImGui::TableNextRow();
+					if (ImGui::TableSetColumnIndex(0)) {
+						ImGui::AlignTextToFramePadding();
+						ImGui::Text("Scale");
+					}
+					
+					if (ImGui::TableSetColumnIndex(1)) {
+						is_dirty |= ImGui::DragFloat("##Scale", &entity.scale->scale, 0.1f, 0.f, 8.f);
+					}
+				}
+				
+				if (entity.mesh_asset) {
+					ImGui::TableNextRow();
+					if (ImGui::TableSetColumnIndex(0)) {
+						ImGui::AlignTextToFramePadding();
+						ImGui::Text("Mesh Asset");
+					}
+					
+					if (ImGui::TableSetColumnIndex(1)) {
+						auto guid_string = StringFormat(&alloc, "0x%x"_sl, entity.mesh_asset->guid);
+						ImGui::InputText("##MeshAssetGUID", guid_string, nullptr, ImGuiInputTextFlags_ReadOnly);
+					}
+				}
+				
+				if (entity.camera) {
+					ImGui::TableNextRow();
+					ImGui::TableSetColumnIndex(0);
+					if (ImGui::CollapsingHeader("Camera", ImGuiTreeNodeFlags_SpanAllColumns | ImGuiTreeNodeFlags_LabelSpanAllColumns)) {
+						ImGui::TableNextRow();
+						if (ImGui::TableSetColumnIndex(0)) {
+							ImGui::AlignTextToFramePadding();
+							ImGui::Text("Camera Transform Type");
+						}
+						
+						if (ImGui::TableSetColumnIndex(1)) {
+							is_dirty |= ImGui::Combo("##Camera Transform Type", (s32*)&entity.camera->transform_type, "Perspective\0Orthographic\0");
+						}
+						
+						ImGui::TableNextRow();
+						if (ImGui::TableSetColumnIndex(0)) {
+							ImGui::AlignTextToFramePadding();
+							ImGui::Text("Vertical Field Of View");
+						}
+						
+						if (ImGui::TableSetColumnIndex(1)) {
+							is_dirty |= ImGui::SliderFloat("##Vertical Field Of View", &entity.camera->vertical_fov_degrees, 10.f, 135.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+						}
+						
+						ImGui::TableNextRow();
+						if (ImGui::TableSetColumnIndex(0)) {
+							ImGui::AlignTextToFramePadding();
+							ImGui::Text("Camera Near Depth");
+						}
+						
+						if (ImGui::TableSetColumnIndex(1)) {
+							is_dirty |= ImGui::SliderFloat("##Camera Near Depth", &entity.camera->near_depth, 0.01f, 1.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+						}
+					}
+				}
+				
+				if (is_dirty) {
+					BitArraySetBit(array->dirty_mask, entity_stream_index);
+				}
 			}
 		}
 		

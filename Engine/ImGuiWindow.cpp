@@ -215,6 +215,8 @@ static void ImGuiMainWindowMenuBar(SystemWindow* window) {
 }
 
 void ImGuiBeginFrame(SystemWindow* window) {
+	ProfilerScope("ImGuiBeginFrame");
+	
 	ImGui_ImplWin32_NewFrame();
 	ImGui::NewFrame();
 	

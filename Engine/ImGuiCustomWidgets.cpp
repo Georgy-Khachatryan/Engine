@@ -73,11 +73,11 @@ static s32 InputTextHeapStringCallback(ImGuiInputTextCallbackData* data) {
 	return 0;
 }
 
-bool ImGui::InputText(const char* label, String& string, HeapAllocator& heap, ImGuiInputTextFlags flags, ImGuiInputTextCallback callback, void* user_data) {
+bool ImGui::InputText(const char* label, String& string, HeapAllocator* heap, ImGuiInputTextFlags flags, ImGuiInputTextCallback callback, void* user_data) {
 	InputTextHeapStringCallbackData callback_data;
 	callback_data.string    = string;
 	callback_data.capacity  = HeapAllocator::GetMemoryBlockSize(string.data); // Including null terminator.
-	callback_data.heap      = &heap;
+	callback_data.heap      = heap;
 	callback_data.callback  = callback;
 	callback_data.user_data = user_data;
 	
