@@ -110,9 +110,9 @@ bool ImGui::DragFloatWithReset(const char* label, float* data, u32 component_cou
 	ImGui::PushMultiItemsWidths(component_count, ImGui::CalcItemWidth());
 	float frame_height = ImGui::GetFrameHeight();
 	
-	compile_const u32 col_button[4]         = { IM_COL32(220,20,20,255), IM_COL32(20,180,20,255), IM_COL32(20,20,220,255), IM_COL32(140,140,140,255) };
-	compile_const u32 col_button_hovered[4] = { IM_COL32(235,20,20,255), IM_COL32(20,195,20,255), IM_COL32(20,20,235,255), IM_COL32(160,160,160,255) };
-	compile_const u32 col_button_active[4]  = { IM_COL32(250,20,20,255), IM_COL32(20,210,20,255), IM_COL32(20,20,250,255), IM_COL32(180,180,180,255) };
+	compile_const u32 col_button[4]         = { IM_COL32(220,20,20,255), IM_COL32(20,180,20,255), IM_COL32(20,20,220,255), IM_COL32(100,100,100,255) };
+	compile_const u32 col_button_hovered[4] = { IM_COL32(235,20,20,255), IM_COL32(20,195,20,255), IM_COL32(20,20,235,255), IM_COL32(120,120,120,255) };
+	compile_const u32 col_button_active[4]  = { IM_COL32(250,20,20,255), IM_COL32(20,210,20,255), IM_COL32(20,20,250,255), IM_COL32(140,140,140,255) };
 	compile_const char* xyzw_component_labels[4] = { "X", "Y", "Z", "W" };
 	compile_const float zero_default_values[4]   = { 0.f, 0.f, 0.f, 0.f };
 	
@@ -130,9 +130,10 @@ bool ImGui::DragFloatWithReset(const char* label, float* data, u32 component_cou
 		
 		if (i != 0) ImGui::SameLine(0.f, style.ItemInnerSpacing.x);
 		
-		ImGui::PushStyleColor(ImGuiCol_Button, col_button[i]);
-		ImGui::PushStyleColor(ImGuiCol_ButtonHovered, col_button_hovered[i]);
-		ImGui::PushStyleColor(ImGuiCol_ButtonActive, col_button_active[i]);
+		u32 color_index = component_count == 1 ? 3 : i;
+		ImGui::PushStyleColor(ImGuiCol_Button, col_button[color_index]);
+		ImGui::PushStyleColor(ImGuiCol_ButtonHovered, col_button_hovered[color_index]);
+		ImGui::PushStyleColor(ImGuiCol_ButtonActive, col_button_active[color_index]);
 		if (ImGui::Button(component_labels[i], ImVec2(frame_height, frame_height))) {
 			data[i] = default_values[i];
 			value_changed = true;
@@ -161,3 +162,58 @@ bool ImGui::DragFloatWithReset(const char* label, float* data, u32 component_cou
 	return value_changed;
 }
 
+
+bool ImGui::BeginTableItem(const char* label) {
+	ImGui::TableNextRow();
+	ImGui::PushID(label);
+	
+	if (ImGui::TableSetColumnIndex(0)) {
+		ImGui::AlignTextToFramePadding();
+		ImGui::TextUnformatted(label);
+	}
+	
+	bool result = ImGui::TableSetColumnIndex(1);
+	if (result == false) ImGui::PopID();
+	
+	return result;
+}
+
+void ImGui::EndTableItem() {
+	ImGui::PopID();
+}
+
+bool ImGui::TableInputText(const char* label, String& string, HeapAllocator* heap, ImGuiInputTextFlags flags, ImGuiInputTextCallback callback, void* user_data) {
+	bool result = false;
+	if (ImGui::BeginTableItem(label)) {
+		result = ImGui::InputText("", string, heap, flags, callback, user_data);
+		ImGui::EndTableItem();
+	}
+	return result;
+}
+
+bool ImGui::TableDragFloatWithReset(const char* label, float* data, u32 component_count, float v_speed, float v_min, float v_max, const char* format, ImGuiSliderFlags flags, const char* const* component_labels, const float* default_values) {
+	bool result = false;
+	if (ImGui::BeginTableItem(label)) {
+		result = ImGui::DragFloatWithReset("", data, component_count, v_speed, v_min, v_max, format, flags, component_labels, default_values);
+		ImGui::EndTableItem();
+	}
+	return result;
+}
+
+bool ImGui::TableSliderFloat(const char* label, float* v, float v_min, float v_max, const char* format, ImGuiSliderFlags flags) {
+	bool result = false;
+	if (ImGui::BeginTableItem(label)) {
+		result = ImGui::SliderFloat("", v, v_min, v_max, format, flags);
+		ImGui::EndTableItem();
+	}
+	return result;
+}
+
+bool ImGui::TableCombo(const char* label, s32* current_item, const char* items_separated_by_zeros, s32 popup_max_height_in_items) {
+	bool result = false;
+	if (ImGui::BeginTableItem(label)) {
+		result = ImGui::Combo("", current_item, items_separated_by_zeros, popup_max_height_in_items);
+		ImGui::EndTableItem();
+	}
+	return result;
+}

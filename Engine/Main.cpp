@@ -437,122 +437,49 @@ s32 main() {
 				bool is_dirty = false;
 				
 				if (entity.guid) {
-					ImGui::TableNextRow();
-					if (ImGui::TableSetColumnIndex(0)) {
-						ImGui::AlignTextToFramePadding();
-						ImGui::Text("GUID");
-					}
-					
-					if (ImGui::TableSetColumnIndex(1)) {
-						auto guid_string = StringFormat(&alloc, "0x%"_sl, (void*)entity.guid->guid);
-						ImGui::InputText("##GUID", guid_string, nullptr, ImGuiInputTextFlags_ReadOnly);
-					}
+					auto guid_string = StringFormat(&alloc, "0x%"_sl, (void*)entity.guid->guid);
+					ImGui::TableInputText("GUID", guid_string, nullptr, ImGuiInputTextFlags_ReadOnly);
 				}
 				
 				if (entity.name) {
-					ImGui::TableNextRow();
-					if (ImGui::TableSetColumnIndex(0)) {
-						ImGui::AlignTextToFramePadding();
-						ImGui::Text("Name");
-					}
-					
-					if (ImGui::TableSetColumnIndex(1)) {
-						auto& name = entity.name->name;
-						ImGui::InputText("##InputText", name, &entity_system.heap);
-					}
+					auto& name = entity.name->name;
+					is_dirty |= ImGui::TableInputText("Name", name, &entity_system.heap);
 				}
 				
 				if (entity.position) {
-					ImGui::TableNextRow();
-					if (ImGui::TableSetColumnIndex(0)) {
-						ImGui::AlignTextToFramePadding();
-						ImGui::Text("Position");
-					}
-					
-					if (ImGui::TableSetColumnIndex(1)) {
-						auto& position = entity.position->position;
-						is_dirty |= ImGui::DragFloatWithReset("##Position", &position.x, 3, 0.1f);
-					}
+					auto& position = entity.position->position;
+					is_dirty |= ImGui::TableDragFloatWithReset("Position", &position.x, 3, 0.1f);
 				}
 				
 				if (entity.rotation) {
-					ImGui::TableNextRow();
-					if (ImGui::TableSetColumnIndex(0)) {
-						ImGui::AlignTextToFramePadding();
-						ImGui::Text("Rotation");
-					}
+					auto& rotation = entity.rotation->rotation;
 					
-					if (ImGui::TableSetColumnIndex(1)) {
-						auto& rotation = entity.rotation->rotation;
-						
-						auto euler_angles = Math::QuatToEulerXyzAngles(rotation) * Math::radians_to_degress;
-						if (ImGui::DragFloatWithReset("##Rotation", &euler_angles.x, 3, 1.f)) {
-							rotation = Math::EulerXyzAnglesToQuat(euler_angles * Math::degrees_to_radians);
-							is_dirty = true;
-						}
+					auto euler_angles = Math::QuatToEulerXyzAngles(rotation) * Math::radians_to_degress;
+					if (ImGui::TableDragFloatWithReset("Rotation", &euler_angles.x, 3, 1.f)) {
+						rotation = Math::EulerXyzAnglesToQuat(euler_angles * Math::degrees_to_radians);
+						is_dirty = true;
 					}
 				}
 				
 				if (entity.scale) {
-					ImGui::TableNextRow();
-					if (ImGui::TableSetColumnIndex(0)) {
-						ImGui::AlignTextToFramePadding();
-						ImGui::Text("Scale");
-					}
-					
-					if (ImGui::TableSetColumnIndex(1)) {
-						const char* label = "S";
-						const float default_values = 1.f;
-						is_dirty |= ImGui::DragFloatWithReset("##Scale", &entity.scale->scale, 1, 0.1f, 0.f, 8.f, "%.3f", 0, &label, &default_values);
-					}
+					const char* label = "S";
+					const float default_values = 1.f;
+					is_dirty |= ImGui::TableDragFloatWithReset("Scale", &entity.scale->scale, 1, 0.1f, 0.f, 8.f, "%.3f", 0, &label, &default_values);
 				}
 				
 				if (entity.mesh_asset) {
-					ImGui::TableNextRow();
-					if (ImGui::TableSetColumnIndex(0)) {
-						ImGui::AlignTextToFramePadding();
-						ImGui::Text("Mesh Asset");
-					}
-					
-					if (ImGui::TableSetColumnIndex(1)) {
-						auto guid_string = StringFormat(&alloc, "0x%x"_sl, entity.mesh_asset->guid);
-						ImGui::InputText("##MeshAssetGUID", guid_string, nullptr, ImGuiInputTextFlags_ReadOnly);
-					}
+					auto guid_string = StringFormat(&alloc, "0x%x"_sl, entity.mesh_asset->guid);
+					ImGui::TableInputText("Mesh Asset", guid_string, nullptr, ImGuiInputTextFlags_ReadOnly);
 				}
 				
 				if (entity.camera) {
 					ImGui::TableNextRow();
 					ImGui::TableSetColumnIndex(0);
+					
 					if (ImGui::CollapsingHeader("Camera", ImGuiTreeNodeFlags_SpanAllColumns | ImGuiTreeNodeFlags_LabelSpanAllColumns)) {
-						ImGui::TableNextRow();
-						if (ImGui::TableSetColumnIndex(0)) {
-							ImGui::AlignTextToFramePadding();
-							ImGui::Text("Camera Transform Type");
-						}
-						
-						if (ImGui::TableSetColumnIndex(1)) {
-							is_dirty |= ImGui::Combo("##Camera Transform Type", (s32*)&entity.camera->transform_type, "Perspective\0Orthographic\0");
-						}
-						
-						ImGui::TableNextRow();
-						if (ImGui::TableSetColumnIndex(0)) {
-							ImGui::AlignTextToFramePadding();
-							ImGui::Text("Vertical Field Of View");
-						}
-						
-						if (ImGui::TableSetColumnIndex(1)) {
-							is_dirty |= ImGui::SliderFloat("##Vertical Field Of View", &entity.camera->vertical_fov_degrees, 10.f, 135.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
-						}
-						
-						ImGui::TableNextRow();
-						if (ImGui::TableSetColumnIndex(0)) {
-							ImGui::AlignTextToFramePadding();
-							ImGui::Text("Camera Near Depth");
-						}
-						
-						if (ImGui::TableSetColumnIndex(1)) {
-							is_dirty |= ImGui::SliderFloat("##Camera Near Depth", &entity.camera->near_depth, 0.01f, 1.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
-						}
+						is_dirty |= ImGui::TableCombo("Camera Transform Type", (s32*)&entity.camera->transform_type, "Perspective\0Orthographic\0");
+						is_dirty |= ImGui::TableSliderFloat("Vertical Field Of View", &entity.camera->vertical_fov_degrees, 10.f, 135.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+						is_dirty |= ImGui::TableSliderFloat("Camera Near Depth", &entity.camera->near_depth, 0.01f, 1.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
 					}
 				}
 				
