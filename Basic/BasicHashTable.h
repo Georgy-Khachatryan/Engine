@@ -120,6 +120,7 @@ template<typename KeyT, typename ValueT, typename AllocatorT>
 void HashTableDeallocate(HashTable<KeyT, ValueT>& hash_table, AllocatorT* alloc) {
 	using ElementType = HashTableElement<KeyT, ValueT>;
 	alloc->Deallocate(hash_table.metadata, hash_table.capacity * sizeof(ElementType) + hash_table.capacity * sizeof(u8));
+	hash_table = {};
 }
 
 template<typename KeyT, typename ValueT>

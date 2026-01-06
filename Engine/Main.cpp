@@ -160,6 +160,139 @@ static void DeleteSelectedEntities(EntitySystem& entity_system, HashTable<u64, v
 	HashTableClear(selected_entities_hash_table);
 }
 
+struct UndoRedoCommand {
+	u64 entity_guid = 0;
+	
+	u64 offset = 0;
+	u64 size   = 0;
+};
+
+struct UndoRedoBuffer {
+	StackAllocator alloc;
+	SaveLoadBuffer save_load_buffer;
+	Array<UndoRedoCommand> commands;
+};
+
+struct UndoRedoSystem {
+	HeapAllocator* heap;
+	
+	UndoRedoBuffer undo_buffer;
+	UndoRedoBuffer redo_buffer;
+	
+	UndoRedoCommand pending_command;
+};
+
+static void InitializeUndoRedoSystem(UndoRedoSystem& system, HeapAllocator* heap) {
+	system.heap = heap;
+	system.undo_buffer.alloc = CreateStackAllocator(64 * 1024 * 1024, 64 * 1024);
+	system.redo_buffer.alloc = CreateStackAllocator(64 * 1024 * 1024, 64 * 1024);
+	system.undo_buffer.save_load_buffer.alloc = &system.undo_buffer.alloc;
+	system.redo_buffer.save_load_buffer.alloc = &system.redo_buffer.alloc;
+}
+
+static void ReleaseUndoRedoSystem(UndoRedoSystem& system) {
+	ReleaseStackAllocator(system.undo_buffer.alloc);
+	ReleaseStackAllocator(system.redo_buffer.alloc);
+}
+
+static UndoRedoCommand CreateUndoRedoSaveLoadCommand(UndoRedoBuffer& undo_redo_buffer, EntitySystem& entity_system, u64 entity_guid) {
+	auto* element = HashTableFind(entity_system.entity_guid_to_entity_id, entity_guid);
+	DebugAssert(element, "Failed to find entity by guid 0x%x.", entity_guid);
+	
+	auto typed_entity_id = element->value;
+	
+	auto* entity_array = &entity_system.entity_type_arrays[typed_entity_id.entity_type_id.index];
+	u32 stream_offset = entity_array->entity_id_to_stream_index[typed_entity_id.entity_id.index];
+	
+	UndoRedoCommand command;
+	command.entity_guid = entity_guid;
+	
+	undo_redo_buffer.save_load_buffer.is_saving  = true;
+	undo_redo_buffer.save_load_buffer.is_loading = false;
+	
+	command.offset = undo_redo_buffer.save_load_buffer.data.count;
+	SaveLoadEntityForTooling(undo_redo_buffer.save_load_buffer, entity_array, stream_offset);
+	command.size = undo_redo_buffer.save_load_buffer.data.count - command.offset;
+	
+	return command;
+}
+
+static void PerformUndoRedoSaveLoadCommand(UndoRedoBuffer& undo_redo_buffer, EntitySystem& entity_system, UndoRedoCommand command) {
+	auto* element = HashTableFind(entity_system.entity_guid_to_entity_id, command.entity_guid);
+	DebugAssert(element, "Failed to find entity by guid 0x%x.", command.entity_guid);
+	
+	auto typed_entity_id = element->value;
+	
+	auto* entity_array = &entity_system.entity_type_arrays[typed_entity_id.entity_type_id.index];
+	u32 stream_offset = entity_array->entity_id_to_stream_index[typed_entity_id.entity_id.index];
+	
+	undo_redo_buffer.save_load_buffer.heap       = &entity_system.heap;
+	undo_redo_buffer.save_load_buffer.data.count = command.offset;
+	undo_redo_buffer.save_load_buffer.is_saving  = false;
+	undo_redo_buffer.save_load_buffer.is_loading = true;
+	
+	SaveLoadEntityForTooling(undo_redo_buffer.save_load_buffer, entity_array, stream_offset);
+	u64 size = undo_redo_buffer.save_load_buffer.data.count - command.offset;
+	DebugAssert(size == command.size, "Mismatch between command sizes. (%/%).", size, command.size);
+	
+	undo_redo_buffer.save_load_buffer.data.count = command.offset;
+	
+	BitArraySetBit(entity_array->dirty_mask, stream_offset);
+}
+
+static void BeginUndoRedoCommand(UndoRedoSystem& system, EntitySystem& entity_system, u64 entity_guid) {
+	DebugAssert(system.pending_command.entity_guid == 0 || system.pending_command.entity_guid == entity_guid, "Unfinished pending command 0x%x..", system.pending_command.entity_guid);
+	
+	if (system.pending_command.entity_guid == 0) {
+		system.pending_command = CreateUndoRedoSaveLoadCommand(system.undo_buffer, entity_system, entity_guid);
+	}
+}
+
+static bool EndUndoRedoCommand(UndoRedoSystem& system, EntitySystem& entity_system, bool is_dragging = false) {
+	if (system.pending_command.entity_guid == 0) return false;
+	
+	auto command = CreateUndoRedoSaveLoadCommand(system.undo_buffer, entity_system, system.pending_command.entity_guid);
+	
+	u8* data = system.undo_buffer.save_load_buffer.data.data;
+	bool entity_changed = (system.pending_command.size != command.size) || (command.size != 0 && memcmp(data + system.pending_command.offset, data + command.offset, command.size) != 0);
+	
+	if (entity_changed || is_dragging) {
+		system.undo_buffer.save_load_buffer.data.count = system.pending_command.offset + system.pending_command.size;
+		
+		if (is_dragging == false) {
+			system.redo_buffer.commands.count = 0;
+			system.redo_buffer.save_load_buffer.data.count = 0;
+			ArrayAppend(system.undo_buffer.commands, system.heap, system.pending_command);
+		}
+	} else {
+		system.undo_buffer.save_load_buffer.data.count = system.pending_command.offset;
+	}
+	
+	if (is_dragging == false) {
+		system.pending_command = {};
+	}
+	
+	return entity_changed;
+}
+
+static void PerformUndoRedo(UndoRedoSystem& system, EntitySystem& entity_system, UndoRedoBuffer& src_buffer, UndoRedoBuffer& dst_buffer) {
+	if (src_buffer.commands.count == 0) return;
+	
+	auto src_command = ArrayPopLast(src_buffer.commands);
+	auto dst_command = CreateUndoRedoSaveLoadCommand(dst_buffer, entity_system, src_command.entity_guid);
+	
+	ArrayAppend(dst_buffer.commands, system.heap, dst_command);
+	PerformUndoRedoSaveLoadCommand(src_buffer, entity_system, src_command);
+}
+
+static void PerformUndo(UndoRedoSystem& system, EntitySystem& entity_system) {
+	PerformUndoRedo(system, entity_system, system.undo_buffer, system.redo_buffer);
+}
+
+static void PerformRedo(UndoRedoSystem& system, EntitySystem& entity_system) {
+	PerformUndoRedo(system, entity_system, system.redo_buffer, system.undo_buffer);
+}
+
 s32 main() {
 	auto alloc = CreateStackAllocator(64 * 1024 * 1024, 512 * 1024);
 	defer{ ReleaseStackAllocator(alloc); };
@@ -209,6 +342,11 @@ s32 main() {
 	EntitySystem entity_system;
 	InitializeEntitySystem(entity_system);
 	defer{ ReleaseHeapAllocator(entity_system.heap); };
+	
+	UndoRedoSystem undo_redo_system;
+	InitializeUndoRedoSystem(undo_redo_system, &imgui_heap);
+	defer{ ReleaseUndoRedoSystem(undo_redo_system); };
+	
 	
 	compile_const u32 mesh_grid_size = 16;
 	compile_const u32 mesh_instance_count = mesh_grid_size * mesh_grid_size;
@@ -332,7 +470,8 @@ s32 main() {
 		ImGui::Text("Initial Alloc Size: %llu", frame_initial_size);
 		ImGui::Text("Frame Alloc Size: %llu", frame_allocation_size);
 		ImGui::Text("Upload Alloc Size: %llu", transient_upload_allocation_size);
-		ImGui::Text("ImGui Alloc Size: %llu", imgui_heap.ComputeTotalMemoryUsage());
+		ImGui::Text("ImGui Heap Size: %llu", imgui_heap.ComputeTotalMemoryUsage());
+		ImGui::Text("EntitySystem Heap Size: %llu", entity_system.heap.ComputeTotalMemoryUsage());
 		ImGui::SliderFloat("Meshlet Target Error Pixels", &world_entity.renderer_world->meshlet_target_error_pixels, 1.f, 128.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
 		ImGui::SliderFloat("Sun Elevation", &world_entity.renderer_world->sun_elevation_degrees, -10.f, +190.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
 		
@@ -363,6 +502,10 @@ s32 main() {
 			
 			auto apply_requests = [&](ImGuiMultiSelectIO* ms_io) {
 				for (auto& request : ms_io->Requests) {
+					if (request.Selected) {
+						EndUndoRedoCommand(undo_redo_system, entity_system);
+					}
+					
 					if (request.Type == ImGuiSelectionRequestType_SetAll) {
 						if (request.Selected) {
 							for (auto* entity_array : entity_view) {
@@ -451,10 +594,12 @@ s32 main() {
 									}
 									
 									if (ImGui::Selectable("Delete")) {
+										EndUndoRedoCommand(undo_redo_system, entity_system);
 										DeleteSelectedEntities(entity_system, selected_entities_hash_table);
 									}
 									
 									if (ImGui::Selectable("Duplicate")) {
+										EndUndoRedoCommand(undo_redo_system, entity_system);
 										DuplicateSelectedEntities(&alloc, entity_system, selected_entities_hash_table);
 									}
 									
@@ -485,10 +630,12 @@ s32 main() {
 			
 			
 			if (ImGui::Shortcut(ImGuiKey_Delete, ImGuiInputFlags_RouteGlobal)) {
+				EndUndoRedoCommand(undo_redo_system, entity_system);
 				DeleteSelectedEntities(entity_system, selected_entities_hash_table);
 			}
 			
 			if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_D, ImGuiInputFlags_RouteGlobal)) {
+				EndUndoRedoCommand(undo_redo_system, entity_system);
 				DuplicateSelectedEntities(&alloc, entity_system, selected_entities_hash_table);
 			}
 		}
@@ -496,6 +643,15 @@ s32 main() {
 		ImGui::End();
 		
 		ImGui::Begin("Entity Editor", nullptr, ImGuiWindowFlags_NoFocusOnAppearing);
+		
+		if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_Z, ImGuiInputFlags_RouteGlobal | ImGuiInputFlags_Repeat)) {
+			PerformUndo(undo_redo_system, entity_system);
+		}
+		
+		if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_Y, ImGuiInputFlags_RouteGlobal | ImGuiInputFlags_Repeat)) {
+			PerformRedo(undo_redo_system, entity_system);
+		}
+		
 		if (ImGui::BeginTable("Components", 2, ImGuiTableFlags_NoSavedSettings | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_PadOuterX | ImGuiTableFlags_ScrollY)) {
 			defer{ ImGui::EndTable(); };
 			
@@ -524,8 +680,7 @@ s32 main() {
 				u32 entity_stream_index = array->entity_id_to_stream_index[typed_entity_id.entity_id.index];
 				auto entity = ExtractComponentStreams<EntityEditorQuery>(array, entity_stream_index);
 				
-				
-				bool is_dirty = false;
+				BeginUndoRedoCommand(undo_redo_system, entity_system, entity_guid);
 				
 				if (entity.guid) {
 					auto guid_string = StringFormat(&alloc, "0x%"_sl, (void*)entity.guid->guid);
@@ -534,12 +689,12 @@ s32 main() {
 				
 				if (entity.name) {
 					auto& name = entity.name->name;
-					is_dirty |= ImGui::TableInputText("Name", name, &entity_system.heap);
+					ImGui::TableInputText("Name", name, &entity_system.heap);
 				}
 				
 				if (entity.position) {
 					auto& position = entity.position->position;
-					is_dirty |= ImGui::TableDragFloatWithReset("Position", &position.x, 3, 0.1f);
+					ImGui::TableDragFloatWithReset("Position", &position.x, 3, 0.1f);
 				}
 				
 				if (entity.rotation) {
@@ -548,29 +703,31 @@ s32 main() {
 					auto euler_angles = Math::QuatToEulerXyzAngles(rotation) * Math::radians_to_degress;
 					if (ImGui::TableDragFloatWithReset("Rotation", &euler_angles.x, 3, 1.f)) {
 						rotation = Math::EulerXyzAnglesToQuat(euler_angles * Math::degrees_to_radians);
-						is_dirty = true;
 					}
 				}
 				
 				if (entity.scale) {
 					const char* label = "S";
 					const float default_values = 1.f;
-					is_dirty |= ImGui::TableDragFloatWithReset("Scale", &entity.scale->scale, 1, 0.1f, 0.f, 8.f, "%.3f", 0, &label, &default_values);
+					ImGui::TableDragFloatWithReset("Scale", &entity.scale->scale, 1, 0.1f, 0.f, 8.f, "%.3f", 0, &label, &default_values);
 				}
 				
 				if (entity.mesh_asset) {
-					is_dirty |= ImGui::TableEntityComboBox("Mesh Asset", &entity_system, &entity.mesh_asset->guid, ECS::GetEntityTypeID<MeshAssetType>::id);
+					ImGui::TableEntityComboBox("Mesh Asset", &entity_system, &entity.mesh_asset->guid, ECS::GetEntityTypeID<MeshAssetType>::id);
 				}
 				
 				if (entity.camera) {
-					is_dirty |= ImGui::TableCombo("Camera Transform Type", (s32*)&entity.camera->transform_type, "Perspective\0Orthographic\0");
-					is_dirty |= ImGui::TableSliderFloat("Vertical Field Of View", &entity.camera->vertical_fov_degrees, 10.f, 135.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
-					is_dirty |= ImGui::TableSliderFloat("Camera Near Depth", &entity.camera->near_depth, 0.01f, 1.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+					ImGui::TableCombo("Camera Transform Type", (s32*)&entity.camera->transform_type, "Perspective\0Orthographic\0");
+					ImGui::TableSliderFloat("Vertical Field Of View", &entity.camera->vertical_fov_degrees, 10.f, 135.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+					ImGui::TableSliderFloat("Camera Near Depth", &entity.camera->near_depth, 0.01f, 1.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
 				}
 				
 				if (entity.mesh_source_data) {
 					ImGui::TableInputText("Mesh Source Data", entity.mesh_source_data->filepath, nullptr);
 				}
+				
+				bool is_dragging = ImGui::IsAnyItemActive() && ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows);
+				bool is_dirty = EndUndoRedoCommand(undo_redo_system, entity_system, is_dragging);
 				
 				if (is_dirty) {
 					BitArraySetBit(array->dirty_mask, entity_stream_index);
