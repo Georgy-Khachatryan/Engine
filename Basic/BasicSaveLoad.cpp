@@ -19,10 +19,11 @@ bool OpenSaveLoadBuffer(StackAllocator* alloc, String filepath, bool is_loading,
 		defer{ SystemCloseFile(file); };
 		
 		u64 file_size = SystemFileSize(file);
-		buffer.cursor = (u8*)alloc->Allocate(file_size);
-		buffer.remaining_size = (u32)file_size;
+		buffer.data.data     = (u8*)alloc->Allocate(file_size);
+		buffer.data.count    = 0;
+		buffer.data.capacity = file_size;
 		
-		success = SystemReadFile(file, buffer.cursor, file_size, 0);
+		success = SystemReadFile(file, buffer.data.data, file_size, 0);
 	}
 	
 	return success;
@@ -31,24 +32,22 @@ bool OpenSaveLoadBuffer(StackAllocator* alloc, String filepath, bool is_loading,
 bool CloseSaveLoadBuffer(SaveLoadBuffer& buffer) {
 	ProfilerScope("CloseSaveLoadBuffer");
 	
-	if (buffer.is_saving && buffer.remaining_size != 0) {
-		auto& last_chunk = ArrayLastElement(buffer.chunks);
-		last_chunk.count -= buffer.remaining_size;
-	}
-	
-	if (buffer.is_saving && buffer.filepath.count != 0) {
+	bool success = true;
+	if (buffer.is_saving) {
 		auto file = SystemOpenFile(buffer.alloc, buffer.filepath, OpenFileFlags::Write);
 		if (file.handle == nullptr) return false;
 		defer{ SystemCloseFile(file); };
 		
-		u64 offset = 0;
-		for (auto& chunk : buffer.chunks) {
-			bool success = SystemWriteFile(file, chunk.data, chunk.count, offset);
-			if (success == false) return false;
-			
-			offset += chunk.count;
-		}
+		success = SystemWriteFile(file, buffer.data.data, buffer.data.count, 0);
 	}
 	
 	return true;
+}
+
+void ResetSaveLoadBuffer(SaveLoadBuffer& buffer, u64 new_count) {
+	DebugAssert(new_count <= buffer.data.count, "Resetting SaveLoad buffer to a higher count than before. (%/%).", new_count, buffer.data.count);
+	
+	buffer.data.count = new_count;
+	buffer.is_saving  = !buffer.is_saving;
+	buffer.is_loading = !buffer.is_loading;
 }

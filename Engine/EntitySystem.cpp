@@ -302,7 +302,7 @@ void SaveLoadEntitySystem(SaveLoadBuffer& buffer, EntitySystem& system) {
 			entity_type_index = i;
 		}
 		
-		u32 begin_entity_offset = buffer.global_offset;
+		u64 begin_entity_offset = buffer.data.count;
 		
 		auto& array = system.entity_type_arrays[entity_type_index];
 		auto& entity_type_info = entity_type_info_table[entity_type_index];
@@ -359,7 +359,7 @@ void SaveLoadEntitySystem(SaveLoadBuffer& buffer, EntitySystem& system) {
 				SaveLoad(buffer, type_hash);
 			}
 			
-			u32 begin_component_offset = buffer.global_offset;
+			u64 begin_component_offset = buffer.data.count;
 			
 			auto type_info = component_type_info_table[component_type_id.index];
 			
@@ -373,9 +373,9 @@ void SaveLoadEntitySystem(SaveLoadBuffer& buffer, EntitySystem& system) {
 					save_load_callback(buffer, component_stream + i * type_info.size_bytes, version);
 				}
 			}
-			u32 end_component_offset = buffer.global_offset;
+			u64 end_component_offset = buffer.data.count;
 			
-			u32 component_stream_size = end_component_offset - begin_component_offset;
+			u32 component_stream_size = (u32)(end_component_offset - begin_component_offset);
 			
 			if (buffer.is_loading) {
 				u32 stream_size = 0;
@@ -395,9 +395,9 @@ void SaveLoadEntitySystem(SaveLoadBuffer& buffer, EntitySystem& system) {
 			BitArraySetBitRange(array.dirty_mask, 0, array.count);
 		}
 		
-		u32 end_entity_offset = buffer.global_offset;
+		u64 end_entity_offset = buffer.data.count;
 		
-		u32 entity_stream_size = end_entity_offset - begin_entity_offset;
+		u32 entity_stream_size = (u32)(end_entity_offset - begin_entity_offset);
 		
 		if (buffer.is_loading) {
 			u32 stream_size = 0;

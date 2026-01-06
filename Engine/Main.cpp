@@ -112,6 +112,7 @@ static void DuplicateSelectedEntities(StackAllocator* alloc, EntitySystem& entit
 	
 	SaveLoadBuffer buffer;
 	OpenSaveLoadBuffer(alloc, String{}, false, buffer);
+	buffer.heap = &entity_system.heap;
 	
 	for (auto [guid] : selected_entities_hash_table) {
 		auto* element = HashTableFind(entity_system.entity_guid_to_entity_id, guid);
@@ -125,15 +126,7 @@ static void DuplicateSelectedEntities(StackAllocator* alloc, EntitySystem& entit
 		SaveLoadEntityForTooling(buffer, entity_array, stream_offset);
 	}
 	
-	CloseSaveLoadBuffer(buffer);
-	
-	buffer.heap           = &entity_system.heap;
-	buffer.cursor         = buffer.chunks[0].data;
-	buffer.remaining_size = (u32)buffer.chunks[0].count;
-	buffer.global_offset  = 0;
-	buffer.is_saving      = false;
-	buffer.is_loading     = true;
-	buffer.chunk_index    = 0;
+	ResetSaveLoadBuffer(buffer, 0);
 	
 	Array<u64> new_entity_guids;
 	ArrayReserve(new_entity_guids, alloc, selected_entities_hash_table.count);
