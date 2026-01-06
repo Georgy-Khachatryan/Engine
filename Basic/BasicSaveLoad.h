@@ -86,8 +86,12 @@ always_inline void SaveLoad(SaveLoadBuffer& buffer, String& value, u64 version =
 	SaveLoad(buffer, count);
 	
 	if (buffer.is_loading) {
-		if (count && buffer.heap) {
+		if (buffer.heap && value.data) {
 			buffer.heap->Deallocate(value.data);
+		}
+		
+		value = {};
+		if (count && buffer.heap) {
 			value = StringAllocate(buffer.heap, count);
 			buffer.LoadBytes(value.data, count);
 		} else if (count) {
@@ -104,6 +108,11 @@ void SaveLoad(SaveLoadBuffer& buffer, Array<T>& array, u64 version = 0) {
 	SaveLoad(buffer, count);
 	
 	if (buffer.is_loading) {
+		if (buffer.heap && array.data) {
+			buffer.heap->Deallocate(array.data);
+		}
+		
+		array = {};
 		if (count && buffer.heap) {
 			ArrayResize(array, buffer.heap, count);
 		} else if (count) {
@@ -126,8 +135,12 @@ void SaveLoad(SaveLoadBuffer& buffer, ArrayView<T>& array, u64 version = 0) {
 	SaveLoad(buffer, count);
 	
 	if (buffer.is_loading) {
-		if (count && buffer.heap) {
+		if (buffer.heap && array.data) {
 			buffer.heap->Deallocate(array.data);
+		}
+		
+		array = {};
+		if (count && buffer.heap) {
 			array = ArrayViewAllocate<T>(buffer.heap, count);
 		} else if (count) {
 			array = ArrayViewAllocate<T>(buffer.alloc, count);
@@ -149,8 +162,12 @@ void SaveLoad(SaveLoadBuffer& buffer, HashTable<KeyT, ValueT>& hash_table, u64 v
 	SaveLoad(buffer, count);
 	
 	if (buffer.is_loading) {
-		if (count && buffer.heap) {
+		if (buffer.heap && hash_table.metadata) {
 			HashTableDeallocate(hash_table, buffer.heap);
+		}
+		
+		hash_table = {};
+		if (count && buffer.heap) {
 			HashTableReserve(hash_table, buffer.heap, count);
 		} else if (count) {
 			HashTableReserve(hash_table, buffer.alloc, count);

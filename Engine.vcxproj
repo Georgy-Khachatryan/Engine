@@ -42,6 +42,7 @@
     <ClCompile Include="Engine/MeshAssetImporter.cpp" />
     <ClCompile Include="Engine/ShaderCompilerDXC.cpp" />
     <ClCompile Include="Engine/SystemWindowWin32.cpp" />
+    <ClCompile Include="Engine/UndoRedoSystem.cpp" />
     
     <!-- Graphics API. -->
     <ClCompile Include="GraphicsApi/GraphicsApi.cpp" />
@@ -72,6 +73,7 @@
     <ClInclude Include="Engine/RenderPasses.h" />
     <ClInclude Include="Engine/ShaderCompiler.h" />
     <ClInclude Include="Engine/SystemWindow.h" />
+    <ClInclude Include="Engine/UndoRedoSystem.h" />
     
     <ClInclude Include="GraphicsApi/GraphicsApi.h" />
     <ClInclude Include="GraphicsApi/GraphicsApiTypes.h" />
