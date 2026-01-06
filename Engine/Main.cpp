@@ -116,7 +116,7 @@ static void DuplicateSelectedEntities(StackAllocator* alloc, EntitySystem& entit
 	
 	for (auto [guid] : selected_entities_hash_table) {
 		auto* element = HashTableFind(entity_system.entity_guid_to_entity_id, guid);
-		DebugAssert(element, "Failed to find entity by guid 0x%x.", guid);
+		DebugAssert(element, "Failed to find entity by GUID 0x%x.", guid);
 		
 		auto typed_entity_id = element->value;
 		
@@ -133,7 +133,7 @@ static void DuplicateSelectedEntities(StackAllocator* alloc, EntitySystem& entit
 	
 	for (auto [guid] : selected_entities_hash_table) {
 		auto* element = HashTableFind(entity_system.entity_guid_to_entity_id, guid);
-		DebugAssert(element, "Failed to find entity by guid 0x%x.", guid);
+		DebugAssert(element, "Failed to find entity by GUID 0x%x.", guid);
 		
 		auto typed_entity_id = element->value;
 		
@@ -153,11 +153,20 @@ static void DuplicateSelectedEntities(StackAllocator* alloc, EntitySystem& entit
 	}
 }
 
-static void DeleteSelectedEntities(EntitySystem& entity_system, HashTable<u64, void>& selected_entities_hash_table) {
-	for (auto& [guid] : selected_entities_hash_table) {
-		RemoveEntityByGUID(entity_system, guid);
+
+enum struct UndoRedoCommandType : u32 {
+	SaveLoad     = 0,
+	CreateEntity = 1,
+	RemoveEntity = 2,
+};
+
+static UndoRedoCommandType ReverseUndoRedoCommandType(UndoRedoCommandType command_type) {
+	switch (command_type) {
+	default:
+	case UndoRedoCommandType::SaveLoad:     return UndoRedoCommandType::SaveLoad;
+	case UndoRedoCommandType::CreateEntity: return UndoRedoCommandType::RemoveEntity;
+	case UndoRedoCommandType::RemoveEntity: return UndoRedoCommandType::CreateEntity;
 	}
-	HashTableClear(selected_entities_hash_table);
 }
 
 struct UndoRedoCommand {
@@ -165,6 +174,9 @@ struct UndoRedoCommand {
 	
 	u64 offset = 0;
 	u64 size   = 0;
+	
+	EntityTypeID entity_type_id;
+	UndoRedoCommandType command_type = UndoRedoCommandType::SaveLoad;
 };
 
 struct UndoRedoBuffer {
@@ -195,75 +207,91 @@ static void ReleaseUndoRedoSystem(UndoRedoSystem& system) {
 	ReleaseStackAllocator(system.redo_buffer.alloc);
 }
 
-static UndoRedoCommand CreateUndoRedoSaveLoadCommand(UndoRedoBuffer& undo_redo_buffer, EntitySystem& entity_system, u64 entity_guid) {
-	auto* element = HashTableFind(entity_system.entity_guid_to_entity_id, entity_guid);
-	DebugAssert(element, "Failed to find entity by guid 0x%x.", entity_guid);
+static void AppendUndoCommand(UndoRedoSystem& system, UndoRedoCommand command) {
+	system.redo_buffer.commands.count = 0;
+	system.redo_buffer.save_load_buffer.data.count = 0;
 	
-	auto typed_entity_id = element->value;
-	
-	auto* entity_array = &entity_system.entity_type_arrays[typed_entity_id.entity_type_id.index];
-	u32 stream_offset = entity_array->entity_id_to_stream_index[typed_entity_id.entity_id.index];
-	
+	ArrayAppend(system.undo_buffer.commands, system.heap, command);
+}
+
+static UndoRedoCommand CreateUndoRedoCommand(UndoRedoBuffer& undo_redo_buffer, EntitySystem& entity_system, u64 entity_guid, UndoRedoCommandType command_type) {
 	UndoRedoCommand command;
-	command.entity_guid = entity_guid;
+	command.entity_guid  = entity_guid;
+	command.command_type = command_type;
 	
-	undo_redo_buffer.save_load_buffer.is_saving  = true;
-	undo_redo_buffer.save_load_buffer.is_loading = false;
-	
-	command.offset = undo_redo_buffer.save_load_buffer.data.count;
-	SaveLoadEntityForTooling(undo_redo_buffer.save_load_buffer, entity_array, stream_offset);
-	command.size = undo_redo_buffer.save_load_buffer.data.count - command.offset;
+	if (command_type == UndoRedoCommandType::SaveLoad || command_type == UndoRedoCommandType::CreateEntity) {
+		auto* element = HashTableFind(entity_system.entity_guid_to_entity_id, entity_guid);
+		DebugAssert(element, "Failed to find entity by GUID 0x%x.", entity_guid);
+		
+		auto typed_entity_id = element->value;
+		
+		auto* entity_array = &entity_system.entity_type_arrays[typed_entity_id.entity_type_id.index];
+		u32 stream_offset = entity_array->entity_id_to_stream_index[typed_entity_id.entity_id.index];
+		
+		undo_redo_buffer.save_load_buffer.is_saving  = true;
+		undo_redo_buffer.save_load_buffer.is_loading = false;
+		
+		command.entity_type_id = typed_entity_id.entity_type_id;
+		command.offset = undo_redo_buffer.save_load_buffer.data.count;
+		SaveLoadEntityForTooling(undo_redo_buffer.save_load_buffer, entity_array, stream_offset);
+		command.size = undo_redo_buffer.save_load_buffer.data.count - command.offset;
+	} else if (command_type == UndoRedoCommandType::RemoveEntity) {
+		// No need to do anything.
+	}
 	
 	return command;
 }
 
-static void PerformUndoRedoSaveLoadCommand(UndoRedoBuffer& undo_redo_buffer, EntitySystem& entity_system, UndoRedoCommand command) {
-	auto* element = HashTableFind(entity_system.entity_guid_to_entity_id, command.entity_guid);
-	DebugAssert(element, "Failed to find entity by guid 0x%x.", command.entity_guid);
+static void ExecuteUndoRedoCommand(UndoRedoBuffer& undo_redo_buffer, EntitySystem& entity_system, UndoRedoCommand command) {
+	if (command.command_type == UndoRedoCommandType::CreateEntity) {
+		CreateEntities(entity_system, command.entity_type_id, 1, { &command.entity_guid, 1 });
+	}
 	
-	auto typed_entity_id = element->value;
-	
-	auto* entity_array = &entity_system.entity_type_arrays[typed_entity_id.entity_type_id.index];
-	u32 stream_offset = entity_array->entity_id_to_stream_index[typed_entity_id.entity_id.index];
-	
-	undo_redo_buffer.save_load_buffer.heap       = &entity_system.heap;
-	undo_redo_buffer.save_load_buffer.data.count = command.offset;
-	undo_redo_buffer.save_load_buffer.is_saving  = false;
-	undo_redo_buffer.save_load_buffer.is_loading = true;
-	
-	SaveLoadEntityForTooling(undo_redo_buffer.save_load_buffer, entity_array, stream_offset);
-	u64 size = undo_redo_buffer.save_load_buffer.data.count - command.offset;
-	DebugAssert(size == command.size, "Mismatch between command sizes. (%/%).", size, command.size);
-	
-	undo_redo_buffer.save_load_buffer.data.count = command.offset;
-	
-	BitArraySetBit(entity_array->dirty_mask, stream_offset);
+	if (command.command_type == UndoRedoCommandType::SaveLoad || command.command_type == UndoRedoCommandType::CreateEntity) {
+		auto* element = HashTableFind(entity_system.entity_guid_to_entity_id, command.entity_guid);
+		DebugAssert(element, "Failed to find entity by GUID 0x%x.", command.entity_guid);
+		
+		auto typed_entity_id = element->value;
+		
+		auto* entity_array = &entity_system.entity_type_arrays[typed_entity_id.entity_type_id.index];
+		u32 stream_offset = entity_array->entity_id_to_stream_index[typed_entity_id.entity_id.index];
+		
+		undo_redo_buffer.save_load_buffer.heap       = &entity_system.heap;
+		undo_redo_buffer.save_load_buffer.data.count = command.offset;
+		undo_redo_buffer.save_load_buffer.is_saving  = false;
+		undo_redo_buffer.save_load_buffer.is_loading = true;
+		
+		SaveLoadEntityForTooling(undo_redo_buffer.save_load_buffer, entity_array, stream_offset);
+		u64 size = undo_redo_buffer.save_load_buffer.data.count - command.offset;
+		DebugAssert(size == command.size, "Mismatch between command sizes. (%/%).", size, command.size);
+		
+		undo_redo_buffer.save_load_buffer.data.count = command.offset;
+		
+		BitArraySetBit(entity_array->dirty_mask, stream_offset);
+	} else if (command.command_type == UndoRedoCommandType::RemoveEntity) {
+		RemoveEntityByGUID(entity_system, command.entity_guid);
+	}
 }
 
 static void BeginUndoRedoCommand(UndoRedoSystem& system, EntitySystem& entity_system, u64 entity_guid) {
 	DebugAssert(system.pending_command.entity_guid == 0 || system.pending_command.entity_guid == entity_guid, "Unfinished pending command 0x%x..", system.pending_command.entity_guid);
 	
 	if (system.pending_command.entity_guid == 0) {
-		system.pending_command = CreateUndoRedoSaveLoadCommand(system.undo_buffer, entity_system, entity_guid);
+		system.pending_command = CreateUndoRedoCommand(system.undo_buffer, entity_system, entity_guid, UndoRedoCommandType::SaveLoad);
 	}
 }
 
 static bool EndUndoRedoCommand(UndoRedoSystem& system, EntitySystem& entity_system, bool is_dragging = false) {
 	if (system.pending_command.entity_guid == 0) return false;
 	
-	auto command = CreateUndoRedoSaveLoadCommand(system.undo_buffer, entity_system, system.pending_command.entity_guid);
+	auto command = CreateUndoRedoCommand(system.undo_buffer, entity_system, system.pending_command.entity_guid, UndoRedoCommandType::SaveLoad);
 	
 	u8* data = system.undo_buffer.save_load_buffer.data.data;
 	bool entity_changed = (system.pending_command.size != command.size) || (command.size != 0 && memcmp(data + system.pending_command.offset, data + command.offset, command.size) != 0);
 	
 	if (entity_changed || is_dragging) {
 		system.undo_buffer.save_load_buffer.data.count = system.pending_command.offset + system.pending_command.size;
-		
-		if (is_dragging == false) {
-			system.redo_buffer.commands.count = 0;
-			system.redo_buffer.save_load_buffer.data.count = 0;
-			ArrayAppend(system.undo_buffer.commands, system.heap, system.pending_command);
-		}
+		if (is_dragging == false) AppendUndoCommand(system, system.pending_command);
 	} else {
 		system.undo_buffer.save_load_buffer.data.count = system.pending_command.offset;
 	}
@@ -275,23 +303,50 @@ static bool EndUndoRedoCommand(UndoRedoSystem& system, EntitySystem& entity_syst
 	return entity_changed;
 }
 
-static void PerformUndoRedo(UndoRedoSystem& system, EntitySystem& entity_system, UndoRedoBuffer& src_buffer, UndoRedoBuffer& dst_buffer) {
+static void UndoRedoRemoveEntity(UndoRedoSystem& system, EntitySystem& entity_system, u64 entity_guid) {
+	DebugAssert(system.pending_command.entity_guid == 0 || system.pending_command.entity_guid == entity_guid, "Unfinished pending command 0x%x..", system.pending_command.entity_guid);
+	
+	auto command = CreateUndoRedoCommand(system.undo_buffer, entity_system, entity_guid, UndoRedoCommandType::CreateEntity);
+	AppendUndoCommand(system, command);
+}
+
+static void UndoRedoCreateEntity(UndoRedoSystem& system, EntitySystem& entity_system, u64 entity_guid) {
+	DebugAssert(system.pending_command.entity_guid == 0 || system.pending_command.entity_guid == entity_guid, "Unfinished pending command 0x%x..", system.pending_command.entity_guid);
+	
+	auto command = CreateUndoRedoCommand(system.undo_buffer, entity_system, entity_guid, UndoRedoCommandType::RemoveEntity);
+	AppendUndoCommand(system, command);
+}
+
+static void ExecuteUndoRedo(UndoRedoSystem& system, EntitySystem& entity_system, UndoRedoBuffer& src_buffer, UndoRedoBuffer& dst_buffer) {
 	if (src_buffer.commands.count == 0) return;
 	
 	auto src_command = ArrayPopLast(src_buffer.commands);
-	auto dst_command = CreateUndoRedoSaveLoadCommand(dst_buffer, entity_system, src_command.entity_guid);
+	auto dst_command = CreateUndoRedoCommand(dst_buffer, entity_system, src_command.entity_guid, ReverseUndoRedoCommandType(src_command.command_type));
 	
 	ArrayAppend(dst_buffer.commands, system.heap, dst_command);
-	PerformUndoRedoSaveLoadCommand(src_buffer, entity_system, src_command);
+	ExecuteUndoRedoCommand(src_buffer, entity_system, src_command);
 }
 
-static void PerformUndo(UndoRedoSystem& system, EntitySystem& entity_system) {
-	PerformUndoRedo(system, entity_system, system.undo_buffer, system.redo_buffer);
+static void ExecuteUndo(UndoRedoSystem& system, EntitySystem& entity_system) {
+	ExecuteUndoRedo(system, entity_system, system.undo_buffer, system.redo_buffer);
 }
 
-static void PerformRedo(UndoRedoSystem& system, EntitySystem& entity_system) {
-	PerformUndoRedo(system, entity_system, system.redo_buffer, system.undo_buffer);
+static void ExecuteRedo(UndoRedoSystem& system, EntitySystem& entity_system) {
+	ExecuteUndoRedo(system, entity_system, system.redo_buffer, system.undo_buffer);
 }
+
+
+static void RemoveSelectedEntities(EntitySystem& entity_system, UndoRedoSystem& undo_redo_system, HashTable<u64, void>& selected_entities_hash_table) {
+	EndUndoRedoCommand(undo_redo_system, entity_system);
+	
+	for (auto& [guid] : selected_entities_hash_table) {
+		UndoRedoRemoveEntity(undo_redo_system, entity_system, guid);
+		RemoveEntityByGUID(entity_system, guid);
+	}
+	HashTableClear(selected_entities_hash_table);
+}
+
+
 
 s32 main() {
 	auto alloc = CreateStackAllocator(64 * 1024 * 1024, 512 * 1024);
@@ -485,6 +540,8 @@ s32 main() {
 					u32 stream_offset = CreateEntities(entity_system, EntityTypeID{ entity_type_index }, 1);
 					auto entity = ExtractComponentStreams<GuidNameQuery>(&entity_system.entity_type_arrays[entity_type_index], stream_offset);
 					entity.name->name = StringCopy(&entity_system.heap, name);
+					
+					UndoRedoCreateEntity(undo_redo_system, entity_system, entity.guid->guid);
 				}
 			}
 			ImGui::EndCombo();
@@ -594,8 +651,7 @@ s32 main() {
 									}
 									
 									if (ImGui::Selectable("Delete")) {
-										EndUndoRedoCommand(undo_redo_system, entity_system);
-										DeleteSelectedEntities(entity_system, selected_entities_hash_table);
+										RemoveSelectedEntities(entity_system, undo_redo_system, selected_entities_hash_table);
 									}
 									
 									if (ImGui::Selectable("Duplicate")) {
@@ -630,8 +686,7 @@ s32 main() {
 			
 			
 			if (ImGui::Shortcut(ImGuiKey_Delete, ImGuiInputFlags_RouteGlobal)) {
-				EndUndoRedoCommand(undo_redo_system, entity_system);
-				DeleteSelectedEntities(entity_system, selected_entities_hash_table);
+				RemoveSelectedEntities(entity_system, undo_redo_system, selected_entities_hash_table);
 			}
 			
 			if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_D, ImGuiInputFlags_RouteGlobal)) {
@@ -645,11 +700,11 @@ s32 main() {
 		ImGui::Begin("Entity Editor", nullptr, ImGuiWindowFlags_NoFocusOnAppearing);
 		
 		if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_Z, ImGuiInputFlags_RouteGlobal | ImGuiInputFlags_Repeat)) {
-			PerformUndo(undo_redo_system, entity_system);
+			ExecuteUndo(undo_redo_system, entity_system);
 		}
 		
 		if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_Y, ImGuiInputFlags_RouteGlobal | ImGuiInputFlags_Repeat)) {
-			PerformRedo(undo_redo_system, entity_system);
+			ExecuteRedo(undo_redo_system, entity_system);
 		}
 		
 		if (ImGui::BeginTable("Components", 2, ImGuiTableFlags_NoSavedSettings | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_PadOuterX | ImGuiTableFlags_ScrollY)) {
@@ -673,7 +728,7 @@ s32 main() {
 				
 				// TODO: Make use of QueryEntityByGUID.
 				auto* element = HashTableFind(entity_system.entity_guid_to_entity_id, entity_guid);
-				DebugAssert(element, "Failed to find entity by guid 0x%x.", entity_guid);
+				DebugAssert(element, "Failed to find entity by GUID 0x%x.", entity_guid);
 				
 				auto typed_entity_id = element->value;
 				auto* array = &entity_system.entity_type_arrays[typed_entity_id.entity_type_id.index];

@@ -49,7 +49,7 @@ static void AllocateEntityMapStreams(EntityTypeArray& array, HeapAllocator& heap
 	memset(array.dirty_mask.data + old_dirty_mask_count, 0, (new_dirty_mask_count - old_dirty_mask_count) * sizeof(u64));
 }
 
-u32 CreateEntities(EntitySystem& system, EntityTypeID entity_type_id, u32 entity_count) {
+u32 CreateEntities(EntitySystem& system, EntityTypeID entity_type_id, u32 entity_count, ArrayView<u64> guids) {
 	ProfilerScope("CreateEntities");
 	
 	auto& array = system.entity_type_arrays[entity_type_id.index];
@@ -85,8 +85,10 @@ u32 CreateEntities(EntitySystem& system, EntityTypeID entity_type_id, u32 entity
 	
 	auto streams = ExtractComponentStreams<GuidQuery>(&array, stream_offset);
 	if (streams.guid) {
+		DebugAssert(guids.count == 0 || guids.count == entity_count, "Unexpected number of GUIDs supplied (%/%).", guids.count, entity_count);
+		
 		for (u32 i = 0; i < entity_count; i += 1) {
-			u64 guid = GenerateRandomNumber64(system.guid_random_seed);
+			u64 guid = guids.count ? guids[i] : GenerateRandomNumber64(system.guid_random_seed);
 			streams.guid[i].guid = guid;
 			
 			auto entity_id = EntityID{ array.stream_index_to_entity_id[stream_offset + i] };

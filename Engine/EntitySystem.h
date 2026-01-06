@@ -106,7 +106,7 @@ void SaveLoadEntitySystem(SaveLoadBuffer& buffer, EntitySystem& system);
 void ClearEntityDirtyMasks(EntitySystem& system);
 void SaveLoadEntityForTooling(SaveLoadBuffer& buffer, EntityTypeArray* array, u32 stream_offset);
 
-u32 CreateEntities(EntitySystem& system, EntityTypeID entity_type_id, u32 entity_count);
+u32 CreateEntities(EntitySystem& system, EntityTypeID entity_type_id, u32 entity_count, ArrayView<u64> guids = {});
 void RemoveEntityByGUID(EntitySystem& system, u64 guid);
 
 ArrayView<EntityTypeArray*> QueryEntities(StackAllocator* alloc, EntitySystem& system, EntityQueryTypeID query_type_id);
@@ -144,7 +144,7 @@ ArrayView<EntityTypeArray*> QueryEntities(StackAllocator* alloc, EntitySystem& s
 template<typename QueryTypeT>
 QueryTypeT QueryEntityByGUID(EntitySystem& system, u64 entity_guid) {
 	auto* element = HashTableFind(system.entity_guid_to_entity_id, entity_guid);
-	DebugAssert(element, "Failed to find entity by guid 0x%x.", entity_guid);
+	DebugAssert(element, "Failed to find entity by GUID 0x%x.", entity_guid);
 	
 	auto typed_entity_id = element->value;
 	
