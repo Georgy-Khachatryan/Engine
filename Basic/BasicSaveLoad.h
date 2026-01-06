@@ -15,10 +15,12 @@ struct alignas(64) SaveLoadBuffer {
 	u8* cursor = nullptr;
 	u32 remaining_size = 0;
 	u32 global_offset  = 0;
-	Array<ArrayView<u8>> chunks;
 	
+	u32 chunk_index = 0;
 	bool is_saving  = false;
 	bool is_loading = false;
+	
+	Array<Array<u8>> chunks;
 	
 	// Cold cache line:
 	String filepath;
@@ -37,8 +39,9 @@ struct alignas(64) SaveLoadBuffer {
 			
 			cursor         = (u8*)alloc->Allocate(new_chunk_capacity);
 			remaining_size = (u32)new_chunk_capacity;
+			chunk_index   += 1;
 			
-			ArrayAppend(chunks, alloc, { cursor, new_chunk_capacity });
+			ArrayAppend(chunks, alloc, { cursor, new_chunk_capacity, new_chunk_capacity });
 		}
 		
 		u8* result = cursor;
@@ -51,7 +54,17 @@ struct alignas(64) SaveLoadBuffer {
 	
 	u8* ReserveLoadBytes(u64 size) {
 		DebugAssert(is_loading, "Trying to read from SaveLoad buffer with no read flag.");
-		DebugAssert(size <= remaining_size, "SaveLoad buffer overflowed when loading %0 bytes. (%0 > %1).", size, remaining_size);
+		
+		if (remaining_size < size) {
+			chunk_index += 1;
+			DebugAssert(chunk_index <= chunks.count, "SaveLoad buffer overflowed when loading %0 bytes. (%0 > %1).", size, remaining_size);
+			
+			auto& new_chunk = chunks[chunk_index];
+			cursor         = new_chunk.data;
+			remaining_size = (u32)new_chunk.count;
+			
+			DebugAssert(size <= remaining_size, "SaveLoad buffer overflowed when loading %0 bytes. (%0 > %1).", size, remaining_size);
+		}
 		
 		u8* result = cursor;
 		cursor         += (u32)size;
@@ -91,6 +104,7 @@ static_assert(sizeof(SaveLoadBuffer) == 128, "Incorrect SaveLoad buffer size.");
 
 bool OpenSaveLoadBuffer(StackAllocator* alloc, String filepath, bool is_loading, SaveLoadBuffer& buffer);
 bool CloseSaveLoadBuffer(SaveLoadBuffer& buffer);
+void ReverseSaveLoadBuffer(SaveLoadBuffer& buffer, u32 new_global_offset);
 
 
 template<typename T, typename ValueType = typename SaveLoadAsBytes<T>::ValueType>

@@ -31,22 +31,22 @@ bool OpenSaveLoadBuffer(StackAllocator* alloc, String filepath, bool is_loading,
 bool CloseSaveLoadBuffer(SaveLoadBuffer& buffer) {
 	ProfilerScope("CloseSaveLoadBuffer");
 	
-	if (buffer.is_saving) {
+	if (buffer.is_saving && buffer.remaining_size != 0) {
+		auto& last_chunk = ArrayLastElement(buffer.chunks);
+		last_chunk.count -= buffer.remaining_size;
+	}
+	
+	if (buffer.is_saving && buffer.filepath.count != 0) {
 		auto file = SystemOpenFile(buffer.alloc, buffer.filepath, OpenFileFlags::Write);
 		if (file.handle == nullptr) return false;
 		defer{ SystemCloseFile(file); };
 		
-		if (buffer.remaining_size != 0) {
-			auto& last_chunk = ArrayLastElement(buffer.chunks);
-			last_chunk.count -= buffer.remaining_size;
-		}
-		
 		u64 offset = 0;
-		for (auto [data, count] : buffer.chunks) {
-			bool success = SystemWriteFile(file, data, count, offset);
+		for (auto& chunk : buffer.chunks) {
+			bool success = SystemWriteFile(file, chunk.data, chunk.count, offset);
 			if (success == false) return false;
 			
-			offset += count;
+			offset += chunk.count;
 		}
 	}
 	

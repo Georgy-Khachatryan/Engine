@@ -169,7 +169,7 @@ bool ImGui::DragFloatWithReset(const char* label, float* data, u32 component_cou
 
 bool ImGui::EntityComboBox(const char* label, EntitySystem* entity_system, u64* selected_guid, EntityTypeID entity_type_id) {
 	u64 current_guid = *selected_guid;
-	const char* current_name = "";
+	const char* current_name = "Select Entity";
 	
 	auto* element = HashTableFind(entity_system->entity_guid_to_entity_id, current_guid);
 	if (element) {
@@ -181,6 +181,13 @@ bool ImGui::EntityComboBox(const char* label, EntitySystem* entity_system, u64* 
 		if (entity.name->name.data) current_name = entity.name->name.data;
 	}
 	
+	auto& style = ImGui::GetStyle();
+	
+	const char* button_label = "Clear";
+	float button_width = ImGui::CalcTextSize(button_label).x + style.FramePadding.x * 2.f;
+	float combo_width  = ImMax(ImGui::CalcItemWidth() - button_width - style.ItemInnerSpacing.x, 1.f);
+	
+	ImGui::SetNextItemWidth(combo_width);
 	if (ImGui::BeginCombo(label, current_name)) {
 		auto* array = &entity_system->entity_type_arrays[entity_type_id.index];
 		auto streams = ExtractComponentStreams<GuidNameQuery>(array);
@@ -205,6 +212,11 @@ bool ImGui::EntityComboBox(const char* label, EntitySystem* entity_system, u64* 
 		}
 		
 		ImGui::EndCombo();
+	}
+	
+	ImGui::SameLine(0.f, style.ItemInnerSpacing.x);
+	if (ImGui::Button(button_label, ImVec2(button_width, 0.f))) {
+		*selected_guid = 0;
 	}
 	
 	return (current_guid != *selected_guid);

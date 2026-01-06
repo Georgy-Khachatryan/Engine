@@ -107,6 +107,66 @@ static void CameraControls(CameraEntityType camera_entity, bool scene_focused, b
 	}
 }
 
+static void DuplicateSelectedEntities(StackAllocator* alloc, EntitySystem& entity_system, HashTable<u64, void>& selected_entities_hash_table) {
+	TempAllocationScope(alloc);
+	
+	SaveLoadBuffer buffer;
+	OpenSaveLoadBuffer(alloc, String{}, false, buffer);
+	
+	for (auto [guid] : selected_entities_hash_table) {
+		auto* element = HashTableFind(entity_system.entity_guid_to_entity_id, guid);
+		DebugAssert(element, "Failed to find entity by guid 0x%x.", guid);
+		
+		auto typed_entity_id = element->value;
+		
+		auto* entity_array = &entity_system.entity_type_arrays[typed_entity_id.entity_type_id.index];
+		u32 stream_offset = entity_array->entity_id_to_stream_index[typed_entity_id.entity_id.index];
+		
+		SaveLoadEntityForTooling(buffer, entity_array, stream_offset);
+	}
+	
+	CloseSaveLoadBuffer(buffer);
+	
+	buffer.heap           = &entity_system.heap;
+	buffer.cursor         = buffer.chunks[0].data;
+	buffer.remaining_size = (u32)buffer.chunks[0].count;
+	buffer.global_offset  = 0;
+	buffer.is_saving      = false;
+	buffer.is_loading     = true;
+	buffer.chunk_index    = 0;
+	
+	Array<u64> new_entity_guids;
+	ArrayReserve(new_entity_guids, alloc, selected_entities_hash_table.count);
+	
+	for (auto [guid] : selected_entities_hash_table) {
+		auto* element = HashTableFind(entity_system.entity_guid_to_entity_id, guid);
+		DebugAssert(element, "Failed to find entity by guid 0x%x.", guid);
+		
+		auto typed_entity_id = element->value;
+		
+		auto* entity_array = &entity_system.entity_type_arrays[typed_entity_id.entity_type_id.index];
+		
+		u32 stream_offset = CreateEntities(entity_system, entity_array->entity_type_id, 1);
+		SaveLoadEntityForTooling(buffer, entity_array, stream_offset);
+		
+		auto guid_query = ExtractComponentStreams<GuidQuery>(entity_array, stream_offset);
+		ArrayAppend(new_entity_guids, guid_query.guid->guid);
+	}
+	
+	HashTableClear(selected_entities_hash_table);
+	
+	for (u64 guid : new_entity_guids) {
+		HashTableAddOrFind(selected_entities_hash_table, guid);
+	}
+}
+
+static void DeleteSelectedEntities(EntitySystem& entity_system, HashTable<u64, void>& selected_entities_hash_table) {
+	for (auto& [guid] : selected_entities_hash_table) {
+		RemoveEntityByGUID(entity_system, guid);
+	}
+	HashTableClear(selected_entities_hash_table);
+}
+
 s32 main() {
 	auto alloc = CreateStackAllocator(64 * 1024 * 1024, 512 * 1024);
 	defer{ ReleaseStackAllocator(alloc); };
@@ -283,6 +343,21 @@ s32 main() {
 		ImGui::SliderFloat("Meshlet Target Error Pixels", &world_entity.renderer_world->meshlet_target_error_pixels, 1.f, 128.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
 		ImGui::SliderFloat("Sun Elevation", &world_entity.renderer_world->sun_elevation_degrees, -10.f, +190.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
 		
+		ImGui::SetNextItemWidth(-FLT_MIN);
+		if (ImGui::BeginCombo("##CreateEntity", "Create Entity")) {
+			for (u32 entity_type_index = 0; entity_type_index < entity_type_name_table.count; entity_type_index += 1) {
+				auto name = entity_type_name_table[entity_type_index];
+				
+				ImGuiScopeID(entity_type_index);
+				if (ImGui::Selectable(name.data, false)) {
+					u32 stream_offset = CreateEntities(entity_system, EntityTypeID{ entity_type_index }, 1);
+					auto entity = ExtractComponentStreams<GuidNameQuery>(&entity_system.entity_type_arrays[entity_type_index], stream_offset);
+					entity.name->name = StringCopy(&entity_system.heap, name);
+				}
+			}
+			ImGui::EndCombo();
+		}
+		
 		{
 			ProfilerScope("SceneView");
 			
@@ -374,10 +449,34 @@ s32 main() {
 								bool is_selected = HashTableFind(selected_entities_hash_table, guid) != nullptr;
 								ImGui::SetNextItemSelectionUserData(index);
 								ImGui::Selectable(name.count ? name.data : entity_type_name.data, is_selected, ImGuiSelectableFlags_SpanAllColumns);
+								
+								if (ImGui::BeginPopupContextItem()) {
+									if (entity_array->entity_type_id.index == ECS::GetEntityTypeID<CameraEntityType>::id.index) {
+										if (ImGui::Selectable("Set Active Camera")) {
+											world_entity.camera_entity->guid = guid;
+										}
+									}
+									
+									if (ImGui::Selectable("Delete")) {
+										DeleteSelectedEntities(entity_system, selected_entities_hash_table);
+									}
+									
+									if (ImGui::Selectable("Duplicate")) {
+										DuplicateSelectedEntities(&alloc, entity_system, selected_entities_hash_table);
+									}
+									
+									ImGui::EndPopup();
+								}
+								
+								if (ImGui::IsItemClicked(ImGuiMouseButton_Left) && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+									if (entity_array->entity_type_id.index == ECS::GetEntityTypeID<CameraEntityType>::id.index) {
+										world_entity.camera_entity->guid = guid;
+									}
+								}
 							}
 							
 							if (ImGui::TableSetColumnIndex(1)) {
-								ImGui::Text("0x%016llx", guid);
+								ImGui::Text("0x%016llX", guid);
 							}
 							
 							if (ImGui::TableSetColumnIndex(2)) {
@@ -393,27 +492,26 @@ s32 main() {
 			
 			
 			if (ImGui::Shortcut(ImGuiKey_Delete, ImGuiInputFlags_RouteGlobal)) {
-				for (auto& [guid] : selected_entities_hash_table) {
-					RemoveEntityByGUID(entity_system, guid);
-				}
-				HashTableClear(selected_entities_hash_table);
+				DeleteSelectedEntities(entity_system, selected_entities_hash_table);
+			}
+			
+			if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_D, ImGuiInputFlags_RouteGlobal)) {
+				DuplicateSelectedEntities(&alloc, entity_system, selected_entities_hash_table);
 			}
 		}
 		
 		ImGui::End();
 		
-		if (selected_entities_hash_table.count != 0) {
-			ImGui::Begin("Entity Editor", nullptr, ImGuiWindowFlags_NoFocusOnAppearing);
-			defer{ ImGui::End(); };
+		ImGui::Begin("Entity Editor", nullptr, ImGuiWindowFlags_NoFocusOnAppearing);
+		if (ImGui::BeginTable("Components", 2, ImGuiTableFlags_NoSavedSettings | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_PadOuterX | ImGuiTableFlags_ScrollY)) {
+			defer{ ImGui::EndTable(); };
 			
-			if (ImGui::BeginTable("Components", 2, ImGuiTableFlags_NoSavedSettings | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_PadOuterX | ImGuiTableFlags_ScrollY)) {
-				defer{ ImGui::EndTable(); };
-				
-				ImGui::TableSetupScrollFreeze(0, 1); // Freeze header row.
-				ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch, 1.f);
-				ImGui::TableSetupColumn("Data", ImGuiTableColumnFlags_WidthStretch, 2.f);
-				ImGui::TableHeadersRow();
-				
+			ImGui::TableSetupScrollFreeze(0, 1); // Freeze header row.
+			ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch, 1.f);
+			ImGui::TableSetupColumn("Data", ImGuiTableColumnFlags_WidthStretch, 2.f);
+			ImGui::TableHeadersRow();
+			
+			if (selected_entities_hash_table.count != 0) {
 				// Items should span full width of the column.
 				ImGui::PushItemWidth(-FLT_MIN);
 				defer{ ImGui::PopItemWidth(); };
@@ -486,6 +584,7 @@ s32 main() {
 				}
 			}
 		}
+		ImGui::End();
 		
 		
 		auto camera_entity = QueryEntityByGUID<CameraEntityType>(entity_system, world_entity.camera_entity->guid);

@@ -104,6 +104,7 @@ struct EntitySystem {
 void InitializeEntitySystem(EntitySystem& system);
 void SaveLoadEntitySystem(SaveLoadBuffer& buffer, EntitySystem& system);
 void ClearEntityDirtyMasks(EntitySystem& system);
+void SaveLoadEntityForTooling(SaveLoadBuffer& buffer, EntityTypeArray* array, u32 stream_offset);
 
 u32 CreateEntities(EntitySystem& system, EntityTypeID entity_type_id, u32 entity_count);
 void RemoveEntityByGUID(EntitySystem& system, u64 guid);

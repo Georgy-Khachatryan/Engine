@@ -433,3 +433,25 @@ void SaveLoadEntitySystem(SaveLoadBuffer& buffer, EntitySystem& system) {
 		}
 	}
 }
+
+void SaveLoadEntityForTooling(SaveLoadBuffer& buffer, EntityTypeArray* array, u32 stream_offset) {
+	auto entity_type_id = array->entity_type_id;
+	
+	auto& entity_type_info = entity_type_info_table[entity_type_id.index];
+	auto component_type_ids = entity_type_info.component_type_ids;
+	
+	u64 component_stream_count = entity_type_info.cpu_component_count;
+	
+	for (u32 i = 0; i < component_stream_count; i += 1) {
+		auto component_type_id = component_type_ids[i];
+		auto type_info = component_type_info_table[component_type_id.index];
+		
+		if (component_type_id.index == ECS::GetComponentTypeID<GuidComponent>::id.index) continue;
+		
+		auto save_load_callback = component_save_load_callbacks[component_type_id.index];
+		if (save_load_callback != nullptr) {
+			u8* component_stream = array->component_streams[i].cpu.data;
+			save_load_callback(buffer, component_stream + stream_offset * type_info.size_bytes, type_info.version);
+		}
+	}
+}
