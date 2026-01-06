@@ -21,9 +21,10 @@ static void AppendUndoCommand(UndoRedoSystem& system, UndoRedoCommand command) {
 	ArrayAppend(system.undo_buffer.commands, system.heap, command);
 }
 
-static UndoRedoCommand CreateUndoRedoCommand(UndoRedoBuffer& undo_redo_buffer, EntitySystem& entity_system, u64 entity_guid, UndoRedoCommandType command_type) {
+static UndoRedoCommand CreateUndoRedoCommand(UndoRedoBuffer& undo_redo_buffer, EntitySystem& entity_system, u64 entity_guid, UndoRedoCommandType command_type, u64 group_index) {
 	UndoRedoCommand command;
 	command.entity_guid  = entity_guid;
+	command.group_index  = group_index;
 	command.command_type = command_type;
 	
 	if (command_type == UndoRedoCommandType::SaveLoad || command_type == UndoRedoCommandType::CreateEntity) {
@@ -80,18 +81,28 @@ static void ExecuteUndoRedoCommand(UndoRedoBuffer& undo_redo_buffer, EntitySyste
 	}
 }
 
+void BeginUndoRedoGroup(UndoRedoSystem& system) {
+	DebugAssert(system.group_index == 0, "Nested Undo/Redo groups are not supported. Already in group %..", system.group_index);
+	system.group_index = system.group_index_allocator;
+	system.group_index_allocator += 1;
+}
+
+void EndUndoRedoGroup(UndoRedoSystem& system) {
+	system.group_index = 0;
+}
+
 void BeginUndoRedoCommand(UndoRedoSystem& system, EntitySystem& entity_system, u64 entity_guid) {
 	DebugAssert(system.pending_command.entity_guid == 0 || system.pending_command.entity_guid == entity_guid, "Unfinished pending command 0x%x..", system.pending_command.entity_guid);
 	
 	if (system.pending_command.entity_guid == 0) {
-		system.pending_command = CreateUndoRedoCommand(system.undo_buffer, entity_system, entity_guid, UndoRedoCommandType::SaveLoad);
+		system.pending_command = CreateUndoRedoCommand(system.undo_buffer, entity_system, entity_guid, UndoRedoCommandType::SaveLoad, system.group_index);
 	}
 }
 
 bool EndUndoRedoCommand(UndoRedoSystem& system, EntitySystem& entity_system, bool is_dragging) {
 	if (system.pending_command.entity_guid == 0) return false;
 	
-	auto command = CreateUndoRedoCommand(system.undo_buffer, entity_system, system.pending_command.entity_guid, UndoRedoCommandType::SaveLoad);
+	auto command = CreateUndoRedoCommand(system.undo_buffer, entity_system, system.pending_command.entity_guid, UndoRedoCommandType::SaveLoad, system.group_index);
 	
 	u8* data = system.undo_buffer.save_load_buffer.data.data;
 	bool entity_changed = (system.pending_command.size != command.size) || (command.size != 0 && memcmp(data + system.pending_command.offset, data + command.offset, command.size) != 0);
@@ -113,14 +124,14 @@ bool EndUndoRedoCommand(UndoRedoSystem& system, EntitySystem& entity_system, boo
 void UndoRedoRemoveEntity(UndoRedoSystem& system, EntitySystem& entity_system, u64 entity_guid) {
 	DebugAssert(system.pending_command.entity_guid == 0, "Unfinished pending command 0x%x..", system.pending_command.entity_guid);
 	
-	auto command = CreateUndoRedoCommand(system.undo_buffer, entity_system, entity_guid, UndoRedoCommandType::CreateEntity);
+	auto command = CreateUndoRedoCommand(system.undo_buffer, entity_system, entity_guid, UndoRedoCommandType::CreateEntity, system.group_index);
 	AppendUndoCommand(system, command);
 }
 
 void UndoRedoCreateEntity(UndoRedoSystem& system, EntitySystem& entity_system, u64 entity_guid) {
 	DebugAssert(system.pending_command.entity_guid == 0, "Unfinished pending command 0x%x..", system.pending_command.entity_guid);
 	
-	auto command = CreateUndoRedoCommand(system.undo_buffer, entity_system, entity_guid, UndoRedoCommandType::RemoveEntity);
+	auto command = CreateUndoRedoCommand(system.undo_buffer, entity_system, entity_guid, UndoRedoCommandType::RemoveEntity, system.group_index);
 	AppendUndoCommand(system, command);
 }
 
@@ -134,20 +145,23 @@ static UndoRedoCommandType ReverseUndoRedoCommandType(UndoRedoCommandType comman
 	}
 }
 
-static void ExecuteUndoRedo(UndoRedoSystem& system, EntitySystem& entity_system, UndoRedoBuffer& src_buffer, UndoRedoBuffer& dst_buffer) {
+static void ExecuteUndoRedoGroup(UndoRedoSystem& system, EntitySystem& entity_system, UndoRedoBuffer& src_buffer, UndoRedoBuffer& dst_buffer) {
 	if (src_buffer.commands.count == 0) return;
 	
-	auto src_command = ArrayPopLast(src_buffer.commands);
-	auto dst_command = CreateUndoRedoCommand(dst_buffer, entity_system, src_command.entity_guid, ReverseUndoRedoCommandType(src_command.command_type));
-	
-	ArrayAppend(dst_buffer.commands, system.heap, dst_command);
-	ExecuteUndoRedoCommand(src_buffer, entity_system, src_command);
+	u64 group_index = ArrayLastElement(src_buffer.commands).group_index;
+	do {
+		auto src_command = ArrayPopLast(src_buffer.commands);
+		auto dst_command = CreateUndoRedoCommand(dst_buffer, entity_system, src_command.entity_guid, ReverseUndoRedoCommandType(src_command.command_type), src_command.group_index);
+		
+		ArrayAppend(dst_buffer.commands, system.heap, dst_command);
+		ExecuteUndoRedoCommand(src_buffer, entity_system, src_command);
+	} while (group_index && src_buffer.commands.count && ArrayLastElement(src_buffer.commands).group_index == group_index);
 }
 
 void ExecuteUndo(UndoRedoSystem& system, EntitySystem& entity_system) {
-	ExecuteUndoRedo(system, entity_system, system.undo_buffer, system.redo_buffer);
+	ExecuteUndoRedoGroup(system, entity_system, system.undo_buffer, system.redo_buffer);
 }
 
 void ExecuteRedo(UndoRedoSystem& system, EntitySystem& entity_system) {
-	ExecuteUndoRedo(system, entity_system, system.redo_buffer, system.undo_buffer);
+	ExecuteUndoRedoGroup(system, entity_system, system.redo_buffer, system.undo_buffer);
 }

@@ -108,7 +108,7 @@ static void CameraControls(CameraEntityType camera_entity, bool scene_focused, b
 	}
 }
 
-static void DuplicateSelectedEntities(StackAllocator* alloc, EntitySystem& entity_system, HashTable<u64, void>& selected_entities_hash_table) {
+static void DuplicateSelectedEntities(StackAllocator* alloc, EntitySystem& entity_system, UndoRedoSystem& undo_redo_system, HashTable<u64, void>& selected_entities_hash_table) {
 	TempAllocationScope(alloc);
 	
 	SaveLoadBuffer buffer;
@@ -132,6 +132,9 @@ static void DuplicateSelectedEntities(StackAllocator* alloc, EntitySystem& entit
 	Array<u64> new_entity_guids;
 	ArrayReserve(new_entity_guids, alloc, selected_entities_hash_table.count);
 	
+	EndUndoRedoCommand(undo_redo_system, entity_system);
+	
+	BeginUndoRedoGroup(undo_redo_system);
 	for (auto [guid] : selected_entities_hash_table) {
 		auto* element = HashTableFind(entity_system.entity_guid_to_entity_id, guid);
 		DebugAssert(element, "Failed to find entity by GUID 0x%x.", guid);
@@ -145,7 +148,10 @@ static void DuplicateSelectedEntities(StackAllocator* alloc, EntitySystem& entit
 		
 		auto guid_query = ExtractComponentStreams<GuidQuery>(entity_array, stream_offset);
 		ArrayAppend(new_entity_guids, guid_query.guid->guid);
+		
+		UndoRedoCreateEntity(undo_redo_system, entity_system, guid_query.guid->guid);
 	}
+	EndUndoRedoGroup(undo_redo_system);
 	
 	HashTableClear(selected_entities_hash_table);
 	
@@ -157,10 +163,13 @@ static void DuplicateSelectedEntities(StackAllocator* alloc, EntitySystem& entit
 static void RemoveSelectedEntities(EntitySystem& entity_system, UndoRedoSystem& undo_redo_system, HashTable<u64, void>& selected_entities_hash_table) {
 	EndUndoRedoCommand(undo_redo_system, entity_system);
 	
+	BeginUndoRedoGroup(undo_redo_system);
 	for (auto& [guid] : selected_entities_hash_table) {
 		UndoRedoRemoveEntity(undo_redo_system, entity_system, guid);
 		RemoveEntityByGUID(entity_system, guid);
 	}
+	EndUndoRedoGroup(undo_redo_system);
+	
 	HashTableClear(selected_entities_hash_table);
 }
 
@@ -473,8 +482,7 @@ s32 main() {
 									}
 									
 									if (ImGui::Selectable("Duplicate")) {
-										EndUndoRedoCommand(undo_redo_system, entity_system);
-										DuplicateSelectedEntities(&alloc, entity_system, selected_entities_hash_table);
+										DuplicateSelectedEntities(&alloc, entity_system, undo_redo_system, selected_entities_hash_table);
 									}
 									
 									ImGui::EndPopup();
@@ -508,8 +516,7 @@ s32 main() {
 			}
 			
 			if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_D, ImGuiInputFlags_RouteGlobal)) {
-				EndUndoRedoCommand(undo_redo_system, entity_system);
-				DuplicateSelectedEntities(&alloc, entity_system, selected_entities_hash_table);
+				DuplicateSelectedEntities(&alloc, entity_system, undo_redo_system, selected_entities_hash_table);
 			}
 		}
 		
