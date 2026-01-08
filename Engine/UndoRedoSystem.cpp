@@ -14,11 +14,18 @@ void ReleaseUndoRedoSystem(UndoRedoSystem& system) {
 	ReleaseStackAllocator(system.redo_buffer.alloc);
 }
 
-static void AppendUndoCommand(UndoRedoSystem& system, UndoRedoCommand command) {
+static void AppendUndoCommand(UndoRedoSystem& system, UndoRedoCommand& command) {
 	system.redo_buffer.commands.count = 0;
 	system.redo_buffer.save_load_buffer.data.count = 0;
 	
 	ArrayAppend(system.undo_buffer.commands, system.heap, command);
+}
+
+static void FlushCrossFrameUndoCommand(UndoRedoSystem& system) {
+	if (system.cross_frame_command.entity_guid == 0) return;
+	
+	AppendUndoCommand(system, system.cross_frame_command);
+	system.cross_frame_command = {};
 }
 
 static UndoRedoCommand CreateUndoRedoCommand(UndoRedoBuffer& undo_redo_buffer, EntitySystem& entity_system, u64 entity_guid, UndoRedoCommandType command_type, u64 group_index) {
@@ -92,45 +99,51 @@ void EndUndoRedoGroup(UndoRedoSystem& system) {
 }
 
 void BeginUndoRedoCommand(UndoRedoSystem& system, EntitySystem& entity_system, u64 entity_guid) {
-	DebugAssert(system.pending_command.entity_guid == 0 || system.pending_command.entity_guid == entity_guid, "Unfinished pending command 0x%x..", system.pending_command.entity_guid);
+	DebugAssert(system.pending_command.entity_guid == 0, "BeginUndoRedoCommand/EndUndoRedoCommand mismatch.");
 	
-	if (system.pending_command.entity_guid == 0) {
+	if (system.cross_frame_command.entity_guid == entity_guid) { // We already have a command stashed away.
+		system.pending_command = system.cross_frame_command;
+		system.cross_frame_command = {};
+	} else {
 		system.pending_command = CreateUndoRedoCommand(system.undo_buffer, entity_system, entity_guid, UndoRedoCommandType::SaveLoad, system.group_index);
 	}
 }
 
 bool EndUndoRedoCommand(UndoRedoSystem& system, EntitySystem& entity_system, bool is_dragging) {
-	if (system.pending_command.entity_guid == 0) return false;
+	DebugAssert(system.pending_command.entity_guid != 0, "BeginUndoRedoCommand/EndUndoRedoCommand mismatch.");
 	
-	auto command = CreateUndoRedoCommand(system.undo_buffer, entity_system, system.pending_command.entity_guid, UndoRedoCommandType::SaveLoad, system.group_index);
+	auto old_command = system.pending_command;
+	auto new_command = CreateUndoRedoCommand(system.undo_buffer, entity_system, old_command.entity_guid, UndoRedoCommandType::SaveLoad, system.group_index);
 	
 	u8* data = system.undo_buffer.save_load_buffer.data.data;
-	bool entity_changed = (system.pending_command.size != command.size) || (command.size != 0 && memcmp(data + system.pending_command.offset, data + command.offset, command.size) != 0);
+	bool entity_changed = (old_command.size != new_command.size) || (new_command.size != 0 && memcmp(data + old_command.offset, data + new_command.offset, new_command.size) != 0);
 	
-	if (entity_changed || is_dragging) {
-		system.undo_buffer.save_load_buffer.data.count = system.pending_command.offset + system.pending_command.size;
-		if (is_dragging == false) AppendUndoCommand(system, system.pending_command);
-	} else {
-		system.undo_buffer.save_load_buffer.data.count = system.pending_command.offset;
+	// Pop command data, it's never going to be used again.
+	system.undo_buffer.save_load_buffer.data.count = old_command.offset + old_command.size;
+	
+	if (is_dragging) { // Keep the pending command on the stack across frames.
+		FlushCrossFrameUndoCommand(system);
+		system.cross_frame_command = old_command;
+	} else if (entity_changed) { // Entity changed and we're not dragging, flush the whole undo stack.
+		FlushCrossFrameUndoCommand(system);
+		AppendUndoCommand(system, old_command);
+	} else { // We're not dragging and the entity haven't changed. Pop the pending command off the stack.
+		system.undo_buffer.save_load_buffer.data.count = old_command.offset;
 	}
 	
-	if (is_dragging == false) {
-		system.pending_command = {};
-	}
+	system.pending_command = {};
 	
 	return entity_changed;
 }
 
 void UndoRedoRemoveEntity(UndoRedoSystem& system, EntitySystem& entity_system, u64 entity_guid) {
-	DebugAssert(system.pending_command.entity_guid == 0, "Unfinished pending command 0x%x..", system.pending_command.entity_guid);
-	
+	FlushCrossFrameUndoCommand(system);
 	auto command = CreateUndoRedoCommand(system.undo_buffer, entity_system, entity_guid, UndoRedoCommandType::CreateEntity, system.group_index);
 	AppendUndoCommand(system, command);
 }
 
 void UndoRedoCreateEntity(UndoRedoSystem& system, EntitySystem& entity_system, u64 entity_guid) {
-	DebugAssert(system.pending_command.entity_guid == 0, "Unfinished pending command 0x%x..", system.pending_command.entity_guid);
-	
+	FlushCrossFrameUndoCommand(system);
 	auto command = CreateUndoRedoCommand(system.undo_buffer, entity_system, entity_guid, UndoRedoCommandType::RemoveEntity, system.group_index);
 	AppendUndoCommand(system, command);
 }
@@ -159,9 +172,11 @@ static void ExecuteUndoRedoGroup(UndoRedoSystem& system, EntitySystem& entity_sy
 }
 
 void ExecuteUndo(UndoRedoSystem& system, EntitySystem& entity_system) {
+	if (system.cross_frame_command.entity_guid != 0) return; // Can't modify the undo_buffer while we have a cross_frame_command on it.
 	ExecuteUndoRedoGroup(system, entity_system, system.undo_buffer, system.redo_buffer);
 }
 
 void ExecuteRedo(UndoRedoSystem& system, EntitySystem& entity_system) {
+	if (system.cross_frame_command.entity_guid != 0) return; // Can't modify the undo_buffer while we have a cross_frame_command on it.
 	ExecuteUndoRedoGroup(system, entity_system, system.redo_buffer, system.undo_buffer);
 }

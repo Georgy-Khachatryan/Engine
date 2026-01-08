@@ -20,12 +20,20 @@ struct RendererWorld {
 	ArrayView<struct GpuComponentUploadBuffer> gpu_uploads;
 };
 
+NOTES(Meta::CustomSaveLoad{})
+struct EditorSelectionState {
+	// TODO: Add support for hash table reflection and save/load.
+	HashTable<u64, void> selected_entities_hash_table;
+};
+
 NOTES(Meta::EntityType{ 1 }, Meta::ComponentQuery{})
 struct WorldEntityType {
 	ECS::Component<GuidComponent> guid;
 	
 	ECS::Component<CameraEntityGUID> camera_entity;
 	ECS::Component<RendererWorld> renderer_world;
+	
+	ECS::Component<EditorSelectionState> selection_state;
 };
 
 

@@ -13,6 +13,7 @@ struct ComponentTypeInfoKey {
 	TypeInfoStruct* type_info = nullptr;
 	ComponentType component_type = ComponentType::CPU;
 	bool generate_save_load_callback = false;
+	bool add_to_save_load_version_history = false;
 	u32 name_hash = 0;
 	
 	bool operator== (const ComponentTypeInfoKey& other) const { return type_info == other.type_info && component_type == other.component_type; }
@@ -102,11 +103,14 @@ void WriteEntitySystemMetadata(StackAllocator* alloc, ArrayView<TypeInfoStruct*>
 			}
 			ArrayAppend(entity_components, component_metadata);
 			
+			auto* no_save_load = FindNote<Meta::NoSaveLoad>(component_type_info);
+			auto* custom_save_load = FindNote<Meta::CustomSaveLoad>(component_type_info);
 			
 			ComponentTypeInfoKey component_type_info_key;
 			component_type_info_key.type_info      = component_type_info;
 			component_type_info_key.component_type = *component_type_note;
-			component_type_info_key.generate_save_load_callback = FindNote<Meta::NoSaveLoad>(component_type_info) == nullptr;
+			component_type_info_key.generate_save_load_callback = (no_save_load == nullptr);
+			component_type_info_key.add_to_save_load_version_history = (no_save_load == nullptr) && (custom_save_load == nullptr);
 			component_type_info_key.name_hash      = (u32)ComputeHash(component_type_info->name);
 			
 			auto [element, is_added] = HashTableAddOrFind(component_types, alloc, component_type_info_key, 0u);
@@ -284,7 +288,7 @@ void WriteEntitySystemMetadata(StackAllocator* alloc, ArrayView<TypeInfoStruct*>
 	builder.Indent();
 	for (auto& component : component_type_infos) {
 		u64 version = 0;
-		if (component.component_type == ComponentType::CPU && component.generate_save_load_callback) {
+		if (component.component_type == ComponentType::CPU && component.add_to_save_load_version_history) {
 			version = AddTypeInfoToSaveLoadHistory(alloc, version_history, component.type_info);
 		}
 		

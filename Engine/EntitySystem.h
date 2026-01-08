@@ -51,6 +51,7 @@ union alignas(void*) ComponentStream {
 };
 
 namespace Meta {
+	NOTES() struct CustomSaveLoad {};
 	NOTES() struct NoSaveLoad {};
 	NOTES() struct EntityType { u32 base_allocation_count = entity_system_base_allocation_count; };
 	NOTES() struct ComponentQuery {};

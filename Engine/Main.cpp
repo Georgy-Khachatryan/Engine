@@ -108,7 +108,7 @@ static void CameraControls(CameraEntityType camera_entity, bool scene_focused, b
 	}
 }
 
-static void DuplicateSelectedEntities(StackAllocator* alloc, EntitySystem& entity_system, UndoRedoSystem& undo_redo_system, HashTable<u64, void>& selected_entities_hash_table) {
+static void DuplicateSelectedEntities(StackAllocator* alloc, EntitySystem& entity_system, UndoRedoSystem& undo_redo_system, HashTable<u64, void>& selected_entities_hash_table, u64 selection_state_entity) {
 	TempAllocationScope(alloc);
 	
 	SaveLoadBuffer buffer;
@@ -132,8 +132,6 @@ static void DuplicateSelectedEntities(StackAllocator* alloc, EntitySystem& entit
 	Array<u64> new_entity_guids;
 	ArrayReserve(new_entity_guids, alloc, selected_entities_hash_table.count);
 	
-	EndUndoRedoCommand(undo_redo_system, entity_system);
-	
 	BeginUndoRedoGroup(undo_redo_system);
 	for (auto [guid] : selected_entities_hash_table) {
 		auto* element = HashTableFind(entity_system.entity_guid_to_entity_id, guid);
@@ -151,28 +149,39 @@ static void DuplicateSelectedEntities(StackAllocator* alloc, EntitySystem& entit
 		
 		UndoRedoCreateEntity(undo_redo_system, entity_system, guid_query.guid->guid);
 	}
-	EndUndoRedoGroup(undo_redo_system);
 	
+	
+	BeginUndoRedoCommand(undo_redo_system, entity_system, selection_state_entity);
 	HashTableClear(selected_entities_hash_table);
-	
 	for (u64 guid : new_entity_guids) {
 		HashTableAddOrFind(selected_entities_hash_table, guid);
 	}
-}
-
-static void RemoveSelectedEntities(EntitySystem& entity_system, UndoRedoSystem& undo_redo_system, HashTable<u64, void>& selected_entities_hash_table) {
 	EndUndoRedoCommand(undo_redo_system, entity_system);
 	
+	EndUndoRedoGroup(undo_redo_system);
+}
+
+static void RemoveSelectedEntities(EntitySystem& entity_system, UndoRedoSystem& undo_redo_system, HashTable<u64, void>& selected_entities_hash_table, u64 selection_state_entity) {
 	BeginUndoRedoGroup(undo_redo_system);
 	for (auto& [guid] : selected_entities_hash_table) {
 		UndoRedoRemoveEntity(undo_redo_system, entity_system, guid);
 		RemoveEntityByGUID(entity_system, guid);
 	}
-	EndUndoRedoGroup(undo_redo_system);
 	
+	BeginUndoRedoCommand(undo_redo_system, entity_system, selection_state_entity);
 	HashTableClear(selected_entities_hash_table);
+	EndUndoRedoCommand(undo_redo_system, entity_system);
+	
+	EndUndoRedoGroup(undo_redo_system);
 }
 
+static void SaveLoad(SaveLoadBuffer& buffer, HashTableElement<u64, void>& element, u64 version) {
+	SaveLoad(buffer, element.key);
+}
+
+void SaveLoad(SaveLoadBuffer& buffer, EditorSelectionState& data, u64 version) {
+	SaveLoad(buffer, data.selected_entities_hash_table);
+}
 
 
 s32 main() {
@@ -282,9 +291,9 @@ s32 main() {
 		}
 	}
 	
-	u64 world_entity_guid = ExtractComponentStreams<GuidQuery>(QueryEntityTypeArray<WorldEntityType>(entity_system), 0).guid->guid;
-	
-	HashTable<u64, void> selected_entities_hash_table;
+	auto world_entity = ExtractComponentStreams<WorldEntityType>(QueryEntityTypeArray<WorldEntityType>(entity_system), 0);
+	u64 world_entity_guid = world_entity.guid->guid;
+	auto& selected_entities_hash_table = world_entity.selection_state->selected_entities_hash_table;
 	
 	ImGuiMouseLock mouse_lock;
 	
@@ -368,7 +377,15 @@ s32 main() {
 					auto entity = ExtractComponentStreams<GuidNameQuery>(&entity_system.entity_type_arrays[entity_type_index], stream_offset);
 					entity.name->name = StringCopy(&entity_system.heap, name);
 					
+					BeginUndoRedoGroup(undo_redo_system);
 					UndoRedoCreateEntity(undo_redo_system, entity_system, entity.guid->guid);
+					
+					BeginUndoRedoCommand(undo_redo_system, entity_system, world_entity_guid);
+					HashTableClear(selected_entities_hash_table);
+					HashTableAddOrFind(selected_entities_hash_table, &entity_system.heap, entity.guid->guid);
+					EndUndoRedoCommand(undo_redo_system, entity_system);
+					
+					EndUndoRedoGroup(undo_redo_system);
 				}
 			}
 			ImGui::EndCombo();
@@ -385,18 +402,16 @@ s32 main() {
 			}
 			
 			auto apply_requests = [&](ImGuiMultiSelectIO* ms_io) {
+				BeginUndoRedoCommand(undo_redo_system, entity_system, world_entity_guid);
+				
 				for (auto& request : ms_io->Requests) {
-					if (request.Selected) {
-						EndUndoRedoCommand(undo_redo_system, entity_system);
-					}
-					
 					if (request.Type == ImGuiSelectionRequestType_SetAll) {
 						if (request.Selected) {
 							for (auto* entity_array : entity_view) {
 								auto streams = ExtractComponentStreams<GuidQuery>(entity_array);
 								for (u32 index = 0; index < entity_array->count; index += 1) {
 									auto& [guid] = streams.guid[index];
-									HashTableAddOrFind(selected_entities_hash_table, &imgui_heap, guid);
+									HashTableAddOrFind(selected_entities_hash_table, &entity_system.heap, guid);
 								}
 							}
 						} else {
@@ -415,7 +430,7 @@ s32 main() {
 							for (u32 index = start_index; index < end_index; index += 1) {
 								auto& [guid] = streams.guid[index - global_index];
 								if (request.Selected) {
-									HashTableAddOrFind(selected_entities_hash_table, &imgui_heap, guid);
+									HashTableAddOrFind(selected_entities_hash_table, &entity_system.heap, guid);
 								} else {
 									HashTableRemove(selected_entities_hash_table, guid);
 								}
@@ -423,6 +438,9 @@ s32 main() {
 						}
 					}
 				}
+				
+				bool is_dragging = ImGui::IsAnyItemActive() && ImGui::IsWindowFocused();
+				EndUndoRedoCommand(undo_redo_system, entity_system, is_dragging);
 			};
 			
 			
@@ -435,7 +453,7 @@ s32 main() {
 				ImGui::TableSetupColumn("Type", ImGuiTableColumnFlags_WidthStretch, 1.f);
 				ImGui::TableHeadersRow();
 				
-				auto* ms_io = ImGui::BeginMultiSelect(ImGuiMultiSelectFlags_ClearOnEscape | ImGuiMultiSelectFlags_ClearOnClickVoid, (s32)selected_entities_hash_table.count, (s32)entity_count);
+				auto* ms_io = ImGui::BeginMultiSelect(ImGuiMultiSelectFlags_ClearOnEscape | ImGuiMultiSelectFlags_ClearOnClickVoid | ImGuiMultiSelectFlags_BoxSelect1d, (s32)selected_entities_hash_table.count, (s32)entity_count);
 				apply_requests(ms_io);
 				
 				ImGuiListClipper clipper;
@@ -473,16 +491,18 @@ s32 main() {
 								if (ImGui::BeginPopupContextItem()) {
 									if (entity_array->entity_type_id.index == ECS::GetEntityTypeID<CameraEntityType>::id.index) {
 										if (ImGui::Selectable("Set Active Camera")) {
+											BeginUndoRedoCommand(undo_redo_system, entity_system, world_entity_guid);
 											world_entity.camera_entity->guid = guid;
+											EndUndoRedoCommand(undo_redo_system, entity_system);
 										}
 									}
 									
 									if (ImGui::Selectable("Delete")) {
-										RemoveSelectedEntities(entity_system, undo_redo_system, selected_entities_hash_table);
+										RemoveSelectedEntities(entity_system, undo_redo_system, selected_entities_hash_table, world_entity_guid);
 									}
 									
 									if (ImGui::Selectable("Duplicate")) {
-										DuplicateSelectedEntities(&alloc, entity_system, undo_redo_system, selected_entities_hash_table);
+										DuplicateSelectedEntities(&alloc, entity_system, undo_redo_system, selected_entities_hash_table, world_entity_guid);
 									}
 									
 									ImGui::EndPopup();
@@ -490,7 +510,9 @@ s32 main() {
 								
 								if (ImGui::IsItemClicked(ImGuiMouseButton_Left) && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
 									if (entity_array->entity_type_id.index == ECS::GetEntityTypeID<CameraEntityType>::id.index) {
+										BeginUndoRedoCommand(undo_redo_system, entity_system, world_entity_guid);
 										world_entity.camera_entity->guid = guid;
+										EndUndoRedoCommand(undo_redo_system, entity_system);
 									}
 								}
 							}
@@ -512,11 +534,11 @@ s32 main() {
 			
 			
 			if (ImGui::Shortcut(ImGuiKey_Delete, ImGuiInputFlags_RouteGlobal)) {
-				RemoveSelectedEntities(entity_system, undo_redo_system, selected_entities_hash_table);
+				RemoveSelectedEntities(entity_system, undo_redo_system, selected_entities_hash_table, world_entity_guid);
 			}
 			
 			if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_D, ImGuiInputFlags_RouteGlobal)) {
-				DuplicateSelectedEntities(&alloc, entity_system, undo_redo_system, selected_entities_hash_table);
+				DuplicateSelectedEntities(&alloc, entity_system, undo_redo_system, selected_entities_hash_table, world_entity_guid);
 			}
 		}
 		
@@ -530,11 +552,6 @@ s32 main() {
 		
 		if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_Y, ImGuiInputFlags_RouteGlobal | ImGuiInputFlags_Repeat)) {
 			ExecuteRedo(undo_redo_system, entity_system);
-		}
-		
-		for (auto [entity_guid] : selected_entities_hash_table) {
-			auto* element = HashTableFind(entity_system.entity_guid_to_entity_id, entity_guid);
-			if (element == nullptr) HashTableRemove(selected_entities_hash_table, entity_guid);
 		}
 		
 		if (ImGui::BeginTable("Components", 2, ImGuiTableFlags_NoSavedSettings | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_PadOuterX | ImGuiTableFlags_ScrollY)) {
@@ -611,7 +628,7 @@ s32 main() {
 					ImGui::TableInputText("Mesh Source Data", entity.mesh_source_data->filepath, nullptr);
 				}
 				
-				bool is_dragging = ImGui::IsAnyItemActive() && ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows);
+				bool is_dragging = ImGui::IsAnyItemActive() && ImGui::IsWindowFocused();
 				bool is_dirty = EndUndoRedoCommand(undo_redo_system, entity_system, is_dragging);
 				
 				if (is_dirty) {
@@ -621,6 +638,61 @@ s32 main() {
 		}
 		ImGui::End();
 		
+		ImGui::Begin("Undo/Redo History");
+		ImGui::Text("Undo/Redo Buffer Size: %llu", undo_redo_system.undo_buffer.save_load_buffer.data.count + undo_redo_system.redo_buffer.save_load_buffer.data.count);
+		
+		if (ImGui::BeginTable("Components", 5, ImGuiTableFlags_NoSavedSettings | ImGuiTableFlags_Resizable | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_PadOuterX | ImGuiTableFlags_ScrollY)) {
+			defer{ ImGui::EndTable(); };
+			
+			ImGui::TableSetupScrollFreeze(0, 1); // Freeze header row.
+			ImGui::TableSetupColumn("GUID",    ImGuiTableColumnFlags_WidthStretch, 4.f);
+			ImGui::TableSetupColumn("GroupID", ImGuiTableColumnFlags_WidthStretch, 2.f);
+			ImGui::TableSetupColumn("Offset",  ImGuiTableColumnFlags_WidthStretch, 1.f);
+			ImGui::TableSetupColumn("Size",    ImGuiTableColumnFlags_WidthStretch, 1.f);
+			ImGui::TableSetupColumn("Type",    ImGuiTableColumnFlags_WidthStretch, 3.f);
+			ImGui::TableHeadersRow();
+			
+			auto draw_undo_redo_command_row = [](UndoRedoCommand& command) {
+				ImGui::TableNextRow();
+				
+				if (ImGui::TableSetColumnIndex(0)) {
+					ImGui::Text("0x%016llX", command.entity_guid);
+				}
+				
+				if (ImGui::TableSetColumnIndex(1)) {
+					ImGui::Text("%u", command.group_index);
+				}
+				
+				if (ImGui::TableSetColumnIndex(2)) {
+					ImGui::Text("%llu", command.offset);
+				}
+				
+				if (ImGui::TableSetColumnIndex(3)) {
+					ImGui::Text("%llu", command.size);
+				}
+				
+				if (ImGui::TableSetColumnIndex(4)) {
+					compile_const char* command_type_names[3] = { "LoadEntityState", "CreateEntity", "RemoveEntity" };
+					ImGui::TextUnformatted(command_type_names[(u32)command.command_type]);
+				}
+			};
+			
+			auto& undo_commands = undo_redo_system.undo_buffer.commands;
+			for (s64 i = 0; i < (s64)undo_commands.count; i += 1) {
+				draw_undo_redo_command_row(undo_commands[i]);
+			}
+			
+			ImGui::TableNextRow();
+			if (ImGui::TableSetColumnIndex(0)) {
+				ImGui::CollapsingHeader("^^^ Undo Commands ^^^ | vvv Redo Commands vvv ", ImGuiTreeNodeFlags_SpanAllColumns | ImGuiTreeNodeFlags_LabelSpanAllColumns | ImGuiTreeNodeFlags_Leaf);
+			}
+			
+			auto& redo_commands = undo_redo_system.redo_buffer.commands;
+			for (s64 i = redo_commands.count - 1; i >= 0; i -= 1) {
+				draw_undo_redo_command_row(redo_commands[i]);
+			}
+		}
+		ImGui::End();
 		
 		auto camera_entity = QueryEntityByGUID<CameraEntityType>(entity_system, world_entity.camera_entity->guid);
 		CameraControls(camera_entity, scene_focused, scene_hovered, mouse_lock, float2(window_pos), float2(window_size));
