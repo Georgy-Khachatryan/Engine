@@ -171,7 +171,8 @@ quat Math::AxisAngleToQuat(const float3& axis, float angle) {
 
 quat Math::AxisAxisToQuat(const float3& axis_0, const float3& axis_1) {
 	float quat_w = Math::Dot(axis_0, axis_1) + 1.f;
-	return quat_w != 0.f ? Math::Normalize(quat(Math::Cross(axis_0, axis_1), quat_w)) : quat(Math::BuildOrthonormalBasis(axis_0).r0, 0.f);
+	compile_const float eps = 1.f / (1024.f * 1024.f);
+	return fabsf(quat_w) > eps ? Math::Normalize(quat(Math::Cross(axis_0, axis_1), quat_w)) : quat(Math::BuildOrthonormalBasis(axis_0).r0, 0.f);
 }
 
 float3x3 Math::QuatToRotationMatrix(const quat& q) {

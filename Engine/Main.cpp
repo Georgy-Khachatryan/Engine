@@ -701,6 +701,9 @@ s32 main() {
 		CameraControls(camera_entity, scene_focused, scene_hovered, mouse_lock, float2(window_pos), float2(window_size));
 		
 		
+		ImGuiDrawList3D draw_list_3d;
+		draw_list_3d.alloc = &alloc;
+		
 		if (selected_entities_hash_table.count == 1) {
 			ImGui::Begin("Scene");
 			
@@ -740,8 +743,6 @@ s32 main() {
 				return ImVec2(uv_position.x, uv_position.y) * window_size + window_pos;
 			};
 			
-			auto* draw_list = ImGui::GetWindowDrawList();
-			
 			auto model_to_world = entity.rotation->rotation;
 			
 			auto ray = Math::RayInfoFromScreenUv((float2(ImGui::GetMousePos()) - float2(window_pos)) / float2(window_size), clip_to_view_coef);
@@ -754,6 +755,8 @@ s32 main() {
 			
 			BeginUndoRedoCommand("Transform Gizmo"_sl, undo_redo_system, entity_system, entity_guid);
 			
+			float min_hit_distance = FLT_MAX;
+			
 			for (u32 i = 0; i < 3; i += 1) {
 				ImGuiScopeID(i);
 				
@@ -761,8 +764,11 @@ s32 main() {
 				world_space_direction[i] = 1.f;
 				
 				float3 slider_direction = use_local_space ? model_to_world * world_space_direction : world_space_direction;
-				auto hit_result = Math::RayCylinderIntersect(ray, entity.position->position, entity.position->position + slider_direction, 0.1f);
-				if (hit_result.hit || ImGui::GetID("DragVector") == ImGui::GetActiveID()) {
+				auto hit_result = Math::RayCylinderIntersect(ray, entity.position->position, entity.position->position + slider_direction * 2.f, 0.1f);
+				
+				if (hit_result.hit && (hit_result.hit_distance < min_hit_distance) || ImGui::GetID("DragVector") == ImGui::GetActiveID()) {
+					min_hit_distance = hit_result.hit_distance;
+					
 					// Handle inputs via invisible button under mouse cursor.
 					ImGui::SetCursorScreenPos(ImGui::GetMousePos());
 					ImGui::SetNextItemAllowOverlap();
@@ -795,13 +801,14 @@ s32 main() {
 						float time = compute_slider_time();
 						
 						entity.position->position = initial_position + slider_direction * (time - initial_time);
-						draw_list->AddCircle(world_to_window(entity.position->position), 20.f, ~0u, 0, 1.f);
 					}
 				}
 				
-				u32 color = 0xFF'00'00'00u | (0xFFu << (i * 8));
-				draw_list->AddLine(world_to_window(entity.position->position), world_to_window(entity.position->position + slider_direction), color, 3.f);
+				u32 color = 0xCC000000u | (0xFFu << (i * 8));
+				draw_list_3d.AddArrow(entity.position->position, slider_direction, 2.f, 0.05f, color);
 			}
+			draw_list_3d.AddSphere(entity.position->position, 0.15f, 0xCCFFFFFF);
+			
 			
 			bool is_dragging = ImGui::IsAnyItemActive() && ImGui::IsWindowFocused();
 			bool is_dirty = EndUndoRedoCommand(undo_redo_system, entity_system, is_dragging);
@@ -889,20 +896,11 @@ s32 main() {
 			ArrayAppend(gpu_uploads, &alloc, gpu_mesh_asset_data);
 		}
 		
-		ImGuiDrawList3D draw_list;
-		draw_list.alloc = &alloc;
-		
-		draw_list.AddTorus(float3(0.f, 0.f, 4.f), Math::AxisAngleToQuat(float3(0.f, 0.f, 1.f), Math::PI * 0.5f * (float)ImGui::GetTime()) * Math::AxisAngleToQuat(float3(1.f, 0.f, 0.f), Math::PI * 0.25f), 2.f, 0.1f, 0xCC0000FF);
-		draw_list.AddSphere(float3(0.f, 0.f, 4.f), 0.15f, ImGui::GetColorU32(ImGuiCol_NavCursor));
-		draw_list.AddArrow(float3(0.f, 0.f, 4.f), float3(1.f, 0.f, 0.f), 2.f, 0.05f, 0xCC0000FF);
-		draw_list.AddArrow(float3(0.f, 0.f, 4.f), float3(0.f, 1.f, 0.f), 2.f, 0.05f, 0xCC00FF00);
-		draw_list.AddArrow(float3(0.f, 0.f, 4.f), float3(0.f, 0.f, 1.f), 2.f, 0.05f, 0xCCFF0000);
-		
 		
 		auto renderer_world = world_entity.renderer_world;
 		renderer_world->window_size = float2(window_size);
 		renderer_world->gpu_uploads = gpu_uploads;
-		renderer_world->debug_mesh_instance_arrays = draw_list.Flush();
+		renderer_world->debug_mesh_instance_arrays = draw_list_3d.Flush();
 		
 		BuildRenderPassesForFrame(&record_context, &entity_system, world_entity_guid);
 		

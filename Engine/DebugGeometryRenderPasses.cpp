@@ -187,6 +187,7 @@ void DebugGeometryRenderPass::CreatePipelines(PipelineLibrary* lib) {
 void DebugGeometryRenderPass::RecordPass(RecordContext* record_context) {
 	if (debug_mesh_instance_arrays.count == 0) return;
 	
+	CmdClearDepthStencil(record_context, VirtualResourceID::DepthStencil);
 	CmdSetRenderTargets(record_context, VirtualResourceID::SceneRadiance, VirtualResourceID::DepthStencil);
 	
 	CmdSetRootSignature(record_context, root_signature);
