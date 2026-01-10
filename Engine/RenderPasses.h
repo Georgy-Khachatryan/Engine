@@ -300,6 +300,28 @@ struct BasicMeshRenderPass {
 };
 
 
+NOTES(Meta::ShaderName{ "DebugGeometry.hlsl"_sl })
+enum struct DebugGeometryShaders : u32 {};
+SHADER_DEFINITION_GENERATED_CODE(DebugGeometryShaders);
+
+NOTES(Meta::RenderPass{ CommandQueueType::Graphics })
+struct DebugGeometryRenderPass {
+	RENDER_PASS_GENERATED_CODE();
+	
+	GpuAddress scene_constants;
+	
+	struct Descriptors : HLSL::BaseDescriptorTable {
+		HLSL::RegularBuffer<float4> vertices;
+	};
+	
+	struct RootSignature : HLSL::BaseRootSignature {
+		HLSL::ConstantBuffer<SceneConstants> scene;
+		HLSL::DescriptorTable<Descriptors> descriptor_table;
+	};
+	
+	inline static PipelineID pipeline_id;
+};
+
 
 NOTES(Meta::ShaderName{ "ImGui.hlsl"_sl })
 enum struct ImGuiShaders : u32 {};

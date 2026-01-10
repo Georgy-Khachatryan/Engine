@@ -38,6 +38,7 @@ inline u16 Min(u16 lh, u16 rh) { return lh < rh ? lh : rh; }
 inline u16 Max(u16 lh, u16 rh) { return lh > rh ? lh : rh; }
 inline u8  Min(u8  lh, u8  rh) { return lh < rh ? lh : rh; }
 inline u8  Max(u8  lh, u8  rh) { return lh > rh ? lh : rh; }
+inline float Min(float lh, float rh) { return lh < rh ? lh : rh; }
 inline float Max(float lh, float rh) { return lh > rh ? lh : rh; }
 
 template<typename T, T(FirstBitLowT)(T)>
