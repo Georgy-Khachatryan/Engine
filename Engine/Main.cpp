@@ -704,24 +704,8 @@ s32 main() {
 		ImGuiDrawList3D draw_list_3d;
 		draw_list_3d.alloc = &alloc;
 		
-		if (selected_entities_hash_table.count == 1) {
-			ImGui::Begin("Scene");
-			
+		{
 			auto camera_entity = QueryEntityByGUID<CameraEntityType>(entity_system, world_entity.camera_entity->guid);
-			auto& view_to_world_quat   = camera_entity.rotation->rotation;
-			auto& world_space_position = camera_entity.position->position;
-			
-			u64 entity_guid = (*selected_entities_hash_table.begin()).key;
-			
-			auto* element = HashTableFind(entity_system.entity_guid_to_entity_id, entity_guid);
-			DebugAssert(element, "Failed to find entity by GUID 0x%x.", entity_guid);
-			
-			auto typed_entity_id = element->value;
-			auto* array = &entity_system.entity_type_arrays[typed_entity_id.entity_type_id.index];
-			u32 entity_stream_index = array->entity_id_to_stream_index[typed_entity_id.entity_id.index];
-			auto entity = ExtractComponentStreams<EntityEditorQuery>(array, entity_stream_index);
-			
-			auto world_to_view = Math::Conjugate(view_to_world_quat);
 			
 			float vertical_fov_degrees = camera_entity.camera->vertical_fov_degrees;
 			float near_depth           = camera_entity.camera->near_depth;
@@ -734,81 +718,48 @@ s32 main() {
 			}
 			auto clip_to_view_coef = Math::ViewToClipInverse(view_to_clip_coef);
 			
-			auto world_to_window = [&](const float3& position)-> ImVec2 {
-				auto view_space_position = world_to_view * (position - world_space_position);
-				
-				auto clip_space_position = Math::TransformViewToClipSpace(view_space_position, view_to_clip_coef);
-				auto uv_position = Math::NdcToScreenUv(clip_space_position.xy / clip_space_position.w);
-				
-				return ImVec2(uv_position.x, uv_position.y) * window_size + window_pos;
-			};
+			auto view_space_ray  = Math::RayInfoFromScreenUv((float2(ImGui::GetMousePos()) - float2(window_pos)) / float2(window_size), clip_to_view_coef);
+			auto world_space_ray = Math::TransformRayViewToWorld(view_space_ray, camera_entity.position->position, camera_entity.rotation->rotation);
 			
-			auto model_to_world = entity.rotation->rotation;
+			draw_list_3d.mouse_ray = world_space_ray;
+		}
+		
+		if (selected_entities_hash_table.count == 1) {
+			ImGui::Begin("Scene");
+			ImGui::SetWindowDrawList3D(&draw_list_3d);
 			
-			auto ray = Math::RayInfoFromScreenUv((float2(ImGui::GetMousePos()) - float2(window_pos)) / float2(window_size), clip_to_view_coef);
-			ray.direction = view_to_world_quat * ray.direction;
-			ray.origin    = view_to_world_quat * ray.origin + world_space_position;
+			
+			u64 entity_guid = (*selected_entities_hash_table.begin()).key;
+			
+			auto* element = HashTableFind(entity_system.entity_guid_to_entity_id, entity_guid);
+			DebugAssert(element, "Failed to find entity by GUID 0x%x.", entity_guid);
+			
+			auto typed_entity_id = element->value;
+			auto* array = &entity_system.entity_type_arrays[typed_entity_id.entity_type_id.index];
+			u32 entity_stream_index = array->entity_id_to_stream_index[typed_entity_id.entity_id.index];
+			auto entity = ExtractComponentStreams<EntityEditorQuery>(array, entity_stream_index);
+			
 			
 			static bool use_local_space = true;
 			if (ImGui::Shortcut(ImGuiKey_1)) use_local_space = true;
 			if (ImGui::Shortcut(ImGuiKey_2)) use_local_space = false;
 			
+			
 			BeginUndoRedoCommand("Transform Gizmo"_sl, undo_redo_system, entity_system, entity_guid);
 			
-			float min_hit_distance = FLT_MAX;
-			
+			auto model_to_world = entity.rotation->rotation;
 			for (u32 i = 0; i < 3; i += 1) {
 				ImGuiScopeID(i);
 				
 				auto world_space_direction = float3(0.f, 0.f, 0.f);
 				world_space_direction[i] = 1.f;
 				
-				float3 slider_direction = use_local_space ? model_to_world * world_space_direction : world_space_direction;
-				auto hit_result = Math::RayCylinderIntersect(ray, entity.position->position, entity.position->position + slider_direction * 2.f, 0.1f);
-				
-				if (hit_result.hit && (hit_result.hit_distance < min_hit_distance) || ImGui::GetID("DragVector") == ImGui::GetActiveID()) {
-					min_hit_distance = hit_result.hit_distance;
-					
-					// Handle inputs via invisible button under mouse cursor.
-					ImGui::SetCursorScreenPos(ImGui::GetMousePos());
-					ImGui::SetNextItemAllowOverlap();
-					ImGui::InvisibleButton("DragVector", ImVec2(1.f, 1.f));
-					
-					static float  initial_time = 0.f;
-					static float3 initial_position;
-					
-					auto compute_slider_time = [&]()-> float {
-						// Build a plane passing through slider_direction and perpendicular to ray.direction.
-						auto bitangent = Math::Cross(ray.direction, slider_direction);
-						
-						compile_const float eps = 1.f / (1024.f * 1024.f);
-						if (Math::LengthSquare(bitangent) < eps) return 0.f;
-						
-						auto normal = Math::Normalize(Math::Cross(slider_direction, bitangent));
-						
-						auto hit_result = Math::RayPlaneIntersect(ray, normal, -Math::Dot(initial_position, normal));
-						if (hit_result.hit == false || hit_result.hit_distance <= 0.f) return 0.f;
-						
-						return Math::Dot(ray.origin + ray.direction * hit_result.hit_distance - initial_position, slider_direction);
-					};
-					
-					if (ImGui::IsItemActivated()) {
-						initial_position = entity.position->position;
-						initial_time     = compute_slider_time();
-					}
-					
-					if (ImGui::IsItemActive() && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
-						float time = compute_slider_time();
-						
-						entity.position->position = initial_position + slider_direction * (time - initial_time);
-					}
-				}
+				float3 direction = use_local_space ? model_to_world * world_space_direction : world_space_direction;
 				
 				u32 color = 0xCC000000u | (0xFFu << (i * 8));
-				draw_list_3d.AddArrow(entity.position->position, slider_direction, 2.f, 0.05f, color);
+				ImGui::DragVector3D("EntityPosition", entity.position->position, direction, 2.f, 0.05f, color);
 			}
 			draw_list_3d.AddSphere(entity.position->position, 0.15f, 0xCCFFFFFF);
-			
 			
 			bool is_dragging = ImGui::IsAnyItemActive() && ImGui::IsWindowFocused();
 			bool is_dirty = EndUndoRedoCommand(undo_redo_system, entity_system, is_dragging);

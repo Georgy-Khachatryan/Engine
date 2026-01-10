@@ -10,6 +10,8 @@ struct HeapAllocator;
 struct String;
 struct SystemWindow;
 struct EntityTypeID;
+struct ImGuiContext3D;
+struct ImGuiDrawList3D;
 
 void ImGuiInitializeContext(HeapAllocator* heap);
 void ImGuiInitializeWindow(SystemWindow* window);
@@ -41,6 +43,16 @@ namespace ImGui {
 	bool TableSliderFloat(const char* label, float* v, float v_min, float v_max, const char* format = "%.3f", ImGuiSliderFlags flags = 0);
 	bool TableCombo(const char* label, s32* current_item, const char* items_separated_by_zeros, s32 popup_max_height_in_items = -1);
 	bool TableEntityComboBox(const char* label, EntitySystem* entity_system, u64* guid, EntityTypeID entity_type_id);
+	
+	
+	void CreateContext3D();
+	void DestroyContext3D();
+	ImGuiContext3D* GetCurrentContext3D();
+	
+	void SetWindowDrawList3D(ImGuiDrawList3D* draw_list_3d);
+	ImGuiDrawList3D* GetWindowDrawList3D();
+	
+	bool DragVector3D(const char* label, float3& position, const float3& direction, float length, float radius, u32 color);
 }
 
 
@@ -54,6 +66,9 @@ struct ImGuiDrawList3D {
 	FixedCountArray<Array<DebugMeshInstance>, 4> debug_mesh_instances_by_type;
 	Array<DebugMeshInstanceArray> debug_mesh_instance_arrays;
 	
+	Math::RayInfo mouse_ray;
+	float min_hit_distance = FLT_MAX;
+	
 	void AddSphere(const float3& position, float radius, u32 color);
 	void AddSphere(const float3& position, const quat& rotation, const float3& radius, u32 color);
 	void AddCube(const float3& position, const quat& rotation, const float3& half_extent, u32 color);
@@ -65,4 +80,10 @@ struct ImGuiDrawList3D {
 	void AddInstanceOfType(DebugMeshInstanceType instance_type, const float3& position, u32 color, const quat& rotation, const float4& packed_data);
 	
 	ArrayView<DebugMeshInstanceArray> Flush();
+};
+
+struct ImGuiContext3D {
+	// DragVector3D:
+	float3 initial_position;
+	float  initial_time = 0.f;
 };

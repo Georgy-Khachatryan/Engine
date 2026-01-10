@@ -91,6 +91,15 @@ Math::RayInfo Math::RayInfoFromScreenUv(float2 uv, const float4& clip_to_view_co
 	return Math::RayInfoFromNdc(Math::ScreenUvToNdc(uv), clip_to_view_coef);
 }
 
+Math::RayInfo Math::TransformRayViewToWorld(const Math::RayInfo& view_space_ray, const float3& world_space_position, const quat& view_to_world_rotation) {
+	Math::RayInfo world_space_ray;
+	world_space_ray.direction = view_to_world_rotation * view_space_ray.direction;
+	world_space_ray.origin    = view_to_world_rotation * view_space_ray.origin + world_space_position;
+	
+	return world_space_ray;
+}
+
+
 // Cylinder defined by extremes a and b, and radius ra. https://www.shadertoy.com/view/4lcSRn see license in THIRD_PARTY_LICENSES.md
 Math::RayHitResult Math::RayCylinderIntersect(const Math::RayInfo& ray, const float3& a, const float3& b, float ra) {
 	auto ba = b - a;

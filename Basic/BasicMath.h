@@ -163,6 +163,7 @@ namespace Math {
 	
 	RayInfo RayInfoFromNdc(float2 ndc, const float4& clip_to_view_coef);
 	RayInfo RayInfoFromScreenUv(float2 uv, const float4& clip_to_view_coef);
+	RayInfo TransformRayViewToWorld(const RayInfo& view_space_ray, const float3& world_space_position, const quat& view_to_world_rotation);
 	
 	RayHitResult RayCylinderIntersect(const RayInfo& ray, const float3& a, const float3& b, float r);
 	RayHitResult RayPlaneIntersect(const RayInfo& ray, const float3& normal, float distance);

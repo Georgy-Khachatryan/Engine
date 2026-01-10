@@ -298,6 +298,79 @@ bool ImGui::TableEntityComboBox(const char* label, EntitySystem* entity_system, 
 }
 
 
+ImGuiContext3D* GImGui3D = nullptr;
+
+void ImGui::CreateContext3D() { GImGui3D = IM_NEW(ImGuiContext3D)(); }
+void ImGui::DestroyContext3D() { auto* context = GImGui3D; GImGui3D = nullptr; IM_DELETE(context); }
+ImGuiContext3D* ImGui::GetCurrentContext3D() { auto* context = GImGui3D; DebugAssert(context, "Missing ImGuiContext3D"); return context; }
+
+void ImGui::SetWindowDrawList3D(ImGuiDrawList3D* draw_list_3d) {
+	auto* window  = ImGui::GetCurrentWindow();
+	auto* storage = ImGui::GetStateStorage();
+	storage->SetVoidPtr(ImGui::GetIDWithSeed("ImGuiDrawList3D", nullptr, window->ID), draw_list_3d);
+}
+
+ImGuiDrawList3D* ImGui::GetWindowDrawList3D() {
+	auto* window  = ImGui::GetCurrentWindow();
+	auto* storage = ImGui::GetStateStorage();
+	auto* draw_list_3d = (ImGuiDrawList3D*)storage->GetVoidPtr(ImGui::GetIDWithSeed("ImGuiDrawList3D", nullptr, window->ID));
+	DebugAssert(draw_list_3d, "Missing ImGuiDrawList3D");
+	
+	return draw_list_3d;
+}
+
+bool ImGui::DragVector3D(const char* label, float3& position, const float3& direction, float length, float radius, u32 color) {
+	auto* draw_list_3d = ImGui::GetWindowDrawList3D();
+	auto* context = ImGui::GetCurrentContext3D();
+	
+	auto& ray = draw_list_3d->mouse_ray;
+	auto hit_result = Math::RayCylinderIntersect(ray, position, position + direction * (length * 1.05f), radius * 2.f);
+	
+	bool result = false;
+	bool hovered = false;
+	
+	auto& min_hit_distance = draw_list_3d->min_hit_distance;
+	if (hit_result.hit && (hit_result.hit_distance < min_hit_distance) || ImGui::GetID(label) == ImGui::GetActiveID()) {
+		min_hit_distance = hit_result.hit_distance;
+		
+		ImGui::SetCursorScreenPos(ImGui::GetMousePos());
+		ImGui::SetNextItemAllowOverlap();
+		result = ImGui::InvisibleButton(label, ImVec2(1.f, 1.f), ImGuiButtonFlags_PressedOnClick);
+		
+		auto compute_slider_time = [&]()-> float {
+			// Build a plane passing through direction and perpendicular to ray.direction.
+			auto bitangent = Math::Cross(ray.direction, direction);
+			
+			compile_const float eps = 1.f / (1024.f * 1024.f);
+			if (Math::LengthSquare(bitangent) < eps) return 0.f;
+			
+			auto normal = Math::Normalize(Math::Cross(direction, bitangent));
+			
+			auto hit_result = Math::RayPlaneIntersect(ray, normal, -Math::Dot(context->initial_position, normal));
+			if (hit_result.hit == false || hit_result.hit_distance <= 0.f) return 0.f;
+			
+			return Math::Dot(ray.origin + ray.direction * hit_result.hit_distance - context->initial_position, direction);
+		};
+		
+		if (ImGui::IsItemActivated()) {
+			context->initial_position = position;
+			context->initial_time     = compute_slider_time();
+		}
+		
+		if (ImGui::IsItemActive() && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+			float time = compute_slider_time();
+			position = context->initial_position + direction * (time - context->initial_time);
+		}
+		
+		hovered = ImGui::IsItemHovered();
+	}
+	
+	draw_list_3d->AddArrow(position, direction, hovered ? length * 1.05f : length, radius, color);
+	
+	return result;
+}
+
+
 void ImGuiDrawList3D::AddInstanceOfType(DebugMeshInstanceType instance_type, const float3& position, u32 color, const quat& rotation, const float4& packed_data) {
 	auto& debug_mesh_instances = debug_mesh_instances_by_type[(u32)instance_type];
 	if (debug_mesh_instances.count >= debug_mesh_instances.capacity) {
@@ -356,7 +429,7 @@ void ImGuiDrawList3D::AddArrow(const float3& position, const float3& direction, 
 	
 	float arrow_head_radius  = radius * 2.f;
 	float arrow_head_length  = arrow_head_radius * 3.f; // 3:1 arrow_head_length to arrow_head_diameter ratio.
-	float arrow_shaft_length = length - arrow_head_length * 2.f;
+	float arrow_shaft_length = Max(length - arrow_head_length, 0.f);
 	
 	AddCylinder(position, rotation, arrow_shaft_length, radius, radius, color);
 	AddCylinder(position + direction * arrow_shaft_length, rotation, arrow_head_length, arrow_head_radius, 0.f, color);

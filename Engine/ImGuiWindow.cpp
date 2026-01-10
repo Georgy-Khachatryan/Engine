@@ -2,6 +2,7 @@
 #include "Basic/BasicArray.h"
 #include "GraphicsApi/GraphicsApi.h"
 #include "SystemWindow.h"
+#include "ImGuiCustomWidgets.h"
 
 #include <SDK/imgui/imgui.h>
 #include <SDK/imgui/imgui_internal.h>
@@ -88,6 +89,7 @@ void ImGuiInitializeContext(HeapAllocator* heap) {
 	
 	ImGui_ImplWin32_EnableDpiAwareness();
 	ImGui::CreateContext();
+	ImGui::CreateContext3D();
 	
 	
 	auto& io = ImGui::GetIO();
@@ -113,6 +115,7 @@ void ImGuiReleaseContext(GraphicsContext* graphics_context) {
 	}
 	
 	ImGui_ImplWin32_Shutdown();
+	ImGui::DestroyContext3D();
 	ImGui::DestroyContext();
 }
 
