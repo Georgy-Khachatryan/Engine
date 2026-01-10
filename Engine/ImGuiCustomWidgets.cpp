@@ -168,6 +168,9 @@ bool ImGui::DragFloatWithReset(const char* label, float* data, u32 component_cou
 }
 
 bool ImGui::EntityComboBox(const char* label, EntitySystem* entity_system, u64* selected_guid, EntityTypeID entity_type_id) {
+	auto* window = ImGui::GetCurrentWindow();
+	if (window->SkipItems) return false;
+	
 	u64 current_guid = *selected_guid;
 	const char* current_name = "Select Entity";
 	
@@ -222,6 +225,12 @@ bool ImGui::EntityComboBox(const char* label, EntitySystem* entity_system, u64* 
 	return (current_guid != *selected_guid);
 }
 
+bool ImGui::ImageButtonEx(const char* str_id, ImTextureRef tex_ref, const ImVec2& image_size, ImGuiButtonFlags flags) {
+	auto* window = ImGui::GetCurrentWindow();
+	if (window->SkipItems) return false;
+	
+	return ImGui::ImageButtonEx(window->GetID(str_id), tex_ref, image_size, ImVec2(0.f, 0.f), ImVec2(1.f, 1.f), ImVec4(0.f, 0.f, 0.f, 0.f), ImVec4(1.f, 1.f, 1.f, 1.f), flags);
+}
 
 bool ImGui::BeginTableItem(const char* label) {
 	ImGui::TableNextRow();

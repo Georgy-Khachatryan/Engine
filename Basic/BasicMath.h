@@ -145,17 +145,26 @@ namespace Math {
 		float3 direction;
 	};
 	
+	struct RayHitResult {
+		float hit_distance = 0.f;
+		bool hit = false;
+	};
+	
 	bool IsPerspectiveMatrix(const float4& coefficients);
 	bool IsOrthographicMatrix(const float4& coefficients);
 	float4 PerspectiveViewToClip(float vertical_fov, float2 viewport_size, float near_depth);
 	float4 OrthographicViewToClip(float2 size, float far_depth);
 	float4 ViewToClipInverse(const float4& view_to_clip_coef);
+	float4 TransformViewToClipSpace(const float3& view_space_position, const float4& view_to_clip_coef);
 	
 	inline float2 NdcToScreenUv(const float2& ndc) { return float2(ndc.x * 0.5f + 0.5f, 0.5f - ndc.y * 0.5f); }
 	inline float2 ScreenUvToNdc(const float2& uv)  { return float2(uv.x * 2.f - 1.f, 1.f - uv.y * 2.f); }
 	
 	RayInfo RayInfoFromNdc(float2 ndc, const float4& clip_to_view_coef);
 	RayInfo RayInfoFromScreenUv(float2 uv, const float4& clip_to_view_coef);
+	
+	RayHitResult RayCylinderIntersect(const RayInfo& ray, const float3& a, const float3& b, float r);
+	RayHitResult RayPlaneIntersect(const RayInfo& ray, const float3& normal, float distance);
 	
 	quat AxisAngleToQuat(const float3& axis, float angle);
 	float3x3 QuatToRotationMatrix(const quat& q);

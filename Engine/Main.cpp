@@ -151,7 +151,7 @@ static void DuplicateSelectedEntities(StackAllocator* alloc, EntitySystem& entit
 	}
 	
 	
-	BeginUndoRedoCommand(undo_redo_system, entity_system, selection_state_entity);
+	BeginUndoRedoCommand("Select Duplicated Entities"_sl, undo_redo_system, entity_system, selection_state_entity);
 	HashTableClear(selected_entities_hash_table);
 	for (u64 guid : new_entity_guids) {
 		HashTableAddOrFind(selected_entities_hash_table, guid);
@@ -168,7 +168,7 @@ static void RemoveSelectedEntities(EntitySystem& entity_system, UndoRedoSystem& 
 		RemoveEntityByGUID(entity_system, guid);
 	}
 	
-	BeginUndoRedoCommand(undo_redo_system, entity_system, selection_state_entity);
+	BeginUndoRedoCommand("Unselect Removed Entities"_sl, undo_redo_system, entity_system, selection_state_entity);
 	HashTableClear(selected_entities_hash_table);
 	EndUndoRedoCommand(undo_redo_system, entity_system);
 	
@@ -329,7 +329,8 @@ s32 main() {
 		
 		auto window_size = ImGui::GetWindowSize();
 		auto window_pos  = ImGui::GetWindowPos();
-		ImGui::ImageButton("Scene", scene_descriptor_heap_offset, window_size);
+		ImGui::SetNextItemAllowOverlap();
+		ImGui::ImageButtonEx("Scene", scene_descriptor_heap_offset, window_size, ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight);
 		bool scene_hovered = ImGui::IsItemHovered();
 		bool scene_focused = ImGui::IsItemFocused();
 		
@@ -380,7 +381,7 @@ s32 main() {
 					BeginUndoRedoGroup(undo_redo_system);
 					UndoRedoCreateEntity(undo_redo_system, entity_system, entity.guid->guid);
 					
-					BeginUndoRedoCommand(undo_redo_system, entity_system, world_entity_guid);
+					BeginUndoRedoCommand("Select Created Entity"_sl, undo_redo_system, entity_system, world_entity_guid);
 					HashTableClear(selected_entities_hash_table);
 					HashTableAddOrFind(selected_entities_hash_table, &entity_system.heap, entity.guid->guid);
 					EndUndoRedoCommand(undo_redo_system, entity_system);
@@ -402,7 +403,7 @@ s32 main() {
 			}
 			
 			auto apply_requests = [&](ImGuiMultiSelectIO* ms_io) {
-				BeginUndoRedoCommand(undo_redo_system, entity_system, world_entity_guid);
+				BeginUndoRedoCommand("Select Entities"_sl, undo_redo_system, entity_system, world_entity_guid);
 				
 				for (auto& request : ms_io->Requests) {
 					if (request.Type == ImGuiSelectionRequestType_SetAll) {
@@ -460,6 +461,7 @@ s32 main() {
 				clipper.Begin(entity_count);
 				if (ms_io->RangeSrcItem != -1) clipper.IncludeItemByIndex((s32)ms_io->RangeSrcItem);
 				
+				ImGui::PushStyleColor(ImGuiCol_NavCursor, 0u);
 				while (clipper.Step()) {
 					u32 global_index = 0;
 					for (auto* entity_array : entity_view) {
@@ -491,7 +493,7 @@ s32 main() {
 								if (ImGui::BeginPopupContextItem()) {
 									if (entity_array->entity_type_id.index == ECS::GetEntityTypeID<CameraEntityType>::id.index) {
 										if (ImGui::Selectable("Set Active Camera")) {
-											BeginUndoRedoCommand(undo_redo_system, entity_system, world_entity_guid);
+											BeginUndoRedoCommand("Set Active Camera"_sl, undo_redo_system, entity_system, world_entity_guid);
 											world_entity.camera_entity->guid = guid;
 											EndUndoRedoCommand(undo_redo_system, entity_system);
 										}
@@ -510,7 +512,7 @@ s32 main() {
 								
 								if (ImGui::IsItemClicked(ImGuiMouseButton_Left) && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
 									if (entity_array->entity_type_id.index == ECS::GetEntityTypeID<CameraEntityType>::id.index) {
-										BeginUndoRedoCommand(undo_redo_system, entity_system, world_entity_guid);
+										BeginUndoRedoCommand("Select Active Camera"_sl, undo_redo_system, entity_system, world_entity_guid);
 										world_entity.camera_entity->guid = guid;
 										EndUndoRedoCommand(undo_redo_system, entity_system);
 									}
@@ -527,6 +529,7 @@ s32 main() {
 						}
 					}
 				}
+				ImGui::PopStyleColor();
 				
 				ms_io = ImGui::EndMultiSelect();
 				apply_requests(ms_io);
@@ -582,7 +585,7 @@ s32 main() {
 				u32 entity_stream_index = array->entity_id_to_stream_index[typed_entity_id.entity_id.index];
 				auto entity = ExtractComponentStreams<EntityEditorQuery>(array, entity_stream_index);
 				
-				BeginUndoRedoCommand(undo_redo_system, entity_system, entity_guid);
+				BeginUndoRedoCommand("Entity Editor"_sl, undo_redo_system, entity_system, entity_guid);
 				
 				if (entity.guid) {
 					auto guid_string = StringFormat(&alloc, "0x%"_sl, (void*)entity.guid->guid);
@@ -696,6 +699,119 @@ s32 main() {
 		
 		auto camera_entity = QueryEntityByGUID<CameraEntityType>(entity_system, world_entity.camera_entity->guid);
 		CameraControls(camera_entity, scene_focused, scene_hovered, mouse_lock, float2(window_pos), float2(window_size));
+		
+		
+		if (selected_entities_hash_table.count == 1) {
+			ImGui::Begin("Scene");
+			
+			auto camera_entity = QueryEntityByGUID<CameraEntityType>(entity_system, world_entity.camera_entity->guid);
+			auto& view_to_world_quat   = camera_entity.rotation->rotation;
+			auto& world_space_position = camera_entity.position->position;
+			
+			u64 entity_guid = (*selected_entities_hash_table.begin()).key;
+			
+			auto* element = HashTableFind(entity_system.entity_guid_to_entity_id, entity_guid);
+			DebugAssert(element, "Failed to find entity by GUID 0x%x.", entity_guid);
+			
+			auto typed_entity_id = element->value;
+			auto* array = &entity_system.entity_type_arrays[typed_entity_id.entity_type_id.index];
+			u32 entity_stream_index = array->entity_id_to_stream_index[typed_entity_id.entity_id.index];
+			auto entity = ExtractComponentStreams<EntityEditorQuery>(array, entity_stream_index);
+			
+			auto world_to_view = Math::Conjugate(view_to_world_quat);
+			
+			float vertical_fov_degrees = camera_entity.camera->vertical_fov_degrees;
+			float near_depth           = camera_entity.camera->near_depth;
+			
+			float4 view_to_clip_coef;
+			if (camera_entity.camera->transform_type == CameraTransformType::Perspective) {
+				view_to_clip_coef = Math::PerspectiveViewToClip(vertical_fov_degrees * Math::degrees_to_radians, float2(window_size), near_depth);
+			} else {
+				view_to_clip_coef = Math::OrthographicViewToClip(float2(window_size) * vertical_fov_degrees * (1.f / window_size.x), 1024.f);
+			}
+			auto clip_to_view_coef = Math::ViewToClipInverse(view_to_clip_coef);
+			
+			auto world_to_window = [&](const float3& position)-> ImVec2 {
+				auto view_space_position = world_to_view * (position - world_space_position);
+				
+				auto clip_space_position = Math::TransformViewToClipSpace(view_space_position, view_to_clip_coef);
+				auto uv_position = Math::NdcToScreenUv(clip_space_position.xy / clip_space_position.w);
+				
+				return ImVec2(uv_position.x, uv_position.y) * window_size + window_pos;
+			};
+			
+			auto* draw_list = ImGui::GetWindowDrawList();
+			
+			auto model_to_world = entity.rotation->rotation;
+			
+			auto ray = Math::RayInfoFromScreenUv((float2(ImGui::GetMousePos()) - float2(window_pos)) / float2(window_size), clip_to_view_coef);
+			ray.direction = view_to_world_quat * ray.direction;
+			ray.origin    = view_to_world_quat * ray.origin + world_space_position;
+			
+			static bool use_local_space = true;
+			if (ImGui::Shortcut(ImGuiKey_1)) use_local_space = true;
+			if (ImGui::Shortcut(ImGuiKey_2)) use_local_space = false;
+			
+			BeginUndoRedoCommand("Transform Gizmo"_sl, undo_redo_system, entity_system, entity_guid);
+			
+			for (u32 i = 0; i < 3; i += 1) {
+				ImGuiScopeID(i);
+				
+				auto world_space_direction = float3(0.f, 0.f, 0.f);
+				world_space_direction[i] = 1.f;
+				
+				float3 slider_direction = use_local_space ? model_to_world * world_space_direction : world_space_direction;
+				auto hit_result = Math::RayCylinderIntersect(ray, entity.position->position, entity.position->position + slider_direction, 0.1f);
+				if (hit_result.hit || ImGui::GetID("DragVector") == ImGui::GetActiveID()) {
+					// Handle inputs via invisible button under mouse cursor.
+					ImGui::SetCursorScreenPos(ImGui::GetMousePos());
+					ImGui::SetNextItemAllowOverlap();
+					ImGui::InvisibleButton("DragVector", ImVec2(1.f, 1.f));
+					
+					static float  initial_time = 0.f;
+					static float3 initial_position;
+					
+					auto compute_slider_time = [&]()-> float {
+						// Build a plane passing through slider_direction and perpendicular to ray.direction.
+						auto bitangent = Math::Cross(ray.direction, slider_direction);
+						
+						compile_const float eps = 1.f / (1024.f * 1024.f);
+						if (Math::LengthSquare(bitangent) < eps) return 0.f;
+						
+						auto normal = Math::Normalize(Math::Cross(slider_direction, bitangent));
+						
+						auto hit_result = Math::RayPlaneIntersect(ray, normal, -Math::Dot(initial_position, normal));
+						if (hit_result.hit == false || hit_result.hit_distance <= 0.f) return 0.f;
+						
+						return Math::Dot(ray.origin + ray.direction * hit_result.hit_distance - initial_position, slider_direction);
+					};
+					
+					if (ImGui::IsItemActivated()) {
+						initial_position = entity.position->position;
+						initial_time     = compute_slider_time();
+					}
+					
+					if (ImGui::IsItemActive() && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+						float time = compute_slider_time();
+						
+						entity.position->position = initial_position + slider_direction * (time - initial_time);
+						draw_list->AddCircle(world_to_window(entity.position->position), 20.f, ~0u, 0, 1.f);
+					}
+				}
+				
+				u32 color = 0xFF'00'00'00u | (0xFFu << (i * 8));
+				draw_list->AddLine(world_to_window(entity.position->position), world_to_window(entity.position->position + slider_direction), color, 3.f);
+			}
+			
+			bool is_dragging = ImGui::IsAnyItemActive() && ImGui::IsWindowFocused();
+			bool is_dirty = EndUndoRedoCommand(undo_redo_system, entity_system, is_dragging);
+			
+			if (is_dirty) {
+				BitArraySetBit(array->dirty_mask, entity_stream_index);
+			}
+			
+			ImGui::End();
+		}
 		
 		
 		Array<GpuComponentUploadBuffer> gpu_uploads;

@@ -34,6 +34,8 @@ struct UndoRedoSystem {
 	
 	UndoRedoCommand cross_frame_command;
 	UndoRedoCommand pending_command;
+	u64 pending_command_id     = 0;
+	u64 cross_frame_command_id = 0;
 	
 	// Zero group index means no group.
 	u64 group_index_allocator = 1;
@@ -45,7 +47,7 @@ void ReleaseUndoRedoSystem(UndoRedoSystem& system);
 
 void BeginUndoRedoGroup(UndoRedoSystem& system);
 void EndUndoRedoGroup(UndoRedoSystem& system);
-void BeginUndoRedoCommand(UndoRedoSystem& system, EntitySystem& entity_system, u64 entity_guid);
+void BeginUndoRedoCommand(String label, UndoRedoSystem& system, EntitySystem& entity_system, u64 entity_guid);
 bool EndUndoRedoCommand(UndoRedoSystem& system, EntitySystem& entity_system, bool is_dragging = false);
 void UndoRedoRemoveEntity(UndoRedoSystem& system, EntitySystem& entity_system, u64 entity_guid);
 void UndoRedoCreateEntity(UndoRedoSystem& system, EntitySystem& entity_system, u64 entity_guid);

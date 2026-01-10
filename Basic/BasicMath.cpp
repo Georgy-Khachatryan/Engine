@@ -46,7 +46,7 @@ float4 Math::OrthographicViewToClip(float2 size, float far_depth) {
 
 float4 Math::ViewToClipInverse(const float4& view_to_clip_coef) {
 	float4 clip_to_view_coef;
-	if (view_to_clip_coef.w == 0.f) {
+	if (Math::IsPerspectiveMatrix(view_to_clip_coef)) {
 		clip_to_view_coef.xy = float2(1.f) / view_to_clip_coef.xy;
 		clip_to_view_coef.z  = 1.f / view_to_clip_coef.z;
 		clip_to_view_coef.w  = 0.f;
@@ -55,6 +55,21 @@ float4 Math::ViewToClipInverse(const float4& view_to_clip_coef) {
 		clip_to_view_coef.w   = 1.f;
 	}
 	return clip_to_view_coef;
+}
+
+float4 Math::TransformViewToClipSpace(const float3& view_space_position, const float4& view_to_clip_coef) {
+	float4 result;
+	result.xy = view_space_position.xy * view_to_clip_coef.xy;
+	
+	if (Math::IsPerspectiveMatrix(view_to_clip_coef)) {
+		result.z = view_to_clip_coef.z;
+		result.w = view_space_position.z;
+	} else {
+		result.z = view_space_position.z * view_to_clip_coef.z + 1.f;
+		result.w = 1.f;
+	}
+	
+	return result;
 }
 
 
@@ -76,6 +91,60 @@ Math::RayInfo Math::RayInfoFromScreenUv(float2 uv, const float4& clip_to_view_co
 	return Math::RayInfoFromNdc(Math::ScreenUvToNdc(uv), clip_to_view_coef);
 }
 
+// Cylinder defined by extremes a and b, and radius ra. https://www.shadertoy.com/view/4lcSRn see license in THIRD_PARTY_LICENSES.md
+Math::RayHitResult Math::RayCylinderIntersect(const Math::RayInfo& ray, const float3& a, const float3& b, float ra) {
+	auto ba = b - a;
+	auto oc = ray.origin - a;
+	
+	float baba = Math::Dot(ba, ba);
+	float bard = Math::Dot(ba, ray.direction);
+	float baoc = Math::Dot(ba, oc);
+	
+	float k2 = baba - bard * bard;
+	float k1 = baba * Math::Dot(oc, ray.direction) - baoc * bard;
+	float k0 = baba * Math::Dot(oc, oc) - baoc * baoc - ra * ra * baba;
+	
+	// Handle raycasts parallel to the cylinder axis:
+	compile_const float eps = 1.f / (1024.f * 1024.f);
+	if (fabsf(k2) <= eps) {
+		float ta = -Math::Dot(ray.origin - a, ba) / bard;
+		float tb = ta + baba / bard;
+		
+		float4 pt = (bard > 0.f) ? float4(a, -ta) : float4(b, tb);
+		
+		float3 q = ray.origin + ray.direction * fabsf(pt.w) - pt.xyz;
+		if (Math::Dot(q, q) > ra * ra) return {};
+		
+		return { fabsf(pt.w), true };
+	}
+	
+	float h = k1 * k1 - k2 * k0;
+	if (h < 0.f) return {}; // No intersection.
+	
+	h = sqrtf(h);
+	float t = (-k1 - h) / k2;
+	
+	// Body:
+	float y = baoc + t * bard;
+	if (y > 0.f && y < baba) return { t, true };
+	
+	// Caps:
+	t = ((y < 0.f ? 0.f : baba) - baoc) / bard;
+	
+	if (fabsf(k1 + k2 * t) < h) {
+		return { t, true };
+	}
+	
+	return {};
+}
+
+// The plane is defined by Math::Dot(normal, p) + distance = 0. Distance can be computed as -Math::Dot(normal, point_on_plane).
+Math::RayHitResult Math::RayPlaneIntersect(const Math::RayInfo& ray, const float3& normal, float distance) {
+	float denominator = Math::Dot(normal, ray.direction);
+	if (denominator == 0.f) return {};
+	
+	return { (Math::Dot(normal, ray.origin) + distance) / -denominator, true };
+}
 
 quat Math::AxisAngleToQuat(const float3& axis, float angle) {
 	float half_angle = angle * 0.5f;

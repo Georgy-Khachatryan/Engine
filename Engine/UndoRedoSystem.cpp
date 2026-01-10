@@ -26,6 +26,7 @@ static void FlushCrossFrameUndoCommand(UndoRedoSystem& system) {
 	
 	AppendUndoCommand(system, system.cross_frame_command);
 	system.cross_frame_command = {};
+	system.cross_frame_command_id = 0;
 }
 
 static UndoRedoCommand CreateUndoRedoCommand(UndoRedoBuffer& undo_redo_buffer, EntitySystem& entity_system, u64 entity_guid, UndoRedoCommandType command_type, u64 group_index) {
@@ -98,10 +99,13 @@ void EndUndoRedoGroup(UndoRedoSystem& system) {
 	system.group_index = 0;
 }
 
-void BeginUndoRedoCommand(UndoRedoSystem& system, EntitySystem& entity_system, u64 entity_guid) {
+void BeginUndoRedoCommand(String label, UndoRedoSystem& system, EntitySystem& entity_system, u64 entity_guid) {
 	DebugAssert(system.pending_command.entity_guid == 0, "BeginUndoRedoCommand/EndUndoRedoCommand mismatch.");
 	
-	if (system.cross_frame_command.entity_guid == entity_guid) { // We already have a command stashed away.
+	u64 id = ComputeHash(label); // IDs are used to distinguish between different Begin/End scopes that could edit the same entity.
+	system.pending_command_id = id;
+	
+	if ((system.cross_frame_command.entity_guid == entity_guid) && (system.cross_frame_command_id == id)) { // We already have a command stashed away.
 		system.pending_command = system.cross_frame_command;
 		system.cross_frame_command = {};
 	} else {
@@ -124,6 +128,7 @@ bool EndUndoRedoCommand(UndoRedoSystem& system, EntitySystem& entity_system, boo
 	if (is_dragging) { // Keep the pending command on the stack across frames.
 		FlushCrossFrameUndoCommand(system);
 		system.cross_frame_command = old_command;
+		system.cross_frame_command_id = system.pending_command_id;
 	} else if (entity_changed) { // Entity changed and we're not dragging, flush the whole undo stack.
 		FlushCrossFrameUndoCommand(system);
 		AppendUndoCommand(system, old_command);
@@ -132,6 +137,7 @@ bool EndUndoRedoCommand(UndoRedoSystem& system, EntitySystem& entity_system, boo
 	}
 	
 	system.pending_command = {};
+	system.pending_command_id = 0;
 	
 	return entity_changed;
 }
