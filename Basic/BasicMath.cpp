@@ -146,11 +146,32 @@ Math::RayHitResult Math::RayPlaneIntersect(const Math::RayInfo& ray, const float
 	return { (Math::Dot(normal, ray.origin) + distance) / -denominator, true };
 }
 
+// Tom Duff, James Burgess, Per Christensen, Christophe Hery, Andrew Kensler, Max Liani, and Ryusuke Villemin.
+// 2017. Building an Orthonormal Basis, Revisited. https://jcgt.org/published/0006/01/01/
+float3x3 Math::BuildOrthonormalBasis(const float3& normal) {
+	float sign = normal.z < 0.f ? -1.f : +1.f;
+	
+	float a = -1.f / (sign + normal.z);
+	float b = normal.x * normal.y * a;
+	
+	float3x3 result;
+	result.r0 = float3(1.f + sign * normal.x * normal.x * a, sign * b, -sign * normal.x);
+	result.r1 = float3(b, sign + normal.y * normal.y * a, -normal.y);
+	result.r2 = normal;
+	
+	return result;
+}
+
 quat Math::AxisAngleToQuat(const float3& axis, float angle) {
 	float half_angle = angle * 0.5f;
 	float sin_half_angle = sinf(half_angle);
 	float cos_half_angle = cosf(half_angle);
 	return quat(axis * sin_half_angle, cos_half_angle);
+}
+
+quat Math::AxisAxisToQuat(const float3& axis_0, const float3& axis_1) {
+	float quat_w = Math::Dot(axis_0, axis_1) + 1.f;
+	return quat_w != 0.f ? Math::Normalize(quat(Math::Cross(axis_0, axis_1), quat_w)) : quat(Math::BuildOrthonormalBasis(axis_0).r0, 0.f);
 }
 
 float3x3 Math::QuatToRotationMatrix(const quat& q) {
@@ -210,3 +231,17 @@ quat Math::EulerXyzAnglesToQuat(const float3& e) {
 	
 	return q;
 }
+
+
+uint2 Math::EncodeR16G16B16A16_SNORM(const float4& value) {
+	auto scaled_value_float32 = _mm_mul_ps(_mm_loadu_ps(&value.x), _mm_set1_ps((float)s16_max));
+	auto scaled_value_s32 = _mm_cvtps_epi32(scaled_value_float32);
+	auto scaled_value_s16 = _mm_packs_epi32(scaled_value_s32, scaled_value_s32);
+	return uint2(_mm_extract_epi32(scaled_value_s16, 0), _mm_extract_epi32(scaled_value_s16, 1));
+}
+
+uint2 Math::EncodeR16G16B16A16_FLOAT(const float4& value) {
+	auto result = _mm_cvtps_ph(_mm_loadu_ps(&value.x), 0);
+	return uint2(_mm_extract_epi32(result, 0), _mm_extract_epi32(result, 1));
+}
+

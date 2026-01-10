@@ -2,6 +2,7 @@
 
 struct InputPS {
 	float4 position : SV_Position;
+	float4 color  : COLOR;
 	float3 normal : NORMAL;
 };
 
@@ -14,31 +15,36 @@ float3 CubeVertexToModelSpace(float4 vertex, float3 half_extent) {
 	return vertex.xyz * half_extent;
 }
 
-float3 CylinderVertexToModelSpace(float4 vertex, float half_height, float2 radius) {
-	return float3(vertex.xy * lerp(radius.x, radius.y, vertex.z * 0.5 + 0.5), vertex.z * half_height);
+float3 CylinderVertexToModelSpace(float4 vertex, float height, float2 radius) {
+	return float3(vertex.xy * lerp(radius.x, radius.y, vertex.z), vertex.z * height);
 }
 
 float3 TorusVertexToModelSpace(float4 vertex, float major_radius, float minor_radius) {
 	return float3(vertex.xy * (major_radius - vertex.z * minor_radius), vertex.w * minor_radius);
 }
 
-InputPS MainVS(uint vertex_id : SV_VertexID) {
+InputPS MainVS(uint vertex_id : SV_VertexID, uint instance_id : SV_InstanceID) {
+	DebugMeshInstance instance = instances[instance_id];
 	float4 parametric_vertex = vertices[vertex_id];
 	
-	// float3 vertex = SphereVertexToModelSpace(parametric_vertex, 0.5);
-	// float3 vertex = CubeVertexToModelSpace(parametric_vertex, float3(1.0, 0.5, 0.125));
-	// float3 vertex = CylinderVertexToModelSpace(parametric_vertex, 2.0, float2(2.0, 0.125));
-	float3 vertex = TorusVertexToModelSpace(parametric_vertex, 2.0, 0.5);
+	float4 instance_data = DecodeR16G16B16A16_FLOAT(instance.packed_data);
 	
-	float3 position = float3(0.0, 0.0, 4.0);
-	float4 rotation = float4(0.5, 0.5, 0.5, 0.5);
+	float3 vertex = 0.0;
+	switch (constants.instance_type) {
+	case DebugMeshInstanceType::Sphere:   vertex = SphereVertexToModelSpace(parametric_vertex,   instance_data.xyz); break;
+	case DebugMeshInstanceType::Cube:     vertex = CubeVertexToModelSpace(parametric_vertex,     instance_data.xyz); break;
+	case DebugMeshInstanceType::Cylinder: vertex = CylinderVertexToModelSpace(parametric_vertex, instance_data.x, instance_data.yz); break;
+	case DebugMeshInstanceType::Torus:    vertex = TorusVertexToModelSpace(parametric_vertex,    instance_data.x, instance_data.y);  break;
+	default: break;
+	}
 	
-	float3 world_space_position = QuatMul(rotation, vertex) + position;
+	float3 world_space_position = QuatMul(DecodeR16G16B16A16_SNORM(instance.rotation), vertex) + instance.position;
 	float3 view_space_position  = mul(scene.world_to_view, float4(world_space_position, 1.0));
 	
 	InputPS output;
 	output.position = TransformViewToClipSpace(view_space_position, scene.view_to_clip_coef);
-	output.normal   = normalize(vertex.xyz);
+	output.color    = DecodeR8G8B8A8_UNORM_SRGB(instance.color);
+	output.normal   = all(vertex == 0.0) ? 0.0 : normalize(vertex);
 	
 	return output;
 }
@@ -46,7 +52,6 @@ InputPS MainVS(uint vertex_id : SV_VertexID) {
 
 #if defined(PIXEL_SHADER)
 float4 MainPS(InputPS input, float3 bary : SV_Barycentrics) : SV_Target0  {
-	float wireframe = BarycentricWireframe(bary, ddx(bary), ddy(bary));
-	return float4(wireframe * (input.normal * 0.5 + 0.5), 1.0);
+	return float4(lerp(input.normal * 0.5 + 0.5, input.color.xyz, input.color.w), 1.0);
 }
 #endif // defined(PIXEL_SHADER)

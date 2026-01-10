@@ -17,7 +17,7 @@ u64 AddTypeInfoToSaveLoadHistory(StackAllocator* alloc, HashTable<String, Versio
 void WriteEntitySystemMetadata(StackAllocator* alloc, ArrayView<TypeInfoStruct*> entity_type_infos, ArrayView<TypeInfoStruct*> entity_query_type_infos, HashTable<String, VersionedTypeInfo>& version_history);
 
 void WriteCodeForShaderDefinitions(StackAllocator* alloc, ArrayView<TypeInfoEnum*> shader_definition_type_infos);
-void WriteCodeForRenderPasses(StackAllocator* alloc, ArrayView<TypeInfoStruct*> hlsl_file_type_infos, ArrayView<TypeInfoStruct*> render_pass_type_infos);
+void WriteCodeForRenderPasses(StackAllocator* alloc, ArrayView<TypeInfo*> hlsl_file_type_infos, ArrayView<TypeInfoStruct*> render_pass_type_infos);
 
 void WriteCodeForMathLibrary(StackAllocator* alloc);
 

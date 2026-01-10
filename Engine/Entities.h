@@ -18,6 +18,7 @@ struct RendererWorld {
 	float meshlet_target_error_pixels = 1.f;
 	
 	ArrayView<struct GpuComponentUploadBuffer> gpu_uploads;
+	ArrayView<struct DebugMeshInstanceArray> debug_mesh_instance_arrays;
 };
 
 NOTES(Meta::CustomSaveLoad{})

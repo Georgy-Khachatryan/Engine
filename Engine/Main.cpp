@@ -889,10 +889,20 @@ s32 main() {
 			ArrayAppend(gpu_uploads, &alloc, gpu_mesh_asset_data);
 		}
 		
+		ImGuiDrawList3D draw_list;
+		draw_list.alloc = &alloc;
+		
+		draw_list.AddTorus(float3(0.f, 0.f, 4.f), Math::AxisAngleToQuat(float3(0.f, 0.f, 1.f), Math::PI * 0.5f * (float)ImGui::GetTime()) * Math::AxisAngleToQuat(float3(1.f, 0.f, 0.f), Math::PI * 0.25f), 2.f, 0.1f, 0xCC0000FF);
+		draw_list.AddSphere(float3(0.f, 0.f, 4.f), 0.15f, ImGui::GetColorU32(ImGuiCol_NavCursor));
+		draw_list.AddArrow(float3(0.f, 0.f, 4.f), float3(1.f, 0.f, 0.f), 2.f, 0.05f, 0xCC0000FF);
+		draw_list.AddArrow(float3(0.f, 0.f, 4.f), float3(0.f, 1.f, 0.f), 2.f, 0.05f, 0xCC00FF00);
+		draw_list.AddArrow(float3(0.f, 0.f, 4.f), float3(0.f, 0.f, 1.f), 2.f, 0.05f, 0xCCFF0000);
+		
 		
 		auto renderer_world = world_entity.renderer_world;
 		renderer_world->window_size = float2(window_size);
 		renderer_world->gpu_uploads = gpu_uploads;
+		renderer_world->debug_mesh_instance_arrays = draw_list.Flush();
 		
 		BuildRenderPassesForFrame(&record_context, &entity_system, world_entity_guid);
 		

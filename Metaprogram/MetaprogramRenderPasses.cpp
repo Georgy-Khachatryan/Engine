@@ -48,6 +48,8 @@ static void GatherIncludesForDependentTypes(StackAllocator* alloc, HashTable<Str
 	}
 }
 
+static void GenerateCodeForHlslFile(StackAllocator* alloc, HlslFileData& hlsl_file, TypeInfo* type_info);
+
 static void GenerateCodeForHlslFile(StackAllocator* alloc, HlslFileData& hlsl_file, TypeInfoStruct* type_info_struct) {
 	auto& builder = hlsl_file.builder;
 	
@@ -91,6 +93,31 @@ static void GenerateCodeForHlslFile(StackAllocator* alloc, HlslFileData& hlsl_fi
 			builder.Append("compile_const % %::% = %;\n"_sl, type_name, name, field.name, type_value);
 		}
 		builder.Append("\n"_sl);
+	}
+}
+
+static void GenerateCodeForHlslFile(StackAllocator* alloc, HlslFileData& hlsl_file, TypeInfoEnum* type_info_enum) {
+	auto& builder = hlsl_file.builder;
+	
+	auto name = ExtractNameWithoutNamespace(type_info_enum->name);
+	
+	builder.Append("enum struct % : % {\n"_sl, name, PrintTypeName(alloc, type_info_enum->underlying_type));
+	builder.Indent();
+	
+	u32 constant_count = 0;
+	for (auto& field : type_info_enum->fields) {
+		builder.Append("% = %,\n"_sl, field.name, field.value);
+	}
+	
+	builder.Unindent();
+	builder.Append("};\n\n"_sl);
+}
+
+static void GenerateCodeForHlslFile(StackAllocator* alloc, HlslFileData& hlsl_file, TypeInfo* type_info) {
+	if (type_info->info_type == TypeInfoType::Struct) {
+		GenerateCodeForHlslFile(alloc, hlsl_file, (TypeInfoStruct*)type_info);
+	} else if (type_info->info_type == TypeInfoType::Enum) {
+		GenerateCodeForHlslFile(alloc, hlsl_file, (TypeInfoEnum*)type_info);
 	}
 }
 
@@ -309,7 +336,7 @@ static void GenerateCodeForRenderPass(StackAllocator* alloc, String filename, St
 }
 
 
-void WriteCodeForRenderPasses(StackAllocator* alloc, ArrayView<TypeInfoStruct*> hlsl_file_type_infos, ArrayView<TypeInfoStruct*> render_pass_type_infos) {
+void WriteCodeForRenderPasses(StackAllocator* alloc, ArrayView<TypeInfo*> hlsl_file_type_infos, ArrayView<TypeInfoStruct*> render_pass_type_infos) {
 	HashTable<String, HlslFileData> hlsl_files;
 	HashTable<String, HlslFileData> hlsl_bindings_files;
 	

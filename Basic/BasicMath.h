@@ -167,8 +167,13 @@ namespace Math {
 	RayHitResult RayCylinderIntersect(const RayInfo& ray, const float3& a, const float3& b, float r);
 	RayHitResult RayPlaneIntersect(const RayInfo& ray, const float3& normal, float distance);
 	
+	float3x3 BuildOrthonormalBasis(const float3& normal);
 	quat AxisAngleToQuat(const float3& axis, float angle);
+	quat AxisAxisToQuat(const float3& axis_0, const float3& axis_1); // Quaternion that rotates axis_0 to axis_1.
 	float3x3 QuatToRotationMatrix(const quat& q);
 	float3 QuatToEulerXyzAngles(const quat& q); // Extrinsic XYZ angles, the same as intrinsic ZYX angles. float3(Roll, Pitch, Yaw)
 	quat EulerXyzAnglesToQuat(const float3& e);
+	
+	uint2 EncodeR16G16B16A16_SNORM(const float4& value);
+	uint2 EncodeR16G16B16A16_FLOAT(const float4& value);
 }

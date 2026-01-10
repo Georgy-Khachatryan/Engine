@@ -77,6 +77,8 @@ float4 EncodeSRGB(float4 x) { return float4(EncodeSRGB(x.xyz), x.w); }
 float4 DecodeR8G8B8A8_UNORM(uint encoded) { return float4(uint4(encoded >> 0, encoded >> 8, encoded >> 16, encoded >> 24) & 0xFF) * (1.0 / 255.0); }
 float4 DecodeR8G8B8A8_UNORM_SRGB(uint encoded) { return DecodeSRGB(DecodeR8G8B8A8_UNORM(encoded)); }
 
+float4 DecodeR16G16B16A16_SNORM(uint2 encoded) { return float4(int16_t4(encoded.x, encoded.x >> 16, encoded.y, encoded.y >> 16)) * (1.0 / s16_max); }
+float4 DecodeR16G16B16A16_FLOAT(uint2 encoded) { return asfloat16(uint16_t4(encoded.x, encoded.x >> 16, encoded.y, encoded.y >> 16)); }
 
 float2 NdcToScreenUv(float2 ndc) { return float2(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5); }
 float2 ScreenUvToNdc(float2 uv)  { return float2(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0); }

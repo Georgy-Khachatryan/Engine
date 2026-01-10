@@ -304,17 +304,50 @@ NOTES(Meta::ShaderName{ "DebugGeometry.hlsl"_sl })
 enum struct DebugGeometryShaders : u32 {};
 SHADER_DEFINITION_GENERATED_CODE(DebugGeometryShaders);
 
+compile_const String debug_geometry_data_filename = "DebugGeometryData.hlsl"_sl;
+
+NOTES(Meta::HlslFile{ debug_geometry_data_filename })
+enum struct DebugMeshInstanceType : u32 {
+	Sphere   = 0,
+	Cube     = 1,
+	Cylinder = 2,
+	Torus    = 3,
+	
+	Count
+};
+
+NOTES(Meta::HlslFile{ debug_geometry_data_filename })
+struct DebugMeshInstance {
+	float3 position;
+	u32   color = u32_max;
+	uint2 rotation;
+	uint2 packed_data;
+};
+
+struct DebugMeshInstanceArray {
+	DebugMeshInstanceType instance_type = DebugMeshInstanceType::Sphere;
+	ArrayView<DebugMeshInstance> debug_mesh_instances;
+};
+
+NOTES(Meta::HlslFile{ debug_geometry_data_filename })
+struct DebugGeometryPushConstants {
+	DebugMeshInstanceType instance_type = DebugMeshInstanceType::Sphere;
+};
+
 NOTES(Meta::RenderPass{ CommandQueueType::Graphics })
 struct DebugGeometryRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
 	GpuAddress scene_constants;
+	ArrayView<DebugMeshInstanceArray> debug_mesh_instance_arrays;
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
-		HLSL::RegularBuffer<float4> vertices;
+		HLSL::RegularBuffer<float4>            vertices;
+		HLSL::RegularBuffer<DebugMeshInstance> instances;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {
+		HLSL::PushConstantBuffer<DebugGeometryPushConstants> constants;
 		HLSL::ConstantBuffer<SceneConstants> scene;
 		HLSL::DescriptorTable<Descriptors> descriptor_table;
 	};

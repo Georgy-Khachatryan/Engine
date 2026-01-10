@@ -27,6 +27,11 @@ static void ArrayAppendIfHasNote(Array<TypeInfoT*>& type_infos, StackAllocator* 
 	}
 }
 
+template<typename NoteT>
+static void ArrayAppendIfHasNote(Array<TypeInfo*>& type_infos, StackAllocator* alloc, TypeInfo* type_info) {
+	if (FindNote<NoteT>(type_info)) ArrayAppend(type_infos, alloc, type_info);
+}
+
 s32 main(s32 argument_count, const char* arguments[]) {
 	auto alloc = CreateStackAllocator(64 * 1024 * 1024, 512 * 1024);
 	defer{ ReleaseStackAllocator(alloc); };
@@ -36,7 +41,7 @@ s32 main(s32 argument_count, const char* arguments[]) {
 		WriteCodeForMathLibrary(&alloc);
 	}
 	
-	Array<TypeInfoStruct*> hlsl_file_type_infos;
+	Array<TypeInfo*>       hlsl_file_type_infos;
 	Array<TypeInfoStruct*> render_pass_type_infos;
 	Array<TypeInfoEnum*>   shader_definition_type_infos;
 	Array<TypeInfoStruct*> entity_type_infos;

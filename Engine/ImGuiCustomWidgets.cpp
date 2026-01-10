@@ -2,6 +2,7 @@
 #include "Basic/BasicString.h"
 #include "ImGuiCustomWidgets.h"
 #include "EntitySystem.h"
+#include "RenderPasses.h"
 
 #include <SDK/imgui/imgui_internal.h>
 
@@ -294,4 +295,77 @@ bool ImGui::TableEntityComboBox(const char* label, EntitySystem* entity_system, 
 		ImGui::EndTableItem();
 	}
 	return result;
+}
+
+
+void ImGuiDrawList3D::AddInstanceOfType(DebugMeshInstanceType instance_type, const float3& position, u32 color, const quat& rotation, const float4& packed_data) {
+	auto& debug_mesh_instances = debug_mesh_instances_by_type[(u32)instance_type];
+	if (debug_mesh_instances.count >= debug_mesh_instances.capacity) {
+		if (debug_mesh_instances.count != 0) {
+			ArrayAppend(debug_mesh_instance_arrays, alloc, { instance_type, debug_mesh_instances });
+		}
+		
+		debug_mesh_instances = {};
+		ArrayReserve(debug_mesh_instances, alloc, 128u);
+	}
+	
+	auto& instance = ArrayEmplace(debug_mesh_instances);
+	instance.position    = position;
+	instance.color       = color;
+	instance.rotation    = Math::EncodeR16G16B16A16_SNORM(float4(rotation));
+	instance.packed_data = Math::EncodeR16G16B16A16_FLOAT(packed_data);
+}
+
+ArrayView<DebugMeshInstanceArray> ImGuiDrawList3D::Flush() {
+	for (u32 instance_type = 0; instance_type < (u32)DebugMeshInstanceType::Count; instance_type += 1) {
+		auto& debug_mesh_instances = debug_mesh_instances_by_type[instance_type];
+		if (debug_mesh_instances.count != 0) {
+			ArrayAppend(debug_mesh_instance_arrays, alloc, { (DebugMeshInstanceType)instance_type, debug_mesh_instances });
+		}
+	}
+	
+	auto result = debug_mesh_instance_arrays;
+	debug_mesh_instances_by_type = {};
+	debug_mesh_instance_arrays   = {};
+	
+	return result;
+}
+
+void ImGuiDrawList3D::AddSphere(const float3& position, float radius, u32 color) {
+	AddInstanceOfType(DebugMeshInstanceType::Sphere, position, color, quat{}, float4(radius, radius, radius, 0.f));
+}
+
+void ImGuiDrawList3D::AddSphere(const float3& position, const quat& rotation, const float3& radius, u32 color) {
+	AddInstanceOfType(DebugMeshInstanceType::Sphere, position, color, rotation, float4(radius, 0.f));
+}
+
+void ImGuiDrawList3D::AddCube(const float3& position, const quat& rotation, const float3& half_extent, u32 color) {
+	AddInstanceOfType(DebugMeshInstanceType::Cube, position, color, rotation, float4(half_extent, 0.f));
+}
+
+void ImGuiDrawList3D::AddCylinder(const float3& position, const quat& rotation, float height, float radius_0, float radius_1, u32 color) {
+	AddInstanceOfType(DebugMeshInstanceType::Cylinder, position, color, rotation, float4(height, radius_0, radius_1, 0.f));
+}
+
+void ImGuiDrawList3D::AddTorus(const float3& position, const quat& rotation, float major_radius, float minor_radius, u32 color) {
+	AddInstanceOfType(DebugMeshInstanceType::Torus, position, color, rotation, float4(major_radius, minor_radius, 0.f, 0.f));
+}
+
+void ImGuiDrawList3D::AddArrow(const float3& position, const float3& direction, float length, float radius, u32 color) {
+	auto rotation  = Math::AxisAxisToQuat(float3(0.f, 0.f, 1.f), direction);
+	
+	float arrow_head_radius  = radius * 2.f;
+	float arrow_head_length  = arrow_head_radius * 3.f; // 3:1 arrow_head_length to arrow_head_diameter ratio.
+	float arrow_shaft_length = length - arrow_head_length * 2.f;
+	
+	AddCylinder(position, rotation, arrow_shaft_length, radius, radius, color);
+	AddCylinder(position + direction * arrow_shaft_length, rotation, arrow_head_length, arrow_head_radius, 0.f, color);
+}
+
+void ImGuiDrawList3D::AddArrow(const float3& from, const float3& to, float radius, u32 color) {
+	auto direction = (to - from);
+	auto length = Math::Length(direction);
+	if (length == 0.f) return;
+	
+	AddArrow(from, direction * (1.f / length), length, radius, color);
 }

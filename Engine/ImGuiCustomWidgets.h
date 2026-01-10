@@ -42,3 +42,27 @@ namespace ImGui {
 	bool TableCombo(const char* label, s32* current_item, const char* items_separated_by_zeros, s32 popup_max_height_in_items = -1);
 	bool TableEntityComboBox(const char* label, EntitySystem* entity_system, u64* guid, EntityTypeID entity_type_id);
 }
+
+
+struct DebugMeshInstance;
+struct DebugMeshInstanceArray;
+enum struct DebugMeshInstanceType : u32;
+
+struct ImGuiDrawList3D {
+	StackAllocator* alloc = nullptr;
+	
+	FixedCountArray<Array<DebugMeshInstance>, 4> debug_mesh_instances_by_type;
+	Array<DebugMeshInstanceArray> debug_mesh_instance_arrays;
+	
+	void AddSphere(const float3& position, float radius, u32 color);
+	void AddSphere(const float3& position, const quat& rotation, const float3& radius, u32 color);
+	void AddCube(const float3& position, const quat& rotation, const float3& half_extent, u32 color);
+	void AddCylinder(const float3& position, const quat& rotation, float height, float radius_0, float radius_1, u32 color);
+	void AddTorus(const float3& position, const quat& rotation, float major_radius, float minor_radius, u32 color);
+	void AddArrow(const float3& position, const float3& direction, float length, float radius, u32 color);
+	void AddArrow(const float3& from, const float3& to, float radius, u32 color);
+	
+	void AddInstanceOfType(DebugMeshInstanceType instance_type, const float3& position, u32 color, const quat& rotation, const float4& packed_data);
+	
+	ArrayView<DebugMeshInstanceArray> Flush();
+};
