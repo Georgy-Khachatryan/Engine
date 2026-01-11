@@ -705,8 +705,6 @@ s32 main() {
 		draw_list_3d.alloc = &alloc;
 		
 		{
-			auto camera_entity = QueryEntityByGUID<CameraEntityType>(entity_system, world_entity.camera_entity->guid);
-			
 			float vertical_fov_degrees = camera_entity.camera->vertical_fov_degrees;
 			float near_depth           = camera_entity.camera->near_depth;
 			
@@ -758,26 +756,37 @@ s32 main() {
 			}
 			ImGui::GetCurrentContext3D()->hide_inactive_widgets = is_any_item_active;
 			
-			auto model_to_world = entity.rotation->rotation;
+			auto& world_space_position = entity.position->position;
+			auto& model_to_world_quat  = entity.rotation->rotation;
+			auto model_to_world = Math::QuatToRotationMatrix(model_to_world_quat);
+			auto flipped_world_to_model = use_local_space ? Math::Transpose(model_to_world) : float3x3{};
+			
+			auto view_vector = camera_entity.camera->transform_type == CameraTransformType::Orthographic ? -draw_list_3d.mouse_ray.direction : (draw_list_3d.mouse_ray.origin - world_space_position);
+			for (u32 i = 0; i < 3; i += 1) {
+				auto& direction = flipped_world_to_model[i];
+				if (Math::Dot(direction, view_vector) < 0.f) {
+					direction = -direction;
+				}
+			}
+			
+			auto model_to_world_plane_rotation = (use_local_space ? model_to_world_quat : quat{});
 			for (u32 i = 0; i < 3; i += 1) {
 				ImGuiScopeID(i);
 				
-				auto world_space_direction = float3(0.f, 0.f, 0.f);
-				world_space_direction[i] = 1.f;
+				auto model_space_direction = float3(0.f, 0.f, 0.f);
+				model_space_direction[i] = 1.f;
 				
-				auto world_space_plane_offset = float3(1.f, 1.f, 1.f);
-				world_space_plane_offset[i] = 0.f;
+				auto model_space_plane_offset = float3(1.f, 1.f, 1.f);
+				model_space_plane_offset[i] = 0.f;
 				
-				auto world_space_plane_rotation = Math::AxisAxisToQuat(float3(0.f, 0.f, 1.f), world_space_direction);
-				
-				float3 direction    = use_local_space ? model_to_world * world_space_direction      : world_space_direction;
-				float3 plane_offset = use_local_space ? model_to_world * world_space_plane_offset   : world_space_plane_offset;
-				quat plane_rotation = use_local_space ? model_to_world * world_space_plane_rotation : world_space_plane_rotation;
+				float3 world_space_direction    = (model_space_direction    * flipped_world_to_model);
+				float3 world_space_plane_offset = (model_space_plane_offset * flipped_world_to_model) * 0.5f;
+				float3 model_space_plane_size   = (model_space_plane_offset * 0.25f) + (model_space_direction * 0.0125f);
 				
 				u32 color = 0xE1000000u | (0xFFu << (i * 8));
-				ImGui::DragVector3D("PositionVector", entity.position->position, direction, direction, 1.f, 0.05f, color);
-				ImGui::DragPlane3D("PositionPlane", entity.position->position, plane_offset * 0.5f, plane_rotation, direction, float3(0.25f, 0.25f, 0.0125f), color);
-				ImGui::DragKnob3D("RotationKnob", entity.rotation->rotation, entity.position->position, direction, 1.25f, 0.05f, color);
+				ImGui::DragVector3D("PositionVector", world_space_position, world_space_direction, world_space_direction, 0.75f, 0.05f, color);
+				ImGui::DragPlane3D("PositionPlane", world_space_position, world_space_plane_offset, world_space_direction, model_to_world_plane_rotation, model_space_plane_size, color);
+				ImGui::DragKnob3D("RotationKnob", model_to_world_quat, world_space_position, world_space_direction, 1.25f, 0.05f, color);
 			}
 			draw_list_3d.AddSphere(entity.position->position, 0.15f, 0xCCFFFFFF);
 			

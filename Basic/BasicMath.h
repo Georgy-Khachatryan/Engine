@@ -3,6 +3,7 @@
 #include "BasicMathGenerated.h"
 
 #include <immintrin.h>
+#include <float.h>
 
 
 inline u32 FirstBitLow32(u32 mask)  { return _tzcnt_u32(mask); }
@@ -147,8 +148,10 @@ namespace Math {
 	};
 	
 	struct RayHitResult {
-		float hit_distance = 0.f;
+		float hit_distance = FLT_MAX;
 		bool hit = false;
+		
+		void AddHit(float new_hit_distance) { hit_distance = Min(hit_distance, new_hit_distance); hit = true; }
 	};
 	
 	bool IsPerspectiveMatrix(const float4& coefficients);

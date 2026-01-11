@@ -319,7 +319,7 @@ ImGuiDrawList3D* ImGui::GetWindowDrawList3D() {
 	return draw_list_3d;
 }
 
-bool ImGui::DragVector3D(const char* label, float3& position, const float3& offset, const float3& direction, float length, float radius, u32 color) {
+bool ImGui::DragVector3D(const char* label, float3& position, float3 offset, float3 direction, float length, float radius, u32 color) {
 	auto* draw_list_3d = ImGui::GetWindowDrawList3D();
 	auto* context = ImGui::GetCurrentContext3D();
 	
@@ -342,38 +342,42 @@ bool ImGui::DragVector3D(const char* label, float3& position, const float3& offs
 		
 		auto compute_drag_time = [&]()-> float {
 			// Build a plane passing through direction and perpendicular to ray.direction.
-			auto bitangent = Math::Cross(ray.direction, direction);
+			auto bitangent = Math::Cross(ray.direction, context->initial_direction);
 			
 			compile_const float eps = 1.f / (1024.f * 1024.f);
 			if (Math::LengthSquare(bitangent) < eps) return 0.f;
 			
-			auto normal = Math::Normalize(Math::Cross(direction, bitangent));
+			auto normal = Math::Normalize(Math::Cross(context->initial_direction, bitangent));
 			
 			auto hit_result = Math::RayPlaneIntersect(ray, normal, -Math::Dot(context->initial_position, normal));
 			if (hit_result.hit == false || hit_result.hit_distance <= 0.f) return 0.f;
 			
-			return Math::Dot(ray.origin + ray.direction * hit_result.hit_distance - context->initial_position, direction);
+			return Math::Dot(ray.origin + ray.direction * hit_result.hit_distance - context->initial_position, context->initial_direction);
 		};
 		
 		if (ImGui::IsItemActivated()) {
-			context->initial_position = position;
-			context->initial_time.x   = compute_drag_time();
+			context->initial_position  = position;
+			context->initial_direction = direction;
+			context->initial_offset    = offset;
+			context->initial_time.x    = compute_drag_time();
 		}
 		
 		if (ImGui::IsItemActive() && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
 			float time = compute_drag_time();
-			position = context->initial_position + direction * (time - context->initial_time.x);
+			position  = context->initial_position + context->initial_direction * (time - context->initial_time.x);
+			direction = context->initial_direction;
+			offset    = context->initial_offset;
 		}
 		
 		hovered = ImGui::IsItemHovered();
 	}
 	
-	draw_list_3d->AddArrow(position + offset, direction, hovered ? length * 1.05f : length, hovered ? radius * 1.25f : radius, color);
+	draw_list_3d->AddArrow(position + offset, direction, hovered ? length * 1.05f : length, hovered ? radius * 1.25f : radius, hovered ? 0xFF00FFFF : color);
 	
 	return result;
 }
 
-bool ImGui::DragPlane3D(const char* label, float3& position, const float3& offset, const quat& rotation, const float3& direction, const float3& half_extent, u32 color) {
+bool ImGui::DragPlane3D(const char* label, float3& position, float3 offset, const float3& direction, const quat& rotation, const float3& half_extent, u32 color) {
 	auto* draw_list_3d = ImGui::GetWindowDrawList3D();
 	auto* context = ImGui::GetCurrentContext3D();
 	
@@ -395,26 +399,29 @@ bool ImGui::DragPlane3D(const char* label, float3& position, const float3& offse
 		result = ImGui::InvisibleButton(label, ImVec2(1.f, 1.f), ImGuiButtonFlags_PressedOnClick);
 		
 		auto compute_drag_time = [&]()-> float3 {
-			auto drag_hit_result = Math::RayPlaneIntersect(ray, direction, -Math::Dot(context->initial_position, direction));
+			auto drag_hit_result = Math::RayPlaneIntersect(ray, context->initial_direction, -Math::Dot(context->initial_position, context->initial_direction));
 			if (drag_hit_result.hit == false || drag_hit_result.hit_distance <= 0.f) return 0.f;
 			
 			return ray.origin + ray.direction * drag_hit_result.hit_distance;
 		};
 		
 		if (ImGui::IsItemActivated()) {
-			context->initial_position = position;
-			context->initial_time     = compute_drag_time();
+			context->initial_position  = position;
+			context->initial_direction = direction;
+			context->initial_offset    = offset;
+			context->initial_time      = compute_drag_time();
 		}
 		
 		if (ImGui::IsItemActive() && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
 			auto time = compute_drag_time();
 			position = context->initial_position + (time - context->initial_time);
+			offset   = context->initial_offset;
 		}
 		
 		hovered = ImGui::IsItemHovered();
 	}
 	
-	draw_list_3d->AddCube(position + offset, rotation, hovered ? half_extent * 1.05f : half_extent, color);
+	draw_list_3d->AddCube(position + offset, rotation, hovered ? half_extent * 1.05f : half_extent, hovered ? 0xFF00FFFF : color);
 	
 	return result;
 }
@@ -479,7 +486,7 @@ bool ImGui::DragKnob3D(const char* label, quat& rotation, const float3& position
 	}
 	
 	auto torus_rotation = Math::AxisAxisToQuat(float3(0.f, 0.f, 1.f), direction);
-	draw_list_3d->AddTorus(position, torus_rotation, major_radius, hovered ? minor_radius * 1.25f : minor_radius, color);
+	draw_list_3d->AddTorus(position, torus_rotation, major_radius, hovered ? minor_radius * 1.25f : minor_radius, hovered ? 0xFF00FFFF : color);
 	
 	return result;
 }

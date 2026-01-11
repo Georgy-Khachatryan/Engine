@@ -132,6 +132,8 @@ Math::RayHitResult Math::RayCylinderIntersect(const Math::RayInfo& ray, const fl
 	float k2 = baba - bard * bard;
 	float k1 = baba * Math::Dot(oc, ray.direction) - baoc * bard;
 	
+	Math::RayHitResult hit_result;
+	
 	// Caps:
 	compile_const float eps = 1.f / (1024.f * 1024.f);
 	if (fabsf(bard) >= eps) {
@@ -139,23 +141,23 @@ Math::RayHitResult Math::RayCylinderIntersect(const Math::RayInfo& ray, const fl
 		float tb = ta + baba / bard;
 		
 		auto cap_hit_a = RayCylinderCapIntersect(ray, ta, a, radius_0, radius_1);
-		if (cap_hit_a.hit) return cap_hit_a;
+		if (cap_hit_a.hit) hit_result.AddHit(ta);
 		
 		auto cap_hit_b = RayCylinderCapIntersect(ray, tb, b, radius_0, radius_1);
-		if (cap_hit_b.hit) return cap_hit_b;
+		if (cap_hit_b.hit) hit_result.AddHit(tb);
 	}
 	
 	float d = baba * Math::Dot(oc, oc) - baoc * baoc;
 	
 	auto outer_hit = RayCylinderBodyIntersect(ray, radius_1, d, baba, baoc, bard, k1, k2, -1.f);
-	if (outer_hit.hit) return outer_hit;
+	if (outer_hit.hit) hit_result.AddHit(outer_hit.hit_distance);
 	
 	if (radius_0 > 0.f) {
 		auto inner_hit = RayCylinderBodyIntersect(ray, radius_0, d, baba, baoc, bard, k1, k2, +1.f);
-		if (inner_hit.hit) return inner_hit;
+		if (inner_hit.hit) hit_result.AddHit(inner_hit.hit_distance);
 	}
 	
-	return {};
+	return hit_result;
 }
 
 // Ray-Box intersection, by convertig the ray to the local space of the box.

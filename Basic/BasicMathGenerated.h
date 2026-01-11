@@ -424,10 +424,10 @@ namespace Math {
 	inline Vec4f Normalize(const Vec4f& v) { return v * (1.f / Length(v)); }
 
 	struct Mat4x4f {
-		Vec4f r0;
-		Vec4f r1;
-		Vec4f r2;
-		Vec4f r3;
+		Vec4f r0 = Vec4f(1.f, 0.f, 0.f, 0.f);
+		Vec4f r1 = Vec4f(0.f, 1.f, 0.f, 0.f);
+		Vec4f r2 = Vec4f(0.f, 0.f, 1.f, 0.f);
+		Vec4f r3 = Vec4f(0.f, 0.f, 0.f, 1.f);
 		
 		Vec4f& operator[](u32 index) { return (&r0)[index]; }
 		const Vec4f& operator[](u32 index) const { return (&r0)[index]; }
@@ -479,9 +479,9 @@ namespace Math {
 	};
 
 	struct Mat3x4f {
-		Vec4f r0;
-		Vec4f r1;
-		Vec4f r2;
+		Vec4f r0 = Vec4f(1.f, 0.f, 0.f, 0.f);
+		Vec4f r1 = Vec4f(0.f, 1.f, 0.f, 0.f);
+		Vec4f r2 = Vec4f(0.f, 0.f, 1.f, 0.f);
 		
 		Vec4f& operator[](u32 index) { return (&r0)[index]; }
 		const Vec4f& operator[](u32 index) const { return (&r0)[index]; }
@@ -511,9 +511,9 @@ namespace Math {
 	};
 
 	struct Mat3x3f {
-		Vec3f r0;
-		Vec3f r1;
-		Vec3f r2;
+		Vec3f r0 = Vec3f(1.f, 0.f, 0.f);
+		Vec3f r1 = Vec3f(0.f, 1.f, 0.f);
+		Vec3f r2 = Vec3f(0.f, 0.f, 1.f);
 		
 		Vec3f& operator[](u32 index) { return (&r0)[index]; }
 		const Vec3f& operator[](u32 index) const { return (&r0)[index]; }

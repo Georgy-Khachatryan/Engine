@@ -110,7 +110,14 @@ static void GenerateMatrixType(StringBuilder& builder, u32 rows, u32 cols, Strin
 	builder.Indent();
 	
 	for (u32 i = 0; i < rows; i += 1) {
-		builder.Append("% r%;\n"_sl, row, i);
+		StringBuilder line_builder;
+		line_builder.alloc = builder.alloc;
+		
+		for (u32 j = 0; j < cols; j += 1) {
+			line_builder.Append("%.%..%"_sl, j == 0 ? ""_sl : ", "_sl, i == j ? 1 : 0, suffix);
+		}
+		
+		builder.Append("% r% = %(%);\n"_sl, row, i, row, line_builder.ToString());
 	}
 	builder.Append("\n"_sl);
 	
