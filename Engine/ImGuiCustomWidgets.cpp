@@ -319,25 +319,28 @@ ImGuiDrawList3D* ImGui::GetWindowDrawList3D() {
 	return draw_list_3d;
 }
 
-bool ImGui::DragVector3D(const char* label, float3& position, const float3& direction, float length, float radius, u32 color) {
+bool ImGui::DragVector3D(const char* label, float3& position, const float3& offset, const float3& direction, float length, float radius, u32 color) {
 	auto* draw_list_3d = ImGui::GetWindowDrawList3D();
 	auto* context = ImGui::GetCurrentContext3D();
 	
+	bool is_item_active = ImGui::GetID(label) == ImGui::GetActiveID();
+	if (is_item_active == false && context->hide_inactive_widgets) return false;
+	
 	auto& ray = draw_list_3d->mouse_ray;
-	auto hit_result = Math::RayCylinderIntersect(ray, position, position + direction * (length * 1.05f), radius * 2.f);
+	auto hit_result = Math::RayCylinderIntersect(ray, position + offset, position + offset + direction * (length * 1.05f), 0.f, radius * 2.f);
 	
 	bool result = false;
 	bool hovered = false;
 	
 	auto& min_hit_distance = draw_list_3d->min_hit_distance;
-	if (hit_result.hit && (hit_result.hit_distance < min_hit_distance) || ImGui::GetID(label) == ImGui::GetActiveID()) {
+	if (hit_result.hit && (hit_result.hit_distance < min_hit_distance) || is_item_active) {
 		min_hit_distance = hit_result.hit_distance;
 		
 		ImGui::SetCursorScreenPos(ImGui::GetMousePos());
 		ImGui::SetNextItemAllowOverlap();
 		result = ImGui::InvisibleButton(label, ImVec2(1.f, 1.f), ImGuiButtonFlags_PressedOnClick);
 		
-		auto compute_slider_time = [&]()-> float {
+		auto compute_drag_time = [&]()-> float {
 			// Build a plane passing through direction and perpendicular to ray.direction.
 			auto bitangent = Math::Cross(ray.direction, direction);
 			
@@ -354,18 +357,129 @@ bool ImGui::DragVector3D(const char* label, float3& position, const float3& dire
 		
 		if (ImGui::IsItemActivated()) {
 			context->initial_position = position;
-			context->initial_time     = compute_slider_time();
+			context->initial_time.x   = compute_drag_time();
 		}
 		
 		if (ImGui::IsItemActive() && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
-			float time = compute_slider_time();
-			position = context->initial_position + direction * (time - context->initial_time);
+			float time = compute_drag_time();
+			position = context->initial_position + direction * (time - context->initial_time.x);
 		}
 		
 		hovered = ImGui::IsItemHovered();
 	}
 	
-	draw_list_3d->AddArrow(position, direction, hovered ? length * 1.05f : length, radius, color);
+	draw_list_3d->AddArrow(position + offset, direction, hovered ? length * 1.05f : length, hovered ? radius * 1.25f : radius, color);
+	
+	return result;
+}
+
+bool ImGui::DragPlane3D(const char* label, float3& position, const float3& offset, const quat& rotation, const float3& direction, const float3& half_extent, u32 color) {
+	auto* draw_list_3d = ImGui::GetWindowDrawList3D();
+	auto* context = ImGui::GetCurrentContext3D();
+	
+	bool is_item_active = ImGui::GetID(label) == ImGui::GetActiveID();
+	if (is_item_active == false && context->hide_inactive_widgets) return false;
+	
+	auto& ray = draw_list_3d->mouse_ray;
+	auto hit_result = Math::RayBoxIntersect(ray, position + offset, rotation, half_extent);
+	
+	bool result = false;
+	bool hovered = false;
+	
+	auto& min_hit_distance = draw_list_3d->min_hit_distance;
+	if (hit_result.hit && (hit_result.hit_distance < min_hit_distance) || is_item_active) {
+		min_hit_distance = hit_result.hit_distance;
+		
+		ImGui::SetCursorScreenPos(ImGui::GetMousePos());
+		ImGui::SetNextItemAllowOverlap();
+		result = ImGui::InvisibleButton(label, ImVec2(1.f, 1.f), ImGuiButtonFlags_PressedOnClick);
+		
+		auto compute_drag_time = [&]()-> float3 {
+			auto drag_hit_result = Math::RayPlaneIntersect(ray, direction, -Math::Dot(context->initial_position, direction));
+			if (drag_hit_result.hit == false || drag_hit_result.hit_distance <= 0.f) return 0.f;
+			
+			return ray.origin + ray.direction * drag_hit_result.hit_distance;
+		};
+		
+		if (ImGui::IsItemActivated()) {
+			context->initial_position = position;
+			context->initial_time     = compute_drag_time();
+		}
+		
+		if (ImGui::IsItemActive() && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+			auto time = compute_drag_time();
+			position = context->initial_position + (time - context->initial_time);
+		}
+		
+		hovered = ImGui::IsItemHovered();
+	}
+	
+	draw_list_3d->AddCube(position + offset, rotation, hovered ? half_extent * 1.05f : half_extent, color);
+	
+	return result;
+}
+
+bool ImGui::DragKnob3D(const char* label, quat& rotation, const float3& position, const float3& direction, float major_radius, float minor_radius, u32 color) {
+	auto* draw_list_3d = ImGui::GetWindowDrawList3D();
+	auto* context = ImGui::GetCurrentContext3D();
+	
+	bool is_item_active = ImGui::GetID(label) == ImGui::GetActiveID();
+	if (is_item_active == false && context->hide_inactive_widgets) return false;
+	
+	auto p0 = position - direction * (minor_radius * 1.25f);
+	auto p1 = position + direction * (minor_radius * 1.25f);
+	
+	float r0 = major_radius - (minor_radius * 1.25f);
+	float r1 = major_radius + (minor_radius * 1.25f);
+	
+	auto& ray = draw_list_3d->mouse_ray;
+	auto hit_result = Math::RayCylinderIntersect(ray, p0, p1, r0, r1);
+	
+	bool result = false;
+	bool hovered = false;
+	
+	auto& min_hit_distance = draw_list_3d->min_hit_distance;
+	if (hit_result.hit && (hit_result.hit_distance < min_hit_distance) || is_item_active) {
+		min_hit_distance = hit_result.hit_distance;
+		
+		ImGui::SetCursorScreenPos(ImGui::GetMousePos());
+		ImGui::SetNextItemAllowOverlap();
+		result = ImGui::InvisibleButton(label, ImVec2(1.f, 1.f), ImGuiButtonFlags_PressedOnClick);
+		
+		auto compute_drag_time = [&]()-> float {
+			auto drag_hit_result = Math::RayPlaneIntersect(ray, context->initial_direction, -Math::Dot(context->initial_position, context->initial_direction));
+			if (drag_hit_result.hit == false || drag_hit_result.hit_distance <= 0.f) return 0.f;
+			
+			auto world_to_tangent  = Math::BuildOrthonormalBasis(context->initial_direction);
+			auto hit_tangent_space = world_to_tangent * (ray.origin - context->initial_position + ray.direction * drag_hit_result.hit_distance);
+			
+			return atan2f(hit_tangent_space.y, hit_tangent_space.x);
+		};
+		
+		if (ImGui::IsItemActivated()) {
+			context->initial_position  = position;
+			context->initial_rotation  = rotation;
+			context->initial_direction = direction;
+			context->initial_time.x    = compute_drag_time();
+		}
+		
+		if (ImGui::IsItemActive() && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+			float time = compute_drag_time();
+			rotation = Math::AxisAngleToQuat(context->initial_direction, time - context->initial_time.x) * context->initial_rotation;
+			
+			auto world_to_tangent = Math::BuildOrthonormalBasis(context->initial_direction);
+			auto direction_0 = float3(cosf(context->initial_time.x), sinf(context->initial_time.x), 0.f) * world_to_tangent;
+			auto direction_1 = float3(cosf(time), sinf(time), 0.f) * world_to_tangent;
+			
+			draw_list_3d->AddArrow(position, direction_0, major_radius - minor_radius * 2.f, minor_radius * 0.5f, color);
+			draw_list_3d->AddArrow(position, direction_1, major_radius - minor_radius * 2.f, minor_radius * 0.5f, color);
+		}
+		
+		hovered = ImGui::IsItemHovered();
+	}
+	
+	auto torus_rotation = Math::AxisAxisToQuat(float3(0.f, 0.f, 1.f), direction);
+	draw_list_3d->AddTorus(position, torus_rotation, major_radius, hovered ? minor_radius * 1.25f : minor_radius, color);
 	
 	return result;
 }
@@ -425,7 +539,7 @@ void ImGuiDrawList3D::AddTorus(const float3& position, const quat& rotation, flo
 }
 
 void ImGuiDrawList3D::AddArrow(const float3& position, const float3& direction, float length, float radius, u32 color) {
-	auto rotation  = Math::AxisAxisToQuat(float3(0.f, 0.f, 1.f), direction);
+	auto rotation = Math::AxisAxisToQuat(float3(0.f, 0.f, 1.f), direction);
 	
 	float arrow_head_radius  = radius * 2.f;
 	float arrow_head_length  = arrow_head_radius * 3.f; // 3:1 arrow_head_length to arrow_head_diameter ratio.

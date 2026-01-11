@@ -128,6 +128,7 @@ SOFTWARE.
 
 ## Intersectors
 ### Intersection of a ray and a capped cylinder oriented in an arbitrary direction. https://www.shadertoy.com/view/4lcSRn
+### Ray-Box intersection, by convertig the ray to the local space of the box. https://www.shadertoy.com/view/ld23DV
 
 The MIT License
 

@@ -52,7 +52,9 @@ namespace ImGui {
 	void SetWindowDrawList3D(ImGuiDrawList3D* draw_list_3d);
 	ImGuiDrawList3D* GetWindowDrawList3D();
 	
-	bool DragVector3D(const char* label, float3& position, const float3& direction, float length, float radius, u32 color);
+	bool DragVector3D(const char* label, float3& position, const float3& offset, const float3& direction, float length, float radius, u32 color);
+	bool DragPlane3D(const char* label, float3& position, const float3& offset, const quat& rotation, const float3& direction, const float3& half_extent, u32 color);
+	bool DragKnob3D(const char* label, quat& rotation, const float3& position, const float3& direction, float major_radius, float minor_radius, u32 color);
 }
 
 
@@ -85,5 +87,9 @@ struct ImGuiDrawList3D {
 struct ImGuiContext3D {
 	// DragVector3D:
 	float3 initial_position;
-	float  initial_time = 0.f;
+	float3 initial_time;
+	quat   initial_rotation;
+	float3 initial_direction;
+	
+	bool hide_inactive_widgets = false;
 };

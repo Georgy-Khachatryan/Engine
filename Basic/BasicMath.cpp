@@ -100,8 +100,28 @@ Math::RayInfo Math::TransformRayViewToWorld(const Math::RayInfo& view_space_ray,
 }
 
 
-// Cylinder defined by extremes a and b, and radius ra. https://www.shadertoy.com/view/4lcSRn see license in THIRD_PARTY_LICENSES.md
-Math::RayHitResult Math::RayCylinderIntersect(const Math::RayInfo& ray, const float3& a, const float3& b, float ra) {
+always_inline static Math::RayHitResult RayCylinderCapIntersect(const Math::RayInfo& ray, float t, const float3& p, float radius_0, float radius_1) {
+	float distance_square = Math::LengthSquare(ray.origin + ray.direction * t - p);
+	bool is_in_range = (t > 0.f) && (radius_0 * radius_0 < distance_square) && (distance_square < radius_1 * radius_1);
+	
+	return { t, is_in_range };
+}
+
+always_inline static Math::RayHitResult RayCylinderBodyIntersect(const Math::RayInfo& ray, float r, float d, float baba, float baoc, float bard, float k1, float k2, float sign) {
+	float kr = d - r * r * baba;
+	float h = k1 * k1 - k2 * kr;
+	if (h < 0.f) return {};
+	
+	float t = (sqrtf(h) * sign - k1) / k2;
+	float y = baoc + t * bard;
+	
+	bool is_in_range = (y > 0.f) && (y < baba) && (t > 0.f);
+	return { t, is_in_range };
+}
+
+// Cylinder defined by extremes a and b, outer radius_1 and optional inner radius_1 that makes cylinder a tube.
+// https://www.shadertoy.com/view/4lcSRn see license in THIRD_PARTY_LICENSES.md
+Math::RayHitResult Math::RayCylinderIntersect(const Math::RayInfo& ray, const float3& a, const float3& b, float radius_0, float radius_1) {
 	auto ba = b - a;
 	auto oc = ray.origin - a;
 	
@@ -111,40 +131,51 @@ Math::RayHitResult Math::RayCylinderIntersect(const Math::RayInfo& ray, const fl
 	
 	float k2 = baba - bard * bard;
 	float k1 = baba * Math::Dot(oc, ray.direction) - baoc * bard;
-	float k0 = baba * Math::Dot(oc, oc) - baoc * baoc - ra * ra * baba;
 	
-	// Handle raycasts parallel to the cylinder axis:
+	// Caps:
 	compile_const float eps = 1.f / (1024.f * 1024.f);
-	if (fabsf(k2) <= eps) {
+	if (fabsf(bard) >= eps) {
 		float ta = -Math::Dot(ray.origin - a, ba) / bard;
 		float tb = ta + baba / bard;
 		
-		float4 pt = (bard > 0.f) ? float4(a, -ta) : float4(b, tb);
+		auto cap_hit_a = RayCylinderCapIntersect(ray, ta, a, radius_0, radius_1);
+		if (cap_hit_a.hit) return cap_hit_a;
 		
-		float3 q = ray.origin + ray.direction * fabsf(pt.w) - pt.xyz;
-		if (Math::Dot(q, q) > ra * ra) return {};
-		
-		return { fabsf(pt.w), true };
+		auto cap_hit_b = RayCylinderCapIntersect(ray, tb, b, radius_0, radius_1);
+		if (cap_hit_b.hit) return cap_hit_b;
 	}
 	
-	float h = k1 * k1 - k2 * k0;
-	if (h < 0.f) return {}; // No intersection.
+	float d = baba * Math::Dot(oc, oc) - baoc * baoc;
 	
-	h = sqrtf(h);
-	float t = (-k1 - h) / k2;
+	auto outer_hit = RayCylinderBodyIntersect(ray, radius_1, d, baba, baoc, bard, k1, k2, -1.f);
+	if (outer_hit.hit) return outer_hit;
 	
-	// Body:
-	float y = baoc + t * bard;
-	if (y > 0.f && y < baba) return { t, true };
-	
-	// Caps:
-	t = ((y < 0.f ? 0.f : baba) - baoc) / bard;
-	
-	if (fabsf(k1 + k2 * t) < h) {
-		return { t, true };
+	if (radius_0 > 0.f) {
+		auto inner_hit = RayCylinderBodyIntersect(ray, radius_0, d, baba, baoc, bard, k1, k2, +1.f);
+		if (inner_hit.hit) return inner_hit;
 	}
 	
 	return {};
+}
+
+// Ray-Box intersection, by convertig the ray to the local space of the box.
+// https://www.shadertoy.com/view/ld23DV see license in THIRD_PARTY_LICENSES.md
+Math::RayHitResult Math::RayBoxIntersect(const Math::RayInfo& ray, const float3& position, const quat& rotation, const float3& half_extent) {
+	auto world_to_box_rotation = Math::Conjugate(rotation);
+	auto local_ray = Math::TransformRayViewToWorld(ray, -(world_to_box_rotation * position), world_to_box_rotation);
+	
+	auto m = float3(1.f, 1.f, 1.f) / local_ray.direction;
+	auto n = m * local_ray.origin;
+	auto k = float3(fabsf(m.x), fabsf(m.y), fabsf(m.z)) * half_extent;
+	
+	auto t0 = -n - k;
+	auto t1 = -n + k;
+	
+	float t_n = Max(Max(t0.x, t0.y), t0.z);
+	float t_f = Min(Min(t1.x, t1.y), t1.z);
+	
+	bool is_in_range = (t_n <= t_f) && (t_f >= 0.f);
+	return { t_n >= 0.f ? t_n : t_f, is_in_range };
 }
 
 // The plane is defined by Math::Dot(normal, p) + distance = 0. Distance can be computed as -Math::Dot(normal, point_on_plane).
@@ -152,8 +183,10 @@ Math::RayHitResult Math::RayPlaneIntersect(const Math::RayInfo& ray, const float
 	float denominator = Math::Dot(normal, ray.direction);
 	if (denominator == 0.f) return {};
 	
-	return { (Math::Dot(normal, ray.origin) + distance) / -denominator, true };
+	float hit_distance = (Math::Dot(normal, ray.origin) + distance) / -denominator;
+	return { hit_distance, hit_distance >= 0.f };
 }
+
 
 // Tom Duff, James Burgess, Per Christensen, Christophe Hery, Andrew Kensler, Max Liani, and Ryusuke Villemin.
 // 2017. Building an Orthonormal Basis, Revisited. https://jcgt.org/published/0006/01/01/

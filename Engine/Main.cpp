@@ -747,6 +747,17 @@ s32 main() {
 			
 			BeginUndoRedoCommand("Transform Gizmo"_sl, undo_redo_system, entity_system, entity_guid);
 			
+			auto active_id = ImGui::GetActiveID();
+			bool is_any_item_active = false;
+			for (u32 i = 0; i < 3; i += 1) {
+				ImGuiScopeID(i);
+				
+				is_any_item_active |= (active_id == ImGui::GetID("PositionVector"));
+				is_any_item_active |= (active_id == ImGui::GetID("PositionPlane"));
+				is_any_item_active |= (active_id == ImGui::GetID("RotationKnob"));
+			}
+			ImGui::GetCurrentContext3D()->hide_inactive_widgets = is_any_item_active;
+			
 			auto model_to_world = entity.rotation->rotation;
 			for (u32 i = 0; i < 3; i += 1) {
 				ImGuiScopeID(i);
@@ -754,10 +765,19 @@ s32 main() {
 				auto world_space_direction = float3(0.f, 0.f, 0.f);
 				world_space_direction[i] = 1.f;
 				
-				float3 direction = use_local_space ? model_to_world * world_space_direction : world_space_direction;
+				auto world_space_plane_offset = float3(1.f, 1.f, 1.f);
+				world_space_plane_offset[i] = 0.f;
 				
-				u32 color = 0xCC000000u | (0xFFu << (i * 8));
-				ImGui::DragVector3D("EntityPosition", entity.position->position, direction, 2.f, 0.05f, color);
+				auto world_space_plane_rotation = Math::AxisAxisToQuat(float3(0.f, 0.f, 1.f), world_space_direction);
+				
+				float3 direction    = use_local_space ? model_to_world * world_space_direction      : world_space_direction;
+				float3 plane_offset = use_local_space ? model_to_world * world_space_plane_offset   : world_space_plane_offset;
+				quat plane_rotation = use_local_space ? model_to_world * world_space_plane_rotation : world_space_plane_rotation;
+				
+				u32 color = 0xE1000000u | (0xFFu << (i * 8));
+				ImGui::DragVector3D("PositionVector", entity.position->position, direction, direction, 1.f, 0.05f, color);
+				ImGui::DragPlane3D("PositionPlane", entity.position->position, plane_offset * 0.5f, plane_rotation, direction, float3(0.25f, 0.25f, 0.0125f), color);
+				ImGui::DragKnob3D("RotationKnob", entity.rotation->rotation, entity.position->position, direction, 1.25f, 0.05f, color);
 			}
 			draw_list_3d.AddSphere(entity.position->position, 0.15f, 0xCCFFFFFF);
 			

@@ -165,7 +165,8 @@ namespace Math {
 	RayInfo RayInfoFromScreenUv(float2 uv, const float4& clip_to_view_coef);
 	RayInfo TransformRayViewToWorld(const RayInfo& view_space_ray, const float3& world_space_position, const quat& view_to_world_rotation);
 	
-	RayHitResult RayCylinderIntersect(const RayInfo& ray, const float3& a, const float3& b, float r);
+	RayHitResult RayCylinderIntersect(const RayInfo& ray, const float3& a, const float3& b, float r0, float r1);
+	RayHitResult RayBoxIntersect(const Math::RayInfo& ray, const float3& position, const quat& rotation, const float3& box_extent);
 	RayHitResult RayPlaneIntersect(const RayInfo& ray, const float3& normal, float distance);
 	
 	float3x3 BuildOrthonormalBasis(const float3& normal);
