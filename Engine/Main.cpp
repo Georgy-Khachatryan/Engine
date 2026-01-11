@@ -296,6 +296,7 @@ s32 main() {
 	auto& selected_entities_hash_table = world_entity.selection_state->selected_entities_hash_table;
 	
 	ImGuiMouseLock mouse_lock;
+	bool use_local_space_gizmo = true;
 	
 	u64 frame_allocation_size = 0;
 	u64 transient_upload_allocation_size = 0;
@@ -704,28 +705,11 @@ s32 main() {
 		ImGuiDrawList3D draw_list_3d;
 		draw_list_3d.alloc = &alloc;
 		
-		{
-			float vertical_fov_degrees = camera_entity.camera->vertical_fov_degrees;
-			float near_depth           = camera_entity.camera->near_depth;
-			
-			float4 view_to_clip_coef;
-			if (camera_entity.camera->transform_type == CameraTransformType::Perspective) {
-				view_to_clip_coef = Math::PerspectiveViewToClip(vertical_fov_degrees * Math::degrees_to_radians, float2(window_size), near_depth);
-			} else {
-				view_to_clip_coef = Math::OrthographicViewToClip(float2(window_size) * vertical_fov_degrees * (1.f / window_size.x), 1024.f);
-			}
-			auto clip_to_view_coef = Math::ViewToClipInverse(view_to_clip_coef);
-			
-			auto view_space_ray  = Math::RayInfoFromScreenUv((float2(ImGui::GetMousePos()) - float2(window_pos)) / float2(window_size), clip_to_view_coef);
-			auto world_space_ray = Math::TransformRayViewToWorld(view_space_ray, camera_entity.position->position, camera_entity.rotation->rotation);
-			
-			draw_list_3d.mouse_ray = world_space_ray;
-		}
-		
 		if (selected_entities_hash_table.count == 1) {
 			ImGui::Begin("Scene");
-			ImGui::SetWindowDrawList3D(&draw_list_3d);
+			defer{ ImGui::End(); };
 			
+			ImGui::SetWindowDrawList3D(&draw_list_3d);
 			
 			u64 entity_guid = (*selected_entities_hash_table.begin()).key;
 			
@@ -737,10 +721,30 @@ s32 main() {
 			u32 entity_stream_index = array->entity_id_to_stream_index[typed_entity_id.entity_id.index];
 			auto entity = ExtractComponentStreams<EntityEditorQuery>(array, entity_stream_index);
 			
+			{
+				float vertical_fov_degrees = camera_entity.camera->vertical_fov_degrees;
+				float near_depth           = camera_entity.camera->near_depth;
+				
+				float4 view_to_clip_coef;
+				if (camera_entity.camera->transform_type == CameraTransformType::Perspective) {
+					view_to_clip_coef = Math::PerspectiveViewToClip(vertical_fov_degrees * Math::degrees_to_radians, float2(window_size), near_depth);
+				} else {
+					view_to_clip_coef = Math::OrthographicViewToClip(float2(window_size) * vertical_fov_degrees * (1.f / window_size.x), 1024.f);
+				}
+				auto clip_to_view_coef = Math::ViewToClipInverse(view_to_clip_coef);
+				
+				auto view_space_ray  = Math::RayInfoFromScreenUv((float2(ImGui::GetMousePos()) - float2(window_pos)) / float2(window_size), clip_to_view_coef);
+				auto world_space_ray = Math::TransformRayViewToWorld(view_space_ray, camera_entity.position->position, camera_entity.rotation->rotation);
+				
+				draw_list_3d.mouse_ray = world_space_ray;
+				
+				ImGui::PushScalingOrigin3D(entity.position->position, camera_entity.position->position, view_to_clip_coef, window_size.x, 96.f);
+			}
+			defer{ ImGui::PopScalingOrigin3D(); };
 			
-			static bool use_local_space = true;
-			if (ImGui::Shortcut(ImGuiKey_1)) use_local_space = true;
-			if (ImGui::Shortcut(ImGuiKey_2)) use_local_space = false;
+			
+			if (ImGui::Shortcut(ImGuiKey_1)) use_local_space_gizmo = true;
+			if (ImGui::Shortcut(ImGuiKey_2)) use_local_space_gizmo = false;
 			
 			
 			BeginUndoRedoCommand("Transform Gizmo"_sl, undo_redo_system, entity_system, entity_guid);
@@ -759,7 +763,7 @@ s32 main() {
 			auto& world_space_position = entity.position->position;
 			auto& model_to_world_quat  = entity.rotation->rotation;
 			auto model_to_world = Math::QuatToRotationMatrix(model_to_world_quat);
-			auto flipped_world_to_model = use_local_space ? Math::Transpose(model_to_world) : float3x3{};
+			auto flipped_world_to_model = use_local_space_gizmo ? Math::Transpose(model_to_world) : float3x3{};
 			
 			auto view_vector = camera_entity.camera->transform_type == CameraTransformType::Orthographic ? -draw_list_3d.mouse_ray.direction : (draw_list_3d.mouse_ray.origin - world_space_position);
 			for (u32 i = 0; i < 3; i += 1) {
@@ -769,7 +773,7 @@ s32 main() {
 				}
 			}
 			
-			auto model_to_world_plane_rotation = (use_local_space ? model_to_world_quat : quat{});
+			auto model_to_world_plane_rotation = (use_local_space_gizmo ? model_to_world_quat : quat{});
 			for (u32 i = 0; i < 3; i += 1) {
 				ImGuiScopeID(i);
 				
@@ -788,7 +792,7 @@ s32 main() {
 				ImGui::DragPlane3D("PositionPlane", world_space_position, world_space_plane_offset, world_space_direction, model_to_world_plane_rotation, model_space_plane_size, color);
 				ImGui::DragKnob3D("RotationKnob", model_to_world_quat, world_space_position, world_space_direction, 1.25f, 0.05f, color);
 			}
-			draw_list_3d.AddSphere(entity.position->position, 0.15f, 0xCCFFFFFF);
+			draw_list_3d.AddSphere(entity.position->position, 0.1f * draw_list_3d.scale, 0xCCFFFFFF);
 			
 			bool is_dragging = ImGui::IsAnyItemActive() && ImGui::IsWindowFocused();
 			bool is_dirty = EndUndoRedoCommand(undo_redo_system, entity_system, is_dragging);
@@ -796,8 +800,6 @@ s32 main() {
 			if (is_dirty) {
 				BitArraySetBit(array->dirty_mask, entity_stream_index);
 			}
-			
-			ImGui::End();
 		}
 		
 		

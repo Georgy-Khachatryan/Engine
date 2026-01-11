@@ -52,8 +52,11 @@ namespace ImGui {
 	void SetWindowDrawList3D(ImGuiDrawList3D* draw_list_3d);
 	ImGuiDrawList3D* GetWindowDrawList3D();
 	
-	bool DragVector3D(const char* label, float3& position, float3 offset, float3 direction, float length, float radius, u32 color);
-	bool DragPlane3D(const char* label, float3& position, float3 offset, const float3& direction, const quat& rotation, const float3& half_extent, u32 color);
+	void PushScalingOrigin3D(const float3& scaling_origin, const float3& camera_position, const float4& view_to_clip_coef, float render_target_size_x, float widget_to_pixel_scale);
+	void PopScalingOrigin3D();
+	
+	bool DragVector3D(const char* label, float3& position, const float3& offset, float3 direction, float length, float radius, u32 color);
+	bool DragPlane3D(const char* label, float3& position, const float3& offset, const float3& direction, const quat& rotation, const float3& half_extent, u32 color);
 	bool DragKnob3D(const char* label, quat& rotation, const float3& position, const float3& direction, float major_radius, float minor_radius, u32 color);
 }
 
@@ -70,6 +73,9 @@ struct ImGuiDrawList3D {
 	
 	Math::RayInfo mouse_ray;
 	float min_hit_distance = FLT_MAX;
+	
+	float scale = 1.f;
+	FixedCapacityArray<float, 4> scale_stack;
 	
 	void AddSphere(const float3& position, float radius, u32 color);
 	void AddSphere(const float3& position, const quat& rotation, const float3& radius, u32 color);

@@ -319,15 +319,39 @@ ImGuiDrawList3D* ImGui::GetWindowDrawList3D() {
 	return draw_list_3d;
 }
 
-bool ImGui::DragVector3D(const char* label, float3& position, float3 offset, float3 direction, float length, float radius, u32 color) {
+void ImGui::PushScalingOrigin3D(const float3& scaling_origin, const float3& camera_position, const float4& view_to_clip_coef, float render_target_size_x, float widget_to_pixel_scale) {
+	float denominator = view_to_clip_coef.x * render_target_size_x * 0.5f;
+	float numerator   = 1.f;
+	
+	if (Math::IsPerspectiveMatrix(view_to_clip_coef)) {
+		numerator = Math::Length(scaling_origin - camera_position);
+	}
+	
+	float scale = widget_to_pixel_scale * numerator / Max(denominator, 0.01f);
+	
+	auto* draw_list_3d = ImGui::GetWindowDrawList3D();
+	ArrayAppend(draw_list_3d->scale_stack, draw_list_3d->scale);
+	draw_list_3d->scale = scale;
+}
+
+void ImGui::PopScalingOrigin3D() {
+	auto* draw_list_3d = ImGui::GetWindowDrawList3D();
+	draw_list_3d->scale = ArrayPopLast(draw_list_3d->scale_stack);
+}
+
+bool ImGui::DragVector3D(const char* label, float3& position, const float3& offset, float3 direction, float length, float radius, u32 color) {
 	auto* draw_list_3d = ImGui::GetWindowDrawList3D();
 	auto* context = ImGui::GetCurrentContext3D();
 	
 	bool is_item_active = ImGui::GetID(label) == ImGui::GetActiveID();
 	if (is_item_active == false && context->hide_inactive_widgets) return false;
 	
+	auto scaled_offset = offset * draw_list_3d->scale;
+	auto scaled_length = length * draw_list_3d->scale;
+	auto scaled_radius = radius * draw_list_3d->scale;
+	
 	auto& ray = draw_list_3d->mouse_ray;
-	auto hit_result = Math::RayCylinderIntersect(ray, position + offset, position + offset + direction * (length * 1.05f), 0.f, radius * 2.f);
+	auto hit_result = Math::RayCylinderIntersect(ray, position + scaled_offset, position + scaled_offset + direction * (scaled_length * 1.25f), 0.f, scaled_radius * 2.f);
 	
 	bool result = false;
 	bool hovered = false;
@@ -366,26 +390,30 @@ bool ImGui::DragVector3D(const char* label, float3& position, float3 offset, flo
 			float time = compute_drag_time();
 			position  = context->initial_position + context->initial_direction * (time - context->initial_time.x);
 			direction = context->initial_direction;
-			offset    = context->initial_offset;
+			scaled_offset = context->initial_offset * draw_list_3d->scale;
 		}
 		
-		hovered = ImGui::IsItemHovered();
+		hovered = ImGui::IsItemHovered() || ImGui::IsItemActive();
 	}
 	
-	draw_list_3d->AddArrow(position + offset, direction, hovered ? length * 1.05f : length, hovered ? radius * 1.25f : radius, hovered ? 0xFF00FFFF : color);
+	float hovered_scale = (hovered ? 1.125f : 1.f);
+	draw_list_3d->AddArrow(position + scaled_offset, direction, scaled_length * hovered_scale, scaled_radius * hovered_scale, hovered ? 0xFF00FFFF : color);
 	
 	return result;
 }
 
-bool ImGui::DragPlane3D(const char* label, float3& position, float3 offset, const float3& direction, const quat& rotation, const float3& half_extent, u32 color) {
+bool ImGui::DragPlane3D(const char* label, float3& position, const float3& offset, const float3& direction, const quat& rotation, const float3& half_extent, u32 color) {
 	auto* draw_list_3d = ImGui::GetWindowDrawList3D();
 	auto* context = ImGui::GetCurrentContext3D();
 	
 	bool is_item_active = ImGui::GetID(label) == ImGui::GetActiveID();
 	if (is_item_active == false && context->hide_inactive_widgets) return false;
 	
+	auto scaled_offset = offset * draw_list_3d->scale;
+	auto scaled_half_extent = half_extent * draw_list_3d->scale; 
+	
 	auto& ray = draw_list_3d->mouse_ray;
-	auto hit_result = Math::RayBoxIntersect(ray, position + offset, rotation, half_extent);
+	auto hit_result = Math::RayBoxIntersect(ray, position + scaled_offset, rotation, scaled_half_extent * 1.125f);
 	
 	bool result = false;
 	bool hovered = false;
@@ -415,13 +443,14 @@ bool ImGui::DragPlane3D(const char* label, float3& position, float3 offset, cons
 		if (ImGui::IsItemActive() && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
 			auto time = compute_drag_time();
 			position = context->initial_position + (time - context->initial_time);
-			offset   = context->initial_offset;
+			scaled_offset = context->initial_offset * draw_list_3d->scale;
 		}
 		
-		hovered = ImGui::IsItemHovered();
+		hovered = ImGui::IsItemHovered() || ImGui::IsItemActive();
 	}
 	
-	draw_list_3d->AddCube(position + offset, rotation, hovered ? half_extent * 1.05f : half_extent, hovered ? 0xFF00FFFF : color);
+	float hovered_scale = (hovered ? 1.125f : 1.f);
+	draw_list_3d->AddCube(position + scaled_offset, rotation, scaled_half_extent * hovered_scale, hovered ? 0xFF00FFFF : color);
 	
 	return result;
 }
@@ -433,11 +462,14 @@ bool ImGui::DragKnob3D(const char* label, quat& rotation, const float3& position
 	bool is_item_active = ImGui::GetID(label) == ImGui::GetActiveID();
 	if (is_item_active == false && context->hide_inactive_widgets) return false;
 	
-	auto p0 = position - direction * (minor_radius * 1.25f);
-	auto p1 = position + direction * (minor_radius * 1.25f);
+	auto scaled_major_radius = major_radius * draw_list_3d->scale;
+	auto scaled_minor_radius = minor_radius * draw_list_3d->scale;
 	
-	float r0 = major_radius - (minor_radius * 1.25f);
-	float r1 = major_radius + (minor_radius * 1.25f);
+	auto p0 = position - direction * (scaled_minor_radius * 1.125f);
+	auto p1 = position + direction * (scaled_minor_radius * 1.125f);
+	
+	float r0 = scaled_major_radius - (scaled_minor_radius * 1.125f);
+	float r1 = scaled_major_radius + (scaled_minor_radius * 1.125f);
 	
 	auto& ray = draw_list_3d->mouse_ray;
 	auto hit_result = Math::RayCylinderIntersect(ray, p0, p1, r0, r1);
@@ -482,11 +514,12 @@ bool ImGui::DragKnob3D(const char* label, quat& rotation, const float3& position
 			draw_list_3d->AddArrow(position, direction_1, major_radius - minor_radius * 2.f, minor_radius * 0.5f, color);
 		}
 		
-		hovered = ImGui::IsItemHovered();
+		hovered = ImGui::IsItemHovered() || ImGui::IsItemActive();
 	}
 	
 	auto torus_rotation = Math::AxisAxisToQuat(float3(0.f, 0.f, 1.f), direction);
-	draw_list_3d->AddTorus(position, torus_rotation, major_radius, hovered ? minor_radius * 1.25f : minor_radius, hovered ? 0xFF00FFFF : color);
+	float hovered_scale = (hovered ? 1.125f : 1.f);
+	draw_list_3d->AddTorus(position, torus_rotation, scaled_major_radius, scaled_minor_radius * hovered_scale, hovered ? 0xFF00FFFF : color);
 	
 	return result;
 }
