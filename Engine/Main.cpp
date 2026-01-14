@@ -7,6 +7,7 @@
 #include "Basic/BasicString.h"
 #include "Entities.h"
 #include "EntitySystem.h"
+#include "GraphicsApi/AsyncTransferQueue.h"
 #include "GraphicsApi/GraphicsApi.h"
 #include "GraphicsApi/RecordContext.h"
 #include "ImGuiCustomWidgets.h"
@@ -36,7 +37,7 @@ static GpuComponentUploadBuffer AllocateGpuComponentUploadBuffer(RecordContext* 
 };
 
 template<typename T>
-static void QueueGpuUpload(GpuComponentUploadBuffer& view, u32 dst_index, const T& element) {
+static void AppendGpuTransferCommand(GpuComponentUploadBuffer& view, u32 dst_index, const T& element) {
 	u32 src_index = view.count++;
 	((T*)view.data_cpu_address)[src_index] = element;
 	view.indices_cpu_address[src_index]    = dst_index;
@@ -205,6 +206,9 @@ s32 main() {
 	defer{ ReleaseGraphicsContext(graphics_context, &alloc); };
 	defer{ ImGuiReleaseContext(graphics_context); };
 	
+	auto* async_transfer_queue = CreateAsyncTransferQueue(&alloc, graphics_context);
+	defer{ ReleaseAsyncTransferQueue(async_transfer_queue); };
+	
 	// TODO: Dynamically switch between HDR and SDR, add tone mappers for both.
 	auto* swap_chain = CreateWindowSwapChain(&alloc, graphics_context, window->hwnd, TextureFormat::R16G16B16A16_FLOAT);
 	// auto* swap_chain = CreateWindowSwapChain(&alloc, graphics_context, window->hwnd, TextureFormat::R8G8B8A8_UNORM_SRGB);
@@ -221,9 +225,8 @@ s32 main() {
 	u32 upload_buffer_index = 0;
 	
 	compile_const u32 mesh_asset_buffer_size = 32 * 1024 * 1024;
-	u8* mesh_asset_buffer_cpu_address = nullptr;
 	u32 mesh_asset_buffer_offset = 0;
-	auto mesh_asset_buffer = CreateBufferResource(graphics_context, mesh_asset_buffer_size, GpuMemoryAccessType::Upload, &mesh_asset_buffer_cpu_address);
+	auto mesh_asset_buffer = CreateBufferResource(graphics_context, mesh_asset_buffer_size);
 	
 	
 	VirtualResourceTable resource_table;
@@ -317,7 +320,7 @@ s32 main() {
 		record_context.resource_table = &resource_table;
 		
 		resource_table.Set(VirtualResourceID::CurrentBackBuffer, WindowSwapGetCurrentBackBuffer(swap_chain), swap_chain->size);
-		resource_table.Set(VirtualResourceID::MeshAssetBuffer, mesh_asset_buffer, mesh_asset_buffer_size, mesh_asset_buffer_cpu_address);
+		resource_table.Set(VirtualResourceID::MeshAssetBuffer, mesh_asset_buffer, mesh_asset_buffer_size);
 		resource_table.Set(VirtualResourceID::TransientUploadBuffer, upload_buffers[upload_buffer_index], upload_buffer_size, upload_buffer_cpu_addresses[upload_buffer_index]);
 		upload_buffer_index = (upload_buffer_index + 1) % number_of_frames_in_flight;
 		
@@ -818,7 +821,7 @@ s32 main() {
 				transform.position = streams.position[i].position;
 				transform.scale    = streams.scale[i].scale;
 				transform.rotation = streams.rotation[i].rotation;
-				QueueGpuUpload(gpu_transform, (u32)i, transform);
+				AppendGpuTransferCommand(gpu_transform, (u32)i, transform);
 			}
 			ArrayAppend(gpu_uploads, &alloc, gpu_transform);
 			
@@ -828,7 +831,7 @@ s32 main() {
 				
 				GpuMeshEntityData mesh_entity;
 				mesh_entity.mesh_asset_entity_id = element ? element->value.entity_id.index : u32_max;
-				QueueGpuUpload(gpu_mesh_entity_data, (u32)i, mesh_entity);
+				AppendGpuTransferCommand(gpu_mesh_entity_data, (u32)i, mesh_entity);
 			}
 			ArrayAppend(gpu_uploads, &alloc, gpu_mesh_entity_data);
 		}
@@ -844,21 +847,27 @@ s32 main() {
 			for (u64 i : BitArrayIt(entity_array->dirty_mask)) {
 				if (streams.allocation[i].base_offset != u32_max) continue;
 				
-				u32 data_size = streams.runtime_data_layout[i].AllocationSize();
-				
-				u32 allocation_size = AlignUp(data_size, 256u);
+				u32 allocation_size   = AlignUp(streams.runtime_data_layout[i].AllocationSize(), 4096u);
 				u32 allocation_offset = mesh_asset_buffer_offset;
 				
 				mesh_asset_buffer_offset += allocation_size;
 				streams.allocation[i].base_offset = allocation_offset;
 				
 				u64 guid = streams.runtime_data_layout[i].file_guid;
-				auto file = SystemOpenFile(&alloc, StringFormat(&alloc, "./Assets/Runtime/%x..mrd"_sl, guid), OpenFileFlags::Read);
+				auto file = SystemOpenFile(&alloc, StringFormat(&alloc, "./Assets/Runtime/%x..mrd"_sl, guid), OpenFileFlags::Read | OpenFileFlags::Async);
 				
 				streams.runtime_file[i].file = file;
 				
-				auto* cpu_address = mesh_asset_buffer_cpu_address + streams.allocation[i].base_offset;
-				SystemReadFile(file, cpu_address, data_size, 0);
+				AsyncTransferCommand command;
+				command.src_type = AsyncTransferSrcType::File;
+				command.dst_type = AsyncTransferDstType::Buffer;
+				command.src.file.handle     = file;
+				command.src.file.offset     = 0;
+				command.src.file.size       = allocation_size;
+				command.dst.buffer.resource = mesh_asset_buffer;
+				command.dst.buffer.size     = mesh_asset_buffer_size;
+				command.dst.buffer.offset   = streams.allocation[i].base_offset;
+				AppendAsyncTransferCommand(async_transfer_queue, command);
 			}
 			
 			auto gpu_mesh_asset_data = AllocateGpuComponentUploadBuffer(&record_context, dirty_entity_count, streams.gpu_mesh_asset_data);
@@ -873,10 +882,11 @@ s32 main() {
 				mesh_asset.meshlet_buffer_offset = base_offset + layout.MeshletBufferOffset();
 				mesh_asset.index_buffer_offset   = base_offset + layout.IndexBufferOffset();
 				mesh_asset.meshlet_count         = layout.meshlet_count;
-				QueueGpuUpload(gpu_mesh_asset_data, stream_index_to_entity_id[i], mesh_asset);
+				AppendGpuTransferCommand(gpu_mesh_asset_data, stream_index_to_entity_id[i], mesh_asset);
 			}
 			ArrayAppend(gpu_uploads, &alloc, gpu_mesh_asset_data);
 		}
+		UpdateAsyncTransferQueue(async_transfer_queue);
 		
 		
 		auto renderer_world = world_entity.renderer_world;

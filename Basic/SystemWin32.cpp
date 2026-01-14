@@ -6,6 +6,8 @@
 
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
+#include <ioringapi.h>
+
 
 void* SystemAllocateAddressSpace(u64 reserved_size) {
 	return VirtualAlloc(nullptr, reserved_size, MEM_RESERVE, PAGE_READWRITE);
@@ -60,6 +62,10 @@ FileHandle SystemOpenFile(StackAllocator* alloc, String path, OpenFileFlags flag
 	case OpenFileFlags::Read:  access = GENERIC_READ;  creation_mode = OPEN_EXISTING; sharing_mode = FILE_SHARE_READ | FILE_SHARE_WRITE; break;
 	case OpenFileFlags::Write: access = GENERIC_WRITE; creation_mode = CREATE_ALWAYS; break;
 	default: DebugAssertAlways("Invalid combination of open file flags '%'.", (u32)flags);
+	}
+	
+	if (HasAnyFlags(flags, OpenFileFlags::Async)) {
+		attributes |= FILE_FLAG_NO_BUFFERING | FILE_FLAG_OVERLAPPED;
 	}
 	
 	auto path_utf16 = StringUtf8ToUtf16(alloc, path);
@@ -135,6 +141,115 @@ bool SystemCreateDirectory(StackAllocator* alloc, String path) {
 }
 
 
+struct FileIoQueue {
+	ArrayView<IoOperationStatus> io_status_array;
+	Array<u16> io_status_free_indices;
+	
+	HIORING handle = nullptr;
+	void* buffer = nullptr;
+	u64 buffer_size = 0;
+};
+
+FileIoQueue* SystemCreateFileIoQueue(StackAllocator* alloc, u32 queue_size, u8* buffer, u64 buffer_size) {
+	ProfilerScope("SystemCreateFileIoQueue");
+	
+	IORING_CREATE_FLAGS flags = {};
+	flags.Required = IORING_CREATE_REQUIRED_FLAGS_NONE;
+#if BUILD_TYPE(DEBUG) || BUILD_TYPE(DEV)
+	flags.Advisory = IORING_CREATE_ADVISORY_FLAGS_NONE;
+#elif BUILD_TYPE(PROFILE)
+	flags.Advisory = IORING_CREATE_SKIP_BUILDER_PARAM_CHECKS;
+#else // !BUILD_TYPE(PROFILE)
+#error "Unknown BUILD_TYPE."
+#endif // !BUILD_TYPE(PROFILE)
+	
+	HIORING handle = nullptr;
+	auto result = CreateIoRing(IORING_VERSION_2, flags, queue_size, queue_size * 2, &handle);
+	if (FAILED(result)) return nullptr;
+	
+	auto* queue = NewFromAlloc(alloc, FileIoQueue);
+	queue->handle = handle;
+	
+	queue->io_status_array = ArrayViewAllocate<IoOperationStatus>(alloc, queue_size * 2);
+	
+	ArrayResize(queue->io_status_free_indices, alloc, queue_size * 2);
+	for (u32 i = 0; i < queue->io_status_free_indices.capacity; i += 1) {
+		queue->io_status_free_indices[i] = (u16)i;
+	}
+	
+	memset(buffer, 0, buffer_size);
+	
+	IORING_BUFFER_INFO buffer_info;
+	buffer_info.Address = buffer;
+	buffer_info.Length  = (u32)buffer_size;
+	BuildIoRingRegisterBuffers(handle, 1, &buffer_info, 0);
+	
+	SubmitIoRing(handle, 1, INFINITE, nullptr);
+	
+	IORING_CQE entry = {};
+	PopIoRingCompletion(queue->handle, &entry);
+	
+	queue->buffer      = buffer;
+	queue->buffer_size = buffer_size;
+	
+	return queue;
+}
+
+void SystemReleaseFileIoQueue(FileIoQueue* queue) {
+	auto result = CloseIoRing(queue->handle);
+	DebugAssert(SUCCEEDED(result), "Failed to close IO Ring.");
+}
+
+u64 CmdSystemReadFile(FileIoQueue* queue, FileHandle file, u64 buffer_offset, u64 size, u64 offset) {
+	ProfilerScope("CmdSystemReadFile");
+	
+	DebugAssert(size <= (u64)u32_max, "File read size must be under 4GB. Size given '%'.", size);
+	
+	if (queue->io_status_free_indices.count == 0) return u64_max;
+	
+	auto file_ref   = IoRingHandleRefFromHandle((HANDLE)file.handle);
+	auto buffer_ref = IoRingBufferRefFromIndexAndOffset(0u, (u32)buffer_offset);
+	
+	u64 io_completion_index = ArrayLastElement(queue->io_status_free_indices);
+	auto result = BuildIoRingReadFile(queue->handle, file_ref, buffer_ref, (u32)size, offset, io_completion_index, IOSQE_FLAGS_NONE);
+	if (FAILED(result)) return u64_max;
+	
+	ArrayPopLast(queue->io_status_free_indices);
+	queue->io_status_array[io_completion_index] = IoOperationStatus::InFlight;
+	
+	return io_completion_index;
+}
+
+u32 SystemSubmitFileIoQueue(FileIoQueue* queue) {
+	ProfilerScope("SystemSubmitFileIoQueue");
+	
+	u32 submitted_count = 0;
+	auto result = SubmitIoRing(queue->handle, 0, 0, &submitted_count);
+	
+	return SUCCEEDED(result) ? submitted_count : 0;
+}
+
+void SystemCheckIoCompletion(FileIoQueue* queue) {
+	ProfilerScope("SystemCheckIoCompletion");
+	
+	IORING_CQE entry = {};
+	while (PopIoRingCompletion(queue->handle, &entry) == S_OK) {
+		queue->io_status_array[entry.UserData] = SUCCEEDED(entry.ResultCode) ? IoOperationStatus::Succeeded : IoOperationStatus::Failed;
+	}
+}
+
+IoOperationStatus SystemConfirmIoCompletion(FileIoQueue* queue, u64 io_completion_index) {
+	auto status = queue->io_status_array[io_completion_index];
+	
+	if (status == IoOperationStatus::Failed || status == IoOperationStatus::Succeeded) {
+		queue->io_status_array[io_completion_index] = IoOperationStatus::Free;
+		ArrayAppend(queue->io_status_free_indices, (u16)io_completion_index);
+	}
+	
+	return status;
+}
+
+
 struct DirectoryChangeTracker {
 	HANDLE directory_handle   = nullptr;
 	HANDLE io_completion_port = nullptr;
@@ -167,8 +282,7 @@ DirectoryChangeTracker* CreateDirectoryChangeTracker(StackAllocator* alloc, Stri
 	auto* tracker = NewFromAlloc(alloc, DirectoryChangeTracker);
 	tracker->directory_handle   = directory_handle;
 	tracker->io_completion_port = io_completion_port;
-	tracker->buffer.count = 4096;
-	tracker->buffer.data  = (u8*)alloc->Allocate(tracker->buffer.count);
+	tracker->buffer             = ArrayViewAllocate<u8>(alloc, 4096u);
 	
 	ReadDirectoryChangesAsync(tracker);
 

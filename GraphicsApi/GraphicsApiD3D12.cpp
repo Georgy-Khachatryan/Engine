@@ -143,6 +143,16 @@ GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
 	}
 	
 	
+	{
+		ID3D12Fence* fence = nullptr;
+		if (FAILED(device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence)))) {
+			DebugAssertAlways("CreateFence failed.");
+			return nullptr;
+		}
+		context->async_copy_fence = fence;
+	}
+	
+	
 	for (auto& command_allocator : context->command_allocators) {
 		ProfilerScope("CreateCommandAllocator");
 		
@@ -567,6 +577,7 @@ void ReleaseGraphicsContext(GraphicsContext* api_context, StackAllocator* alloc)
 	
 	SafeRelease(context->command_list);
 	for (auto& command_allocator : context->command_allocators) SafeRelease(command_allocator);
+	SafeRelease(context->async_copy_fence);
 	SafeRelease(context->frame_sync_fence);
 	for (auto& descriptor_heap : context->descriptor_heaps) SafeRelease(descriptor_heap);
 	SafeRelease(context->graphics_command_queue);
@@ -906,7 +917,25 @@ void WindowSwapChainEndFrame(WindowSwapChain* api_swap_chain, GraphicsContext* a
 		DebugAssertAlways("Present failed.");
 	}
 	command_queue->Signal(context->frame_sync_fence, context->frame_index);
+	command_queue->Signal(context->async_copy_fence, context->async_copy_index);
 	
 	context->frame_index += 1;
 }
 
+
+void SubmitAsyncCopyCommands(GraphicsContext* api_context, ArrayView<AsyncCopyBufferToBufferCommand> copy_commands, u64 async_copy_signal_index) {
+	auto* context = (GraphicsContextD3D12*)api_context;
+	auto* command_list = context->command_list;
+	
+	// TODO: Record and submit these commands to an async copy command queue.
+	for (auto& command : copy_commands) {
+		command_list->CopyBufferRegion(command.dst_resource.d3d12, command.dst_offset, command.src_resource.d3d12, command.src_offset, command.size);
+	}
+	
+	context->async_copy_index = Max(context->async_copy_index, async_copy_signal_index);
+}
+
+u64 GetCompletedAsyncCopyCommandValue(GraphicsContext* api_context) {
+	auto* context = (GraphicsContextD3D12*)api_context;
+	return context->async_copy_fence->GetCompletedValue();
+}

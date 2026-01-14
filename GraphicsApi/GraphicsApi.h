@@ -30,6 +30,9 @@ NativeBufferResource CreateBufferResource(GraphicsContext* context, u32 size, Gp
 void ReleaseTextureResource(GraphicsContext* context, NativeTextureResource resource, ResourceReleaseCondition condition = ResourceReleaseCondition::None);
 void ReleaseBufferResource(GraphicsContext* context, NativeBufferResource resource, ResourceReleaseCondition condition = ResourceReleaseCondition::None);
 
+void SubmitAsyncCopyCommands(GraphicsContext* context, ArrayView<AsyncCopyBufferToBufferCommand> copy_commands, u64 async_copy_signal_index);
+u64 GetCompletedAsyncCopyCommandValue(GraphicsContext* context);
+
 WindowSwapChain* CreateWindowSwapChain(StackAllocator* alloc, GraphicsContext* context, void* hwnd, TextureFormat format);
 void ReleaseWindowSwapChain(WindowSwapChain* swap_chain, GraphicsContext* context);
 void ResizeWindowSwapChain(WindowSwapChain* swap_chain, GraphicsContext* context, uint2 size);

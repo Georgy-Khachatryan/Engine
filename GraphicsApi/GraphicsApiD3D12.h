@@ -47,6 +47,8 @@ struct GraphicsContextD3D12 : GraphicsContext {
 	ID3D12CommandSignature* draw_instanced_command_signature = nullptr;
 	ID3D12CommandSignature* draw_indexed_instanced_command_signature = nullptr;
 	
+	ID3D12Fence* async_copy_fence = nullptr;
+	u64 async_copy_index = 0;
 	
 	ID3D12Fence* frame_sync_fence = nullptr;
 	u64 frame_index = 0;

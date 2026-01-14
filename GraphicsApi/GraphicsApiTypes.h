@@ -383,6 +383,15 @@ struct PipelineStateDescription {
 };
 
 
+struct AsyncCopyBufferToBufferCommand {
+	NativeBufferResource src_resource;
+	NativeBufferResource dst_resource;
+	u64 src_offset = 0;
+	u64 dst_offset = 0;
+	u64 size = 0;
+};
+
+
 namespace Meta {
 	NOTES() struct RenderPass { CommandQueueType pass_type = CommandQueueType::Compute; };
 	NOTES() struct HlslFile { String filename; };
