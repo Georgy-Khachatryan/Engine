@@ -23,9 +23,9 @@ float3 TorusVertexToModelSpace(float4 vertex, float major_radius, float minor_ra
 	return float3(vertex.xy * (major_radius - vertex.z * minor_radius), vertex.w * minor_radius);
 }
 
-InputPS MainVS(uint vertex_id : SV_VertexID, uint instance_id : SV_InstanceID) {
-	DebugMeshInstance instance = instances[instance_id];
-	float4 parametric_vertex = vertices[vertex_id];
+InputPS MainVS(uint start_vertex_location : SV_StartVertexLocation, uint vertex_id : SV_VertexID, uint start_instance_location : SV_StartInstanceLocation, uint instance_id : SV_InstanceID) {
+	DebugMeshInstance instance = instances[start_instance_location + instance_id];
+	float4 parametric_vertex = vertices[start_vertex_location + vertex_id];
 	
 	float4 instance_data = DecodeR16G16B16A16_FLOAT(instance.packed_data);
 	

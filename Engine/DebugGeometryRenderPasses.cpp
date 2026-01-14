@@ -198,44 +198,70 @@ void DebugGeometryRenderPass::RecordPass(RecordContext* record_context) {
 	auto render_target_size = GetTextureSize(record_context, VirtualResourceID::SceneRadiance);
 	CmdSetViewportAndScissor(record_context, uint2(render_target_size));
 	
+	u64 debug_mesh_instance_count = 0;
 	for (auto [instance_type, debug_mesh_instances] : debug_mesh_instance_arrays) {
-		DebugAssert(debug_mesh_instances.count != 0, "Empty debug_mesh_instances.");
-		
+		DebugAssert(debug_mesh_instances.count != 0, "Empty debug mesh instance array.");
+		debug_mesh_instance_count += debug_mesh_instances.count;
+	}
+	
+	auto [instances_gpu_address, instances] = AllocateTransientUploadBuffer<DebugMeshInstance>(record_context, (u32)debug_mesh_instance_count);
+	for (auto [instance_type, debug_mesh_instances] : debug_mesh_instance_arrays) {
+		memcpy(instances, debug_mesh_instances.data, debug_mesh_instances.count * sizeof(DebugMeshInstance));
+		instances += debug_mesh_instances.count;
+	}
+	
+	struct InstanceTypeInfo {
 		// TODO: Use 16 bit types.
-		Array<float4> result_vertices;
-		Array<uint3> result_triangles;
+		Array<float4> vertices;
+		Array<uint3> triangles;
+		u32 vertex_offset = 0;
+		u32 index_offset  = 0;
+	};
+	
+	u32 vertex_count = 0;
+	u32 index_count  = 0;
+	FixedCountArray<InstanceTypeInfo, (u32)DebugMeshInstanceType::Count> instance_types;
+	for (u32 i = 0; i < (u32)DebugMeshInstanceType::Count; i += 1) {
+		auto& type = instance_types[i];
 		
 		// TODO: Build meshes on startup and upload them to VRAM.
-		switch (instance_type) {
-		case DebugMeshInstanceType::Sphere:   BuildParametricSphere(record_context->alloc,   result_vertices, result_triangles); break;
-		case DebugMeshInstanceType::Cube:     BuildParametricCube(record_context->alloc,     result_vertices, result_triangles); break;
-		case DebugMeshInstanceType::Cylinder: BuildParametricCylinder(record_context->alloc, result_vertices, result_triangles); break;
-		case DebugMeshInstanceType::Torus:    BuildParametricTorus(record_context->alloc,    result_vertices, result_triangles); break;
-		default: continue;
+		switch ((DebugMeshInstanceType)i) {
+		case DebugMeshInstanceType::Sphere:   BuildParametricSphere(record_context->alloc,   type.vertices, type.triangles); break;
+		case DebugMeshInstanceType::Cube:     BuildParametricCube(record_context->alloc,     type.vertices, type.triangles); break;
+		case DebugMeshInstanceType::Cylinder: BuildParametricCylinder(record_context->alloc, type.vertices, type.triangles); break;
+		case DebugMeshInstanceType::Torus:    BuildParametricTorus(record_context->alloc,    type.vertices, type.triangles); break;
 		}
 		
-		auto [vertex_buffer_gpu_address, vertex_buffer] = AllocateTransientUploadBuffer<float4>(record_context, (u32)result_vertices.count);
-		auto [index_buffer_gpu_address,  index_buffer]  = AllocateTransientUploadBuffer<uint3>(record_context, (u32)result_triangles.count);
+		type.vertex_offset = vertex_count;
+		type.index_offset  = index_count;
 		
-		memcpy(vertex_buffer, result_vertices.data, result_vertices.count * sizeof(float4));
-		memcpy(index_buffer, result_triangles.data, result_triangles.count * sizeof(uint3));
+		vertex_count += (u32)type.vertices.count;
+		index_count  += (u32)(type.triangles.count * 3);
+	}
+	
+	auto [vertex_buffer_gpu_address, vertex_buffer] = AllocateTransientUploadBuffer<float4>(record_context, vertex_count);
+	auto [index_buffer_gpu_address,  index_buffer]  = AllocateTransientUploadBuffer<u32>(record_context, index_count);
+	
+	for (auto& type : instance_types) {
+		memcpy(vertex_buffer + type.vertex_offset, type.vertices.data, type.vertices.count * sizeof(float4));
+		memcpy(index_buffer + type.index_offset, type.triangles.data, type.triangles.count * sizeof(uint3));
+	}
+	
+	auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
+	descriptor_table.vertices.Bind(vertex_buffer_gpu_address, (u32)(vertex_count * sizeof(float4)));
+	descriptor_table.instances.Bind(instances_gpu_address, (u32)(debug_mesh_instance_count * sizeof(DebugMeshInstance)));
+	
+	CmdSetIndexBufferView(record_context, index_buffer_gpu_address, (u32)(index_count * sizeof(u32)), TextureFormat::R32_UINT);
+	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
+	
+	u32 mesh_instance_offset = 0;
+	for (auto [instance_type, debug_mesh_instances] : debug_mesh_instance_arrays) {
+		auto& type = instance_types[(u32)instance_type];
 		
-		// TODO: Merge all instance lists.
-		auto [instances_gpu_address, instances] = AllocateTransientUploadBuffer<DebugMeshInstance>(record_context, (u32)debug_mesh_instances.count);
-		memcpy(instances, debug_mesh_instances.data, debug_mesh_instances.count * sizeof(DebugMeshInstance));
+		CmdSetRootArgument(record_context, root_signature.constants, { instance_type });
+		CmdDrawIndexedInstanced(record_context, (u32)(type.triangles.count * 3), (u32)debug_mesh_instances.count, type.index_offset, type.vertex_offset, mesh_instance_offset);
 		
-		auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
-		descriptor_table.vertices.Bind(vertex_buffer_gpu_address, (u32)(result_vertices.count * sizeof(float4)));
-		descriptor_table.instances.Bind(instances_gpu_address, (u32)(debug_mesh_instances.count * sizeof(DebugMeshInstance)));
-		
-		DebugGeometryPushConstants constants;
-		constants.instance_type = instance_type;
-		
-		CmdSetRootArgument(record_context, root_signature.constants, constants);
-		CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
-		CmdSetIndexBufferView(record_context, index_buffer_gpu_address, (u32)(result_triangles.count * sizeof(uint3)), TextureFormat::R32_UINT);
-		
-		CmdDrawIndexedInstanced(record_context, (u32)(result_triangles.count * 3), (u32)debug_mesh_instances.count);
+		mesh_instance_offset += (u32)debug_mesh_instances.count;
 	}
 }
 

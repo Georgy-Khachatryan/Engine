@@ -88,7 +88,7 @@ void CmdSetRootArgument(RecordContext* record_context, const HLSL::DescriptorTab
 }
 
 template<typename T>
-void CmdSetRootArgument(RecordContext* record_context, const HLSL::PushConstantBuffer<T>& push_constant_buffer, T& push_constants) {
+void CmdSetRootArgument(RecordContext* record_context, const HLSL::PushConstantBuffer<T>& push_constant_buffer, const T& push_constants) {
 	CmdSetPushConstants(record_context, push_constant_buffer.offset, { (u32*)&push_constants, sizeof(T) / sizeof(u32) });
 }
 
