@@ -510,8 +510,8 @@ bool ImGui::DragKnob3D(const char* label, quat& rotation, const float3& position
 			auto direction_0 = float3(cosf(context->initial_time.x), sinf(context->initial_time.x), 0.f) * world_to_tangent;
 			auto direction_1 = float3(cosf(time), sinf(time), 0.f) * world_to_tangent;
 			
-			draw_list_3d->AddArrow(position, direction_0, major_radius - minor_radius * 2.f, minor_radius * 0.5f, color);
-			draw_list_3d->AddArrow(position, direction_1, major_radius - minor_radius * 2.f, minor_radius * 0.5f, color);
+			draw_list_3d->AddArrow(position, direction_0, scaled_major_radius - scaled_minor_radius * 2.f, scaled_minor_radius * 0.5f, color);
+			draw_list_3d->AddArrow(position, direction_1, scaled_major_radius - scaled_minor_radius * 2.f, scaled_minor_radius * 0.5f, color);
 		}
 		
 		hovered = ImGui::IsItemHovered() || ImGui::IsItemActive();

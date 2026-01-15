@@ -43,13 +43,14 @@ static u64 RingBufferTryAppendMultiple(RingBuffer<T>& buffer, u64 count) {
 compile_const u64 max_async_transfer_command_count  = 512;
 compile_const u64 async_upload_buffer_capacity      = 32 * 1024 * 1024;
 compile_const u64 max_upload_buffer_allocation_size = async_upload_buffer_capacity / 4;
+compile_const u64 sub_command_max_count = 256;
 
 struct AsyncTransferExecutionState : AsyncTransferCommand {
 	u64 upload_buffer_offset = 0;
 	u64 size_with_padding    = 0;
 	
 	u64 file_io_submit_wait_index = 0;
-	u64 gpu_submit_wait_index     = u64_max;
+	u64 gpu_submit_wait_index = 0;
 };
 
 struct UploadRingBuffer {
@@ -130,7 +131,9 @@ static void SplitAsyncTransferCommands(AsyncTransferQueue* queue) {
 		u64 write_offset = RingBufferTryAppendMultiple(command_ring, allocation_command_count);
 		if (write_offset == u64_max) break; // Stop on ring buffer overflow.
 		
+		DebugAssert(allocation_command_count <= sub_command_max_count, "GPU transfer command is too large '%'.", command_size);
 		
+		u64 base_gpu_submit_wait_index = (i * sub_command_max_count) + (sub_command_max_count - allocation_command_count);
 		for (u64 allocation_index = 0; allocation_index < allocation_command_count; allocation_index += 1) {
 			auto allocation_command = AsyncTransferExecutionState{ command };
 			
@@ -158,10 +161,7 @@ static void SplitAsyncTransferCommands(AsyncTransferQueue* queue) {
 			}
 			}
 			
-			if (allocation_index + 1 >= allocation_command_count) {
-				allocation_command.gpu_submit_wait_index = i;
-			}
-			
+			allocation_command.gpu_submit_wait_index = base_gpu_submit_wait_index + allocation_index;
 			command_ring[write_offset + allocation_index] = allocation_command;
 		}
 		
@@ -270,9 +270,7 @@ void UpdateAsyncTransferQueue(AsyncTransferQueue* queue) {
 			copy_command.size         = ComputeTransferCommandSize(command);
 			ArrayAppend(copy_buffer_to_buffer_commands, copy_command);
 			
-			if (command.gpu_submit_wait_index != u64_max) {
-				last_gpu_submit_wait_index = command.gpu_submit_wait_index;
-			}
+			last_gpu_submit_wait_index = command.gpu_submit_wait_index;
 			
 			file_wait_write_offset += 1;
 		}
@@ -285,11 +283,11 @@ void UpdateAsyncTransferQueue(AsyncTransferQueue* queue) {
 	
 	// Release command ring elements and upload ring buffer space:
 	{
-		u64 gpu_submit_wait_index = GetCompletedAsyncCopyCommandValue(queue->graphics_context);
+		u64 completed_gpu_submit_wait_index = GetCompletedAsyncCopyCommandValue(queue->graphics_context);
 		for (u64 i = read_offset; i < file_wait_write_offset; i += 1) {
 			auto& command = command_ring[i];
 			
-			if (command.gpu_submit_wait_index >= gpu_submit_wait_index) break;
+			if (command.gpu_submit_wait_index > completed_gpu_submit_wait_index) break;
 			upload_ring_buffer.read_offset += command.size_with_padding;
 			
 			read_offset += 1;
@@ -299,5 +297,30 @@ void UpdateAsyncTransferQueue(AsyncTransferQueue* queue) {
 }
 
 u64 AppendAsyncTransferCommand(AsyncTransferQueue* queue, const AsyncTransferCommand& command) {
-	return RingBufferAppend(queue->user_command_ring, command);
+	return RingBufferAppend(queue->user_command_ring, command) * sub_command_max_count + (sub_command_max_count - 1);
+}
+
+u64 AsyncCopyMemoryToBuffer(AsyncTransferQueue* async_transfer_queue, NativeBufferResource dst_buffer, u64 dst_buffer_offset, u64 dst_buffer_size, void* src_data, u64 copy_size) {
+	AsyncTransferCommand command;
+	command.src_type = AsyncTransferSrcType::Memory;
+	command.dst_type = AsyncTransferDstType::Buffer;
+	command.src.memory.address  = (u8*)src_data;
+	command.src.memory.size     = copy_size;
+	command.dst.buffer.resource = dst_buffer;
+	command.dst.buffer.size     = dst_buffer_size;
+	command.dst.buffer.offset   = dst_buffer_offset;
+	return AppendAsyncTransferCommand(async_transfer_queue, command);
+}
+
+u64 AsyncCopyFileToBuffer(AsyncTransferQueue* async_transfer_queue, NativeBufferResource dst_buffer, u64 dst_buffer_offset, u64 dst_buffer_size, FileHandle src_file, u64 src_file_offset, u64 copy_size) {
+	AsyncTransferCommand command;
+	command.src_type = AsyncTransferSrcType::File;
+	command.dst_type = AsyncTransferDstType::Buffer;
+	command.src.file.handle     = src_file;
+	command.src.file.offset     = src_file_offset;
+	command.src.file.size       = copy_size;
+	command.dst.buffer.resource = dst_buffer;
+	command.dst.buffer.size     = dst_buffer_size;
+	command.dst.buffer.offset   = dst_buffer_offset;
+	return AppendAsyncTransferCommand(async_transfer_queue, command);
 }

@@ -932,7 +932,8 @@ void SubmitAsyncCopyCommands(GraphicsContext* api_context, ArrayView<AsyncCopyBu
 		command_list->CopyBufferRegion(command.dst_resource.d3d12, command.dst_offset, command.src_resource.d3d12, command.src_offset, command.size);
 	}
 	
-	context->async_copy_index = Max(context->async_copy_index, async_copy_signal_index);
+	DebugAssert(async_copy_signal_index > context->async_copy_index, "Async copy index '%' is already signalled.", async_copy_signal_index);
+	context->async_copy_index = async_copy_signal_index;
 }
 
 u64 GetCompletedAsyncCopyCommandValue(GraphicsContext* api_context) {

@@ -81,7 +81,7 @@ void BuildRenderPassesForFrame(RecordContext* record_context, EntitySystem* enti
 	MeshletClearBuffersRenderPass{}.RecordPass(record_context);
 	MeshletCullingRenderPass{ scene_constants_gpu_address, entity_system }.RecordPass(record_context);
 	BasicMeshRenderPass{ scene_constants_gpu_address }.RecordPass(record_context);
-	DebugGeometryRenderPass{ scene_constants_gpu_address, renderer_world.debug_mesh_instance_arrays }.RecordPass(record_context);
+	DebugGeometryRenderPass{ scene_constants_gpu_address, renderer_world.debug_mesh_instance_arrays, renderer_world.debug_geometry_buffer }.RecordPass(record_context);
 	
 	ImGuiRenderPass{}.RecordPass(record_context);
 }

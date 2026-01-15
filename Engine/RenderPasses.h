@@ -17,6 +17,7 @@ enum struct VirtualResourceID : u32 {
 	
 	// Streaming buffers:
 	MeshAssetBuffer,
+	DebugMeshBuffer,
 	
 	// Core resources:
 	CurrentBackBuffer,
@@ -39,6 +40,9 @@ enum struct VirtualResourceID : u32 {
 };
 
 struct EntitySystem;
+struct GraphicsContext;
+struct AsyncTransferQueue;
+
 void BuildRenderPassesForFrame(RecordContext* record_context, EntitySystem* entity_system, u64 world_entity_guid);
 
 NOTES(Meta::HlslFile{ "AtmosphereData.hlsl"_sl })
@@ -334,12 +338,30 @@ struct DebugGeometryPushConstants {
 	DebugMeshInstanceType instance_type = DebugMeshInstanceType::Sphere;
 };
 
+struct DebugMeshLayout {
+	u32 vertex_offset = 0;
+	u32 vertex_count  = 0;
+	u32 index_offset  = 0;
+	u32 index_count   = 0;
+};
+
+struct DebugGeometryBuffer {
+	NativeBufferResource resource;
+	u64 resource_size = 0;
+	
+	FixedCountArray<DebugMeshLayout, (u32)DebugMeshInstanceType::Count> mesh_layouts;
+	
+	u32 vertex_count = 0;
+	u32 index_count  = 0;
+};
+
 NOTES(Meta::RenderPass{ CommandQueueType::Graphics })
 struct DebugGeometryRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
 	GpuAddress scene_constants;
 	ArrayView<DebugMeshInstanceArray> debug_mesh_instance_arrays;
+	DebugGeometryBuffer* debug_geometry_buffer = nullptr;
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
 		HLSL::RegularBuffer<float4>            vertices;
@@ -353,6 +375,8 @@ struct DebugGeometryRenderPass {
 	};
 	
 	inline static PipelineID pipeline_id;
+	
+	static DebugGeometryBuffer CreateDebugGeometryBuffer(StackAllocator* alloc, GraphicsContext* graphics_context, AsyncTransferQueue* async_transfer_queue);
 };
 
 

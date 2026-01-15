@@ -1,6 +1,7 @@
 #include "RenderPasses.h"
 #include "GraphicsApi/GraphicsApi.h"
 #include "GraphicsApi/RecordContext.h"
+#include "GraphicsApi/AsyncTransferQueue.h"
 
 static void BuildParametricSphere(StackAllocator* alloc, Array<float4>& result_vertices, Array<uint3>& result_triangles) {
 	ProfilerScope("BuildParametricSphere");
@@ -169,6 +170,59 @@ static void BuildParametricTorus(StackAllocator* alloc, Array<float4>& result_ve
 	}
 }
 
+DebugGeometryBuffer DebugGeometryRenderPass::CreateDebugGeometryBuffer(StackAllocator* alloc, GraphicsContext* graphics_context, AsyncTransferQueue* async_transfer_queue) {
+	DebugGeometryBuffer result;
+	
+	struct DebugMeshBuffers {
+		// TODO: Use 16 bit types.
+		Array<float4> vertices;
+		Array<uint3> triangles;
+	};
+	
+	FixedCountArray<DebugMeshBuffers, (u32)DebugMeshInstanceType::Count> mesh_type_buffers;
+	
+	for (u32 i = 0; i < (u32)DebugMeshInstanceType::Count; i += 1) {
+		auto& buffers = mesh_type_buffers[i];
+		
+		switch ((DebugMeshInstanceType)i) {
+		case DebugMeshInstanceType::Sphere:   BuildParametricSphere(alloc,   buffers.vertices, buffers.triangles); break;
+		case DebugMeshInstanceType::Cube:     BuildParametricCube(alloc,     buffers.vertices, buffers.triangles); break;
+		case DebugMeshInstanceType::Cylinder: BuildParametricCylinder(alloc, buffers.vertices, buffers.triangles); break;
+		case DebugMeshInstanceType::Torus:    BuildParametricTorus(alloc,    buffers.vertices, buffers.triangles); break;
+		}
+		
+		auto& layout = result.mesh_layouts[i];
+		layout.vertex_offset = result.vertex_count;
+		layout.index_offset  = result.index_count;
+		layout.vertex_count  = (u32)(buffers.vertices.count);
+		layout.index_count   = (u32)(buffers.triangles.count * 3);
+		
+		result.vertex_count += layout.vertex_count;
+		result.index_count  += layout.index_count;
+	}
+	
+	u64 mesh_buffer_size = result.vertex_count * sizeof(float4) + result.index_count * sizeof(u32);
+	auto mesh_buffer = CreateBufferResource(graphics_context, (u32)mesh_buffer_size);
+	
+	u64 vertex_buffer_offset = 0;
+	u64 index_buffer_offset  = result.vertex_count * sizeof(float4);
+	for (auto& buffers : mesh_type_buffers) {
+		u64 vertex_buffer_size = buffers.vertices.count * sizeof(float4);
+		u64 index_buffer_size  = buffers.triangles.count * sizeof(uint3);
+		
+		AsyncCopyMemoryToBuffer(async_transfer_queue, mesh_buffer, vertex_buffer_offset, mesh_buffer_size, buffers.vertices.data, vertex_buffer_size);
+		AsyncCopyMemoryToBuffer(async_transfer_queue, mesh_buffer, index_buffer_offset, mesh_buffer_size, buffers.triangles.data, index_buffer_size);
+		
+		vertex_buffer_offset += vertex_buffer_size;
+		index_buffer_offset  += index_buffer_size;
+	}
+	
+	result.resource      = mesh_buffer;
+	result.resource_size = mesh_buffer_size;
+	
+	return result;
+}
+
 void DebugGeometryRenderPass::CreatePipelines(PipelineLibrary* lib) {
 	struct {
 		PipelineRenderTarget render_target;
@@ -210,56 +264,22 @@ void DebugGeometryRenderPass::RecordPass(RecordContext* record_context) {
 		instances += debug_mesh_instances.count;
 	}
 	
-	struct InstanceTypeInfo {
-		// TODO: Use 16 bit types.
-		Array<float4> vertices;
-		Array<uint3> triangles;
-		u32 vertex_offset = 0;
-		u32 index_offset  = 0;
-	};
-	
-	u32 vertex_count = 0;
-	u32 index_count  = 0;
-	FixedCountArray<InstanceTypeInfo, (u32)DebugMeshInstanceType::Count> instance_types;
-	for (u32 i = 0; i < (u32)DebugMeshInstanceType::Count; i += 1) {
-		auto& type = instance_types[i];
-		
-		// TODO: Build meshes on startup and upload them to VRAM.
-		switch ((DebugMeshInstanceType)i) {
-		case DebugMeshInstanceType::Sphere:   BuildParametricSphere(record_context->alloc,   type.vertices, type.triangles); break;
-		case DebugMeshInstanceType::Cube:     BuildParametricCube(record_context->alloc,     type.vertices, type.triangles); break;
-		case DebugMeshInstanceType::Cylinder: BuildParametricCylinder(record_context->alloc, type.vertices, type.triangles); break;
-		case DebugMeshInstanceType::Torus:    BuildParametricTorus(record_context->alloc,    type.vertices, type.triangles); break;
-		}
-		
-		type.vertex_offset = vertex_count;
-		type.index_offset  = index_count;
-		
-		vertex_count += (u32)type.vertices.count;
-		index_count  += (u32)(type.triangles.count * 3);
-	}
-	
-	auto [vertex_buffer_gpu_address, vertex_buffer] = AllocateTransientUploadBuffer<float4>(record_context, vertex_count);
-	auto [index_buffer_gpu_address,  index_buffer]  = AllocateTransientUploadBuffer<u32>(record_context, index_count);
-	
-	for (auto& type : instance_types) {
-		memcpy(vertex_buffer + type.vertex_offset, type.vertices.data, type.vertices.count * sizeof(float4));
-		memcpy(index_buffer + type.index_offset, type.triangles.data, type.triangles.count * sizeof(uint3));
-	}
+	auto vertex_buffer_gpu_address = GpuAddress(VirtualResourceID::DebugMeshBuffer, 0u);
+	auto index_buffer_gpu_address  = GpuAddress(VirtualResourceID::DebugMeshBuffer, (u32)(debug_geometry_buffer->vertex_count * sizeof(float4)));
 	
 	auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
-	descriptor_table.vertices.Bind(vertex_buffer_gpu_address, (u32)(vertex_count * sizeof(float4)));
+	descriptor_table.vertices.Bind(vertex_buffer_gpu_address, (u32)(debug_geometry_buffer->vertex_count * sizeof(float4)));
 	descriptor_table.instances.Bind(instances_gpu_address, (u32)(debug_mesh_instance_count * sizeof(DebugMeshInstance)));
 	
-	CmdSetIndexBufferView(record_context, index_buffer_gpu_address, (u32)(index_count * sizeof(u32)), TextureFormat::R32_UINT);
+	CmdSetIndexBufferView(record_context, index_buffer_gpu_address, (u32)(debug_geometry_buffer->index_count * sizeof(u32)), TextureFormat::R32_UINT);
 	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
 	
 	u32 mesh_instance_offset = 0;
 	for (auto [instance_type, debug_mesh_instances] : debug_mesh_instance_arrays) {
-		auto& type = instance_types[(u32)instance_type];
+		auto& layout = debug_geometry_buffer->mesh_layouts[(u32)instance_type];
 		
 		CmdSetRootArgument(record_context, root_signature.constants, { instance_type });
-		CmdDrawIndexedInstanced(record_context, (u32)(type.triangles.count * 3), (u32)debug_mesh_instances.count, type.index_offset, type.vertex_offset, mesh_instance_offset);
+		CmdDrawIndexedInstanced(record_context, layout.index_count, (u32)debug_mesh_instances.count, layout.index_offset, layout.vertex_offset, mesh_instance_offset);
 		
 		mesh_instance_offset += (u32)debug_mesh_instances.count;
 	}

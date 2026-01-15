@@ -11,14 +11,19 @@ struct CameraEntityGUID {
 	u64 guid = 0;
 };
 
+struct GpuComponentUploadBuffer;
+struct DebugMeshInstanceArray;
+struct DebugGeometryBuffer;
+
 NOTES(Meta::NoSaveLoad{})
 struct RendererWorld {
 	float2 window_size = float2(1.f, 1.f);
 	float sun_elevation_degrees = 3.f;
 	float meshlet_target_error_pixels = 1.f;
 	
-	ArrayView<struct GpuComponentUploadBuffer> gpu_uploads;
-	ArrayView<struct DebugMeshInstanceArray> debug_mesh_instance_arrays;
+	ArrayView<GpuComponentUploadBuffer> gpu_uploads;
+	ArrayView<DebugMeshInstanceArray> debug_mesh_instance_arrays;
+	DebugGeometryBuffer* debug_geometry_buffer = nullptr;
 };
 
 NOTES(Meta::CustomSaveLoad{})

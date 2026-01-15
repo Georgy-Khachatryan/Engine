@@ -169,7 +169,7 @@ static void RemoveSelectedEntities(EntitySystem& entity_system, UndoRedoSystem& 
 		RemoveEntityByGUID(entity_system, guid);
 	}
 	
-	BeginUndoRedoCommand("Unselect Removed Entities"_sl, undo_redo_system, entity_system, selection_state_entity);
+	BeginUndoRedoCommand("Deselect Removed Entities"_sl, undo_redo_system, entity_system, selection_state_entity);
 	HashTableClear(selected_entities_hash_table);
 	EndUndoRedoCommand(undo_redo_system, entity_system);
 	
@@ -228,6 +228,7 @@ s32 main() {
 	u32 mesh_asset_buffer_offset = 0;
 	auto mesh_asset_buffer = CreateBufferResource(graphics_context, mesh_asset_buffer_size);
 	
+	auto debug_geometry_buffer = DebugGeometryRenderPass::CreateDebugGeometryBuffer(&alloc, graphics_context, async_transfer_queue);
 	
 	VirtualResourceTable resource_table;
 	ArrayReserve(resource_table.virtual_resources, &alloc, (u64)VirtualResourceID::Count + 16);
@@ -321,6 +322,7 @@ s32 main() {
 		
 		resource_table.Set(VirtualResourceID::CurrentBackBuffer, WindowSwapGetCurrentBackBuffer(swap_chain), swap_chain->size);
 		resource_table.Set(VirtualResourceID::MeshAssetBuffer, mesh_asset_buffer, mesh_asset_buffer_size);
+		resource_table.Set(VirtualResourceID::DebugMeshBuffer, debug_geometry_buffer.resource, (u32)debug_geometry_buffer.resource_size);
 		resource_table.Set(VirtualResourceID::TransientUploadBuffer, upload_buffers[upload_buffer_index], upload_buffer_size, upload_buffer_cpu_addresses[upload_buffer_index]);
 		upload_buffer_index = (upload_buffer_index + 1) % number_of_frames_in_flight;
 		
@@ -458,7 +460,7 @@ s32 main() {
 				ImGui::TableSetupColumn("Type", ImGuiTableColumnFlags_WidthStretch, 1.f);
 				ImGui::TableHeadersRow();
 				
-				auto* ms_io = ImGui::BeginMultiSelect(ImGuiMultiSelectFlags_ClearOnEscape | ImGuiMultiSelectFlags_ClearOnClickVoid | ImGuiMultiSelectFlags_BoxSelect1d, (s32)selected_entities_hash_table.count, (s32)entity_count);
+				auto* ms_io = ImGui::BeginMultiSelect(ImGuiMultiSelectFlags_ClearOnClickVoid | ImGuiMultiSelectFlags_BoxSelect1d, (s32)selected_entities_hash_table.count, (s32)entity_count);
 				apply_requests(ms_io);
 				
 				ImGuiListClipper clipper;
@@ -546,6 +548,12 @@ s32 main() {
 			
 			if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_D, ImGuiInputFlags_RouteGlobal)) {
 				DuplicateSelectedEntities(&alloc, entity_system, undo_redo_system, selected_entities_hash_table, world_entity_guid);
+			}
+			
+			if (ImGui::Shortcut(ImGuiKey_Escape, ImGuiInputFlags_RouteGlobal)) {
+				BeginUndoRedoCommand("Deselect Entities"_sl, undo_redo_system, entity_system, world_entity_guid);
+				HashTableClear(selected_entities_hash_table);
+				EndUndoRedoCommand(undo_redo_system, entity_system);
 			}
 		}
 		
@@ -858,16 +866,7 @@ s32 main() {
 				
 				streams.runtime_file[i].file = file;
 				
-				AsyncTransferCommand command;
-				command.src_type = AsyncTransferSrcType::File;
-				command.dst_type = AsyncTransferDstType::Buffer;
-				command.src.file.handle     = file;
-				command.src.file.offset     = 0;
-				command.src.file.size       = allocation_size;
-				command.dst.buffer.resource = mesh_asset_buffer;
-				command.dst.buffer.size     = mesh_asset_buffer_size;
-				command.dst.buffer.offset   = streams.allocation[i].base_offset;
-				AppendAsyncTransferCommand(async_transfer_queue, command);
+				AsyncCopyFileToBuffer(async_transfer_queue, mesh_asset_buffer, allocation_offset, mesh_asset_buffer_size, file, 0, allocation_size);
 			}
 			
 			auto gpu_mesh_asset_data = AllocateGpuComponentUploadBuffer(&record_context, dirty_entity_count, streams.gpu_mesh_asset_data);
@@ -893,6 +892,7 @@ s32 main() {
 		renderer_world->window_size = float2(window_size);
 		renderer_world->gpu_uploads = gpu_uploads;
 		renderer_world->debug_mesh_instance_arrays = draw_list_3d.Flush();
+		renderer_world->debug_geometry_buffer = &debug_geometry_buffer;
 		
 		BuildRenderPassesForFrame(&record_context, &entity_system, world_entity_guid);
 		
@@ -917,6 +917,7 @@ s32 main() {
 	ReleaseBufferResource(graphics_context, resource_table.virtual_resources[(u32)VirtualResourceID::GpuMeshEntityData].buffer.resource);
 	ReleaseBufferResource(graphics_context, resource_table.virtual_resources[(u32)VirtualResourceID::GpuMeshAssetData].buffer.resource);
 	ReleaseBufferResource(graphics_context, mesh_asset_buffer);
+	ReleaseBufferResource(graphics_context, debug_geometry_buffer.resource);
 	
 	for (auto& buffer : upload_buffers) {
 		ReleaseBufferResource(graphics_context, buffer);
