@@ -4,6 +4,9 @@ struct InputPS {
 	float4 position : SV_Position;
 	float2 texcoord : TEXCOORD;
 	float3 normal   : NORMAL;
+	
+	float3 curr_position : CURR_POSITION;
+	float3 prev_position : PREV_POSITION;
 };
 
 struct InputPrimitivePS {
@@ -28,6 +31,7 @@ void MainMS(
 	
 	GpuTransform model_to_world = mesh_transforms[mesh_entity_index];
 	GpuMeshAssetData mesh_asset = mesh_asset_data[mesh_asset_entity_id];
+	GpuTransform prev_model_to_world = model_to_world; // TODO: Add previous transforms.
 	
 	BasicMeshlet meshlet = mesh_asset_buffer.Load<BasicMeshlet>(mesh_asset.meshlet_buffer_offset + meshlet_index * sizeof(BasicMeshlet));
 	
@@ -39,10 +43,18 @@ void MainMS(
 		float3 world_space_position = QuatMul(model_to_world.rotation, vertex.position * model_to_world.scale) + model_to_world.position;
 		float3 view_space_position  = mul(scene.world_to_view, float4(world_space_position, 1.0));
 		
+		float3 prev_world_space_position = QuatMul(prev_model_to_world.rotation, vertex.position * prev_model_to_world.scale) + prev_model_to_world.position;
+		float3 prev_view_space_position  = mul(scene.prev_world_to_view, float4(prev_world_space_position, 1.0));
+		
 		InputPS output;
 		output.position = TransformViewToClipSpace(view_space_position, scene.view_to_clip_coef);
 		output.texcoord = vertex.texcoord;
 		output.normal   = vertex.normal;
+		output.curr_position = output.position.xyw;
+		output.prev_position = TransformViewToClipSpace(prev_view_space_position, scene.prev_view_to_clip_coef).xyw;
+		
+		output.position.xy += scene.jitter_offset_ndc * output.position.w;
+		
 		result_vertices[thread_index] = output;
 	}
 	
@@ -58,13 +70,22 @@ void MainMS(
 #endif // defined(MESH_SHADER)
 
 #if defined(PIXEL_SHADER)
-float4 MainPS(InputPS input, InputPrimitivePS primitive_input, float3 bary : SV_Barycentrics) : SV_Target0 {
+struct OutputPS {
+	float4 color : SV_Target0;
+	float2 motion_vectors : SV_Target1;
+};
+
+OutputPS MainPS(InputPS input, InputPrimitivePS primitive_input, float3 bary : SV_Barycentrics) {
 	float3 normal_color   = input.normal * 0.5 + 0.5;
 	float3 texcoord_color = float3(input.texcoord, 0.0);
 	
 	float3 meshlet_color = (primitive_input.meshlet_index & 0x1) ? normal_color : texcoord_color;
 	float  wireframe     = BarycentricWireframe(bary, ddx(bary), ddy(bary));
 	
-	return float4(meshlet_color * wireframe, 1.0);
+	OutputPS output;
+	output.color = float4(meshlet_color * wireframe, 1.0);
+	output.motion_vectors = NdcToScreenUvDirection((input.prev_position.xy / input.prev_position.z) - (input.curr_position.xy / input.curr_position.z));
+	
+	return output;
 }
 #endif // defined(PIXEL_SHADER)

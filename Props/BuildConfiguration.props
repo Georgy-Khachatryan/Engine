@@ -32,6 +32,7 @@
       
       <PreprocessorDefinitions>
         _CONSOLE;
+        _ITERATOR_DEBUG_LEVEL=0;
         %(PreprocessorDefinitions)
       </PreprocessorDefinitions>
     </ClCompile>

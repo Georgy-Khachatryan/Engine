@@ -17,6 +17,7 @@ union NativeTextureResource {
 enum struct VirtualResourceID : u32;
 struct RecordContext;
 struct PipelineLibrary;
+struct GraphicsContext;
 
 
 enum struct GpuMemoryAccessType : u32 {
@@ -160,6 +161,7 @@ struct VirtualResource {
 		NativeTexture  = 2,
 		VirtualBuffer  = 3,
 		VirtualTexture = 4,
+		Opaque         = 5,
 	};
 	
 	Type type = Type::None;
@@ -178,6 +180,12 @@ struct VirtualResource {
 			u32 size;
 			u32 allocated_size;
 		} buffer;
+		
+		struct {
+			void* user_data_0 = nullptr;
+			u64   user_data_1 = 0;
+			void (*release_user_data)(VirtualResource*, GraphicsContext*) = nullptr;
+		} opaque;
 	};
 };
 

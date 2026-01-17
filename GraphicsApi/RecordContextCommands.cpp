@@ -375,3 +375,39 @@ void CmdSetConstantBuffer(RecordContext* record_context, u32 offset, GpuAddress 
 	packet.gpu_address = gpu_address;
 }
 
+
+void CmdDispatchXeSS(RecordContext* record_context, const XessDispatchContext& dispatch_context) {
+	auto& packet = AppendPacket<CmdDispatchXessPacket>(record_context);
+	packet.xess_handle_resource_id   = dispatch_context.xess_handle_resource_id;
+	packet.result_resource_id        = dispatch_context.result_resource_id;
+	packet.radiance_resource_id      = dispatch_context.radiance_resource_id;
+	packet.depth_resource_id         = dispatch_context.depth_resource_id;
+	packet.motion_vector_resource_id = dispatch_context.motion_vector_resource_id;
+	packet.jitter_offset_pixels      = dispatch_context.jitter_offset_pixels;
+	
+	FixedCountArray<ResourceAccessDefinition, 4> resource_accesses;
+	resource_accesses[0] = CreateTextureResourceAccess(dispatch_context.result_resource_id, PipelineStagesMask::ComputeShader, ResourceAccessMask::UAV);
+	resource_accesses[1] = CreateTextureResourceAccess(dispatch_context.radiance_resource_id, PipelineStagesMask::ComputeShader, ResourceAccessMask::SRV);
+	resource_accesses[2] = CreateTextureResourceAccess(dispatch_context.depth_resource_id, PipelineStagesMask::ComputeShader, ResourceAccessMask::SRV);
+	resource_accesses[3] = CreateTextureResourceAccess(dispatch_context.motion_vector_resource_id, PipelineStagesMask::ComputeShader, ResourceAccessMask::SRV);
+	
+	AppendResourceAccesses(record_context, resource_accesses);
+}
+
+void CmdDispatchDLSS(RecordContext* record_context, const DlssDispatchContext& dispatch_context) {
+	auto& packet = AppendPacket<CmdDispatchDlssPacket>(record_context);
+	packet.dlss_handle_resource_id   = dispatch_context.dlss_handle_resource_id;
+	packet.result_resource_id        = dispatch_context.result_resource_id;
+	packet.radiance_resource_id      = dispatch_context.radiance_resource_id;
+	packet.depth_resource_id         = dispatch_context.depth_resource_id;
+	packet.motion_vector_resource_id = dispatch_context.motion_vector_resource_id;
+	packet.jitter_offset_pixels      = dispatch_context.jitter_offset_pixels;
+	
+	FixedCountArray<ResourceAccessDefinition, 4> resource_accesses;
+	resource_accesses[0] = CreateTextureResourceAccess(dispatch_context.result_resource_id, PipelineStagesMask::ComputeShader, ResourceAccessMask::UAV);
+	resource_accesses[1] = CreateTextureResourceAccess(dispatch_context.radiance_resource_id, PipelineStagesMask::ComputeShader, ResourceAccessMask::SRV);
+	resource_accesses[2] = CreateTextureResourceAccess(dispatch_context.depth_resource_id, PipelineStagesMask::ComputeShader, ResourceAccessMask::SRV);
+	resource_accesses[3] = CreateTextureResourceAccess(dispatch_context.motion_vector_resource_id, PipelineStagesMask::ComputeShader, ResourceAccessMask::SRV);
+	
+	AppendResourceAccesses(record_context, resource_accesses);
+}

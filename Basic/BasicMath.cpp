@@ -290,3 +290,17 @@ uint2 Math::EncodeR16G16B16A16_FLOAT(const float4& value) {
 	return uint2(_mm_extract_epi32(result, 0), _mm_extract_epi32(result, 1));
 }
 
+
+// https://en.wikipedia.org/wiki/Halton_sequence
+float Math::HaltonSequence(u32 index, u32 base) {
+	float f = 1.f;
+	float r = 0.f;
+	
+	while (index != 0) {
+		f /= (float)base;
+		r += f * (index % base);
+		index /= base;
+	}
+	
+	return r;
+}

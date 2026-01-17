@@ -17,6 +17,8 @@ Shaders/Generated/
 SDK/DXC
 SDK/D3D12
 SDK/WinPixEventRuntime
+SDK/DLSS
+SDK/XeSS
 
 ; Visual studio files:
 .vs/

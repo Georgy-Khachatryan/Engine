@@ -82,6 +82,27 @@ void CmdSetConstantBuffer(RecordContext* record_context, u32 offset, GpuAddress 
 void ReplayRecordContext(GraphicsContext* context, RecordContext* record_context);
 
 
+struct XessDispatchContext {
+	VirtualResourceID xess_handle_resource_id;
+	VirtualResourceID result_resource_id;
+	VirtualResourceID radiance_resource_id;
+	VirtualResourceID depth_resource_id;
+	VirtualResourceID motion_vector_resource_id;
+	float2 jitter_offset_pixels;
+};
+void CmdDispatchXeSS(RecordContext* record_context, const XessDispatchContext& dispatch_context);
+
+struct DlssDispatchContext {
+	VirtualResourceID dlss_handle_resource_id;
+	VirtualResourceID result_resource_id;
+	VirtualResourceID radiance_resource_id;
+	VirtualResourceID depth_resource_id;
+	VirtualResourceID motion_vector_resource_id;
+	float2 jitter_offset_pixels;
+};
+void CmdDispatchDLSS(RecordContext* record_context, const DlssDispatchContext& dispatch_context);
+
+
 template<typename T>
 void CmdSetRootArgument(RecordContext* record_context, const HLSL::DescriptorTable<T>& root_descriptor_table, T& descriptor_table) {
 	CmdSetDescriptorTable(record_context, root_descriptor_table.offset, descriptor_table);

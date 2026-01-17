@@ -20,6 +20,10 @@ static void BuildResourceTable(RecordContext* record_context, EntitySystem* enti
 	
 	table.Set(ID::SceneRadiance, TextureSize(TextureFormat::R16G16B16A16_FLOAT, render_target_size));
 	table.Set(ID::DepthStencil,  TextureSize(TextureFormat::D32_FLOAT, render_target_size));
+	table.Set(ID::MotionVectors, TextureSize(TextureFormat::R16G16_FLOAT, render_target_size));
+	table.Set(ID::SceneRadianceResult, TextureSize(TextureFormat::R16G16B16A16_FLOAT, render_target_size));
+	
+	table.Set(ID::DebugGeometryDepthStencil, TextureSize(TextureFormat::D32_FLOAT, render_target_size));
 }
 
 void BuildRenderPassesForFrame(RecordContext* record_context, EntitySystem* entity_system, u64 world_entity_guid) {
@@ -37,7 +41,12 @@ void BuildRenderPassesForFrame(RecordContext* record_context, EntitySystem* enti
 	BuildResourceTable(record_context, entity_system, &renderer_world, render_target_size);
 	
 	
-	SceneConstants scene;
+	static SceneConstants scene; // TODO: Store as a world entity component.
+	scene.prev_view_to_clip_coef = scene.view_to_clip_coef;
+	scene.prev_clip_to_view_coef = scene.clip_to_view_coef;
+	scene.prev_view_to_world     = scene.view_to_world;
+	scene.prev_world_to_view     = scene.world_to_view;
+	
 	scene.render_target_size     = float2(render_target_size);
 	scene.inv_render_target_size = float2(1.f) / scene.render_target_size;
 	if (camera.transform_type == CameraTransformType::Perspective) {
@@ -63,6 +72,17 @@ void BuildRenderPassesForFrame(RecordContext* record_context, EntitySystem* enti
 	scene.world_to_pixel_scale = scene.view_to_clip_coef.x * scene.render_target_size.x * 0.5f / Max(renderer_world.meshlet_target_error_pixels, 1.f);
 	scene.world_space_camera_position = world_space_camera_position;
 	
+	u32 jitter_frame_index = renderer_world.jitter_frame_index;
+	renderer_world.jitter_frame_index = (jitter_frame_index + 1) % 8;
+	
+	if (renderer_world.enable_anti_aliasing) {
+		scene.jitter_offset_pixels = float2(Math::HaltonSequence(jitter_frame_index, 2), Math::HaltonSequence(jitter_frame_index, 3)) - 0.5f;
+		scene.jitter_offset_ndc    = scene.jitter_offset_pixels * float2(2.f, -2.f) / scene.render_target_size;
+	} else {
+		scene.jitter_offset_pixels = 0.f;
+		scene.jitter_offset_ndc    = 0.f;
+	}
+	
 	AtmosphereParameters atmosphere_parameters;
 	atmosphere_parameters.world_space_sun_direction.x = cosf(renderer_world.sun_elevation_degrees * Math::degrees_to_radians);
 	atmosphere_parameters.world_space_sun_direction.z = sinf(renderer_world.sun_elevation_degrees * Math::degrees_to_radians);
@@ -82,6 +102,10 @@ void BuildRenderPassesForFrame(RecordContext* record_context, EntitySystem* enti
 	MeshletCullingRenderPass{ scene_constants_gpu_address, entity_system }.RecordPass(record_context);
 	BasicMeshRenderPass{ scene_constants_gpu_address }.RecordPass(record_context);
 	DebugGeometryRenderPass{ scene_constants_gpu_address, renderer_world.debug_mesh_instance_arrays, renderer_world.debug_geometry_buffer }.RecordPass(record_context);
+	
+	// TODO: Select dynamically.
+	// XessRenderPass{ scene.jitter_offset_pixels }.RecordPass(record_context);
+	DlssRenderPass{ scene.jitter_offset_pixels }.RecordPass(record_context);
 	
 	ImGuiRenderPass{}.RecordPass(record_context);
 }

@@ -168,10 +168,7 @@ static void GenerateCodeForRenderPass(StackAllocator* alloc, String filename, St
 			break;
 		}
 	}
-	
-	if (root_signature_type == nullptr) {
-		ReportError(alloc, type_info_struct->source_location, "RenderPass '%' is missing a root signature."_sl, name);
-	}
+	if (root_signature_type == nullptr) return;
 	
 	
 	// Validate root signature:

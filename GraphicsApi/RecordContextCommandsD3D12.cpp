@@ -4,6 +4,8 @@
 #include "RecordContext.h"
 #include "RecordContextCommands.h"
 
+#include <SDK/DLSS/include/nvsdk_ngx_helpers.h>
+#include <SDK/XeSS/include/xess_d3d12.h>
 
 static void CreateDescriptorTables(GraphicsContextD3D12* context, ArrayView<HLSL::BaseDescriptorTable*> descriptor_tables, ArrayView<VirtualResource> resources) {
 	ProfilerScope("CreateDescriptorTables");
@@ -293,6 +295,173 @@ static void CmdSetConstantBufferD3D12(CmdSetConstantBufferPacket* packet, ID3D12
 	}
 }
 
+static void CmdDispatchXessD3D12(CmdDispatchXessPacket* packet, ID3D12GraphicsCommandList7* command_list, GraphicsContextD3D12* context, ArrayView<VirtualResource> resources) {
+	ProfilerScope("CmdDispatchXessD3D12", command_list);
+	
+	auto& xess_handle_resource   = resources[(u32)packet->xess_handle_resource_id];
+	auto& result_resource        = resources[(u32)packet->result_resource_id];
+	auto& radiance_resource      = resources[(u32)packet->radiance_resource_id];
+	auto& depth_resource         = resources[(u32)packet->depth_resource_id];
+	auto& motion_vector_resource = resources[(u32)packet->motion_vector_resource_id];
+	
+	auto src_size = uint2((u32)xess_handle_resource.opaque.user_data_1, (u32)(xess_handle_resource.opaque.user_data_1 >> 32));
+	
+	bool is_dirty = (xess_handle_resource.type != VirtualResource::Type::Opaque) ||
+		(src_size.x != depth_resource.texture.size.x) ||
+		(src_size.y != depth_resource.texture.size.y);
+	
+	if (is_dirty) {
+		ProfilerScope("xessD3D12CreateContext/xessD3D12Init");
+		
+		if (xess_handle_resource.type == VirtualResource::Type::Opaque) {
+			xess_handle_resource.opaque.release_user_data(&xess_handle_resource, context);
+		}
+		
+		xess_context_handle_t xess_context = nullptr;
+		auto result = xessD3D12CreateContext(context->device, &xess_context);
+		DebugAssert(result == XESS_RESULT_SUCCESS, "xessD3D12CreateContext failed.");
+		
+		src_size = uint2(depth_resource.texture.size);
+		
+		xess_handle_resource.type = VirtualResource::Type::Opaque;
+		xess_handle_resource.opaque.user_data_0 = xess_context;
+		xess_handle_resource.opaque.user_data_1 = (u64)src_size.x | ((u64)src_size.y << 32);
+		xess_handle_resource.opaque.release_user_data = [](VirtualResource* xess_handle_resource, GraphicsContext*) {
+			ProfilerScope("xessDestroyContext");
+			auto xess_context = (xess_context_handle_t)xess_handle_resource->opaque.user_data_0;
+			
+			// TODO: Defer destroy.
+			auto result = xessDestroyContext(xess_context);
+			DebugAssert(result == XESS_RESULT_SUCCESS, "xessDestroyContext failed.");
+			
+			*xess_handle_resource = {};
+		};
+		
+		xess_d3d12_init_params_t init_params = {};
+		init_params.outputResolution.x = src_size.x;
+		init_params.outputResolution.y = src_size.y;
+		init_params.qualitySetting     = XESS_QUALITY_SETTING_AA;
+		init_params.initFlags          = XESS_INIT_FLAG_INVERTED_DEPTH | XESS_INIT_FLAG_USE_NDC_VELOCITY | XESS_INIT_FLAG_ENABLE_AUTOEXPOSURE;
+		result = xessD3D12Init(xess_context, &init_params);
+		DebugAssert(result == XESS_RESULT_SUCCESS, "xessD3D12Init failed.");
+		
+		// UV to NDC transform.
+		result = xessSetVelocityScale(xess_context, 2.f, -2.f);
+		DebugAssert(result == XESS_RESULT_SUCCESS, "xessSetVelocityScale failed.");
+	}
+	
+	// TODO: Support for external descriptor heap.
+	xess_d3d12_execute_params_t execute_params = {};
+	execute_params.pColorTexture    = radiance_resource.texture.resource.d3d12;
+	execute_params.pVelocityTexture = motion_vector_resource.texture.resource.d3d12;
+	execute_params.pDepthTexture    = depth_resource.texture.resource.d3d12;
+	execute_params.pOutputTexture   = result_resource.texture.resource.d3d12;
+	execute_params.jitterOffsetX    = packet->jitter_offset_pixels.x;
+	execute_params.jitterOffsetY    = packet->jitter_offset_pixels.y;
+	execute_params.inputWidth       = src_size.x;
+	execute_params.inputHeight      = src_size.y;
+	execute_params.exposureScale    = 1.f;
+	
+	auto xess_context = (xess_context_handle_t)xess_handle_resource.opaque.user_data_0;
+	auto result = xessD3D12Execute(xess_context, command_list, &execute_params);
+	DebugAssert(result == XESS_RESULT_SUCCESS, "xessD3D12Execute failed.");
+	
+	command_list->SetDescriptorHeaps(1, &context->descriptor_heaps[(u32)DescriptorHeapType::SRV]);
+	command_list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+}
+
+static void CmdDispatchDlssD3D12(CmdDispatchDlssPacket* packet, ID3D12GraphicsCommandList7* command_list, GraphicsContextD3D12* context, ArrayView<VirtualResource> resources) {
+	ProfilerScope("CmdDispatchDlssD3D12", command_list);
+	
+	auto& dlss_handle_resource   = resources[(u32)packet->dlss_handle_resource_id];
+	auto& result_resource        = resources[(u32)packet->result_resource_id];
+	auto& radiance_resource      = resources[(u32)packet->radiance_resource_id];
+	auto& depth_resource         = resources[(u32)packet->depth_resource_id];
+	auto& motion_vector_resource = resources[(u32)packet->motion_vector_resource_id];
+	
+	auto src_size = uint2((u32)dlss_handle_resource.opaque.user_data_1, (u32)(dlss_handle_resource.opaque.user_data_1 >> 32));
+	
+	bool is_dirty = (dlss_handle_resource.type != VirtualResource::Type::Opaque) ||
+		(src_size.x != depth_resource.texture.size.x) ||
+		(src_size.y != depth_resource.texture.size.y);
+	
+	compile_const char* ngx_parameter_user_dlss_handle = "UserDlssHandle";
+	
+	if (is_dirty) {
+		ProfilerScope("NVSDK_NGX_D3D12_AllocateParameters/NGX_D3D12_CREATE_DLSS_EXT");
+		
+		if (dlss_handle_resource.type == VirtualResource::Type::Opaque) {
+			dlss_handle_resource.opaque.release_user_data(&dlss_handle_resource, context);
+		}
+		
+		src_size = uint2(depth_resource.texture.size);
+		
+		NVSDK_NGX_Parameter* dlss_parameter_handle = nullptr;
+		auto result = NVSDK_NGX_D3D12_AllocateParameters(&dlss_parameter_handle);
+		DebugAssert(result == NVSDK_NGX_Result_Success, "xessD3D12Init failed.");
+		
+		NVSDK_NGX_DLSS_Create_Params create_params = {};
+		create_params.Feature.InWidth        = src_size.x;
+		create_params.Feature.InHeight       = src_size.y;
+		create_params.Feature.InTargetWidth  = src_size.x;
+		create_params.Feature.InTargetHeight = src_size.y;
+		create_params.Feature.InPerfQualityValue = NVSDK_NGX_PerfQuality_Value_DLAA;
+		create_params.InFeatureCreateFlags   = NVSDK_NGX_DLSS_Feature_Flags_IsHDR | NVSDK_NGX_DLSS_Feature_Flags_MVLowRes | NVSDK_NGX_DLSS_Feature_Flags_DepthInverted | NVSDK_NGX_DLSS_Feature_Flags_AutoExposure;
+		create_params.InEnableOutputSubrects = false;
+		
+		NVSDK_NGX_Handle* dlss_handle = nullptr;
+		result = NGX_D3D12_CREATE_DLSS_EXT(command_list, 0, 0, &dlss_handle, dlss_parameter_handle, &create_params);
+		DebugAssert(result == NVSDK_NGX_Result_Success, "NGX_D3D12_CREATE_DLSS_EXT failed.");
+		
+		NVSDK_NGX_Parameter_SetVoidPointer(dlss_parameter_handle, ngx_parameter_user_dlss_handle, dlss_handle);
+		
+		dlss_handle_resource.type = VirtualResource::Type::Opaque;
+		dlss_handle_resource.opaque.user_data_0 = dlss_parameter_handle;
+		dlss_handle_resource.opaque.user_data_1 = (u64)src_size.x | ((u64)src_size.y << 32);
+		dlss_handle_resource.opaque.release_user_data = [](VirtualResource* dlss_handle_resource, GraphicsContext*) {
+			ProfilerScope("NVSDK_NGX_D3D12_ReleaseFeature/NVSDK_NGX_D3D12_DestroyParameters");
+			auto* dlss_parameter_handle = (NVSDK_NGX_Parameter*)dlss_handle_resource->opaque.user_data_0;
+			
+			// TODO: Defer destroy.
+			NVSDK_NGX_Handle* dlss_handle = nullptr; 
+			NVSDK_NGX_Parameter_GetVoidPointer(dlss_parameter_handle, ngx_parameter_user_dlss_handle, (void**)&dlss_handle);
+			
+			auto result = NVSDK_NGX_D3D12_ReleaseFeature(dlss_handle);
+			DebugAssert(result == NVSDK_NGX_Result_Success, "NVSDK_NGX_D3D12_ReleaseFeature failed.");
+			
+			result = NVSDK_NGX_D3D12_DestroyParameters(dlss_parameter_handle);
+			DebugAssert(result == NVSDK_NGX_Result_Success, "NVSDK_NGX_D3D12_DestroyParameters failed.");
+			
+			*dlss_handle_resource = {};
+		};
+	}
+	
+	auto* dlss_parameter_handle = (NVSDK_NGX_Parameter*)dlss_handle_resource.opaque.user_data_0;
+	
+	NVSDK_NGX_Handle* dlss_handle = nullptr; 
+	NVSDK_NGX_Parameter_GetVoidPointer(dlss_parameter_handle, ngx_parameter_user_dlss_handle, (void**)&dlss_handle);
+	
+	NVSDK_NGX_D3D12_DLSS_Eval_Params eval_params = {};
+	eval_params.Feature.pInColor  = radiance_resource.texture.resource.d3d12;
+	eval_params.Feature.pInOutput = result_resource.texture.resource.d3d12;
+	eval_params.Feature.InSharpness = 0.f;
+	eval_params.pInDepth         = depth_resource.texture.resource.d3d12;
+	eval_params.pInMotionVectors = motion_vector_resource.texture.resource.d3d12;
+	eval_params.InJitterOffsetX  = packet->jitter_offset_pixels.x;
+	eval_params.InJitterOffsetY  = packet->jitter_offset_pixels.y;
+	eval_params.InMVScaleX       = (float)src_size.x;
+	eval_params.InMVScaleY       = (float)src_size.y;
+	eval_params.InPreExposure    = 1.f;
+	eval_params.InExposureScale  = 1.f;
+	eval_params.InRenderSubrectDimensions.Width  = src_size.x;
+	eval_params.InRenderSubrectDimensions.Height = src_size.y;
+	
+	auto result = NGX_D3D12_EVALUATE_DLSS_EXT(command_list, dlss_handle, dlss_parameter_handle, &eval_params);
+	DebugAssert(result == NVSDK_NGX_Result_Success, "NGX_D3D12_EVALUATE_DLSS_EXT failed.");
+	
+	command_list->SetDescriptorHeaps(1, &context->descriptor_heaps[(u32)DescriptorHeapType::SRV]);
+	command_list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+}
 
 static void ResolveTextureAccess(D3D12_BARRIER_SYNC& sync, D3D12_BARRIER_ACCESS& access, D3D12_BARRIER_LAYOUT& layout, ResourceAccessDefinition* access_definition) {
 	u32 access_mask = access_definition ? (u32)access_definition->access_mask : 0;
@@ -554,6 +723,8 @@ void ReplayRecordContext(GraphicsContext* api_context, RecordContext* record_con
 			case CommandType::SetDescriptorTable:    CmdSetDescriptorTableD3D12((CmdSetDescriptorTablePacket*)packet, command_list, context); break;
 			case CommandType::SetPushConstants:      CmdSetPushConstantsD3D12((CmdSetPushConstantsPacket*)packet, command_list); break;
 			case CommandType::SetConstantBuffer:     CmdSetConstantBufferD3D12((CmdSetConstantBufferPacket*)packet, command_list, resources); break;
+			case CommandType::DispatchXeSS:          CmdDispatchXessD3D12((CmdDispatchXessPacket*)packet, command_list, context, resources); break;
+			case CommandType::DispatchDLSS:          CmdDispatchDlssD3D12((CmdDispatchDlssPacket*)packet, command_list, context, resources); break;
 			default: DebugAssertAlways("Unhandled command packet type '%'.", (u32)packet->packet_type); command_index = command_count; break;
 			}
 		}

@@ -83,6 +83,9 @@ float4 DecodeR16G16B16A16_FLOAT(uint2 encoded) { return asfloat16(uint16_t4(enco
 float2 NdcToScreenUv(float2 ndc) { return float2(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5); }
 float2 ScreenUvToNdc(float2 uv)  { return float2(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0); }
 
+float2 NdcToScreenUvDirection(float2 ndc) { return float2(ndc.x * 0.5, ndc.y * -0.5); }
+float2 ScreenUvToNdcDirection(float2 uv)  { return float2(uv.x * 2.0, uv.y * -2.0); }
+
 
 float BarycentricWireframe(float3 lambda, float3 lambda_ddx, float3 lambda_ddy, float thickness = 1.0) {
 	float3 wireframe = smoothstep(0.0, (abs(lambda_ddx) + abs(lambda_ddy)) * thickness, lambda);

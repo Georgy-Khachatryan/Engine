@@ -181,4 +181,6 @@ namespace Math {
 	
 	uint2 EncodeR16G16B16A16_SNORM(const float4& value);
 	uint2 EncodeR16G16B16A16_FLOAT(const float4& value);
+	
+	float HaltonSequence(u32 index, u32 base);
 }

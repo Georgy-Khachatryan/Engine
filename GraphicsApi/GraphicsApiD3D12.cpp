@@ -4,6 +4,8 @@
 #include "Basic/BasicFiles.h"
 #include "Engine/ShaderCompiler.h"
 
+#include <SDK/DLSS/include/nvsdk_ngx.h>
+
 extern "C" __declspec(dllexport) extern const UINT  D3D12SDKVersion = 618;
 extern "C" __declspec(dllexport) extern const char* D3D12SDKPath    = u8".\\D3D12\\";
 
@@ -202,6 +204,12 @@ GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
 		ArrayReserve(context->release_queue_last_frame, alloc, release_queue_capacity);
 		ArrayReserve(context->release_queue_this_frame, alloc, release_queue_capacity);
 		ArrayReserve(context->release_queue_next_frame, alloc, release_queue_capacity);
+	}
+	
+	{
+		ProfilerScope("NVSDK_NGX_D3D12_Init_with_ProjectID");
+		auto result = NVSDK_NGX_D3D12_Init_with_ProjectID("99048DBD-0572-4265-B72A-B19102D347B2", NVSDK_NGX_ENGINE_TYPE_CUSTOM, "1", L"./", device);
+		DebugAssert(result == NVSDK_NGX_Result_Success, "NVSDK_NGX_D3D12_Init_with_ProjectID failed."); // TODO: Disable DLSS when it's not supported.
 	}
 	
 	return context;
@@ -562,6 +570,7 @@ static void BuildRootSignatures(GraphicsContextD3D12* context, StackAllocator* a
 }
 
 void ReleaseGraphicsContext(GraphicsContext* api_context, StackAllocator* alloc) {
+	ProfilerScope("ReleaseGraphicsContext");
 	auto* context = (GraphicsContextD3D12*)api_context;
 	
 	SaveLoadShaderCache(shader_compiler, alloc, false);
@@ -569,6 +578,12 @@ void ReleaseGraphicsContext(GraphicsContext* api_context, StackAllocator* alloc)
 	
 	for (auto& root_signature : context->root_signature_table) SafeRelease(root_signature);
 	for (auto& pipeline_state : context->pipeline_state_table) SafeRelease(pipeline_state);
+	
+	{
+		ProfilerScope("NVSDK_NGX_D3D12_Shutdown1");
+		auto result = NVSDK_NGX_D3D12_Shutdown1(context->device);
+		DebugAssert(result == NVSDK_NGX_Result_Success, "NVSDK_NGX_D3D12_Shutdown1 failed."); // TODO: Disable DLSS when it's not supported.
+	}
 	
 	SafeRelease(context->dispatch_command_signature);
 	SafeRelease(context->dispatch_mesh_command_signature);

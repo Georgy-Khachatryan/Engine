@@ -41,22 +41,29 @@ void MeshletCullingRenderPass::RecordPass(RecordContext* record_context) {
 
 void BasicMeshRenderPass::CreatePipelines(PipelineLibrary* lib) {
 	struct {
-		PipelineRenderTarget render_target;
+		PipelineRenderTarget scene_radiance;
+		PipelineRenderTarget motion_vectors;
 		PipelineDepthStencil depth_stencil;
 		PipelineRasterizer rasterizer;
 	} pipeline;
 	
-	pipeline.render_target.format = TextureFormat::R16G16B16A16_FLOAT;
-	pipeline.depth_stencil.flags  = PipelineDepthStencil::Flags::EnableDepthWrite;
-	pipeline.depth_stencil.format = TextureFormat::D32_FLOAT;
-	pipeline.rasterizer.cull_mode = PipelineRasterizer::CullMode::Back;
+	pipeline.scene_radiance.format  = TextureFormat::R16G16B16A16_FLOAT;
+	pipeline.motion_vectors.format = TextureFormat::R16G16_FLOAT;
+	pipeline.depth_stencil.flags   = PipelineDepthStencil::Flags::EnableDepthWrite;
+	pipeline.depth_stencil.format  = TextureFormat::D32_FLOAT;
+	pipeline.rasterizer.cull_mode  = PipelineRasterizer::CullMode::Back;
 	
 	pipeline_id = CreateGraphicsPipeline(lib, pipeline, DrawTestMeshShadersID, 0, ShaderTypeMask::MeshShader | ShaderTypeMask::PixelShader);
 }
 
 void BasicMeshRenderPass::RecordPass(RecordContext* record_context) {
 	CmdClearDepthStencil(record_context, VirtualResourceID::DepthStencil);
-	CmdSetRenderTargets(record_context, VirtualResourceID::SceneRadiance, VirtualResourceID::DepthStencil);
+	CmdClearRenderTarget(record_context, VirtualResourceID::MotionVectors);
+	
+	FixedCountArray<VirtualResourceID, 2> render_targets;
+	render_targets[0] = VirtualResourceID::SceneRadiance;
+	render_targets[1] = VirtualResourceID::MotionVectors;
+	CmdSetRenderTargets(record_context, render_targets, VirtualResourceID::DepthStencil);
 	
 	auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
 	CmdSetRootSignature(record_context, root_signature);

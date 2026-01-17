@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?> 
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  
+  <ItemDefinitionGroup>
+    <Link>
+      <AdditionalLibraryDirectories>
+        $(SdkDir)DLSS\bin;
+        %(AdditionalLibraryDirectories)
+      </AdditionalLibraryDirectories>
+    </Link>
+  </ItemDefinitionGroup>
+  
+  <ItemDefinitionGroup Condition="'$(Configuration)'=='Debug'">
+    <Link>
+      <AdditionalDependencies>
+        nvsdk_ngx_d_dbg_iterator0.lib;
+        %(AdditionalDependencies)
+      </AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+  
+  <ItemDefinitionGroup Condition="'$(Configuration)'!='Debug'">
+    <Link>
+      <AdditionalDependencies>
+        nvsdk_ngx_d.lib;
+        %(AdditionalDependencies)
+      </AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+  
+  <ItemGroup>
+    <DeployCommands Include="xcopy /y /d $(SdkDir)DLSS\bin\nvngx_dlss.dll $(OutDir)" />
+  </ItemGroup>
+  
+  <ItemGroup>
+    <ClInclude Include="$(SdkDir)DLSS/include/nvsdk_ngx.h" />
+    <ClInclude Include="$(SdkDir)DLSS/include/nvsdk_ngx_defs.h" />
+    <ClInclude Include="$(SdkDir)DLSS/include/nvsdk_ngx_helpers.h" />
+    <ClInclude Include="$(SdkDir)DLSS/include/nvsdk_ngx_params.h" />
+  </ItemGroup>
+  
+</Project>

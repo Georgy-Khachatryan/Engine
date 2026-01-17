@@ -21,6 +21,9 @@ struct RendererWorld {
 	float sun_elevation_degrees = 3.f;
 	float meshlet_target_error_pixels = 1.f;
 	
+	bool enable_anti_aliasing = true;
+	u32 jitter_frame_index = 0;
+	
 	ArrayView<GpuComponentUploadBuffer> gpu_uploads;
 	ArrayView<DebugMeshInstanceArray> debug_mesh_instance_arrays;
 	DebugGeometryBuffer* debug_geometry_buffer = nullptr;

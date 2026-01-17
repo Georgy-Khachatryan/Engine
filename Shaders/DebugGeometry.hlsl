@@ -46,6 +46,8 @@ InputPS MainVS(uint start_vertex_location : SV_StartVertexLocation, uint vertex_
 	output.color    = DecodeR8G8B8A8_UNORM_SRGB(instance.color);
 	output.normal   = all(vertex == 0.0) ? 0.0 : normalize(vertex);
 	
+	output.position.xy += scene.jitter_offset_ndc * output.position.w;
+	
 	return output;
 }
 #endif // defined(VERTEX_SHADER)

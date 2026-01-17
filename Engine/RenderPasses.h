@@ -17,7 +17,6 @@ enum struct VirtualResourceID : u32 {
 	
 	// Streaming buffers:
 	MeshAssetBuffer,
-	DebugMeshBuffer,
 	
 	// Core resources:
 	CurrentBackBuffer,
@@ -26,6 +25,8 @@ enum struct VirtualResourceID : u32 {
 	// Common scene resources:
 	DepthStencil,
 	SceneRadiance,
+	MotionVectors,
+	SceneRadianceResult,
 	
 	// Mesh rendering:
 	VisibleMeshlets,
@@ -35,6 +36,14 @@ enum struct VirtualResourceID : u32 {
 	TransmittanceLut,
 	MultipleScatteringLut,
 	SkyPanoramaLut,
+	
+	// Debug geometry:
+	DebugGeometryDepthStencil,
+	DebugMeshBuffer,
+	
+	// Opaque handles from external SDKs:
+	XessHandle,
+	DlssHandle,
 	
 	Count
 };
@@ -85,10 +94,19 @@ NOTES(Meta::HlslFile{ "SceneData.hlsl"_sl })
 struct SceneConstants {
 	float2 render_target_size;
 	float2 inv_render_target_size;
+	
 	float4 view_to_clip_coef;
 	float4 clip_to_view_coef;
 	float3x4 view_to_world;
 	float3x4 world_to_view;
+	
+	float4 prev_view_to_clip_coef;
+	float4 prev_clip_to_view_coef;
+	float3x4 prev_view_to_world;
+	float3x4 prev_world_to_view;
+	
+	float2 jitter_offset_pixels;
+	float2 jitter_offset_ndc;
 	
 	float world_to_pixel_scale;
 	float3 world_space_camera_position;
@@ -301,6 +319,19 @@ struct BasicMeshRenderPass {
 	};
 	
 	inline static PipelineID pipeline_id;
+};
+
+
+NOTES(Meta::RenderPass{})
+struct DlssRenderPass {
+	RENDER_PASS_GENERATED_CODE();
+	float2 jitter_offset_pixels;
+};
+
+NOTES(Meta::RenderPass{})
+struct XessRenderPass {
+	RENDER_PASS_GENERATED_CODE();
+	float2 jitter_offset_pixels;
 };
 
 

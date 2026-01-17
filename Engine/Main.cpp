@@ -327,7 +327,8 @@ s32 main() {
 		upload_buffer_index = (upload_buffer_index + 1) % number_of_frames_in_flight;
 		
 		
-		u32 scene_descriptor_heap_offset = CreateResourceDescriptor(&record_context, HLSL::Texture2D<float4>(VirtualResourceID::SceneRadiance));
+		auto scene_radiance_resource_id = world_entity.renderer_world->enable_anti_aliasing ? VirtualResourceID::SceneRadianceResult : VirtualResourceID::SceneRadiance;
+		u32 scene_descriptor_heap_offset = CreateResourceDescriptor(&record_context, HLSL::Texture2D<float4>(scene_radiance_resource_id));
 		
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.f, 0.f));
 		ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,  ImVec2(0.f, 0.f));
@@ -372,6 +373,7 @@ s32 main() {
 		ImGui::Text("EntitySystem Heap Size: %llu", entity_system.heap.ComputeTotalMemoryUsage());
 		ImGui::SliderFloat("Meshlet Target Error Pixels", &world_entity.renderer_world->meshlet_target_error_pixels, 1.f, 128.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
 		ImGui::SliderFloat("Sun Elevation", &world_entity.renderer_world->sun_elevation_degrees, -10.f, +190.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+		ImGui::Checkbox("Enable Anti Aliasing", &world_entity.renderer_world->enable_anti_aliasing);
 		
 		ImGui::SetNextItemWidth(-FLT_MIN);
 		if (ImGui::BeginCombo("##CreateEntity", "Create Entity")) {
@@ -910,6 +912,8 @@ s32 main() {
 			ReleaseBufferResource(graphics_context, resource.buffer.resource);
 		} else if (resource.type == VirtualResource::Type::VirtualTexture) {
 			ReleaseTextureResource(graphics_context, resource.texture.resource);
+		} else if (resource.type == VirtualResource::Type::Opaque) {
+			resource.opaque.release_user_data(&resource, graphics_context);
 		}
 	}
 	

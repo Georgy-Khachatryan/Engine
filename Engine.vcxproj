@@ -31,7 +31,9 @@
     <Import Project="Props/Direct3D12.props" />
     <Import Project="Props/DirectXShaderCompiler.props" />
     <Import Project="Props/ImGui.props" />
+    <Import Project="Props/IntelXeSS.props" />
     <Import Project="Props/MeshDecimationTools.props" />
+    <Import Project="Props/NvidiaDLSS.props" />
     <Import Project="Props/Ufbx.props" />
   </ImportGroup>
   
@@ -54,6 +56,7 @@
     
     <!-- Render Passes. -->
     <ClCompile Include="Engine/RenderPasses.cpp" />
+    <ClCompile Include="Engine/AntiAliasingRenderPasses.cpp" />
     <ClCompile Include="Engine/AtmosphereRenderPasses.cpp" />
     <ClCompile Include="Engine/DebugGeometryRenderPasses.cpp" />
     <ClCompile Include="Engine/EntitySystemUpdateRenderPasses.cpp" />
