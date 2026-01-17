@@ -1,7 +1,7 @@
 #include "RenderPasses.h"
 #include "GraphicsApi/GraphicsApi.h"
 #include "GraphicsApi/RecordContext.h"
-#include "EntitySystem.h"
+#include "EntitySystem/EntitySystem.h"
 
 void EntitySystemUpdateRenderPass::CreatePipelines(PipelineLibrary* lib) {
 	pipeline_id = CreateComputePipeline(lib, EntitySystemUpdateShadersID);

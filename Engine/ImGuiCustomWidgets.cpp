@@ -1,8 +1,8 @@
 #include "Basic/Basic.h"
 #include "Basic/BasicString.h"
+#include "EntitySystem/EntitySystem.h"
 #include "ImGuiCustomWidgets.h"
-#include "EntitySystem.h"
-#include "RenderPasses.h"
+#include "Renderer/RenderPasses.h"
 
 #include <SDK/imgui/imgui_internal.h>
 

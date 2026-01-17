@@ -1,9 +1,8 @@
 #pragma once
 #include "Basic/Basic.h"
-#include "Basic/BasicString.h"
 #include "Basic/BasicFiles.h"
-#include "Components.h"
-#include "EntitySystem.h"
+#include "Basic/BasicString.h"
+#include "EntitySystem/EntitySystem.h"
 
 
 NOTES(Meta::HlslFile{ "MeshData.hlsl"_sl })

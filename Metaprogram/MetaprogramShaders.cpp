@@ -70,7 +70,7 @@ void WriteCodeForShaderDefinitions(StackAllocator* alloc, ArrayView<TypeInfoEnum
 	builder.alloc = alloc;
 	builder.Append("#include \"Basic/Basic.h\"\n"_sl);
 	builder.Append("#include \"Basic/BasicString.h\"\n"_sl);
-	builder.Append("#include \"Engine/RenderPasses.h\"\n\n"_sl);
+	builder.Append("#include \"Renderer/RenderPasses.h\"\n\n"_sl);
 	
 	Array<ShaderDefinitionData> shader_definitions;
 	for (auto* type_info : shader_definition_type_infos) {
@@ -99,5 +99,5 @@ void WriteCodeForShaderDefinitions(StackAllocator* alloc, ArrayView<TypeInfoEnum
 	
 	builder.Append("ArrayView<ShaderDefinition> shader_definition_table = { shader_definition_table_internal, % };\n\n"_sl, shader_definitions.count);
 	
-	WriteGeneratedFile(alloc, "Engine/Generated/ShaderDefinitions.cpp"_sl, builder.ToString());
+	WriteGeneratedFile(alloc, "Renderer/Generated/ShaderDefinitions.cpp"_sl, builder.ToString());
 }

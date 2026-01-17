@@ -1,7 +1,7 @@
 #pragma once
 #include "Basic/Basic.h"
 #include "Basic/BasicSaveLoad.h"
-#include "EntitySystem.h"
+#include "EntitySystem/EntitySystem.h"
 
 enum struct UndoRedoCommandType : u32 {
 	SaveLoad     = 0,

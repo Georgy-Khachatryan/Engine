@@ -128,6 +128,8 @@ static HlslFileData& AddOrFindHlslFile(HashTable<String, HlslFileData>& hlsl_fil
 
 static void WriteHlslFilesToDisk(StackAllocator* alloc, HashTable<String, HlslFileData>& hlsl_files) {
 	for (auto& [filename, hlsl_file] : hlsl_files) {
+		if (hlsl_file.builder.total_string_size == 0) continue;
+		
 		auto include_guard = StringFormat(alloc, "GENERATED_%"_sl, filename);
 		for (u64 i = 0; i < include_guard.count; i += 1) {
 			auto c = include_guard[i];
@@ -340,7 +342,7 @@ void WriteCodeForRenderPasses(StackAllocator* alloc, ArrayView<TypeInfo*> hlsl_f
 	RootSignatureFileData root_signature_file;
 	root_signature_file.builder.alloc = alloc;
 	root_signature_file.builder.Append("#include \"Basic/Basic.h\"\n"_sl);
-	root_signature_file.builder.Append("#include \"Engine/RenderPasses.h\"\n"_sl);
+	root_signature_file.builder.Append("#include \"Renderer/RenderPasses.h\"\n"_sl);
 	root_signature_file.builder.Append("#include \"GraphicsApi/GraphicsApi.h\"\n\n"_sl);
 	
 	for (auto* type_info : hlsl_file_type_infos) {
@@ -407,5 +409,5 @@ void WriteCodeForRenderPasses(StackAllocator* alloc, ArrayView<TypeInfo*> hlsl_f
 		builder.Append("ArrayView<CreatePipelinesCallback> create_pipeline_callbacks = { create_pipeline_callbacks_internal, % };\n\n"_sl, root_signature_file.root_signatures.count);
 	}
 	
-	WriteGeneratedFile(alloc, "Engine/Generated/RootSignature.cpp"_sl, builder.ToString());
+	WriteGeneratedFile(alloc, "Renderer/Generated/RootSignature.cpp"_sl, builder.ToString());
 }

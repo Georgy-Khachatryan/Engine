@@ -2,8 +2,8 @@
 #include "Basic/Basic.h"
 #include "Basic/BasicString.h"
 #include "Components.h"
-#include "EntitySystem.h"
-#include "MeshAsset.h"
+#include "EntitySystem/EntitySystem.h"
+#include "Renderer/MeshAsset.h"
 
 
 NOTES()

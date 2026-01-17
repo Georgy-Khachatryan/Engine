@@ -2,8 +2,8 @@
 #include "GraphicsApi/RecordContext.h"
 #include "GraphicsApi/GraphicsApi.h"
 #include "RenderPasses.h"
-#include "EntitySystem.h"
-#include "Entities.h"
+#include "EntitySystem/EntitySystem.h"
+#include "Engine/Entities.h"
 
 static void BuildResourceTable(RecordContext* record_context, EntitySystem* entity_system, RendererWorld* renderer_world, uint2 render_target_size) {
 	using ID = VirtualResourceID;

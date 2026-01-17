@@ -11,6 +11,7 @@ Intermediate/
 ; Generated code:
 Engine/Generated/
 Metaprogram/Generated/
+Renderer/Generated/
 Shaders/Generated/
 
 ; Third party SDKs:

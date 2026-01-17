@@ -1,8 +1,8 @@
 #include "RenderPasses.h"
 #include "GraphicsApi/GraphicsApi.h"
 #include "GraphicsApi/RecordContext.h"
-#include "EntitySystem.h"
-#include "Entities.h"
+#include "EntitySystem/EntitySystem.h"
+#include "Engine/Entities.h"
 
 void MeshletClearBuffersRenderPass::CreatePipelines(PipelineLibrary* lib) {
 	pipeline_id = CreateComputePipeline(lib, MeshletCullingShadersID, MeshletCullingShaders::ClearBuffers);

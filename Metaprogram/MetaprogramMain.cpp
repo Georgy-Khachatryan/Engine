@@ -56,8 +56,9 @@ s32 main(s32 argument_count, const char* arguments[]) {
 		ArrayAppendIfHasNote<Meta::ComponentQuery>(entity_query_type_infos, &alloc, type_info);
 	}
 	
-	EnsureDirectoryExists(&alloc, "Shaders/Generated/"_sl);
 	EnsureDirectoryExists(&alloc, "Engine/Generated/"_sl);
+	EnsureDirectoryExists(&alloc, "Renderer/Generated/"_sl);
+	EnsureDirectoryExists(&alloc, "Shaders/Generated/"_sl);
 	
 	auto version_history = ParseSaveLoadVersionHistory(&alloc);
 	WriteEntitySystemMetadata(&alloc, entity_type_infos, entity_query_type_infos, version_history);

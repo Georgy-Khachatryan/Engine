@@ -1,10 +1,10 @@
 #include "Basic/Basic.h"
-#include "Basic/BasicHashTable.h"
 #include "Basic/BasicFiles.h"
-#include "MetaprogramSystems.h"
+#include "Basic/BasicHashTable.h"
+#include "EntitySystem/EntitySystem.h"
 #include "MetaprogramCommon.h"
+#include "MetaprogramSystems.h"
 #include "TypeInfo.h"
-#include "Engine/EntitySystem.h"
 
 compile_const auto entity_type_suffix = "EntityType"_sl;
 compile_const auto asset_type_suffix  = "AssetType"_sl;
