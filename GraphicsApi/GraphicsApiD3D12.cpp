@@ -10,7 +10,6 @@
 extern "C" __declspec(dllexport) extern const UINT  D3D12SDKVersion = 618;
 extern "C" __declspec(dllexport) extern const char* D3D12SDKPath    = u8".\\D3D12\\";
 
-static ShaderCompiler* shader_compiler = nullptr;
 
 void WaitForLastFrame(GraphicsContext* api_context) {
 	ProfilerScope("WaitForLastFrame");
@@ -193,8 +192,8 @@ GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
 		context->pipeline_definitions = GatherPipelineDefinitions(alloc);
 		ArrayResize(context->pipeline_state_table, alloc, context->pipeline_definitions.count);
 		
-		shader_compiler = CreateShaderCompiler(alloc, root_signature_filenames, shader_definition_table, context->pipeline_definitions);
-		SaveLoadShaderCache(shader_compiler, alloc, true);
+		context->shader_compiler = CreateShaderCompiler(alloc, root_signature_filenames, shader_definition_table, context->pipeline_definitions);
+		SaveLoadShaderCache(context->shader_compiler, alloc, true);
 		
 		BuildRootSignatures(context, alloc, root_signature_streams);
 		BuildPipelineStates(context, alloc, false);
@@ -434,10 +433,10 @@ static void BuildPipelineStates(GraphicsContextD3D12* context, StackAllocator* a
 	ProfilerScope("BuildPipelineStates");
 	
 	TempAllocationScope(alloc);
-	auto compiled_shader_mask = CompileDirtyShaderPermutations(shader_compiler, alloc);
+	auto compiled_shader_mask = CompileDirtyShaderPermutations(context->shader_compiler, alloc);
 	
 	for (u32 i = 0; i < context->pipeline_definitions.count; i += 1) {
-		auto [bytecode, is_dirty] = GetShadersForPipelineIndex(shader_compiler, i, compiled_shader_mask);
+		auto [bytecode, is_dirty] = GetShadersForPipelineIndex(context->shader_compiler, i, compiled_shader_mask);
 		if (is_dirty == false && build_only_dirty_pipelines) continue;
 		
 		auto& definition = context->pipeline_definitions[i];
@@ -574,8 +573,8 @@ void ReleaseGraphicsContext(GraphicsContext* api_context, StackAllocator* alloc)
 	ProfilerScope("ReleaseGraphicsContext");
 	auto* context = (GraphicsContextD3D12*)api_context;
 	
-	SaveLoadShaderCache(shader_compiler, alloc, false);
-	ReleaseShaderCompiler(shader_compiler);
+	SaveLoadShaderCache(context->shader_compiler, alloc, false);
+	ReleaseShaderCompiler(context->shader_compiler);
 	
 	for (auto& root_signature : context->root_signature_table) SafeRelease(root_signature);
 	for (auto& pipeline_state : context->pipeline_state_table) SafeRelease(pipeline_state);
@@ -879,7 +878,7 @@ void WindowSwapChainBeginFrame(WindowSwapChain* api_swap_chain, GraphicsContext*
 	
 	CycleResourceReleaseQueues(context);
 	
-	if (CheckShaderFileChanges(shader_compiler, alloc)) {
+	if (CheckShaderFileChanges(context->shader_compiler, alloc)) {
 		WaitForLastFrame(context);
 		BuildPipelineStates(context, alloc);
 	}

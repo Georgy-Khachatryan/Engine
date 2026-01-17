@@ -5,8 +5,6 @@
 #include "Basic/BasicFiles.h"
 #include "Basic/BasicHashTable.h"
 #include "Basic/BasicSaveLoad.h"
-#include "GraphicsApi/GraphicsApiTypes.h"
-#include "GraphicsApi/GraphicsApi.h"
 
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>

@@ -2,7 +2,7 @@
 #include "Basic/Basic.h"
 #include "Basic/BasicArray.h"
 #include "Basic/BasicString.h"
-#include "GraphicsApi/GraphicsApiTypes.h"
+#include "GraphicsApiTypes.h"
 
 struct ShaderCompiler;
 

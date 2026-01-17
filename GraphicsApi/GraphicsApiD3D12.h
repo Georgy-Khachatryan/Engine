@@ -59,6 +59,8 @@ struct GraphicsContextD3D12 : GraphicsContext {
 	Array<u16> srv_heap_free_indices;
 	u32 srv_heap_offset = 0;
 	
+	struct ShaderCompiler* shader_compiler = nullptr;
+	
 	Array<ID3D12RootSignature*> root_signature_table;
 	Array<ID3D12PipelineState*> pipeline_state_table;
 	ArrayView<PipelineDefinition> pipeline_definitions;
