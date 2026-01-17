@@ -3,6 +3,7 @@
 #include "Basic/BasicFiles.h"
 #include "Basic/BasicString.h"
 #include "EntitySystem/EntitySystem.h"
+#include "EntitySystem/Components.h"
 
 
 NOTES(Meta::HlslFile{ "MeshData.hlsl"_sl })

@@ -1,33 +1,11 @@
 #pragma once
 #include "Basic/Basic.h"
 #include "Basic/BasicString.h"
-#include "Components.h"
 #include "EntitySystem/EntitySystem.h"
+#include "EntitySystem/Components.h"
 #include "Renderer/MeshAsset.h"
+#include "Renderer/RendererEntities.h"
 
-
-NOTES()
-struct CameraEntityGUID {
-	u64 guid = 0;
-};
-
-struct GpuComponentUploadBuffer;
-struct DebugMeshInstanceArray;
-struct DebugGeometryBuffer;
-
-NOTES(Meta::NoSaveLoad{})
-struct RendererWorld {
-	float2 window_size = float2(1.f, 1.f);
-	float sun_elevation_degrees = 3.f;
-	float meshlet_target_error_pixels = 1.f;
-	
-	bool enable_anti_aliasing = true;
-	u32 jitter_frame_index = 0;
-	
-	ArrayView<GpuComponentUploadBuffer> gpu_uploads;
-	ArrayView<DebugMeshInstanceArray> debug_mesh_instance_arrays;
-	DebugGeometryBuffer* debug_geometry_buffer = nullptr;
-};
 
 NOTES(Meta::CustomSaveLoad{})
 struct EditorSelectionState {
@@ -41,6 +19,9 @@ struct WorldEntityType {
 	
 	ECS::Component<CameraEntityGUID> camera_entity;
 	ECS::Component<RendererWorld> renderer_world;
+	
+	NOTES(VirtualResourceID::SceneConstants)
+	ECS::GpuComponent<SceneConstants> gpu_scene_constants;
 	
 	ECS::Component<EditorSelectionState> selection_state;
 };
@@ -62,20 +43,6 @@ struct MeshEntityType {
 	
 	NOTES(VirtualResourceID::GpuMeshEntityData)
 	ECS::GpuComponent<GpuMeshEntityData> gpu_mesh_entity_data;
-};
-
-
-NOTES()
-enum struct CameraTransformType : u32 {
-	Perspective  = 0,
-	Orthographic = 1,
-};
-
-NOTES()
-struct CameraComponent {
-	float vertical_fov_degrees = 75.f;
-	float near_depth           = 0.1f;
-	CameraTransformType transform_type = CameraTransformType::Perspective;
 };
 
 NOTES(Meta::EntityType{}, Meta::ComponentQuery{})

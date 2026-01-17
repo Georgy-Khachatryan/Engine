@@ -18,31 +18,6 @@
 #include <SDK/imgui/imgui.h>
 #include <SDK/imgui/imgui_internal.h>
 
-
-template<typename T>
-static GpuComponentUploadBuffer AllocateGpuComponentUploadBuffer(RecordContext* record_context, u32 count, ECS::GpuComponent<T> buffer) {
-	auto [data_gpu_address,    data_cpu_address]    = AllocateTransientUploadBuffer<T,   16u>(record_context, count);
-	auto [indices_gpu_address, indices_cpu_address] = AllocateTransientUploadBuffer<u32, 16u>(record_context, count);
-	
-	GpuComponentUploadBuffer result;
-	result.count  = 0;
-	result.stride = sizeof(T);
-	result.data_cpu_address     = (u8*)data_cpu_address;
-	result.indices_cpu_address  = indices_cpu_address;
-	result.dst_data_gpu_address = buffer.resource_id;
-	result.data_gpu_address     = data_gpu_address;
-	result.indices_gpu_address  = indices_gpu_address;
-	
-	return result;
-};
-
-template<typename T>
-static void AppendGpuTransferCommand(GpuComponentUploadBuffer& view, u32 dst_index, const T& element) {
-	u32 src_index = view.count++;
-	((T*)view.data_cpu_address)[src_index] = element;
-	view.indices_cpu_address[src_index]    = dst_index;
-};
-
 static void CameraControls(CameraEntityType camera_entity, bool scene_focused, bool scene_hovered, ImGuiMouseLock& mouse_lock, float2 window_pos, float2 window_size) {
 	auto& view_to_world_quat   = camera_entity.rotation->rotation;
 	auto& world_space_position = camera_entity.position->position;
@@ -921,9 +896,10 @@ s32 main() {
 		}
 	}
 	
-	ReleaseBufferResource(graphics_context, resource_table.virtual_resources[(u32)VirtualResourceID::MeshEntityGpuTransform].buffer.resource);
-	ReleaseBufferResource(graphics_context, resource_table.virtual_resources[(u32)VirtualResourceID::GpuMeshEntityData].buffer.resource);
 	ReleaseBufferResource(graphics_context, resource_table.virtual_resources[(u32)VirtualResourceID::GpuMeshAssetData].buffer.resource);
+	ReleaseBufferResource(graphics_context, resource_table.virtual_resources[(u32)VirtualResourceID::GpuMeshEntityData].buffer.resource);
+	ReleaseBufferResource(graphics_context, resource_table.virtual_resources[(u32)VirtualResourceID::MeshEntityGpuTransform].buffer.resource);
+	ReleaseBufferResource(graphics_context, resource_table.virtual_resources[(u32)VirtualResourceID::SceneConstants].buffer.resource);
 	ReleaseBufferResource(graphics_context, mesh_asset_buffer);
 	ReleaseBufferResource(graphics_context, debug_geometry_buffer.resource);
 	

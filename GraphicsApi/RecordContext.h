@@ -157,7 +157,7 @@ struct TransientBufferAllocation {
 };
 
 template<typename T = u8, u32 alignment = 256u>
-static TransientBufferAllocation<T> AllocateTransientUploadBuffer(RecordContext* record_context, u32 size = 1u) {
+inline TransientBufferAllocation<T> AllocateTransientUploadBuffer(RecordContext* record_context, u32 size = 1u) {
 	auto& upload_buffer = GetVirtualResource(record_context, VirtualResourceID::TransientUploadBuffer);
 	
 	u32 offset     = record_context->upload_buffer_offset;

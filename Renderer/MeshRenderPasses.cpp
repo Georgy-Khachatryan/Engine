@@ -2,7 +2,6 @@
 #include "GraphicsApi/GraphicsApi.h"
 #include "GraphicsApi/RecordContext.h"
 #include "EntitySystem/EntitySystem.h"
-#include "Engine/Entities.h"
 
 void MeshletClearBuffersRenderPass::CreatePipelines(PipelineLibrary* lib) {
 	pipeline_id = CreateComputePipeline(lib, MeshletCullingShadersID, MeshletCullingShaders::ClearBuffers);
@@ -30,9 +29,9 @@ void MeshletCullingRenderPass::RecordPass(RecordContext* record_context) {
 	CmdSetPipelineState(record_context, pipeline_id);
 	
 	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
-	CmdSetRootArgument(record_context, root_signature.scene, scene_constants);
+	CmdSetRootArgument(record_context, root_signature.scene, VirtualResourceID::SceneConstants);
 	
-	auto* mesh_entities = QueryEntityTypeArray<MeshEntityType>(*entity_system);
+	auto* mesh_entities = QueryEntities<GpuMeshEntityQuery>(record_context->alloc, *entity_system)[0];
 	if (mesh_entities->count != 0) {
 		CmdDispatch(record_context, 1u, mesh_entities->count);
 	}
@@ -70,7 +69,7 @@ void BasicMeshRenderPass::RecordPass(RecordContext* record_context) {
 	CmdSetPipelineState(record_context, pipeline_id);
 	
 	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
-	CmdSetRootArgument(record_context, root_signature.scene, scene_constants);
+	CmdSetRootArgument(record_context, root_signature.scene, VirtualResourceID::SceneConstants);
 	
 	auto render_target_size = GetTextureSize(record_context, VirtualResourceID::SceneRadiance);
 	CmdSetViewportAndScissor(record_context, uint2(render_target_size));

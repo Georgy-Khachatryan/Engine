@@ -3,8 +3,8 @@
 #include "Basic/BasicString.h"
 #include "Basic/BasicMath.h"
 #include "GraphicsApi/GraphicsApiTypes.h"
-#include "Engine/Components.h"
 #include "MeshAsset.h"
+#include "RendererEntities.h"
 
 NOTES()
 enum struct VirtualResourceID : u32 {
@@ -27,6 +27,7 @@ enum struct VirtualResourceID : u32 {
 	SceneRadiance,
 	MotionVectors,
 	SceneRadianceResult,
+	SceneConstants,
 	
 	// Mesh rendering:
 	VisibleMeshlets,
@@ -90,30 +91,6 @@ struct AtmosphereParameters {
 	u32 padding_1 = 0;
 };
 
-NOTES(Meta::HlslFile{ "SceneData.hlsl"_sl })
-struct SceneConstants {
-	float2 render_target_size;
-	float2 inv_render_target_size;
-	
-	float4 view_to_clip_coef;
-	float4 clip_to_view_coef;
-	float3x4 view_to_world;
-	float3x4 world_to_view;
-	
-	float4 prev_view_to_clip_coef;
-	float4 prev_clip_to_view_coef;
-	float3x4 prev_view_to_world;
-	float3x4 prev_world_to_view;
-	
-	float2 jitter_offset_pixels;
-	float2 jitter_offset_ndc;
-	
-	float world_to_pixel_scale;
-	float3 world_space_camera_position;
-	
-	compile_const u32 visible_meshlet_buffer_count = 1024 * 1024;
-};
-
 
 NOTES(Meta::ShaderName{ "EntitySystemUpdate.hlsl"_sl })
 enum struct EntitySystemUpdateShaders : u32 {};
@@ -129,6 +106,19 @@ struct GpuComponentUploadBuffer {
 	GpuAddress data_gpu_address;
 	GpuAddress indices_gpu_address;
 	GpuAddress dst_data_gpu_address;
+};
+
+template<typename T>
+inline GpuComponentUploadBuffer AllocateGpuComponentUploadBuffer(RecordContext* record_context, u32 count, ECS::GpuComponent<T> buffer) {
+	extern GpuComponentUploadBuffer AllocateGpuComponentUploadBuffer(RecordContext* record_context, u32 stride, u32 count, GpuAddress dst_data_gpu_address);
+	return AllocateGpuComponentUploadBuffer(record_context, sizeof(T), count, GpuAddress(buffer.resource_id, buffer.offset));
+};
+
+template<typename T>
+inline void AppendGpuTransferCommand(GpuComponentUploadBuffer& view, u32 dst_index, const T& element) {
+	u32 src_index = view.count++;
+	((T*)view.data_cpu_address)[src_index] = element;
+	view.indices_cpu_address[src_index]    = dst_index;
 };
 
 NOTES(Meta::HlslFile{ "EntitySystemUpdateData.hlsl"_sl })
@@ -230,7 +220,6 @@ struct AtmosphereCompositeRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
 	GpuAddress atmosphere;
-	GpuAddress scene_constants;
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
 		HLSL::Texture2D<float4> transmittance_lut = VirtualResourceID::TransmittanceLut;
@@ -274,7 +263,6 @@ NOTES(Meta::RenderPass{})
 struct MeshletCullingRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
-	GpuAddress scene_constants;
 	EntitySystem* entity_system = nullptr;
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
@@ -302,8 +290,6 @@ SHADER_DEFINITION_GENERATED_CODE(DrawTestMeshShaders);
 NOTES(Meta::RenderPass{ CommandQueueType::Graphics })
 struct BasicMeshRenderPass {
 	RENDER_PASS_GENERATED_CODE();
-	
-	GpuAddress scene_constants;
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
 		HLSL::RegularBuffer<GpuTransform>     mesh_transforms = VirtualResourceID::MeshEntityGpuTransform;
@@ -339,30 +325,6 @@ NOTES(Meta::ShaderName{ "DebugGeometry.hlsl"_sl })
 enum struct DebugGeometryShaders : u32 {};
 SHADER_DEFINITION_GENERATED_CODE(DebugGeometryShaders);
 
-compile_const String debug_geometry_data_filename = "DebugGeometryData.hlsl"_sl;
-
-NOTES(Meta::HlslFile{ debug_geometry_data_filename })
-enum struct DebugMeshInstanceType : u32 {
-	Sphere   = 0,
-	Cube     = 1,
-	Cylinder = 2,
-	Torus    = 3,
-	
-	Count
-};
-
-NOTES(Meta::HlslFile{ debug_geometry_data_filename })
-struct DebugMeshInstance {
-	float3 position;
-	u32   color = u32_max;
-	uint2 rotation;
-	uint2 packed_data;
-};
-
-struct DebugMeshInstanceArray {
-	DebugMeshInstanceType instance_type = DebugMeshInstanceType::Sphere;
-	ArrayView<DebugMeshInstance> debug_mesh_instances;
-};
 
 NOTES(Meta::HlslFile{ debug_geometry_data_filename })
 struct DebugGeometryPushConstants {
@@ -390,7 +352,6 @@ NOTES(Meta::RenderPass{ CommandQueueType::Graphics })
 struct DebugGeometryRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
-	GpuAddress scene_constants;
 	ArrayView<DebugMeshInstanceArray> debug_mesh_instance_arrays;
 	DebugGeometryBuffer* debug_geometry_buffer = nullptr;
 	

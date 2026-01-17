@@ -31,11 +31,12 @@
   </ImportGroup>
   
   <ItemGroup>
-    <ReflectedFiles Include="Engine/Components.h" />
     <ReflectedFiles Include="Engine/Entities.h" />
+    <ReflectedFiles Include="EntitySystem/Components.h" />
     <ReflectedFiles Include="EntitySystem/EntitySystem.h" />
     <ReflectedFiles Include="GraphicsApi/GraphicsApiTypes.h" />
     <ReflectedFiles Include="Renderer/MeshAsset.h" />
+    <ReflectedFiles Include="Renderer/RendererEntities.h" />
     <ReflectedFiles Include="Renderer/RenderPasses.h" />
   </ItemGroup>
   

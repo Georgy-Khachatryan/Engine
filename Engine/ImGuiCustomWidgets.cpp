@@ -2,7 +2,7 @@
 #include "Basic/BasicString.h"
 #include "EntitySystem/EntitySystem.h"
 #include "ImGuiCustomWidgets.h"
-#include "Renderer/RenderPasses.h"
+#include "Renderer/RendererEntities.h"
 
 #include <SDK/imgui/imgui_internal.h>
 

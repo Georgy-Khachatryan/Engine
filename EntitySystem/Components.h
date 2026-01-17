@@ -8,15 +8,16 @@ NOTES() struct PositionComponent { float3 position = {};  };
 NOTES() struct RotationComponent { quat   rotation = {};  };
 NOTES() struct ScaleComponent    { float  scale    = 1.f; };
 
+NOTES() struct GuidComponent { u64 guid = 0; };
+NOTES() struct NameComponent { String name;  };
 
-NOTES(Meta::HlslFile{ "MeshData.hlsl"_sl })
-struct GpuTransform {
-	float3 position;
-	float scale;
-	quat rotation;
+NOTES(Meta::ComponentQuery{})
+struct GuidQuery {
+	GuidComponent* guid = nullptr;
 };
 
-NOTES(Meta::HlslFile{ "MeshData.hlsl"_sl })
-struct GpuMeshEntityData {
-	u32 mesh_asset_entity_id = 0;
+NOTES(Meta::ComponentQuery{})
+struct GuidNameQuery {
+	GuidComponent* guid = nullptr;
+	NameComponent* name = nullptr;
 };

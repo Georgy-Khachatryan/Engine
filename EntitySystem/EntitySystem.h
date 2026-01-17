@@ -154,18 +154,3 @@ QueryTypeT QueryEntityByGUID(EntitySystem& system, u64 entity_guid) {
 }
 
 extern ArrayView<String> entity_type_name_table;
-
-NOTES() struct GuidComponent { u64 guid = 0; };
-NOTES() struct NameComponent { String name;  };
-
-NOTES(Meta::ComponentQuery{})
-struct GuidQuery {
-	GuidComponent* guid = nullptr;
-};
-
-NOTES(Meta::ComponentQuery{})
-struct GuidNameQuery {
-	GuidComponent* guid = nullptr;
-	NameComponent* name = nullptr;
-};
-

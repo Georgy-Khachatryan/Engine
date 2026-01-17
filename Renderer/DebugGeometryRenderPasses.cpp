@@ -247,7 +247,7 @@ void DebugGeometryRenderPass::RecordPass(RecordContext* record_context) {
 	CmdSetRootSignature(record_context, root_signature);
 	CmdSetPipelineState(record_context, pipeline_id);
 	
-	CmdSetRootArgument(record_context, root_signature.scene, scene_constants);
+	CmdSetRootArgument(record_context, root_signature.scene, VirtualResourceID::SceneConstants);
 	
 	auto render_target_size = GetTextureSize(record_context, VirtualResourceID::SceneRadiance);
 	CmdSetViewportAndScissor(record_context, uint2(render_target_size));

@@ -1,6 +1,7 @@
 #include "EntitySystem.h"
 #include "Basic/BasicSaveLoad.h"
 #include "Basic/BasicBitArray.h"
+#include "Components.h"
 
 extern ArrayView<EntityTypeInfo>      entity_type_info_table;
 extern ArrayView<EntityQueryTypeInfo> entity_query_type_info_table;

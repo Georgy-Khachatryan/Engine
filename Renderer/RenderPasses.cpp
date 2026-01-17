@@ -1,9 +1,8 @@
 #include "Basic/Basic.h"
-#include "GraphicsApi/RecordContext.h"
-#include "GraphicsApi/GraphicsApi.h"
-#include "RenderPasses.h"
 #include "EntitySystem/EntitySystem.h"
-#include "Engine/Entities.h"
+#include "GraphicsApi/GraphicsApi.h"
+#include "GraphicsApi/RecordContext.h"
+#include "RenderPasses.h"
 
 static void BuildResourceTable(RecordContext* record_context, EntitySystem* entity_system, RendererWorld* renderer_world, uint2 render_target_size) {
 	using ID = VirtualResourceID;
@@ -14,7 +13,7 @@ static void BuildResourceTable(RecordContext* record_context, EntitySystem* enti
 	table.Set(ID::MultipleScatteringLut, TextureSize(TextureFormat::R16G16B16A16_FLOAT, AtmosphereParameters::multiple_scattering_lut_size));
 	table.Set(ID::SkyPanoramaLut,        TextureSize(TextureFormat::R16G16B16A16_FLOAT, AtmosphereParameters::sky_panorama_lut_size));
 	
-	auto* mesh_entities = QueryEntityTypeArray<MeshEntityType>(*entity_system);
+	auto* mesh_entities = QueryEntities<GpuMeshEntityQuery>(record_context->alloc, *entity_system)[0];
 	table.Set(ID::VisibleMeshlets, SceneConstants::visible_meshlet_buffer_count * sizeof(uint2));
 	table.Set(ID::MeshletIndirectArguments, sizeof(uint4));
 	
@@ -29,8 +28,8 @@ static void BuildResourceTable(RecordContext* record_context, EntitySystem* enti
 void BuildRenderPassesForFrame(RecordContext* record_context, EntitySystem* entity_system, u64 world_entity_guid) {
 	ProfilerScope("BuildRenderPassesForFrame");
 	
-	auto world_entity = QueryEntityByGUID<WorldEntityType>(*entity_system, world_entity_guid);
-	auto camera_entity = QueryEntityByGUID<CameraEntityType>(*entity_system, world_entity.camera_entity->guid);
+	auto world_entity = QueryEntityByGUID<WorldEntityQuery>(*entity_system, world_entity_guid);
+	auto camera_entity = QueryEntityByGUID<CameraEntityQuery>(*entity_system, world_entity.camera_entity->guid);
 	
 	auto& renderer_world = world_entity.renderer_world[0];
 	auto& camera         = camera_entity.camera[0];
@@ -41,7 +40,7 @@ void BuildRenderPassesForFrame(RecordContext* record_context, EntitySystem* enti
 	BuildResourceTable(record_context, entity_system, &renderer_world, render_target_size);
 	
 	
-	static SceneConstants scene; // TODO: Store as a world entity component.
+	auto& scene = renderer_world.scene_constants;
 	scene.prev_view_to_clip_coef = scene.view_to_clip_coef;
 	scene.prev_clip_to_view_coef = scene.clip_to_view_coef;
 	scene.prev_view_to_world     = scene.view_to_world;
@@ -83,29 +82,47 @@ void BuildRenderPassesForFrame(RecordContext* record_context, EntitySystem* enti
 		scene.jitter_offset_ndc    = 0.f;
 	}
 	
+	auto gpu_scene_constants = AllocateGpuComponentUploadBuffer(record_context, 1, world_entity.gpu_scene_constants);
+	AppendGpuTransferCommand(gpu_scene_constants, 0, scene);
+	ArrayAppend(renderer_world.gpu_uploads, record_context->alloc, gpu_scene_constants);
+	
 	AtmosphereParameters atmosphere_parameters;
 	atmosphere_parameters.world_space_sun_direction.x = cosf(renderer_world.sun_elevation_degrees * Math::degrees_to_radians);
 	atmosphere_parameters.world_space_sun_direction.z = sinf(renderer_world.sun_elevation_degrees * Math::degrees_to_radians);
 	
-	auto [scene_constants_gpu_address, scene_constants_cpu_address] = AllocateTransientUploadBuffer<SceneConstants>(record_context);
 	auto [atmosphere_parameters_gpu_address, atmosphere_parameters_cpu_address] = AllocateTransientUploadBuffer<AtmosphereParameters>(record_context);
-	*scene_constants_cpu_address = scene;
 	*atmosphere_parameters_cpu_address = atmosphere_parameters;
 	
 	EntitySystemUpdateRenderPass{ entity_system, renderer_world.gpu_uploads }.RecordPass(record_context);
 	TransmittanceLutRenderPass{ atmosphere_parameters_gpu_address }.RecordPass(record_context);
 	MultipleScatteringLutRenderPass{ atmosphere_parameters_gpu_address }.RecordPass(record_context);
 	SkyPanoramaLutRenderPass{ atmosphere_parameters_gpu_address }.RecordPass(record_context);
-	AtmosphereCompositeRenderPass{ atmosphere_parameters_gpu_address, scene_constants_gpu_address }.RecordPass(record_context);
+	AtmosphereCompositeRenderPass{ atmosphere_parameters_gpu_address }.RecordPass(record_context);
 	
 	MeshletClearBuffersRenderPass{}.RecordPass(record_context);
-	MeshletCullingRenderPass{ scene_constants_gpu_address, entity_system }.RecordPass(record_context);
-	BasicMeshRenderPass{ scene_constants_gpu_address }.RecordPass(record_context);
-	DebugGeometryRenderPass{ scene_constants_gpu_address, renderer_world.debug_mesh_instance_arrays, renderer_world.debug_geometry_buffer }.RecordPass(record_context);
+	MeshletCullingRenderPass{ entity_system }.RecordPass(record_context);
+	BasicMeshRenderPass{}.RecordPass(record_context);
+	DebugGeometryRenderPass{ renderer_world.debug_mesh_instance_arrays, renderer_world.debug_geometry_buffer }.RecordPass(record_context);
 	
 	// TODO: Select dynamically.
 	// XessRenderPass{ scene.jitter_offset_pixels }.RecordPass(record_context);
 	DlssRenderPass{ scene.jitter_offset_pixels }.RecordPass(record_context);
 	
 	ImGuiRenderPass{}.RecordPass(record_context);
+}
+
+GpuComponentUploadBuffer AllocateGpuComponentUploadBuffer(RecordContext* record_context, u32 stride, u32 count, GpuAddress dst_data_gpu_address) {
+	auto [data_gpu_address,    data_cpu_address]    = AllocateTransientUploadBuffer<u8,  16u>(record_context, count * stride);
+	auto [indices_gpu_address, indices_cpu_address] = AllocateTransientUploadBuffer<u32, 16u>(record_context, count);
+	
+	GpuComponentUploadBuffer result;
+	result.count  = 0;
+	result.stride = stride;
+	result.data_cpu_address     = data_cpu_address;
+	result.indices_cpu_address  = indices_cpu_address;
+	result.dst_data_gpu_address = dst_data_gpu_address;
+	result.data_gpu_address     = data_gpu_address;
+	result.indices_gpu_address  = indices_gpu_address;
+	
+	return result;
 }

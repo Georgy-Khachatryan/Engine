@@ -78,7 +78,6 @@
     <!-- Engine. -->
     <ClInclude Include="Engine/Entities.h" />
     <ClInclude Include="Engine/ImGuiCustomWidgets.h" />
-    <ClInclude Include="Engine/MeshAsset.h" />
     <ClInclude Include="Engine/SystemWindow.h" />
     <ClInclude Include="Engine/UndoRedoSystem.h" />
     
@@ -96,6 +95,8 @@
     <ClInclude Include="GraphicsApi/TextureFormat.h" />
     
     <!-- Renderer. -->
+    <ClInclude Include="Renderer/MeshAsset.h" />
+    <ClInclude Include="Renderer/RendererEntities.h" />
     <ClInclude Include="Renderer/RenderPasses.h" />
   </ItemGroup>
   
