@@ -11,6 +11,12 @@ extern "C" __declspec(dllexport) extern const UINT  D3D12SDKVersion = 618;
 extern "C" __declspec(dllexport) extern const char* D3D12SDKPath    = u8".\\D3D12\\";
 
 
+template<typename ResourceT>
+static void SafeRelease(ResourceT*& resource) {
+	if (resource) resource->Release();
+	resource = nullptr;
+}
+
 void WaitForLastFrame(GraphicsContext* api_context) {
 	ProfilerScope("WaitForLastFrame");
 	
@@ -775,6 +781,21 @@ static void ReleaseSwapChainBackBuffers(WindowSwapChainD3D12* swap_chain) {
 	}
 }
 
+static void SetSwapChainColorSpaceForFormat(WindowSwapChainD3D12* swap_chain, TextureFormat format) {
+	if (swap_chain->size.format == format) return;
+	
+	auto color_space = DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709;
+	switch (format) {
+	case TextureFormat::R8G8B8A8_UNORM_SRGB: color_space = DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709; break;
+	case TextureFormat::R16G16B16A16_FLOAT:  color_space = DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709; break;
+	default: DebugAssertAlways("Unhandled swap chain format. Using default G22_P709 color space."); break;
+	}
+	
+	if (FAILED(swap_chain->dxgi_swap_chain->SetColorSpace1(color_space))) {
+		DebugAssertAlways("Failed to set swap chain color space.");
+	}
+}
+
 WindowSwapChain* CreateWindowSwapChain(StackAllocator* alloc, GraphicsContext* api_context, void* hwnd, TextureFormat format) {
 	ProfilerScope("CreateWindowSwapChain");
 	
@@ -816,18 +837,7 @@ WindowSwapChain* CreateWindowSwapChain(StackAllocator* alloc, GraphicsContext* a
 	}
 	dxgi_swap_chain_1->Release();
 	
-	// No-op in case of R8G8B8A8_UNORM swap chain, RGB_FULL_G22_NONE_P709 is the default color space.
-	auto color_space = DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709;
-	switch (swap_chain->size.format) {
-	case TextureFormat::R8G8B8A8_UNORM_SRGB: color_space = DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709; break;
-	case TextureFormat::R16G16B16A16_FLOAT:  color_space = DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709; break;
-	default: DebugAssertAlways("Unhandled swap chain format. Using default G22_P709 color space."); break;
-	}
-	
-	if (FAILED(swap_chain->dxgi_swap_chain->SetColorSpace1(color_space))) {
-		DebugAssertAlways("Failed to set swap chain color space.");
-	}
-	
+	SetSwapChainColorSpaceForFormat(swap_chain, format);
 	CreateSwapChainBackBuffers(swap_chain, context);
 	
 	return swap_chain;
@@ -843,8 +853,8 @@ void ReleaseWindowSwapChain(WindowSwapChain* api_swap_chain, GraphicsContext* ap
 	SafeRelease(swap_chain->dxgi_swap_chain);
 }
 
-void ResizeWindowSwapChain(WindowSwapChain* api_swap_chain, GraphicsContext* api_context, uint2 size) {
-	if (api_swap_chain->size.x == size.x && api_swap_chain->size.y == size.y) return;
+void ResizeWindowSwapChain(WindowSwapChain* api_swap_chain, GraphicsContext* api_context, uint2 size, TextureFormat format) {
+	if (api_swap_chain->size.x == size.x && api_swap_chain->size.y == size.y && api_swap_chain->size.format == format) return;
 	
 	ProfilerScope("ResizeWindowSwapChain");
 	
@@ -854,13 +864,14 @@ void ResizeWindowSwapChain(WindowSwapChain* api_swap_chain, GraphicsContext* api
 	auto* swap_chain = (WindowSwapChainD3D12*)api_swap_chain;
 	ReleaseSwapChainBackBuffers(swap_chain);
 	
-	if (FAILED(swap_chain->dxgi_swap_chain->ResizeBuffers(0, size.x, size.y, DXGI_FORMAT_UNKNOWN, 0))) {
+	if (FAILED(swap_chain->dxgi_swap_chain->ResizeBuffers(0, size.x, size.y, dxgi_texture_format_map[(u32)ToNonSrgbFormat(format)], 0))) {
 		DebugAssertAlways("ResizeBuffers failed.");
 		return;
 	}
 	
-	swap_chain->size.x = size.x;
-	swap_chain->size.y = size.y;
+	SetSwapChainColorSpaceForFormat(swap_chain, format);
+	
+	swap_chain->size = TextureSize(format, size.x, size.y);
 	
 	CreateSwapChainBackBuffers(swap_chain, context);
 }
@@ -892,7 +903,7 @@ void WindowSwapChainBeginFrame(WindowSwapChain* api_swap_chain, GraphicsContext*
 	command_list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 }
 
-void WindowSwapChainEndFrame(WindowSwapChain* api_swap_chain, GraphicsContext* api_context, StackAllocator* alloc, RecordContext& record_context) {
+void WindowSwapChainEndFrame(WindowSwapChain* api_swap_chain, GraphicsContext* api_context, StackAllocator* alloc, RecordContext* record_context) {
 	ProfilerScope("WindowSwapChainEndFrame");
 	
 	auto* swap_chain = (WindowSwapChainD3D12*)api_swap_chain;
@@ -901,26 +912,7 @@ void WindowSwapChainEndFrame(WindowSwapChain* api_swap_chain, GraphicsContext* a
 	auto& back_buffer = swap_chain->back_buffers[swap_chain->dxgi_swap_chain->GetCurrentBackBufferIndex()];
 	auto* command_list = context->command_list;
 	
-	auto& resource_table = record_context.resource_table->virtual_resources;
-	for (auto& resource : resource_table) {
-		if (resource.type == VirtualResource::Type::VirtualTexture && resource.texture.size != resource.texture.allocated_size) {
-			if (resource.texture.resource.d3d12 != nullptr) {
-				ReleaseTextureResource(context, resource.texture.resource, ResourceReleaseCondition::EndOfThisGpuFrame);
-			}
-			
-			resource.texture.resource = CreateTextureResource(context, resource.texture.size);
-			resource.texture.allocated_size = resource.texture.size;
-		} else if (resource.type == VirtualResource::Type::VirtualBuffer && resource.buffer.size != resource.buffer.allocated_size) {
-			if (resource.buffer.resource.d3d12 != nullptr) {
-				ReleaseBufferResource(context, resource.buffer.resource, ResourceReleaseCondition::EndOfThisGpuFrame);
-			}
-			
-			resource.buffer.resource = CreateBufferResource(context, resource.buffer.size);
-			resource.buffer.allocated_size = resource.buffer.size;
-		}
-	}
-	
-	ReplayRecordContext(context, &record_context);
+	ReplayRecordContext(context, record_context);
 	
 	command_list->Close();
 	

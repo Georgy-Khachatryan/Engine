@@ -25,7 +25,7 @@ static void BuildResourceTable(RecordContext* record_context, EntitySystem* enti
 	table.Set(ID::DebugGeometryDepthStencil, TextureSize(TextureFormat::D32_FLOAT, render_target_size));
 }
 
-void BuildRenderPassesForFrame(RecordContext* record_context, EntitySystem* entity_system, u64 world_entity_guid) {
+void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext* record_context, EntitySystem* entity_system, u64 world_entity_guid) {
 	ProfilerScope("BuildRenderPassesForFrame");
 	
 	auto world_entity = QueryEntityByGUID<WorldEntityQuery>(*entity_system, world_entity_guid);
@@ -102,7 +102,7 @@ void BuildRenderPassesForFrame(RecordContext* record_context, EntitySystem* enti
 	MeshletClearBuffersRenderPass{}.RecordPass(record_context);
 	MeshletCullingRenderPass{ entity_system }.RecordPass(record_context);
 	BasicMeshRenderPass{}.RecordPass(record_context);
-	DebugGeometryRenderPass{ renderer_world.debug_mesh_instance_arrays, renderer_world.debug_geometry_buffer }.RecordPass(record_context);
+	DebugGeometryRenderPass{ renderer_world.debug_mesh_instance_arrays, &renderer_context->debug_geometry_buffer }.RecordPass(record_context);
 	
 	// TODO: Select dynamically.
 	// XessRenderPass{ scene.jitter_offset_pixels }.RecordPass(record_context);

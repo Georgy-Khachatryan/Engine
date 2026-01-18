@@ -44,6 +44,7 @@ struct UndoRedoSystem {
 
 void InitializeUndoRedoSystem(UndoRedoSystem& system, HeapAllocator* heap);
 void ReleaseUndoRedoSystem(UndoRedoSystem& system);
+void ResetUndoRedoSystem(UndoRedoSystem& system);
 
 void BeginUndoRedoGroup(UndoRedoSystem& system);
 void EndUndoRedoGroup(UndoRedoSystem& system);

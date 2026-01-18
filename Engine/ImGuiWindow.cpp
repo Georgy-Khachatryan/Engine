@@ -106,6 +106,7 @@ void ImGuiInitializeContext(HeapAllocator* heap) {
 }
 
 void ImGuiInitializeWindow(SystemWindow* window) {
+	ProfilerScope("ImGuiInitializeWindow");
 	ImGui_ImplWin32_Init(window->hwnd);
 }
 

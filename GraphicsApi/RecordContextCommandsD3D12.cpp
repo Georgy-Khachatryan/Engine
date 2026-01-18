@@ -680,6 +680,24 @@ void ReplayRecordContext(GraphicsContext* api_context, RecordContext* record_con
 	
 	auto resources = ArrayView<VirtualResource>(record_context->resource_table->virtual_resources);
 	
+	for (auto& resource : resources) {
+		if (resource.type == VirtualResource::Type::VirtualTexture && resource.texture.size != resource.texture.allocated_size) {
+			if (resource.texture.resource.handle != nullptr) {
+				ReleaseTextureResource(context, resource.texture.resource, ResourceReleaseCondition::EndOfThisGpuFrame);
+			}
+			
+			resource.texture.resource = CreateTextureResource(context, resource.texture.size);
+			resource.texture.allocated_size = resource.texture.size;
+		} else if (resource.type == VirtualResource::Type::VirtualBuffer && resource.buffer.size != resource.buffer.allocated_size) {
+			if (resource.buffer.resource.handle != nullptr) {
+				ReleaseBufferResource(context, resource.buffer.resource, ResourceReleaseCondition::EndOfThisGpuFrame);
+			}
+			
+			resource.buffer.resource = CreateBufferResource(context, resource.buffer.size);
+			resource.buffer.allocated_size = resource.buffer.size;
+		}
+	}
+	
 	CreateDescriptorTables(context, record_context->descriptor_tables, resources);
 	auto last_resource_access = ResolveResourceAccesses(alloc, record_context->resource_accesses, resources);
 	

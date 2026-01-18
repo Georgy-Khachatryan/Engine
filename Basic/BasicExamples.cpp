@@ -6,6 +6,8 @@
 
 void BasicExamples(StackAllocator* alloc) {
 #if ENABLE_FEATURE(ASSERTS)
+	ProfilerScope("BasicExamples");
+	
 	// Stack allocator:
 	{
 		TempAllocationScopeNamed(initial_size, alloc);

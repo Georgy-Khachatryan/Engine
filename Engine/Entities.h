@@ -71,3 +71,7 @@ struct EntityEditorQuery {
 	
 	MeshSourceData* mesh_source_data = nullptr;
 };
+
+
+struct RecordContext;
+void UpdateEntityGpuComponents(StackAllocator* alloc, RecordContext* record_context, EntitySystem& entity_system, Array<GpuComponentUploadBuffer>& gpu_uploads);

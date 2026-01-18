@@ -14,6 +14,19 @@ void ReleaseUndoRedoSystem(UndoRedoSystem& system) {
 	ReleaseStackAllocator(system.redo_buffer.alloc);
 }
 
+void ResetUndoRedoSystem(UndoRedoSystem& system) {
+	DebugAssert(system.pending_command_id == 0, "ResetUndoRedoSystem cannot be called while recording undo redo command.");
+	
+	system.undo_buffer.commands.count = 0;
+	system.undo_buffer.save_load_buffer.data.count = 0;
+	
+	system.redo_buffer.commands.count = 0;
+	system.redo_buffer.save_load_buffer.data.count = 0;
+	
+	system.cross_frame_command = {};
+	system.cross_frame_command_id = 0;
+}
+
 static void AppendUndoCommand(UndoRedoSystem& system, UndoRedoCommand& command) {
 	system.redo_buffer.commands.count = 0;
 	system.redo_buffer.save_load_buffer.data.count = 0;

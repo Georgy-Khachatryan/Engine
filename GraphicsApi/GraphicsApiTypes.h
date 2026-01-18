@@ -4,6 +4,8 @@
 #include "Basic/BasicString.h"
 #include "TextureFormat.h"
 
+compile_const u32 number_of_frames_in_flight = 2;
+
 union NativeBufferResource {
 	void* handle = nullptr;
 	struct ID3D12Resource* d3d12;

@@ -47,7 +47,6 @@ struct RendererWorld {
 	Array<GpuComponentUploadBuffer> gpu_uploads;
 	
 	ArrayView<DebugMeshInstanceArray> debug_mesh_instance_arrays;
-	DebugGeometryBuffer* debug_geometry_buffer = nullptr;
 };
 
 
@@ -126,3 +125,7 @@ struct CameraEntityQuery {
 	ECS::Component<RotationComponent> rotation;
 	ECS::Component<CameraComponent>   camera;
 };
+
+struct RecordContext;
+struct RendererContext;
+void UpdateRendererEntityGpuComponents(StackAllocator* alloc, RecordContext* record_context, RendererContext* renderer_context, EntitySystem& entity_system, Array<GpuComponentUploadBuffer>& gpu_uploads);

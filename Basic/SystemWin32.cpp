@@ -285,7 +285,7 @@ DirectoryChangeTracker* CreateDirectoryChangeTracker(StackAllocator* alloc, Stri
 	tracker->buffer             = ArrayViewAllocate<u8>(alloc, 4096u);
 	
 	ReadDirectoryChangesAsync(tracker);
-
+	
 	return tracker;
 }
 

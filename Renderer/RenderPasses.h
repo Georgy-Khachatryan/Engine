@@ -1,9 +1,10 @@
 #pragma once
 #include "Basic/Basic.h"
-#include "Basic/BasicString.h"
 #include "Basic/BasicMath.h"
+#include "Basic/BasicString.h"
 #include "GraphicsApi/GraphicsApiTypes.h"
 #include "MeshAsset.h"
+#include "Renderer.h"
 #include "RendererEntities.h"
 
 NOTES()
@@ -49,11 +50,6 @@ enum struct VirtualResourceID : u32 {
 	Count
 };
 
-struct EntitySystem;
-struct GraphicsContext;
-struct AsyncTransferQueue;
-
-void BuildRenderPassesForFrame(RecordContext* record_context, EntitySystem* entity_system, u64 world_entity_guid);
 
 NOTES(Meta::HlslFile{ "AtmosphereData.hlsl"_sl })
 struct AtmosphereParameters {
@@ -329,23 +325,6 @@ SHADER_DEFINITION_GENERATED_CODE(DebugGeometryShaders);
 NOTES(Meta::HlslFile{ debug_geometry_data_filename })
 struct DebugGeometryPushConstants {
 	DebugMeshInstanceType instance_type = DebugMeshInstanceType::Sphere;
-};
-
-struct DebugMeshLayout {
-	u32 vertex_offset = 0;
-	u32 vertex_count  = 0;
-	u32 index_offset  = 0;
-	u32 index_count   = 0;
-};
-
-struct DebugGeometryBuffer {
-	NativeBufferResource resource;
-	u64 resource_size = 0;
-	
-	FixedCountArray<DebugMeshLayout, (u32)DebugMeshInstanceType::Count> mesh_layouts;
-	
-	u32 vertex_count = 0;
-	u32 index_count  = 0;
 };
 
 NOTES(Meta::RenderPass{ CommandQueueType::Graphics })

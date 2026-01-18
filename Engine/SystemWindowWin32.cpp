@@ -23,6 +23,8 @@ static RECT ComputeWindowInnerRect(HWND hwnd, RECT outer_rect) {
 }
 
 static LRESULT WINAPI WindowProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) {
+	ProfilerScope("WindowProc");
+	
 	if (ImGui_ImplWin32_WndProcHandler(hwnd, message, wparam, lparam)) {
 		return true;
 	}
@@ -100,9 +102,12 @@ static LRESULT WINAPI WindowProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM 
 	
 	return DefWindowProcW(hwnd, message, wparam, lparam);
 }
+
 compile_const auto* default_window_class_name = L"DefaultWindow";
 
 SystemWindow* SystemCreateWindow(StackAllocator* alloc, String window_name) {
+	ProfilerScope("SystemCreateWindow");
+	
 	WNDCLASSEXW window_desc = {};
 	window_desc.cbSize        = sizeof(WNDCLASSEXW);
 	window_desc.style         = 0;

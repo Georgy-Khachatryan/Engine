@@ -4,8 +4,7 @@
 #include "GraphicsApiTypes.h"
 
 
-compile_const u32 number_of_frames_in_flight = 2;
-compile_const u32 number_of_back_buffers     = 3;
+compile_const u32 number_of_back_buffers = 3;
 compile_const u32 persistent_srv_descriptor_count = 1024;
 compile_const u32 transient_srv_descriptor_count  = 1024;
 
@@ -35,10 +34,10 @@ u64 GetCompletedAsyncCopyCommandValue(GraphicsContext* context);
 
 WindowSwapChain* CreateWindowSwapChain(StackAllocator* alloc, GraphicsContext* context, void* hwnd, TextureFormat format);
 void ReleaseWindowSwapChain(WindowSwapChain* swap_chain, GraphicsContext* context);
-void ResizeWindowSwapChain(WindowSwapChain* swap_chain, GraphicsContext* context, uint2 size);
+void ResizeWindowSwapChain(WindowSwapChain* swap_chain, GraphicsContext* context, uint2 size, TextureFormat format);
 NativeTextureResource WindowSwapGetCurrentBackBuffer(WindowSwapChain* swap_chain);
 void WindowSwapChainBeginFrame(WindowSwapChain* swap_chain, GraphicsContext* context, StackAllocator* alloc);
-void WindowSwapChainEndFrame(WindowSwapChain* swap_chain, GraphicsContext* context, StackAllocator* alloc, RecordContext& record_context);
+void WindowSwapChainEndFrame(WindowSwapChain* swap_chain, GraphicsContext* context, StackAllocator* alloc, RecordContext* record_context);
 
 u32 AllocateTransientSrvDescriptorTable(GraphicsContext* context, u32 count);
 u32 AllocatePersistentSrvDescriptor(GraphicsContext* context);

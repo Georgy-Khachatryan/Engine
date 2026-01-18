@@ -38,12 +38,17 @@
   </ImportGroup>
   
   <ItemGroup>
-    <!-- Engine. -->
     <ClCompile Include="Engine/Main.cpp" />
+    
+    <!-- Engine. -->
     <ClCompile Include="Engine/ImGuiCustomWidgets.cpp" />
     <ClCompile Include="Engine/ImGuiWindow.cpp" />
     <ClCompile Include="Engine/SystemWindowWin32.cpp" />
     <ClCompile Include="Engine/UndoRedoSystem.cpp" />
+    <ClCompile Include="Engine/Entities.cpp" />
+    
+    <!-- Editor -->
+    <ClCompile Include="Editor/LevelEditor.cpp" />
     
     <!-- Entity System. -->
     <ClCompile Include="EntitySystem/EntitySystem.cpp" />
@@ -65,6 +70,8 @@
     <ClCompile Include="Renderer/ImGuiRenderPass.cpp" />
     <ClCompile Include="Renderer/MeshAssetImporter.cpp" />
     <ClCompile Include="Renderer/MeshRenderPasses.cpp" />
+    <ClCompile Include="Renderer/Renderer.cpp" />
+    <ClCompile Include="Renderer/RendererEntities.cpp" />
     <ClCompile Include="Renderer/RenderPasses.cpp" />
     
     <!-- Generated code. -->
@@ -96,6 +103,7 @@
     
     <!-- Renderer. -->
     <ClInclude Include="Renderer/MeshAsset.h" />
+    <ClInclude Include="Renderer/Renderer.h" />
     <ClInclude Include="Renderer/RendererEntities.h" />
     <ClInclude Include="Renderer/RenderPasses.h" />
   </ItemGroup>

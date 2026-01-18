@@ -19,18 +19,11 @@ enum struct DescriptorHeapType : u32 {
 	Count
 };
 
-
 struct WindowSwapChainD3D12 : WindowSwapChain {
 	IDXGISwapChain3* dxgi_swap_chain = nullptr;
 	
 	FixedCountArray<NativeTextureResource, number_of_back_buffers> back_buffers = {};
 };
-
-template<typename ResourceT>
-static void SafeRelease(ResourceT*& resource) {
-	if (resource) resource->Release();
-	resource = nullptr;
-}
 
 struct GraphicsContextD3D12 : GraphicsContext {
 	ID3D12Device10*     device                 = nullptr;
