@@ -4,7 +4,7 @@
 #include <SDK/imgui/imgui.h>
 
 
-struct EntitySystem;
+struct EntitySystemBase;
 struct GraphicsContext;
 struct HeapAllocator;
 struct String;
@@ -31,7 +31,7 @@ struct ImGuiMouseLock {
 namespace ImGui {
 	bool InputText(const char* label, String& string, HeapAllocator* heap, ImGuiInputTextFlags flags = 0, ImGuiInputTextCallback callback = nullptr, void* user_data = nullptr);
 	bool DragFloatWithReset(const char* label, float* data, u32 component_count, float v_speed = 1.f, float v_min = 0.f, float v_max = 0.f, const char* format = "%.3f", ImGuiSliderFlags flags = 0, const char* const* component_labels = nullptr, const float* default_values = nullptr);
-	bool EntityComboBox(const char* label, EntitySystem* entity_system, u64* guid, EntityTypeID entity_type_id);
+	bool EntityComboBox(const char* label, EntitySystemBase* entity_system, u64* guid, EntityTypeID entity_type_id);
 	bool ImageButtonEx(const char* str_id, ImTextureRef tex_ref, const ImVec2& image_size, ImGuiButtonFlags flags = 0);
 	
 	// Widgets for 2 column (Name, Data) tables:
@@ -42,7 +42,7 @@ namespace ImGui {
 	bool TableDragFloatWithReset(const char* label, float* data, u32 component_count, float v_speed = 1.f, float v_min = 0.f, float v_max = 0.f, const char* format = "%.3f", ImGuiSliderFlags flags = 0, const char* const* component_labels = nullptr, const float* default_values = nullptr);
 	bool TableSliderFloat(const char* label, float* v, float v_min, float v_max, const char* format = "%.3f", ImGuiSliderFlags flags = 0);
 	bool TableCombo(const char* label, s32* current_item, const char* items_separated_by_zeros, s32 popup_max_height_in_items = -1);
-	bool TableEntityComboBox(const char* label, EntitySystem* entity_system, u64* guid, EntityTypeID entity_type_id);
+	bool TableEntityComboBox(const char* label, EntitySystemBase* entity_system, u64* guid, EntityTypeID entity_type_id);
 	
 	
 	void CreateContext3D();

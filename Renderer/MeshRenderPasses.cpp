@@ -31,7 +31,7 @@ void MeshletCullingRenderPass::RecordPass(RecordContext* record_context) {
 	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
 	CmdSetRootArgument(record_context, root_signature.scene, VirtualResourceID::SceneConstants);
 	
-	auto* mesh_entities = QueryEntities<GpuMeshEntityQuery>(record_context->alloc, *entity_system)[0];
+	auto* mesh_entities = QueryEntities<GpuMeshEntityQuery>(record_context->alloc, *world_system)[0];
 	if (mesh_entities->count != 0) {
 		CmdDispatch(record_context, 1u, mesh_entities->count);
 	}

@@ -42,7 +42,7 @@ static void FlushCrossFrameUndoCommand(UndoRedoSystem& system) {
 	system.cross_frame_command_id = 0;
 }
 
-static UndoRedoCommand CreateUndoRedoCommand(UndoRedoBuffer& undo_redo_buffer, EntitySystem& entity_system, u64 entity_guid, UndoRedoCommandType command_type, u64 group_index) {
+static UndoRedoCommand CreateUndoRedoCommand(UndoRedoBuffer& undo_redo_buffer, EntitySystemBase& entity_system, u64 entity_guid, UndoRedoCommandType command_type, u64 group_index) {
 	UndoRedoCommand command;
 	command.entity_guid  = entity_guid;
 	command.group_index  = group_index;
@@ -71,7 +71,7 @@ static UndoRedoCommand CreateUndoRedoCommand(UndoRedoBuffer& undo_redo_buffer, E
 	return command;
 }
 
-static void ExecuteUndoRedoCommand(UndoRedoBuffer& undo_redo_buffer, EntitySystem& entity_system, UndoRedoCommand command) {
+static void ExecuteUndoRedoCommand(UndoRedoBuffer& undo_redo_buffer, EntitySystemBase& entity_system, UndoRedoCommand command) {
 	if (command.command_type == UndoRedoCommandType::CreateEntity) {
 		CreateEntities(entity_system, command.entity_type_id, 1, { &command.entity_guid, 1 });
 	}
@@ -112,7 +112,7 @@ void EndUndoRedoGroup(UndoRedoSystem& system) {
 	system.group_index = 0;
 }
 
-void BeginUndoRedoCommand(String label, UndoRedoSystem& system, EntitySystem& entity_system, u64 entity_guid) {
+void BeginUndoRedoCommand(String label, UndoRedoSystem& system, EntitySystemBase& entity_system, u64 entity_guid) {
 	DebugAssert(system.pending_command.entity_guid == 0, "BeginUndoRedoCommand/EndUndoRedoCommand mismatch.");
 	
 	u64 id = ComputeHash(label); // IDs are used to distinguish between different Begin/End scopes that could edit the same entity.
@@ -126,7 +126,7 @@ void BeginUndoRedoCommand(String label, UndoRedoSystem& system, EntitySystem& en
 	}
 }
 
-bool EndUndoRedoCommand(UndoRedoSystem& system, EntitySystem& entity_system, bool is_dragging) {
+bool EndUndoRedoCommand(UndoRedoSystem& system, EntitySystemBase& entity_system, bool is_dragging) {
 	DebugAssert(system.pending_command.entity_guid != 0, "BeginUndoRedoCommand/EndUndoRedoCommand mismatch.");
 	
 	auto old_command = system.pending_command;
@@ -155,13 +155,13 @@ bool EndUndoRedoCommand(UndoRedoSystem& system, EntitySystem& entity_system, boo
 	return entity_changed;
 }
 
-void UndoRedoRemoveEntity(UndoRedoSystem& system, EntitySystem& entity_system, u64 entity_guid) {
+void UndoRedoRemoveEntity(UndoRedoSystem& system, EntitySystemBase& entity_system, u64 entity_guid) {
 	FlushCrossFrameUndoCommand(system);
 	auto command = CreateUndoRedoCommand(system.undo_buffer, entity_system, entity_guid, UndoRedoCommandType::CreateEntity, system.group_index);
 	AppendUndoCommand(system, command);
 }
 
-void UndoRedoCreateEntity(UndoRedoSystem& system, EntitySystem& entity_system, u64 entity_guid) {
+void UndoRedoCreateEntity(UndoRedoSystem& system, EntitySystemBase& entity_system, u64 entity_guid) {
 	FlushCrossFrameUndoCommand(system);
 	auto command = CreateUndoRedoCommand(system.undo_buffer, entity_system, entity_guid, UndoRedoCommandType::RemoveEntity, system.group_index);
 	AppendUndoCommand(system, command);
@@ -177,7 +177,7 @@ static UndoRedoCommandType ReverseUndoRedoCommandType(UndoRedoCommandType comman
 	}
 }
 
-static void ExecuteUndoRedoGroup(UndoRedoSystem& system, EntitySystem& entity_system, UndoRedoBuffer& src_buffer, UndoRedoBuffer& dst_buffer) {
+static void ExecuteUndoRedoGroup(UndoRedoSystem& system, EntitySystemBase& entity_system, UndoRedoBuffer& src_buffer, UndoRedoBuffer& dst_buffer) {
 	if (src_buffer.commands.count == 0) return;
 	
 	u64 group_index = ArrayLastElement(src_buffer.commands).group_index;
@@ -190,12 +190,12 @@ static void ExecuteUndoRedoGroup(UndoRedoSystem& system, EntitySystem& entity_sy
 	} while (group_index && src_buffer.commands.count && ArrayLastElement(src_buffer.commands).group_index == group_index);
 }
 
-void ExecuteUndo(UndoRedoSystem& system, EntitySystem& entity_system) {
+void ExecuteUndo(UndoRedoSystem& system, EntitySystemBase& entity_system) {
 	if (system.cross_frame_command.entity_guid != 0) return; // Can't modify the undo_buffer while we have a cross_frame_command on it.
 	ExecuteUndoRedoGroup(system, entity_system, system.undo_buffer, system.redo_buffer);
 }
 
-void ExecuteRedo(UndoRedoSystem& system, EntitySystem& entity_system) {
+void ExecuteRedo(UndoRedoSystem& system, EntitySystemBase& entity_system) {
 	if (system.cross_frame_command.entity_guid != 0) return; // Can't modify the undo_buffer while we have a cross_frame_command on it.
 	ExecuteUndoRedoGroup(system, entity_system, system.redo_buffer, system.undo_buffer);
 }

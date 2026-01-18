@@ -50,7 +50,7 @@ static void AllocateEntityMapStreams(EntityTypeArray& array, HeapAllocator& heap
 	memset(array.dirty_mask.data + old_dirty_mask_count, 0, (new_dirty_mask_count - old_dirty_mask_count) * sizeof(u64));
 }
 
-u32 CreateEntities(EntitySystem& system, EntityTypeID entity_type_id, u32 entity_count, ArrayView<u64> guids) {
+u32 CreateEntities(EntitySystemBase& system, EntityTypeID entity_type_id, u32 entity_count, ArrayView<u64> guids) {
 	ProfilerScope("CreateEntities");
 	
 	auto& array = system.entity_type_arrays[entity_type_id.index];
@@ -102,7 +102,7 @@ u32 CreateEntities(EntitySystem& system, EntityTypeID entity_type_id, u32 entity
 	return stream_offset;
 }
 
-void RemoveEntityByGUID(EntitySystem& system, u64 guid) {
+void RemoveEntityByGUID(EntitySystemBase& system, u64 guid) {
 	auto* guid_to_id = HashTableRemove(system.entity_guid_to_entity_id, guid);
 	if (guid_to_id == nullptr) return;
 	
@@ -131,7 +131,7 @@ void RemoveEntityByGUID(EntitySystem& system, u64 guid) {
 }
 
 
-ArrayView<EntityTypeArray*> QueryEntities(StackAllocator* alloc, EntitySystem& system, EntityQueryTypeID query_type_id) {
+ArrayView<EntityTypeArray*> QueryEntities(StackAllocator* alloc, EntitySystemBase& system, EntityQueryTypeID query_type_id) {
 	ProfilerScope("QueryEntities");
 	
 	Array<EntityTypeArray*> result;
@@ -198,7 +198,7 @@ void ExtractComponentStreams(EntityTypeArray* array, EntityQueryTypeID query_typ
 }
 
 
-static void CreateEntityTypeArrays(EntitySystem& system) {
+static void CreateEntityTypeArrays(EntitySystemBase& system) {
 	Array<EntityTypeArray> entity_type_arrays;
 	ArrayResize(entity_type_arrays, &system.heap, entity_type_info_table.count);
 	
@@ -225,7 +225,7 @@ static void CreateEntityTypeArrays(EntitySystem& system) {
 	system.entity_type_arrays = entity_type_arrays;
 }
 
-void InitializeEntitySystem(EntitySystem& system) {
+void InitializeEntitySystem(EntitySystemBase& system) {
 	system.heap = CreateHeapAllocator(2 * 1024 * 1024);
 	
 	bool random_success = _rdrand64_step(&system.guid_random_seed) != 0;
@@ -234,7 +234,7 @@ void InitializeEntitySystem(EntitySystem& system) {
 	CreateEntityTypeArrays(system);
 }
 
-static void ResetEntitySystem(EntitySystem& system) {
+static void ResetEntitySystem(EntitySystemBase& system) {
 	system.entity_guid_to_entity_id = {};
 	system.entity_type_arrays = {};
 	system.heap.DeallocateAll();
@@ -242,7 +242,7 @@ static void ResetEntitySystem(EntitySystem& system) {
 	CreateEntityTypeArrays(system);
 }
 
-void ClearEntityDirtyMasks(EntitySystem& system) {
+void ClearEntityDirtyMasks(EntitySystemBase& system) {
 	for (auto& array : system.entity_type_arrays) {
 		memset(array.dirty_mask.data, 0, array.dirty_mask.count * sizeof(u64));
 	}
@@ -250,7 +250,7 @@ void ClearEntityDirtyMasks(EntitySystem& system) {
 
 // TODO: Simplify this function. There is a lot of code that handles remapping of entity/component
 // streams when they change order or are added/removed, but in most cases it's not necessary.
-void SaveLoadEntitySystem(SaveLoadBuffer& buffer, EntitySystem& system) {
+void SaveLoadEntitySystem(SaveLoadBuffer& buffer, EntitySystemBase& system) {
 	ProfilerScope("SaveLoadEntitySystem");
 	
 	if (buffer.is_loading) {

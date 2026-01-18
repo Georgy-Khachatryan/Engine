@@ -3,11 +3,7 @@
 #include "GraphicsApi/RecordContext.h"
 #include "EntitySystem/EntitySystem.h"
 
-void EntitySystemUpdateRenderPass::CreatePipelines(PipelineLibrary* lib) {
-	pipeline_id = CreateComputePipeline(lib, EntitySystemUpdateShadersID);
-}
-
-void EntitySystemUpdateRenderPass::RecordPass(RecordContext* record_context) {
+static void AllocateGpuComponentStreams(RecordContext* record_context, EntitySystemBase* entity_system) {
 	extern ArrayView<EntityTypeInfo>    entity_type_info_table;
 	extern ArrayView<ComponentTypeInfo> component_type_info_table;
 	
@@ -41,7 +37,15 @@ void EntitySystemUpdateRenderPass::RecordPass(RecordContext* record_context) {
 			ReleaseBufferResource(record_context->context, old_resource, ResourceReleaseCondition::EndOfThisGpuFrame);
 		}
 	}
-	
+}
+
+void EntitySystemUpdateRenderPass::CreatePipelines(PipelineLibrary* lib) {
+	pipeline_id = CreateComputePipeline(lib, EntitySystemUpdateShadersID);
+}
+
+void EntitySystemUpdateRenderPass::RecordPass(RecordContext* record_context) {
+	AllocateGpuComponentStreams(record_context, world_system);
+	AllocateGpuComponentStreams(record_context, asset_system);
 	
 	if (upload_buffers.count != 0) {
 		CmdSetRootSignature(record_context, root_signature);

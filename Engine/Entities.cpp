@@ -3,10 +3,10 @@
 #include "Basic/BasicSaveLoad.h"
 #include "Renderer/RenderPasses.h"
 
-void UpdateEntityGpuComponents(StackAllocator* alloc, RecordContext* record_context, EntitySystem& entity_system, Array<GpuComponentUploadBuffer>& gpu_uploads) {
+void UpdateEntityGpuComponents(StackAllocator* alloc, RecordContext* record_context, WorldEntitySystem& world_system, AssetEntitySystem& asset_system, Array<GpuComponentUploadBuffer>& gpu_uploads) {
 	ProfilerScope("UpdateEntityGpuComponents");
 	
-	for (auto* entity_array : QueryEntities<MeshEntityType>(alloc, entity_system)) {
+	for (auto* entity_array : QueryEntities<MeshEntityType>(alloc, world_system)) {
 		ProfilerScope("MeshEntityGpuComponentUpdate");
 		
 		u32 dirty_entity_count = (u32)BitArrayCountSetBits(entity_array->dirty_mask);
@@ -26,7 +26,7 @@ void UpdateEntityGpuComponents(StackAllocator* alloc, RecordContext* record_cont
 		
 		auto gpu_mesh_entity_data = AllocateGpuComponentUploadBuffer(record_context, dirty_entity_count, streams.gpu_mesh_entity_data);
 		for (u64 i : BitArrayIt(entity_array->dirty_mask)) {
-			auto* element = HashTableFind(entity_system.entity_guid_to_entity_id, streams.mesh_asset[i].guid);
+			auto* element = HashTableFind(asset_system.entity_guid_to_entity_id, streams.mesh_asset[i].guid);
 			
 			GpuMeshEntityData mesh_entity;
 			mesh_entity.mesh_asset_entity_id = element ? element->value.entity_id.index : u32_max;

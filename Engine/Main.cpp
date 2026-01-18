@@ -44,14 +44,18 @@ s32 main() {
 	auto* resource_table = CreateResourceTable(&alloc);
 	defer{ ReleaseResourceTable(graphics_context, resource_table); };
 	
-	EntitySystem entity_system;
-	InitializeEntitySystem(entity_system);
-	defer{ ReleaseHeapAllocator(entity_system.heap); };
+	WorldEntitySystem world_system;
+	InitializeEntitySystem(world_system);
+	defer{ ReleaseHeapAllocator(world_system.heap); };
 	
-	auto* editor_context = CreateLevelEditorContext(&alloc, &imgui_heap, entity_system);
+	AssetEntitySystem asset_system;
+	InitializeEntitySystem(asset_system);
+	defer{ ReleaseHeapAllocator(asset_system.heap); };
+	
+	auto* editor_context = CreateLevelEditorContext(&alloc, &imgui_heap, world_system, asset_system);
 	defer{ ReleaseLevelEditorContext(editor_context); };
 	
-	auto world_entity = ExtractComponentStreams<WorldEntityType>(QueryEntityTypeArray<WorldEntityType>(entity_system), 0);
+	auto world_entity = ExtractComponentStreams<WorldEntityType>(QueryEntityTypeArray<WorldEntityType>(world_system), 0);
 	u64 world_entity_guid = world_entity.guid->guid;
 	
 	u64 frame_allocation_size = 0;
@@ -71,23 +75,26 @@ s32 main() {
 		ImGui::Text("Frame Alloc Size: %llu", frame_allocation_size);
 		ImGui::Text("Upload Alloc Size: %llu", transient_upload_allocation_size);
 		ImGui::Text("ImGui Heap Size: %llu", imgui_heap.ComputeTotalMemoryUsage());
-		ImGui::Text("EntitySystem Heap Size: %llu", entity_system.heap.ComputeTotalMemoryUsage());
+		ImGui::Text("World System Heap Size: %llu", world_system.heap.ComputeTotalMemoryUsage());
+		ImGui::Text("Asset System Heap Size: %llu", asset_system.heap.ComputeTotalMemoryUsage());
 		ImGui::Combo("Swap Chain Format", &swap_chain_format_index, "HDR\0SDR\0");
 		ImGui::End();
 		
 		auto* record_context = BeginRecordContext(&alloc, renderer_context, swap_chain, resource_table);
-		LevelEditorUpdate(editor_context, &alloc, record_context, entity_system, world_entity_guid);
+		LevelEditorUpdate(editor_context, &alloc, record_context, world_system, asset_system, world_entity_guid);
 		
 		Array<GpuComponentUploadBuffer> gpu_uploads;
-		UpdateEntityGpuComponents(&alloc, record_context, entity_system, gpu_uploads);
-		UpdateRendererEntityGpuComponents(&alloc, record_context, renderer_context, entity_system, gpu_uploads);
+		UpdateEntityGpuComponents(&alloc, record_context, world_system, asset_system, gpu_uploads);
+		UpdateRendererEntityGpuComponents(&alloc, record_context, renderer_context, world_system, asset_system, gpu_uploads);
 		UpdateAsyncTransferQueue(renderer_context->async_transfer_queue);
 		
 		world_entity.renderer_world->gpu_uploads = gpu_uploads;
 		
-		BuildRenderPassesForFrame(renderer_context, record_context, &entity_system, world_entity_guid);
+		BuildRenderPassesForFrame(renderer_context, record_context, &world_system, &asset_system, world_entity_guid);
 		WindowSwapChainEndFrame(swap_chain, graphics_context, &alloc, record_context);
-		ClearEntityDirtyMasks(entity_system);
+		
+		ClearEntityDirtyMasks(world_system);
+		ClearEntityDirtyMasks(asset_system);
 		
 		frame_allocation_size = (alloc.total_allocated_size - frame_initial_size);
 		transient_upload_allocation_size = record_context->upload_buffer_offset;

@@ -13,6 +13,8 @@ inline bool BitArrayTestBit(ArrayView<u64> mask, u32 index) {
 }
 
 inline void BitArraySetBitRange(ArrayView<u64> mask, u32 offset, u32 count) {
+	if (count == 0) return;
+	
 	u32 bit_index_0 = offset % 64u;
 	u32 bit_index_1 = (offset + count - 1) % 64u;
 	

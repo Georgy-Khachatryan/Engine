@@ -4,7 +4,7 @@
 #include "GraphicsApi/RecordContext.h"
 #include "RenderPasses.h"
 
-static void BuildResourceTable(RecordContext* record_context, EntitySystem* entity_system, RendererWorld* renderer_world, uint2 render_target_size) {
+static void BuildResourceTable(RecordContext* record_context, WorldEntitySystem* world_system, RendererWorld* renderer_world, uint2 render_target_size) {
 	using ID = VirtualResourceID;
 	auto& table = *record_context->resource_table;
 	
@@ -13,7 +13,7 @@ static void BuildResourceTable(RecordContext* record_context, EntitySystem* enti
 	table.Set(ID::MultipleScatteringLut, TextureSize(TextureFormat::R16G16B16A16_FLOAT, AtmosphereParameters::multiple_scattering_lut_size));
 	table.Set(ID::SkyPanoramaLut,        TextureSize(TextureFormat::R16G16B16A16_FLOAT, AtmosphereParameters::sky_panorama_lut_size));
 	
-	auto* mesh_entities = QueryEntities<GpuMeshEntityQuery>(record_context->alloc, *entity_system)[0];
+	auto* mesh_entities = QueryEntities<GpuMeshEntityQuery>(record_context->alloc, *world_system)[0];
 	table.Set(ID::VisibleMeshlets, SceneConstants::visible_meshlet_buffer_count * sizeof(uint2));
 	table.Set(ID::MeshletIndirectArguments, sizeof(uint4));
 	
@@ -25,11 +25,11 @@ static void BuildResourceTable(RecordContext* record_context, EntitySystem* enti
 	table.Set(ID::DebugGeometryDepthStencil, TextureSize(TextureFormat::D32_FLOAT, render_target_size));
 }
 
-void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext* record_context, EntitySystem* entity_system, u64 world_entity_guid) {
+void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext* record_context, WorldEntitySystem* world_system, AssetEntitySystem* asset_system, u64 world_entity_guid) {
 	ProfilerScope("BuildRenderPassesForFrame");
 	
-	auto world_entity = QueryEntityByGUID<WorldEntityQuery>(*entity_system, world_entity_guid);
-	auto camera_entity = QueryEntityByGUID<CameraEntityQuery>(*entity_system, world_entity.camera_entity->guid);
+	auto world_entity = QueryEntityByGUID<WorldEntityQuery>(*world_system, world_entity_guid);
+	auto camera_entity = QueryEntityByGUID<CameraEntityQuery>(*world_system, world_entity.camera_entity->guid);
 	
 	auto& renderer_world = world_entity.renderer_world[0];
 	auto& camera         = camera_entity.camera[0];
@@ -37,7 +37,7 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	// Clamp render target size to a reasonable minimum. Aspect ratio for view to clip is still computed using unclamped values.
 	uint2 render_target_size = uint2((u32)Max(renderer_world.window_size.x, 16.f), (u32)Max(renderer_world.window_size.y, 16.f));
 	
-	BuildResourceTable(record_context, entity_system, &renderer_world, render_target_size);
+	BuildResourceTable(record_context, world_system, &renderer_world, render_target_size);
 	
 	
 	auto& scene = renderer_world.scene_constants;
@@ -93,14 +93,14 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	auto [atmosphere_parameters_gpu_address, atmosphere_parameters_cpu_address] = AllocateTransientUploadBuffer<AtmosphereParameters>(record_context);
 	*atmosphere_parameters_cpu_address = atmosphere_parameters;
 	
-	EntitySystemUpdateRenderPass{ entity_system, renderer_world.gpu_uploads }.RecordPass(record_context);
+	EntitySystemUpdateRenderPass{ world_system, asset_system, renderer_world.gpu_uploads }.RecordPass(record_context);
 	TransmittanceLutRenderPass{ atmosphere_parameters_gpu_address }.RecordPass(record_context);
 	MultipleScatteringLutRenderPass{ atmosphere_parameters_gpu_address }.RecordPass(record_context);
 	SkyPanoramaLutRenderPass{ atmosphere_parameters_gpu_address }.RecordPass(record_context);
 	AtmosphereCompositeRenderPass{ atmosphere_parameters_gpu_address }.RecordPass(record_context);
 	
 	MeshletClearBuffersRenderPass{}.RecordPass(record_context);
-	MeshletCullingRenderPass{ entity_system }.RecordPass(record_context);
+	MeshletCullingRenderPass{ world_system }.RecordPass(record_context);
 	BasicMeshRenderPass{}.RecordPass(record_context);
 	DebugGeometryRenderPass{ renderer_world.debug_mesh_instance_arrays, &renderer_context->debug_geometry_buffer }.RecordPass(record_context);
 	

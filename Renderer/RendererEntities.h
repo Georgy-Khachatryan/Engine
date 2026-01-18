@@ -128,4 +128,4 @@ struct CameraEntityQuery {
 
 struct RecordContext;
 struct RendererContext;
-void UpdateRendererEntityGpuComponents(StackAllocator* alloc, RecordContext* record_context, RendererContext* renderer_context, EntitySystem& entity_system, Array<GpuComponentUploadBuffer>& gpu_uploads);
+void UpdateRendererEntityGpuComponents(StackAllocator* alloc, RecordContext* record_context, RendererContext* renderer_context, WorldEntitySystem& world_system, AssetEntitySystem& asset_system, Array<GpuComponentUploadBuffer>& gpu_uploads);

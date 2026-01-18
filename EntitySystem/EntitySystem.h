@@ -94,7 +94,7 @@ struct EntityTypeArray {
 	EntityTypeID entity_type_id;
 };
 
-struct EntitySystem {
+struct EntitySystemBase {
 	HashTable<u64, TypedEntityID> entity_guid_to_entity_id;
 	ArrayView<EntityTypeArray> entity_type_arrays;
 	u64 guid_random_seed = 0x7C7C4065B00D53D3ull;
@@ -102,15 +102,19 @@ struct EntitySystem {
 	HeapAllocator heap;
 };
 
-void InitializeEntitySystem(EntitySystem& system);
-void SaveLoadEntitySystem(SaveLoadBuffer& buffer, EntitySystem& system);
-void ClearEntityDirtyMasks(EntitySystem& system);
+struct WorldEntitySystem : EntitySystemBase {};
+struct AssetEntitySystem : EntitySystemBase {};
+
+
+void InitializeEntitySystem(EntitySystemBase& system);
+void SaveLoadEntitySystem(SaveLoadBuffer& buffer, EntitySystemBase& system);
+void ClearEntityDirtyMasks(EntitySystemBase& system);
 void SaveLoadEntityForTooling(SaveLoadBuffer& buffer, EntityTypeArray* array, u32 stream_offset);
 
-u32 CreateEntities(EntitySystem& system, EntityTypeID entity_type_id, u32 entity_count, ArrayView<u64> guids = {});
-void RemoveEntityByGUID(EntitySystem& system, u64 guid);
+u32 CreateEntities(EntitySystemBase& system, EntityTypeID entity_type_id, u32 entity_count, ArrayView<u64> guids = {});
+void RemoveEntityByGUID(EntitySystemBase& system, u64 guid);
 
-ArrayView<EntityTypeArray*> QueryEntities(StackAllocator* alloc, EntitySystem& system, EntityQueryTypeID query_type_id);
+ArrayView<EntityTypeArray*> QueryEntities(StackAllocator* alloc, EntitySystemBase& system, EntityQueryTypeID query_type_id);
 void ExtractComponentStreams(EntityTypeArray* array, EntityQueryTypeID query_type_id, ArrayView<ComponentStream> output_streams, u32 component_stream_offset = 0);
 
 template<typename QueryTypeT>
@@ -127,23 +131,23 @@ QueryTypeT ExtractComponentStreams(EntityTypeArray* array, u32 component_stream_
 }
 
 template<typename EntityTypeT>
-EntityTypeArray* QueryEntityTypeArray(EntitySystem& system) {
+EntityTypeArray* QueryEntityTypeArray(EntitySystemBase& system) {
 	return &system.entity_type_arrays[ECS::GetEntityTypeID<EntityTypeT>::id.index];
 }
 
 template<typename EntityTypeT>
-EntityTypeT CreateEntities(EntitySystem& system, u32 entity_count) {
+EntityTypeT CreateEntities(EntitySystemBase& system, u32 entity_count) {
 	u32 stream_offset = CreateEntities(system, ECS::GetEntityTypeID<EntityTypeT>::id, entity_count);
 	return ExtractComponentStreams<EntityTypeT>(QueryEntityTypeArray<EntityTypeT>(system), stream_offset);
 }
 
 template<typename QueryTypeT>
-ArrayView<EntityTypeArray*> QueryEntities(StackAllocator* alloc, EntitySystem& system) {
+ArrayView<EntityTypeArray*> QueryEntities(StackAllocator* alloc, EntitySystemBase& system) {
 	return QueryEntities(alloc, system, ECS::GetEntityQueryTypeID<QueryTypeT>::id);
 }
 
 template<typename QueryTypeT>
-QueryTypeT QueryEntityByGUID(EntitySystem& system, u64 entity_guid) {
+QueryTypeT QueryEntityByGUID(EntitySystemBase& system, u64 entity_guid) {
 	auto* element = HashTableFind(system.entity_guid_to_entity_id, entity_guid);
 	DebugAssert(element, "Failed to find entity by GUID 0x%x.", entity_guid);
 	

@@ -127,7 +127,8 @@ NOTES(Meta::RenderPass{})
 struct EntitySystemUpdateRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
-	EntitySystem* entity_system = nullptr;
+	WorldEntitySystem* world_system = nullptr;
+	AssetEntitySystem* asset_system  = nullptr;
 	ArrayView<GpuComponentUploadBuffer> upload_buffers;
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
@@ -259,7 +260,7 @@ NOTES(Meta::RenderPass{})
 struct MeshletCullingRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
-	EntitySystem* entity_system = nullptr;
+	WorldEntitySystem* world_system = nullptr;
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
 		HLSL::RegularBuffer<GpuTransform>     mesh_transforms = VirtualResourceID::MeshEntityGpuTransform;

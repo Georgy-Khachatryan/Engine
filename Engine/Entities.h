@@ -74,4 +74,4 @@ struct EntityEditorQuery {
 
 
 struct RecordContext;
-void UpdateEntityGpuComponents(StackAllocator* alloc, RecordContext* record_context, EntitySystem& entity_system, Array<GpuComponentUploadBuffer>& gpu_uploads);
+void UpdateEntityGpuComponents(StackAllocator* alloc, RecordContext* record_context, WorldEntitySystem& world_system, AssetEntitySystem& asset_system, Array<GpuComponentUploadBuffer>& gpu_uploads);

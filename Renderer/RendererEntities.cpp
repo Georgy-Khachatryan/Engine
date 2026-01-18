@@ -7,7 +7,7 @@
 #include "RendererEntities.h"
 #include "RenderPasses.h"
 
-void UpdateRendererEntityGpuComponents(StackAllocator* alloc, RecordContext* record_context, RendererContext* renderer_context, EntitySystem& entity_system, Array<GpuComponentUploadBuffer>& gpu_uploads) {
+void UpdateRendererEntityGpuComponents(StackAllocator* alloc, RecordContext* record_context, RendererContext* renderer_context, WorldEntitySystem& world_system, AssetEntitySystem& asset_system, Array<GpuComponentUploadBuffer>& gpu_uploads) {
 	ProfilerScope("UpdateRendererEntityGpuComponents");
 	
 	auto mesh_asset_buffer = renderer_context->mesh_asset_buffer;
@@ -15,7 +15,7 @@ void UpdateRendererEntityGpuComponents(StackAllocator* alloc, RecordContext* rec
 	u64 mesh_asset_buffer_offset = renderer_context->mesh_asset_buffer_offset;
 	auto* async_transfer_queue = renderer_context->async_transfer_queue;
 	
-	for (auto* entity_array : QueryEntities<MeshAssetType>(alloc, entity_system)) {
+	for (auto* entity_array : QueryEntities<MeshAssetType>(alloc, asset_system)) {
 		ProfilerScope("MeshAssetTypeGpuComponentUpdate");
 		
 		u32 dirty_entity_count = (u32)BitArrayCountSetBits(entity_array->dirty_mask);

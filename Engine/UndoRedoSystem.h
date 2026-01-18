@@ -48,10 +48,10 @@ void ResetUndoRedoSystem(UndoRedoSystem& system);
 
 void BeginUndoRedoGroup(UndoRedoSystem& system);
 void EndUndoRedoGroup(UndoRedoSystem& system);
-void BeginUndoRedoCommand(String label, UndoRedoSystem& system, EntitySystem& entity_system, u64 entity_guid);
-bool EndUndoRedoCommand(UndoRedoSystem& system, EntitySystem& entity_system, bool is_dragging = false);
-void UndoRedoRemoveEntity(UndoRedoSystem& system, EntitySystem& entity_system, u64 entity_guid);
-void UndoRedoCreateEntity(UndoRedoSystem& system, EntitySystem& entity_system, u64 entity_guid);
+void BeginUndoRedoCommand(String label, UndoRedoSystem& system, EntitySystemBase& entity_system, u64 entity_guid);
+bool EndUndoRedoCommand(UndoRedoSystem& system, EntitySystemBase& entity_system, bool is_dragging = false);
+void UndoRedoRemoveEntity(UndoRedoSystem& system, EntitySystemBase& entity_system, u64 entity_guid);
+void UndoRedoCreateEntity(UndoRedoSystem& system, EntitySystemBase& entity_system, u64 entity_guid);
 
-void ExecuteUndo(UndoRedoSystem& system, EntitySystem& entity_system);
-void ExecuteRedo(UndoRedoSystem& system, EntitySystem& entity_system);
+void ExecuteUndo(UndoRedoSystem& system, EntitySystemBase& entity_system);
+void ExecuteRedo(UndoRedoSystem& system, EntitySystemBase& entity_system);

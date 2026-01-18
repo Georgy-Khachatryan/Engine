@@ -2,11 +2,12 @@
 #include "Basic/Basic.h"
 #include "GraphicsApi/GraphicsApiTypes.h"
 
-struct GraphicsContext;
-struct WindowSwapChain;
+struct AssetEntitySystem;
 struct AsyncTransferQueue;
+struct GraphicsContext;
 struct VirtualResourceTable;
-struct EntitySystem;
+struct WindowSwapChain;
+struct WorldEntitySystem;
 
 struct DebugMeshLayout {
 	u32 vertex_offset = 0;
@@ -48,4 +49,4 @@ VirtualResourceTable* CreateResourceTable(StackAllocator* alloc);
 void ReleaseResourceTable(GraphicsContext* graphics_context, VirtualResourceTable* resource_table);
 
 RecordContext* BeginRecordContext(StackAllocator* alloc, RendererContext* context, WindowSwapChain* swap_chain, VirtualResourceTable* resource_table);
-void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext* record_context, EntitySystem* entity_system, u64 world_entity_guid);
+void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext* record_context, WorldEntitySystem* world_system, AssetEntitySystem* asset_system, u64 world_entity_guid);
