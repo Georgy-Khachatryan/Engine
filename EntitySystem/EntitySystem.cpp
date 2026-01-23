@@ -9,6 +9,8 @@ extern ArrayView<ComponentTypeInfo>   component_type_info_table;
 extern ArrayView<SaveLoadCallback>    component_save_load_callbacks;
 extern ArrayView<DefaultInitializeCallback> component_default_initialize_callbacks;
 
+compile_const u64 default_alignment = 64u;
+
 template<typename Lambda>
 static void IterateComponentStreams(ArrayView<ComponentStream> component_streams, EntityTypeInfo& type_info, Lambda&& lambda) {
 	for (u32 component_stream_index = 0; component_stream_index < type_info.cpu_component_count; component_stream_index += 1) {
@@ -19,7 +21,7 @@ static void IterateComponentStreams(ArrayView<ComponentStream> component_streams
 static void AllocateComponentStreams(ArrayView<ComponentStream> component_streams, EntityTypeInfo& type_info, HeapAllocator& heap, u32 old_capacity, u32 new_capacity) {
 	IterateComponentStreams(component_streams, type_info, [&](u8*& stream, ComponentTypeID component_type_id) {
 		auto type_info = component_type_info_table[component_type_id.index];
-		stream = (u8*)heap.Reallocate(stream, old_capacity * type_info.size_bytes, new_capacity * type_info.size_bytes, 64u);
+		stream = (u8*)heap.Reallocate(stream, old_capacity * type_info.size_bytes, new_capacity * type_info.size_bytes, default_alignment);
 	});
 }
 
@@ -33,7 +35,7 @@ static void DefaultInitializeStreams(ArrayView<ComponentStream> component_stream
 static void AllocateEntityMaskStream(HeapAllocator& heap, ArrayView<u64>& entity_mask, u32 new_mask_count) {
 	u64 old_mask_count = entity_mask.count;
 	
-	entity_mask.data  = (u64*)heap.Reallocate(entity_mask.data, old_mask_count * sizeof(u64), new_mask_count * sizeof(u64), 64u);
+	entity_mask.data  = (u64*)heap.Reallocate(entity_mask.data, old_mask_count * sizeof(u64), new_mask_count * sizeof(u64), default_alignment);
 	entity_mask.count = new_mask_count;
 	
 	memset(entity_mask.data + old_mask_count, 0, (new_mask_count - old_mask_count) * sizeof(u64));
@@ -45,6 +47,7 @@ static void AllocateEntityMapStreams(EntityTypeArray& array, HeapAllocator& heap
 	AllocateEntityMaskStream(heap, array.removed_mask, new_mask_count);
 	AllocateEntityMaskStream(heap, array.alive_mask,   new_mask_count);
 	AllocateEntityMaskStream(heap, array.dirty_mask,   new_mask_count);
+	AllocateEntityMaskStream(heap, array.prev_dirty_mask, new_mask_count);
 }
 
 EntityID CreateEntity(EntitySystemBase& system, EntityTypeID entity_type_id, u64 optional_guid) {
@@ -99,7 +102,8 @@ void RemoveEntityByGUID(EntitySystemBase& system, u64 guid) {
 	auto entity_id = guid_to_id->value.entity_id;
 	BitArraySetBit(array.removed_mask, entity_id.index);
 	BitArrayResetBit(array.alive_mask, entity_id.index);
-	BitArraySetBit(array.dirty_mask,   entity_id.index);
+	BitArrayResetBit(array.dirty_mask, entity_id.index);
+	BitArrayResetBit(array.prev_dirty_mask, entity_id.index);
 }
 
 
@@ -222,6 +226,7 @@ void ClearEntityMasks(EntitySystemBase& system) {
 	}
 	
 	for (auto& array : system.entity_type_arrays) {
+		Swap(array.dirty_mask, array.prev_dirty_mask);
 		memset(array.created_mask.data, 0, array.created_mask.count * sizeof(u64));
 		memset(array.removed_mask.data, 0, array.removed_mask.count * sizeof(u64));
 		memset(array.dirty_mask.data,   0, array.dirty_mask.count   * sizeof(u64));

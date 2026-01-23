@@ -96,6 +96,7 @@ struct EntityTypeArray {
 	ArrayView<u64> removed_mask; // Removed this frame.
 	ArrayView<u64> dirty_mask; // Anything changed on the entity.
 	ArrayView<u64> alive_mask; // Any alive entity.
+	ArrayView<u64> prev_dirty_mask; // Anything changed on the entity last frame.
 	
 	ArrayView<ComponentStream> component_streams;
 	EntityTypeID entity_type_id;

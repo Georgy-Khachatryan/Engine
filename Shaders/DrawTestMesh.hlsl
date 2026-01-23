@@ -31,7 +31,7 @@ void MainMS(
 	
 	GpuTransform model_to_world = mesh_transforms[mesh_entity_index];
 	GpuMeshAssetData mesh_asset = mesh_asset_data[mesh_asset_index];
-	GpuTransform prev_model_to_world = model_to_world; // TODO: Add previous transforms.
+	GpuTransform prev_model_to_world = prev_mesh_transforms[mesh_entity_index];
 	
 	BasicMeshlet meshlet = mesh_asset_buffer.Load<BasicMeshlet>(mesh_asset.meshlet_buffer_offset + meshlet_index * sizeof(BasicMeshlet));
 	

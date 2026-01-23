@@ -41,6 +41,9 @@ struct MeshEntityType {
 	NOTES(VirtualResourceID::MeshEntityGpuTransform)
 	ECS::GpuComponent<GpuTransform> gpu_transform;
 	
+	NOTES(VirtualResourceID::MeshEntityPrevGpuTransform)
+	ECS::GpuComponent<GpuTransform> prev_gpu_transform;
+	
 	NOTES(VirtualResourceID::MeshEntityAliveMask)
 	ECS::GpuMaskComponent<AliveEntityMask> alive_mask;
 	

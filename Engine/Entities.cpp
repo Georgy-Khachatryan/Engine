@@ -1,5 +1,6 @@
 #include "Entities.h"
 #include "Basic/BasicBitArray.h"
+#include "Basic/BasicFiles.h"
 #include "Basic/BasicSaveLoad.h"
 #include "Renderer/RenderPasses.h"
 
@@ -8,40 +9,69 @@ void UpdateEntityGpuComponents(StackAllocator* alloc, RecordContext* record_cont
 	
 	for (auto* entity_array : QueryEntities<MeshEntityType>(alloc, world_system)) {
 		ProfilerScope("MeshEntityGpuComponentUpdate");
-		
-		u64 dirty_qword_count = 0;
-		u64 dirty_entity_count = BitArrayCountSetBitsAndNonZeroQwords(entity_array->dirty_mask, dirty_qword_count);
-		if (dirty_entity_count == 0) continue;
-		
 		auto streams = ExtractComponentStreams<MeshEntityType>(entity_array);
 		
-		auto alive_mask = AllocateGpuComponentUploadBuffer(record_context, dirty_qword_count, streams.alive_mask);
-		for (u64 i = 0; i < entity_array->dirty_mask.count; i += 1) {
-			if (entity_array->dirty_mask[i] != 0) {
-				AppendGpuTransferCommand(alive_mask, i, AliveEntityMask{ entity_array->alive_mask[i] });
-			}
-		}
-		ArrayAppend(gpu_uploads, alloc, alive_mask);
+		auto dirty_mask      = entity_array->dirty_mask;
+		auto prev_dirty_mask = entity_array->prev_dirty_mask;
+		auto dirty_or_prev_dirty_mask = ArrayViewAllocate<u64>(alloc, dirty_mask.count);
 		
-		auto gpu_transform = AllocateGpuComponentUploadBuffer(record_context, dirty_entity_count, streams.gpu_transform);
-		for (u64 i : BitArrayIt(entity_array->dirty_mask)) {
-			GpuTransform transform;
-			transform.position = streams.position[i].position;
-			transform.scale    = streams.scale[i].scale;
-			transform.rotation = streams.rotation[i].rotation;
-			AppendGpuTransferCommand(gpu_transform, i, transform);
+		u64 dirty_or_prev_dirty_count = 0;
+		for (u64 qword_index = 0; qword_index < dirty_mask.count; qword_index += 1) {
+			u64 dirty_or_prev_dirty_qword = dirty_mask[qword_index] | prev_dirty_mask[qword_index];
+			dirty_or_prev_dirty_mask[qword_index] = dirty_or_prev_dirty_qword;
+			dirty_or_prev_dirty_count += CountSetBits(dirty_or_prev_dirty_qword);
 		}
-		ArrayAppend(gpu_uploads, alloc, gpu_transform);
 		
-		auto gpu_mesh_entity_data = AllocateGpuComponentUploadBuffer(record_context, dirty_entity_count, streams.gpu_mesh_entity_data);
-		for (u64 i : BitArrayIt(entity_array->dirty_mask)) {
-			auto* element = HashTableFind(asset_system.entity_guid_to_entity_id, streams.mesh_asset[i].guid);
+		if (dirty_or_prev_dirty_count != 0) {
+			auto created_mask = entity_array->created_mask;
 			
-			GpuMeshEntityData mesh_entity;
-			mesh_entity.mesh_asset_index = element ? element->value.entity_id.index : u32_max;
-			AppendGpuTransferCommand(gpu_mesh_entity_data, i, mesh_entity);
+			auto gpu_transform = AllocateGpuComponentUploadBuffer(record_context, dirty_or_prev_dirty_count, streams.gpu_transform, streams.prev_gpu_transform);
+			for (u64 i : BitArrayIt(dirty_or_prev_dirty_mask)) {
+				bool is_created = BitArrayTestBit(created_mask, i);
+				
+				GpuTransform transform;
+				transform.position = streams.position[i].position;
+				transform.scale    = streams.scale[i].scale;
+				transform.rotation = streams.rotation[i].rotation;
+				AppendGpuTransferCommand(gpu_transform, i, transform, is_created ? GpuComponentUpdateFlags::InitHistory : GpuComponentUpdateFlags::CopyHistory);
+			}
+			ArrayAppend(gpu_uploads, alloc, gpu_transform);
 		}
-		ArrayAppend(gpu_uploads, alloc, gpu_mesh_entity_data);
+		
+		
+		auto created_mask = entity_array->created_mask;
+		auto removed_mask = entity_array->removed_mask;
+		auto created_or_removed_mask = ArrayViewAllocate<u64>(alloc, created_mask.count);
+		
+		u64 created_or_removed_qword_count = 0;
+		for (u64 qword_index = 0; qword_index < dirty_mask.count; qword_index += 1) {
+			u64 created_or_removed_qword = created_mask[qword_index] | removed_mask[qword_index];
+			created_or_removed_mask[qword_index] = created_or_removed_qword;
+			created_or_removed_qword_count += created_or_removed_qword != 0 ? 1 : 0;
+		}
+		
+		if (created_or_removed_qword_count) {
+			auto gpu_alive_mask = AllocateGpuComponentUploadBuffer(record_context, created_or_removed_qword_count, streams.alive_mask);
+			for (u64 qword_index = 0; qword_index < created_or_removed_mask.count; qword_index += 1) {
+				if (created_or_removed_mask[qword_index] != 0) {
+					AppendGpuTransferCommand(gpu_alive_mask, qword_index, AliveEntityMask{ entity_array->alive_mask[qword_index] });
+				}
+			}
+			ArrayAppend(gpu_uploads, alloc, gpu_alive_mask);
+		}
+		
+		u64 dirty_entity_count = BitArrayCountSetBits(entity_array->dirty_mask);
+		if (dirty_entity_count != 0) {
+			auto gpu_mesh_entity_data = AllocateGpuComponentUploadBuffer(record_context, dirty_entity_count, streams.gpu_mesh_entity_data);
+			for (u64 i : BitArrayIt(entity_array->dirty_mask)) {
+				auto* element = HashTableFind(asset_system.entity_guid_to_entity_id, streams.mesh_asset[i].guid);
+				
+				GpuMeshEntityData mesh_entity;
+				mesh_entity.mesh_asset_index = element ? element->value.entity_id.index : u32_max;
+				AppendGpuTransferCommand(gpu_mesh_entity_data, i, mesh_entity);
+			}
+			ArrayAppend(gpu_uploads, alloc, gpu_mesh_entity_data);
+		}
 	}
 }
 

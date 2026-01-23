@@ -111,7 +111,7 @@ static void AppendResourceBindings(RecordContext* record_context, ArrayView<Reso
 				access.stages_mask = shader_stages_mask;
 				access.access_mask = HasAnyFlags(type, ResourceDescriptorType::AnySRV) ? ResourceAccessMask::SRV : ResourceAccessMask::UAV;
 				
-				ArrayAppend(resource_accesses, access);
+				if (access.resource_id != (VirtualResourceID)0) ArrayAppend(resource_accesses, access);
 			} else if (HasAnyFlags(type, ResourceDescriptorType::AnyBuffer)) {
 				ResourceAccessDefinition access;
 				access.resource_id = descriptor.resource_id;
@@ -119,7 +119,7 @@ static void AppendResourceBindings(RecordContext* record_context, ArrayView<Reso
 				access.stages_mask = shader_stages_mask;
 				access.access_mask = HasAnyFlags(type, ResourceDescriptorType::AnySRV) ? ResourceAccessMask::SRV : ResourceAccessMask::UAV;
 				
-				ArrayAppend(resource_accesses, access);
+				if (access.resource_id != (VirtualResourceID)0) ArrayAppend(resource_accesses, access);
 			}
 		}
 	}

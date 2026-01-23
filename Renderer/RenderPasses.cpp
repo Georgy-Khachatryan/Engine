@@ -111,7 +111,7 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	ImGuiRenderPass{}.RecordPass(record_context);
 }
 
-GpuComponentUploadBuffer AllocateGpuComponentUploadBuffer(RecordContext* record_context, u32 stride, u32 count, GpuAddress dst_data_gpu_address) {
+GpuComponentUploadBuffer AllocateGpuComponentUploadBuffer(RecordContext* record_context, u32 stride, u32 count, GpuAddress dst_data_gpu_address, GpuAddress dst_prev_data_gpu_address) {
 	auto [data_gpu_address,    data_cpu_address]    = AllocateTransientUploadBuffer<u8,  16u>(record_context, count * stride);
 	auto [indices_gpu_address, indices_cpu_address] = AllocateTransientUploadBuffer<u32, 16u>(record_context, count);
 	
@@ -120,9 +120,10 @@ GpuComponentUploadBuffer AllocateGpuComponentUploadBuffer(RecordContext* record_
 	result.stride = stride;
 	result.data_cpu_address     = data_cpu_address;
 	result.indices_cpu_address  = indices_cpu_address;
-	result.dst_data_gpu_address = dst_data_gpu_address;
 	result.data_gpu_address     = data_gpu_address;
 	result.indices_gpu_address  = indices_gpu_address;
+	result.dst_data_gpu_address = dst_data_gpu_address;
+	result.dst_prev_data_gpu_address = dst_prev_data_gpu_address;
 	
 	return result;
 }
