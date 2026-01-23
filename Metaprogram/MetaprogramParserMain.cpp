@@ -174,6 +174,12 @@ static AstNodeStruct* ParseStruct(Tokenizer& tokenizer) {
 	if (token.type == TokenType::Colon) {
 		tokenizer.FindNextToken();
 		ParseIdentifierWithNamespace(tokenizer);
+		
+		token = tokenizer.PeekNextToken();
+		if (token.type == TokenType::Less) {
+			SkipTokensWithNestingTracking(tokenizer, TokenType::Less, TokenType::Greater);
+			token = tokenizer.PeekNextToken();
+		}
 	}
 	
 	tokenizer.ExpectToken(TokenType::OpeningBrace);

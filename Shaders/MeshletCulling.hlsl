@@ -32,10 +32,13 @@ compile_const uint thread_group_size = 256;
 [ThreadGroupSize(thread_group_size, 1, 1)]
 void MainCS(uint2 thread_id : SV_DispatchThreadID) {
 	uint mesh_entity_index = thread_id.y;
-	uint mesh_asset_entity_id = mesh_entity_data[mesh_entity_index].mesh_asset_entity_id;
-	if (mesh_asset_entity_id == u32_max) return;
 	
-	GpuMeshAssetData mesh_asset = mesh_asset_data[mesh_asset_entity_id];
+	if (BitArrayTestBit(mesh_alive_mask, mesh_entity_index) == false) return;
+	
+	uint mesh_asset_index = mesh_entity_data[mesh_entity_index].mesh_asset_index;
+	if (mesh_asset_index == u32_max) return;
+	
+	GpuMeshAssetData mesh_asset = mesh_asset_data[mesh_asset_index];
 	GpuTransform model_to_world = mesh_transforms[mesh_entity_index];
 	
 	for (uint meshlet_index = thread_id.x; meshlet_index < mesh_asset.meshlet_count; meshlet_index += thread_group_size) {

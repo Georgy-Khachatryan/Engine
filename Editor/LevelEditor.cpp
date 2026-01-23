@@ -87,13 +87,9 @@ static void GizmoControls(CameraEntityType camera_entity, WorldEntitySystem& wor
 	u64 entity_guid = (*selected_entities_hash_table.begin()).key;
 	if (entity_guid == camera_entity.guid->guid) return;
 	
-	auto* element = HashTableFind(world_system.entity_guid_to_entity_id, entity_guid);
-	DebugAssert(element, "Failed to find entity by GUID 0x%x.", entity_guid);
-	
-	auto typed_entity_id = element->value;
+	auto typed_entity_id = FindEntityByGUID(world_system, entity_guid);
 	auto* array = &world_system.entity_type_arrays[typed_entity_id.entity_type_id.index];
-	u32 entity_stream_index = array->entity_id_to_stream_index[typed_entity_id.entity_id.index];
-	auto entity = ExtractComponentStreams<EntityEditorQuery>(array, entity_stream_index);
+	auto entity = ExtractComponentStreams<EntityEditorQuery>(array, typed_entity_id.entity_id);
 	if (entity.position == nullptr || entity.rotation == nullptr) return;
 	
 	{
@@ -173,7 +169,7 @@ static void GizmoControls(CameraEntityType camera_entity, WorldEntitySystem& wor
 	bool is_dirty = EndUndoRedoCommand(undo_redo_system, world_system, is_dragging);
 	
 	if (is_dirty) {
-		BitArraySetBit(array->dirty_mask, entity_stream_index);
+		BitArraySetBit(array->dirty_mask, typed_entity_id.entity_id.index);
 	}
 }
 
@@ -185,15 +181,9 @@ static void DuplicateSelectedEntities(StackAllocator* alloc, WorldEntitySystem& 
 	buffer.heap = &world_system.heap;
 	
 	for (auto [guid] : selected_entities_hash_table) {
-		auto* element = HashTableFind(world_system.entity_guid_to_entity_id, guid);
-		DebugAssert(element, "Failed to find entity by GUID 0x%x.", guid);
-		
-		auto typed_entity_id = element->value;
-		
+		auto typed_entity_id = FindEntityByGUID(world_system, guid);
 		auto* entity_array = &world_system.entity_type_arrays[typed_entity_id.entity_type_id.index];
-		u32 stream_offset = entity_array->entity_id_to_stream_index[typed_entity_id.entity_id.index];
-		
-		SaveLoadEntityForTooling(buffer, entity_array, stream_offset);
+		SaveLoadEntityForTooling(buffer, entity_array, typed_entity_id.entity_id);
 	}
 	
 	ResetSaveLoadBuffer(buffer, 0);
@@ -203,17 +193,13 @@ static void DuplicateSelectedEntities(StackAllocator* alloc, WorldEntitySystem& 
 	
 	BeginUndoRedoGroup(undo_redo_system);
 	for (auto [guid] : selected_entities_hash_table) {
-		auto* element = HashTableFind(world_system.entity_guid_to_entity_id, guid);
-		DebugAssert(element, "Failed to find entity by GUID 0x%x.", guid);
+		auto src_typed_entity_id = FindEntityByGUID(world_system, guid);
+		auto* entity_array = &world_system.entity_type_arrays[src_typed_entity_id.entity_type_id.index];
 		
-		auto typed_entity_id = element->value;
+		auto entity_id = CreateEntity(world_system, src_typed_entity_id.entity_type_id);
+		SaveLoadEntityForTooling(buffer, entity_array, entity_id);
 		
-		auto* entity_array = &world_system.entity_type_arrays[typed_entity_id.entity_type_id.index];
-		
-		u32 stream_offset = CreateEntities(world_system, entity_array->entity_type_id, 1);
-		SaveLoadEntityForTooling(buffer, entity_array, stream_offset);
-		
-		auto guid_query = ExtractComponentStreams<GuidQuery>(entity_array, stream_offset);
+		auto guid_query = ExtractComponentStreams<GuidQuery>(entity_array, entity_id);
 		ArrayAppend(new_entity_guids, guid_query.guid->guid);
 		
 		UndoRedoCreateEntity(undo_redo_system, world_system, guid_query.guid->guid);
@@ -254,8 +240,8 @@ static void ApplyEntitySelectionRequests(ImGuiMultiSelectIO* ms_io, ArrayView<En
 			if (request.Selected) {
 				for (auto* entity_array : entity_view) {
 					auto streams = ExtractComponentStreams<GuidQuery>(entity_array);
-					for (u32 index = 0; index < entity_array->count; index += 1) {
-						auto& [guid] = streams.guid[index];
+					for (u64 i : BitArrayIt(entity_array->alive_mask)) {
+						auto& [guid] = streams.guid[i];
 						HashTableAddOrFind(selected_entities_hash_table, &world_system.heap, guid);
 					}
 				}
@@ -272,8 +258,14 @@ static void ApplyEntitySelectionRequests(ImGuiMultiSelectIO* ms_io, ArrayView<En
 				if (start_index >= end_index) continue;
 				
 				auto streams = ExtractComponentStreams<GuidQuery>(entity_array);
-				for (u32 index = start_index; index < end_index; index += 1) {
-					auto& [guid] = streams.guid[index - global_index];
+				u32 index = global_index;
+				for (u64 i : BitArrayIt(entity_array->alive_mask)) {
+					defer{ index += 1; };
+					if (index < start_index) continue;
+					if (index >= end_index) break;
+					
+					auto& [guid] = streams.guid[i];
+					
 					if (request.Selected) {
 						HashTableAddOrFind(selected_entities_hash_table, &world_system.heap, guid);
 					} else {
@@ -332,9 +324,15 @@ static void LevelEditorSceneView(StackAllocator* alloc, WorldEntitySystem& world
 			auto entity_type_name = entity_type_name_table[entity_array->entity_type_id.index];
 			
 			auto streams = ExtractComponentStreams<GuidNameQuery>(entity_array);
-			for (u32 index = start_index; index < end_index; index += 1) {
-				auto& [guid] = streams.guid[index - global_index];
-				auto& [name] = streams.name[index - global_index];
+			u32 index = global_index;
+			for (u64 i : BitArrayIt(entity_array->alive_mask)) {
+				defer{ index += 1; };
+				if (index < start_index) continue;
+				if (index >= end_index) break;
+				
+				auto& [guid] = streams.guid[i];
+				auto& [name] = streams.name[i];
+				
 				
 				ImGui::TableNextRow();
 				
@@ -424,14 +422,9 @@ static void LevelEditorEntityView(StackAllocator* alloc, WorldEntitySystem& worl
 	ImGui::BeginDisabled(selected_entities_hash_table.count >= 2);
 	defer{ ImGui::EndDisabled(); };
 	
-	// TODO: Make use of QueryEntityByGUID.
-	auto* element = HashTableFind(world_system.entity_guid_to_entity_id, entity_guid);
-	DebugAssert(element, "Failed to find entity by GUID 0x%x.", entity_guid);
-	
-	auto typed_entity_id = element->value;
+	auto typed_entity_id = FindEntityByGUID(world_system, entity_guid);
 	auto* array = &world_system.entity_type_arrays[typed_entity_id.entity_type_id.index];
-	u32 entity_stream_index = array->entity_id_to_stream_index[typed_entity_id.entity_id.index];
-	auto entity = ExtractComponentStreams<EntityEditorQuery>(array, entity_stream_index);
+	auto entity = ExtractComponentStreams<EntityEditorQuery>(array, typed_entity_id.entity_id);
 	
 	
 	BeginUndoRedoCommand("Entity Editor"_sl, undo_redo_system, world_system, entity_guid);
@@ -484,7 +477,7 @@ static void LevelEditorEntityView(StackAllocator* alloc, WorldEntitySystem& worl
 	bool is_dirty = EndUndoRedoCommand(undo_redo_system, world_system, is_dragging);
 	
 	if (is_dirty) {
-		BitArraySetBit(array->dirty_mask, entity_stream_index);
+		BitArraySetBit(array->dirty_mask, typed_entity_id.entity_id.index);
 	}
 }
 
@@ -557,8 +550,8 @@ static void LoadOrCreateDefaultWorld(StackAllocator* alloc, WorldEntitySystem& w
 	if (loaded_entities == false) {
 		TempAllocationScope(alloc);
 		
-		auto world_entity  = CreateEntities<WorldEntityType>(world_system, 1);
-		auto camera_entity = CreateEntities<CameraEntityType>(world_system, 1);
+		auto world_entity  = CreateEntity<WorldEntityType>(world_system);
+		auto camera_entity = CreateEntity<CameraEntityType>(world_system);
 		
 		camera_entity.rotation->rotation =
 			Math::AxisAngleToQuat(float3(0.f, 0.f, 1.f), -90.f * Math::degrees_to_radians) *
@@ -656,7 +649,10 @@ void LevelEditorUpdate(LevelEditorContext* editor_context, StackAllocator* alloc
 	
 	if (should_save_scene || should_load_scene) {
 		SaveLoadEntitySystemByPath(alloc, world_system, entities_save_load_path, should_load_scene);
-		SaveLoadEntitySystemByPath(alloc, asset_system,  assets_save_load_path,   should_load_scene);
+		
+		if (should_save_scene) {
+			SaveLoadEntitySystemByPath(alloc, asset_system, assets_save_load_path,   should_load_scene);
+		}
 		
 		if (should_load_scene) {
 			ResetUndoRedoSystem(undo_redo_system);
@@ -679,8 +675,8 @@ void LevelEditorUpdate(LevelEditorContext* editor_context, StackAllocator* alloc
 			
 			ImGuiScopeID(entity_type_id.index);
 			if (ImGui::Selectable(name.data, false)) {
-				u32 stream_offset = CreateEntities(world_system, entity_type_id, 1);
-				auto entity = ExtractComponentStreams<GuidNameQuery>(&world_system.entity_type_arrays[entity_type_id.index], stream_offset);
+				auto entity_id = CreateEntity(world_system, entity_type_id);
+				auto entity = ExtractComponentStreams<GuidNameQuery>(&world_system.entity_type_arrays[entity_type_id.index], entity_id);
 				entity.name->name = StringCopy(&world_system.heap, name);
 				
 				BeginUndoRedoGroup(undo_redo_system);

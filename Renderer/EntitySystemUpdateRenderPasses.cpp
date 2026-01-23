@@ -20,7 +20,9 @@ static void AllocateGpuComponentStreams(RecordContext* record_context, EntitySys
 			auto type_info = component_type_info_table[component_type_id.index];
 			
 			auto& virtual_resource = resource_table->virtual_resources[(u32)resource_id];
-			u32 new_size = (u32)(array.capacity * type_info.size_bytes);
+			u32 capacity = type_info.component_type == ComponentType::GpuMask ? DivideAndRoundUp(array.capacity, 64u) : array.capacity;
+			
+			u32 new_size = (u32)(capacity * type_info.size_bytes);
 			u32 old_size = virtual_resource.buffer.size;
 			if (new_size <= old_size) continue;
 			

@@ -12,6 +12,7 @@ enum struct VirtualResourceID : u32 {
 	None = 0,
 	
 	// GPU components:
+	MeshEntityAliveMask,
 	MeshEntityGpuTransform,
 	GpuMeshEntityData,
 	GpuMeshAssetData,
@@ -105,16 +106,16 @@ struct GpuComponentUploadBuffer {
 };
 
 template<typename T>
-inline GpuComponentUploadBuffer AllocateGpuComponentUploadBuffer(RecordContext* record_context, u32 count, ECS::GpuComponent<T> buffer) {
+inline GpuComponentUploadBuffer AllocateGpuComponentUploadBuffer(RecordContext* record_context, u64 count, ECS::GpuComponent<T> buffer) {
 	extern GpuComponentUploadBuffer AllocateGpuComponentUploadBuffer(RecordContext* record_context, u32 stride, u32 count, GpuAddress dst_data_gpu_address);
-	return AllocateGpuComponentUploadBuffer(record_context, sizeof(T), count, GpuAddress(buffer.resource_id, buffer.offset));
+	return AllocateGpuComponentUploadBuffer(record_context, sizeof(T), (u32)count, GpuAddress(buffer.resource_id, buffer.offset));
 };
 
 template<typename T>
-inline void AppendGpuTransferCommand(GpuComponentUploadBuffer& view, u32 dst_index, const T& element) {
+inline void AppendGpuTransferCommand(GpuComponentUploadBuffer& view, u64 dst_index, const T& element) {
 	u32 src_index = view.count++;
 	((T*)view.data_cpu_address)[src_index] = element;
-	view.indices_cpu_address[src_index]    = dst_index;
+	view.indices_cpu_address[src_index]    = (u32)dst_index;
 };
 
 NOTES(Meta::HlslFile{ "EntitySystemUpdateData.hlsl"_sl })
@@ -263,6 +264,7 @@ struct MeshletCullingRenderPass {
 	WorldEntitySystem* world_system = nullptr;
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
+		HLSL::RegularBuffer<u32>              mesh_alive_mask = VirtualResourceID::MeshEntityAliveMask;
 		HLSL::RegularBuffer<GpuTransform>     mesh_transforms = VirtualResourceID::MeshEntityGpuTransform;
 		HLSL::RegularBuffer<GpuMeshAssetData> mesh_asset_data = VirtualResourceID::GpuMeshAssetData;
 		HLSL::RegularBuffer<GpuMeshEntityData> mesh_entity_data = VirtualResourceID::GpuMeshEntityData;

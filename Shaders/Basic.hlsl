@@ -141,4 +141,9 @@ float3 QuatMul(quat q, float3 v) {
 	return v + t * q.w + cross(q.xyz, t);
 }
 
+
+bool BitArrayTestBit(StructuredBuffer<uint> mask, u32 index) {
+	return ((mask[index / 32u] >> (index % 32u)) & 0x1) != 0;
+}
+
 #endif // BASIC_HLSL

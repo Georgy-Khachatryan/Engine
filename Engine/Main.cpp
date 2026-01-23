@@ -55,7 +55,7 @@ s32 main() {
 	auto* editor_context = CreateLevelEditorContext(&alloc, &imgui_heap, world_system, asset_system);
 	defer{ ReleaseLevelEditorContext(editor_context); };
 	
-	auto world_entity = ExtractComponentStreams<WorldEntityType>(QueryEntityTypeArray<WorldEntityType>(world_system), 0);
+	auto world_entity = ExtractComponentStreams<WorldEntityType>(QueryEntityTypeArray<WorldEntityType>(world_system));
 	u64 world_entity_guid = world_entity.guid->guid;
 	
 	u64 frame_allocation_size = 0;
@@ -93,8 +93,10 @@ s32 main() {
 		BuildRenderPassesForFrame(renderer_context, record_context, &world_system, &asset_system, world_entity_guid);
 		WindowSwapChainEndFrame(swap_chain, graphics_context, &alloc, record_context);
 		
-		ClearEntityDirtyMasks(world_system);
-		ClearEntityDirtyMasks(asset_system);
+		ReleaseEntityComponents(&alloc, world_system, asset_system);
+		
+		ClearEntityMasks(world_system);
+		ClearEntityMasks(asset_system);
 		
 		frame_allocation_size = (alloc.total_allocated_size - frame_initial_size);
 		transient_upload_allocation_size = record_context->upload_buffer_offset;

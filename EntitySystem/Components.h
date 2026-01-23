@@ -11,9 +11,16 @@ NOTES() struct ScaleComponent    { float  scale    = 1.f; };
 NOTES() struct GuidComponent { u64 guid = 0; };
 NOTES() struct NameComponent { String name;  };
 
+NOTES() struct AliveEntityMask { u64 mask = 0; };
+
 NOTES(Meta::ComponentQuery{})
 struct GuidQuery {
 	GuidComponent* guid = nullptr;
+};
+
+NOTES(Meta::ComponentQuery{})
+struct NameQuery {
+	NameComponent* name = nullptr;
 };
 
 NOTES(Meta::ComponentQuery{})

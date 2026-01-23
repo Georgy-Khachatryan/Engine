@@ -23,111 +23,83 @@ static void AllocateComponentStreams(ArrayView<ComponentStream> component_stream
 	});
 }
 
-static void MemcpyComponentStreams(ArrayView<ComponentStream> component_streams, EntityTypeInfo& type_info, u32 dst_index, u32 src_index) {
+static void DefaultInitializeStreams(ArrayView<ComponentStream> component_streams, EntityTypeInfo& type_info, u64 offset, u64 count) {
 	IterateComponentStreams(component_streams, type_info, [&](u8* stream, ComponentTypeID component_type_id) {
-		auto type_info = component_type_info_table[component_type_id.index];
-		memcpy(stream + dst_index * type_info.size_bytes, stream + src_index * type_info.size_bytes, type_info.size_bytes);
+		auto default_initialize = component_default_initialize_callbacks[component_type_id.index];
+		default_initialize(stream, offset, offset + count);
 	});
 }
 
-static void DefaultInitializeStreams(ArrayView<ComponentStream> component_streams, EntityTypeInfo& type_info, u64 begin, u64 end) {
-	IterateComponentStreams(component_streams, type_info, [&](u8* stream, ComponentTypeID component_type_id) {
-		auto default_initialize = component_default_initialize_callbacks[component_type_id.index];
-		default_initialize(stream, begin, end);
-	});
+static void AllocateEntityMaskStream(HeapAllocator& heap, ArrayView<u64>& entity_mask, u32 new_mask_count) {
+	u64 old_mask_count = entity_mask.count;
+	
+	entity_mask.data  = (u64*)heap.Reallocate(entity_mask.data, old_mask_count * sizeof(u64), new_mask_count * sizeof(u64), 64u);
+	entity_mask.count = new_mask_count;
+	
+	memset(entity_mask.data + old_mask_count, 0, (new_mask_count - old_mask_count) * sizeof(u64));
 }
 
 static void AllocateEntityMapStreams(EntityTypeArray& array, HeapAllocator& heap, u32 old_capacity, u32 new_capacity) {
-	array.entity_id_to_stream_index = (u32*)heap.Reallocate(array.entity_id_to_stream_index, old_capacity * sizeof(u32), new_capacity * sizeof(u32), 64u);
-	array.stream_index_to_entity_id = (u32*)heap.Reallocate(array.stream_index_to_entity_id, old_capacity * sizeof(u32), new_capacity * sizeof(u32), 64u);
-	
-	u64 old_dirty_mask_count = array.dirty_mask.count;
-	u64 new_dirty_mask_count = DivideAndRoundUp(new_capacity, 64u);
-	
-	array.dirty_mask.data  = (u64*)heap.Reallocate(array.dirty_mask.data, old_dirty_mask_count * sizeof(u64), new_dirty_mask_count * sizeof(u64), 64u);
-	array.dirty_mask.count = new_dirty_mask_count;
-	
-	memset(array.dirty_mask.data + old_dirty_mask_count, 0, (new_dirty_mask_count - old_dirty_mask_count) * sizeof(u64));
+	u32 new_mask_count = DivideAndRoundUp(new_capacity, 64u);
+	AllocateEntityMaskStream(heap, array.created_mask, new_mask_count);
+	AllocateEntityMaskStream(heap, array.removed_mask, new_mask_count);
+	AllocateEntityMaskStream(heap, array.alive_mask,   new_mask_count);
+	AllocateEntityMaskStream(heap, array.dirty_mask,   new_mask_count);
 }
 
-u32 CreateEntities(EntitySystemBase& system, EntityTypeID entity_type_id, u32 entity_count, ArrayView<u64> guids) {
-	ProfilerScope("CreateEntities");
+EntityID CreateEntity(EntitySystemBase& system, EntityTypeID entity_type_id, u64 optional_guid) {
+	ProfilerScope("CreateEntity");
 	
 	auto& array = system.entity_type_arrays[entity_type_id.index];
 	auto& type_info = entity_type_info_table[entity_type_id.index];
 	
-	if (array.count + entity_count > array.capacity) {
+	if (array.entity_id_free_list.count == 0) {
 		ProfilerScope("ReallocateComponentStreams");
 		
 		u32 old_capacity = array.capacity;
-		u32 new_capacity = AlignUp(old_capacity ? old_capacity * 3 / 2 + entity_count : entity_count, type_info.base_allocation_count);
+		u32 new_capacity = AlignUp(old_capacity ? old_capacity * 3 / 2 : 1, type_info.base_allocation_count);
 		
 		AllocateEntityMapStreams(array, system.heap, old_capacity, new_capacity);
 		AllocateComponentStreams(array.component_streams, type_info, system.heap, old_capacity, new_capacity);
 		
 		for (u32 i = old_capacity; i < new_capacity; i += 1) {
-			array.stream_index_to_entity_id[i] = i;
+			ArrayAppend(array.entity_id_free_list, &system.heap, EntityID{ i });
 		}
 		
 		array.capacity = new_capacity;
 	}
 	
-	u32 stream_offset = array.count;
-	array.count += entity_count;
+	auto entity_id = ArrayPopLast(array.entity_id_free_list);
+	BitArraySetBit(array.created_mask, entity_id.index);
+	BitArraySetBit(array.alive_mask,   entity_id.index);
+	BitArraySetBit(array.dirty_mask,   entity_id.index);
 	
-	for (u32 i = 0; i < entity_count; i += 1) {
-		u32 entity_id = array.stream_index_to_entity_id[stream_offset + i];
-		array.entity_id_to_stream_index[entity_id] = stream_offset + i;
-	}
+	DefaultInitializeStreams(array.component_streams, type_info, entity_id.index, 1);
 	
-	BitArraySetBitRange(array.dirty_mask, stream_offset, entity_count);
-	
-	DefaultInitializeStreams(array.component_streams, type_info, stream_offset, stream_offset + entity_count);
-	
-	auto streams = ExtractComponentStreams<GuidQuery>(&array, stream_offset);
+	auto streams = ExtractComponentStreams<GuidQuery>(&array);
 	if (streams.guid) {
-		DebugAssert(guids.count == 0 || guids.count == entity_count, "Unexpected number of GUIDs supplied (%/%).", guids.count, entity_count);
+		u64 guid = optional_guid != 0 ? optional_guid : GenerateRandomNumber64(system.guid_random_seed);
+		streams.guid[entity_id.index].guid = guid;
 		
-		for (u32 i = 0; i < entity_count; i += 1) {
-			u64 guid = guids.count ? guids[i] : GenerateRandomNumber64(system.guid_random_seed);
-			streams.guid[i].guid = guid;
-			
-			auto entity_id = EntityID{ array.stream_index_to_entity_id[stream_offset + i] };
-			
-			auto typed_entity_id = TypedEntityID{ entity_id, entity_type_id };
-			HashTableAddOrFind(system.entity_guid_to_entity_id, &system.heap, guid, typed_entity_id);
-		}
+		HashTableAddOrFind(system.entity_guid_to_entity_id, &system.heap, guid, { entity_id, entity_type_id });
 	}
 	
-	return stream_offset;
+	array.count += 1;
+	
+	return entity_id;
 }
 
 void RemoveEntityByGUID(EntitySystemBase& system, u64 guid) {
 	auto* guid_to_id = HashTableRemove(system.entity_guid_to_entity_id, guid);
 	if (guid_to_id == nullptr) return;
 	
-	u32 entity_id         = guid_to_id->value.entity_id.index;
-	u32 entity_type_index = guid_to_id->value.entity_type_id.index;
-	
-	auto& array  = system.entity_type_arrays[entity_type_index];
-	auto& type_info = entity_type_info_table[entity_type_index];
-	
-	u32 stream_index = array.entity_id_to_stream_index[entity_id];
-	array.entity_id_to_stream_index[entity_id] = u32_max;
-	
-	if (array.count >= 2) {
-		u32 back_stream_index = array.count - 1;
-		u32 back_entity_id = array.stream_index_to_entity_id[back_stream_index];
-		
-		array.stream_index_to_entity_id[stream_index] = back_entity_id;
-		array.entity_id_to_stream_index[back_entity_id] = stream_index;
-		array.stream_index_to_entity_id[back_stream_index] = entity_id;
-		BitArraySetBit(array.dirty_mask, stream_index);
-		
-		MemcpyComponentStreams(array.component_streams, type_info, stream_index, back_stream_index);
-	}
-	
+	auto& array = system.entity_type_arrays[guid_to_id->value.entity_type_id.index];
 	array.count -= 1;
+	
+	auto entity_id = guid_to_id->value.entity_id;
+	BitArraySetBit(array.removed_mask, entity_id.index);
+	BitArrayResetBit(array.alive_mask, entity_id.index);
+	BitArraySetBit(array.dirty_mask,   entity_id.index);
 }
 
 
@@ -169,7 +141,7 @@ ArrayView<EntityTypeArray*> QueryEntities(StackAllocator* alloc, EntitySystemBas
 	return result;
 }
 
-void ExtractComponentStreams(EntityTypeArray* array, EntityQueryTypeID query_type_id, ArrayView<ComponentStream> output_component_streams, u32 component_stream_offset) {
+void ExtractComponentStreams(EntityTypeArray* array, EntityQueryTypeID query_type_id, ArrayView<ComponentStream> output_component_streams, EntityID base_entity_id) {
 	auto array_key = entity_type_info_table[array->entity_type_id.index].component_type_ids;
 	auto match_key = entity_query_type_info_table[query_type_id.index].component_type_ids;
 	
@@ -187,9 +159,9 @@ void ExtractComponentStreams(EntityTypeArray* array, EntityQueryTypeID query_typ
 		if (array_component_index < match_component_index) {
 			array_key_index += 1;
 		} else if (match_component_index < array_component_index) {
-			match_key_index += 1; // Shouldn't ever happen if QueryEntities is correct.
+			match_key_index += 1;
 		} else {
-			u64 offset = component_stream_offset * component_type_info_table[match_component_index].size_bytes;
+			u64 offset = base_entity_id.index * component_type_info_table[match_component_index].size_bytes;
 			output_component_streams[stream_indices[match_key_index]].handle = array->component_streams[array_key_index].handle + offset;
 			array_key_index += 1;
 			match_key_index += 1;
@@ -242,9 +214,17 @@ static void ResetEntitySystem(EntitySystemBase& system) {
 	CreateEntityTypeArrays(system);
 }
 
-void ClearEntityDirtyMasks(EntitySystemBase& system) {
+void ClearEntityMasks(EntitySystemBase& system) {
 	for (auto& array : system.entity_type_arrays) {
-		memset(array.dirty_mask.data, 0, array.dirty_mask.count * sizeof(u64));
+		for (u64 entity_index : BitArrayIt(array.removed_mask)) {
+			ArrayAppend(array.entity_id_free_list, &system.heap, EntityID{ (u32)entity_index });
+		}
+	}
+	
+	for (auto& array : system.entity_type_arrays) {
+		memset(array.created_mask.data, 0, array.created_mask.count * sizeof(u64));
+		memset(array.removed_mask.data, 0, array.removed_mask.count * sizeof(u64));
+		memset(array.dirty_mask.data,   0, array.dirty_mask.count   * sizeof(u64));
 	}
 }
 
@@ -372,8 +352,14 @@ void SaveLoadEntitySystem(SaveLoadBuffer& buffer, EntitySystemBase& system) {
 			auto save_load_callback = component_save_load_callbacks[component_type_id.index];
 			if (save_load_callback != nullptr) {
 				u8* component_stream = array.component_streams[component_stream_index].cpu.data;
-				for (u32 i = 0; i < array.count; i += 1) {
-					save_load_callback(buffer, component_stream + i * type_info.size_bytes, version);
+				if (buffer.is_loading) {
+					for (u32 i = 0; i < array.count; i += 1) {
+						save_load_callback(buffer, component_stream + i * type_info.size_bytes, version);
+					}
+				} else if (buffer.is_saving) {
+					for (u64 i : BitArrayIt(array.alive_mask)) {
+						save_load_callback(buffer, component_stream + i * type_info.size_bytes, version);
+					}
 				}
 			}
 			u64 end_component_offset = buffer.data.count;
@@ -391,11 +377,12 @@ void SaveLoadEntitySystem(SaveLoadBuffer& buffer, EntitySystemBase& system) {
 		}
 		
 		if (buffer.is_loading) {
-			for (u32 i = 0; i < array.capacity; i += 1) {
-				array.stream_index_to_entity_id[i] = i;
-				array.entity_id_to_stream_index[i] = i;
+			for (u32 i = array.count; i < array.capacity; i += 1) {
+				ArrayAppend(array.entity_id_free_list, &system.heap, EntityID{ i });
 			}
-			BitArraySetBitRange(array.dirty_mask, 0, array.count);
+			BitArraySetBitRange(array.created_mask, 0, array.count);
+			BitArraySetBitRange(array.alive_mask,   0, array.count);
+			BitArraySetBitRange(array.dirty_mask,   0, array.count);
 		}
 		
 		u64 end_entity_offset = buffer.data.count;
@@ -426,10 +413,9 @@ void SaveLoadEntitySystem(SaveLoadBuffer& buffer, EntitySystemBase& system) {
 			auto streams = ExtractComponentStreams<GuidQuery>(entity_array);
 			
 			auto entity_type_id = entity_array->entity_type_id;
-			u32* stream_index_to_entity_id = entity_array->stream_index_to_entity_id;
-			for (u32 index = 0; index < entity_array->count; index += 1) {
-				auto& [guid] = streams.guid[index];
-				auto entity_id = EntityID{ stream_index_to_entity_id[index] };
+			for (u32 entity_index = 0; entity_index < entity_array->count; entity_index += 1) {
+				auto& [guid] = streams.guid[entity_index];
+				auto entity_id = EntityID{ entity_index };
 				
 				HashTableAddOrFind(system.entity_guid_to_entity_id, guid, TypedEntityID{ entity_id, entity_type_id });
 			}
@@ -437,7 +423,7 @@ void SaveLoadEntitySystem(SaveLoadBuffer& buffer, EntitySystemBase& system) {
 	}
 }
 
-void SaveLoadEntityForTooling(SaveLoadBuffer& buffer, EntityTypeArray* array, u32 stream_offset) {
+void SaveLoadEntityForTooling(SaveLoadBuffer& buffer, EntityTypeArray* array, EntityID entity_id) {
 	auto entity_type_id = array->entity_type_id;
 	
 	auto& entity_type_info = entity_type_info_table[entity_type_id.index];
@@ -454,7 +440,7 @@ void SaveLoadEntityForTooling(SaveLoadBuffer& buffer, EntityTypeArray* array, u3
 		auto save_load_callback = component_save_load_callbacks[component_type_id.index];
 		if (save_load_callback != nullptr) {
 			u8* component_stream = array->component_streams[i].cpu.data;
-			save_load_callback(buffer, component_stream + stream_offset * type_info.size_bytes, type_info.version);
+			save_load_callback(buffer, component_stream + entity_id.index * type_info.size_bytes, type_info.version);
 		}
 	}
 }

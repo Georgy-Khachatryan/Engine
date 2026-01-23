@@ -41,8 +41,6 @@ void UpdateRendererEntityGpuComponents(StackAllocator* alloc, RecordContext* rec
 		}
 		
 		auto gpu_mesh_asset_data = AllocateGpuComponentUploadBuffer(record_context, dirty_entity_count, streams.gpu_mesh_asset_data);
-		
-		u32* stream_index_to_entity_id = entity_array->stream_index_to_entity_id;
 		for (u64 i : BitArrayIt(entity_array->dirty_mask)) {
 			auto layout = streams.runtime_data_layout[i];
 			u32 base_offset = streams.allocation[i].base_offset;
@@ -52,7 +50,7 @@ void UpdateRendererEntityGpuComponents(StackAllocator* alloc, RecordContext* rec
 			mesh_asset.meshlet_buffer_offset = base_offset + layout.MeshletBufferOffset();
 			mesh_asset.index_buffer_offset   = base_offset + layout.IndexBufferOffset();
 			mesh_asset.meshlet_count         = layout.meshlet_count;
-			AppendGpuTransferCommand(gpu_mesh_asset_data, stream_index_to_entity_id[i], mesh_asset);
+			AppendGpuTransferCommand(gpu_mesh_asset_data, i, mesh_asset);
 		}
 		ArrayAppend(gpu_uploads, alloc, gpu_mesh_asset_data);
 	}

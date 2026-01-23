@@ -32,8 +32,8 @@ void MeshletCullingRenderPass::RecordPass(RecordContext* record_context) {
 	CmdSetRootArgument(record_context, root_signature.scene, VirtualResourceID::SceneConstants);
 	
 	auto* mesh_entities = QueryEntities<GpuMeshEntityQuery>(record_context->alloc, *world_system)[0];
-	if (mesh_entities->count != 0) {
-		CmdDispatch(record_context, 1u, mesh_entities->count);
+	if (mesh_entities->capacity != 0) { // TODO: Use the minimize the dispatch size.
+		CmdDispatch(record_context, 1u, mesh_entities->capacity);
 	}
 }
 

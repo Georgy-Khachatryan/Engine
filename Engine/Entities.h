@@ -41,6 +41,9 @@ struct MeshEntityType {
 	NOTES(VirtualResourceID::MeshEntityGpuTransform)
 	ECS::GpuComponent<GpuTransform> gpu_transform;
 	
+	NOTES(VirtualResourceID::MeshEntityAliveMask)
+	ECS::GpuMaskComponent<AliveEntityMask> alive_mask;
+	
 	NOTES(VirtualResourceID::GpuMeshEntityData)
 	ECS::GpuComponent<GpuMeshEntityData> gpu_mesh_entity_data;
 };
@@ -75,3 +78,5 @@ struct EntityEditorQuery {
 
 struct RecordContext;
 void UpdateEntityGpuComponents(StackAllocator* alloc, RecordContext* record_context, WorldEntitySystem& world_system, AssetEntitySystem& asset_system, Array<GpuComponentUploadBuffer>& gpu_uploads);
+
+void ReleaseEntityComponents(StackAllocator* alloc, WorldEntitySystem& world_system, AssetEntitySystem& asset_system);

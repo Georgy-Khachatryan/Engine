@@ -25,12 +25,12 @@ void MainMS(
 	
 	uint2 meshlet_instance = visible_meshlets[group_id]; 
 	
-	uint mesh_entity_index    = meshlet_instance.y;
-	uint meshlet_index        = meshlet_instance.x;
-	uint mesh_asset_entity_id = mesh_entity_data[mesh_entity_index].mesh_asset_entity_id;
+	uint mesh_entity_index = meshlet_instance.y;
+	uint meshlet_index     = meshlet_instance.x;
+	uint mesh_asset_index  = mesh_entity_data[mesh_entity_index].mesh_asset_index;
 	
 	GpuTransform model_to_world = mesh_transforms[mesh_entity_index];
-	GpuMeshAssetData mesh_asset = mesh_asset_data[mesh_asset_entity_id];
+	GpuMeshAssetData mesh_asset = mesh_asset_data[mesh_asset_index];
 	GpuTransform prev_model_to_world = model_to_world; // TODO: Add previous transforms.
 	
 	BasicMeshlet meshlet = mesh_asset_buffer.Load<BasicMeshlet>(mesh_asset.meshlet_buffer_offset + meshlet_index * sizeof(BasicMeshlet));

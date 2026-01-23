@@ -1,4 +1,5 @@
 #include "Basic/Basic.h"
+#include "Basic/BasicBitArray.h"
 #include "Basic/BasicString.h"
 #include "EntitySystem/EntitySystem.h"
 #include "ImGuiCustomWidgets.h"
@@ -179,9 +180,8 @@ bool ImGui::EntityComboBox(const char* label, EntitySystemBase* entity_system, u
 	if (element) {
 		auto typed_entity_id = element->value;
 		auto* array = &entity_system->entity_type_arrays[typed_entity_id.entity_type_id.index];
-		u32 entity_stream_index = array->entity_id_to_stream_index[typed_entity_id.entity_id.index];
 		
-		auto entity = ExtractComponentStreams<GuidNameQuery>(array, entity_stream_index);
+		auto entity = ExtractComponentStreams<GuidNameQuery>(array, typed_entity_id.entity_id);
 		if (entity.name->name.data) current_name = entity.name->name.data;
 	}
 	
@@ -202,11 +202,14 @@ bool ImGui::EntityComboBox(const char* label, EntitySystemBase* entity_system, u
 		clipper.Begin(array->count);
 		
 		while (clipper.Step()) {
-			for (s32 i = clipper.DisplayStart; i < clipper.DisplayEnd; i += 1) {
+			for (u64 i : BitArrayIt(array->alive_mask)) {
+				if (i < clipper.DisplayStart) continue;
+				if (i >= clipper.DisplayEnd) break;
+				
 				auto& [guid] = streams.guid[i];
 				auto& [name] = streams.name[i];
 				
-				ImGuiScopeID(i);
+				ImGuiScopeID((void*)guid);
 				
 				bool is_selected = (guid == current_guid);
 				if (ImGui::Selectable(name.count ? name.data : entity_type_name.data, is_selected)) {

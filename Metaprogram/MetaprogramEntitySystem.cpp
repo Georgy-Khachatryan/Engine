@@ -90,7 +90,9 @@ void WriteEntitySystemMetadata(StackAllocator* alloc, ArrayView<TypeInfoStruct*>
 			component_metadata.type_info      = component_type_info;
 			component_metadata.component_type = *component_type_note;
 			
-			if (component_metadata.component_type == ComponentType::GPU) {
+			if (component_metadata.component_type == ComponentType::CPU) {
+				entity_type_info.cpu_component_count += 1;
+			} else {
 				auto* note = FindNote<VirtualResourceID>(field);
 				if (note == nullptr) {
 					ReportError(alloc, field.source_location, "Missing 'VirtualResourceID' note on GPU component."_sl);
@@ -98,8 +100,6 @@ void WriteEntitySystemMetadata(StackAllocator* alloc, ArrayView<TypeInfoStruct*>
 				
 				component_metadata.resource_id = *note;
 				entity_type_info.gpu_component_count += 1;
-			} else {
-				entity_type_info.cpu_component_count += 1;
 			}
 			ArrayAppend(entity_components, component_metadata);
 			
@@ -117,10 +117,10 @@ void WriteEntitySystemMetadata(StackAllocator* alloc, ArrayView<TypeInfoStruct*>
 			if (is_added) {
 				ArrayAppend(component_type_infos, alloc, component_type_info_key);
 				
-				if (component_type_info_key.component_type == ComponentType::GPU) {
-					gpu_component_count += 1;
-				} else {
+				if (component_type_info_key.component_type == ComponentType::CPU) {
 					cpu_component_count += 1;
+				} else {
+					gpu_component_count += 1;
 				}
 			}
 		}
