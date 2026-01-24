@@ -5,6 +5,27 @@
 
 namespace Math {
 
+	inline u64 Min(u64 lh, u64 rh) { return lh < rh ? lh : rh; }
+	inline u64 Max(u64 lh, u64 rh) { return lh > rh ? lh : rh; }
+	inline u32 Min(u32 lh, u32 rh) { return lh < rh ? lh : rh; }
+	inline u32 Max(u32 lh, u32 rh) { return lh > rh ? lh : rh; }
+	inline u16 Min(u16 lh, u16 rh) { return lh < rh ? lh : rh; }
+	inline u16 Max(u16 lh, u16 rh) { return lh > rh ? lh : rh; }
+	inline u8  Min(u8  lh, u8  rh) { return lh < rh ? lh : rh; }
+	inline u8  Max(u8  lh, u8  rh) { return lh > rh ? lh : rh; }
+
+	inline s64 Min(s64 lh, s64 rh) { return lh < rh ? lh : rh; }
+	inline s64 Max(s64 lh, s64 rh) { return lh > rh ? lh : rh; }
+	inline s32 Min(s32 lh, s32 rh) { return lh < rh ? lh : rh; }
+	inline s32 Max(s32 lh, s32 rh) { return lh > rh ? lh : rh; }
+	inline s16 Min(s16 lh, s16 rh) { return lh < rh ? lh : rh; }
+	inline s16 Max(s16 lh, s16 rh) { return lh > rh ? lh : rh; }
+	inline s8  Min(s8  lh, s8  rh) { return lh < rh ? lh : rh; }
+	inline s8  Max(s8  lh, s8  rh) { return lh > rh ? lh : rh; }
+
+	inline float Min(float lh, float rh) { return lh < rh ? lh : rh; }
+	inline float Max(float lh, float rh) { return lh > rh ? lh : rh; }
+
 	struct Vec2u32 {
 		u32 x; u32 y;
 
@@ -84,6 +105,9 @@ namespace Math {
 		compile_const u64 capacity = 2;
 		using ValueType = u32;
 	};
+
+	inline Vec2u32 Min(const Vec2u32& lh, const Vec2u32& rh) { return Vec2u32(Min(lh.x, rh.x), Min(lh.y, rh.y)); }
+	inline Vec2u32 Max(const Vec2u32& lh, const Vec2u32& rh) { return Vec2u32(Max(lh.x, rh.x), Max(lh.y, rh.y)); }
 
 	struct Vec3u32 {
 		union {
@@ -168,6 +192,9 @@ namespace Math {
 		compile_const u64 capacity = 3;
 		using ValueType = u32;
 	};
+
+	inline Vec3u32 Min(const Vec3u32& lh, const Vec3u32& rh) { return Vec3u32(Min(lh.x, rh.x), Min(lh.y, rh.y), Min(lh.z, rh.z)); }
+	inline Vec3u32 Max(const Vec3u32& lh, const Vec3u32& rh) { return Vec3u32(Max(lh.x, rh.x), Max(lh.y, rh.y), Max(lh.z, rh.z)); }
 
 	struct Vec4u32 {
 		union {
@@ -256,6 +283,9 @@ namespace Math {
 		using ValueType = u32;
 	};
 
+	inline Vec4u32 Min(const Vec4u32& lh, const Vec4u32& rh) { return Vec4u32(Min(lh.x, rh.x), Min(lh.y, rh.y), Min(lh.z, rh.z), Min(lh.w, rh.w)); }
+	inline Vec4u32 Max(const Vec4u32& lh, const Vec4u32& rh) { return Vec4u32(Max(lh.x, rh.x), Max(lh.y, rh.y), Max(lh.z, rh.z), Max(lh.w, rh.w)); }
+
 	struct Vec2f {
 		float x; float y;
 
@@ -299,6 +329,9 @@ namespace Math {
 		compile_const u64 capacity = 2;
 		using ValueType = float;
 	};
+
+	inline Vec2f Min(const Vec2f& lh, const Vec2f& rh) { return Vec2f(Min(lh.x, rh.x), Min(lh.y, rh.y)); }
+	inline Vec2f Max(const Vec2f& lh, const Vec2f& rh) { return Vec2f(Max(lh.x, rh.x), Max(lh.y, rh.y)); }
 
 	inline float Cross(const Vec2f& lh, const Vec2f& rh) { return lh.x * rh.y - lh.y * rh.x; }
 	inline float Dot(const Vec2f& lh, const Vec2f& rh) { return lh.x * rh.x + lh.y * rh.y; }
@@ -353,6 +386,9 @@ namespace Math {
 		compile_const u64 capacity = 3;
 		using ValueType = float;
 	};
+
+	inline Vec3f Min(const Vec3f& lh, const Vec3f& rh) { return Vec3f(Min(lh.x, rh.x), Min(lh.y, rh.y), Min(lh.z, rh.z)); }
+	inline Vec3f Max(const Vec3f& lh, const Vec3f& rh) { return Vec3f(Max(lh.x, rh.x), Max(lh.y, rh.y), Max(lh.z, rh.z)); }
 
 	inline Vec3f Cross(const Vec3f& lh, const Vec3f& rh) {
 		Vec3f result;
@@ -417,6 +453,9 @@ namespace Math {
 		compile_const u64 capacity = 4;
 		using ValueType = float;
 	};
+
+	inline Vec4f Min(const Vec4f& lh, const Vec4f& rh) { return Vec4f(Min(lh.x, rh.x), Min(lh.y, rh.y), Min(lh.z, rh.z), Min(lh.w, rh.w)); }
+	inline Vec4f Max(const Vec4f& lh, const Vec4f& rh) { return Vec4f(Max(lh.x, rh.x), Max(lh.y, rh.y), Max(lh.z, rh.z), Max(lh.w, rh.w)); }
 
 	inline float Dot(const Vec4f& lh, const Vec4f& rh) { return lh.x * rh.x + lh.y * rh.y + lh.z * rh.z + lh.w * rh.w; }
 	inline float LengthSquare(const Vec4f& v) { return Dot(v, v); }

@@ -22,7 +22,7 @@ struct alignas(64) SaveLoadBuffer {
 		DebugAssert(is_saving, "Trying to write to SaveLoad buffer with no write flag.");
 		
 		if (data.count + size > data.capacity) {
-			u64 new_capacity = Max(data.capacity * 3 / 2, minimum_entry_size);
+			u64 new_capacity = Math::Max(data.capacity * 3 / 2, minimum_entry_size);
 			data.data     = (u8*)alloc->Reallocate(data.data, data.capacity, new_capacity);
 			data.capacity = new_capacity;
 		}

@@ -99,6 +99,17 @@ static void GenerateVectorType(StringBuilder& builder, u32 count, String type, S
 	
 	builder.Unindent();
 	builder.Append("};\n\n"_sl);
+	
+	if (count == 2) {
+		builder.Append("inline %0 Min(const %0& lh, const %0& rh) { return %0(Min(lh.x, rh.x), Min(lh.y, rh.y)); }\n"_sl, name);
+		builder.Append("inline %0 Max(const %0& lh, const %0& rh) { return %0(Max(lh.x, rh.x), Max(lh.y, rh.y)); }\n\n"_sl, name);
+	} else if (count == 3) {
+		builder.Append("inline %0 Min(const %0& lh, const %0& rh) { return %0(Min(lh.x, rh.x), Min(lh.y, rh.y), Min(lh.z, rh.z)); }\n"_sl, name);
+		builder.Append("inline %0 Max(const %0& lh, const %0& rh) { return %0(Max(lh.x, rh.x), Max(lh.y, rh.y), Max(lh.z, rh.z)); }\n\n"_sl, name);
+	} else if (count == 4) {
+		builder.Append("inline %0 Min(const %0& lh, const %0& rh) { return %0(Min(lh.x, rh.x), Min(lh.y, rh.y), Min(lh.z, rh.z), Min(lh.w, rh.w)); }\n"_sl, name);
+		builder.Append("inline %0 Max(const %0& lh, const %0& rh) { return %0(Max(lh.x, rh.x), Max(lh.y, rh.y), Max(lh.z, rh.z), Max(lh.w, rh.w)); }\n\n"_sl, name);
+	}
 }
 
 static void GenerateMatrixType(StringBuilder& builder, u32 rows, u32 cols, String type, String suffix) {
@@ -237,6 +248,29 @@ static void GenerateVectorFunctions(StringBuilder& builder, u32 count, String ty
 	builder.Append("inline %0 Normalize(const %0& v) { return v * (1.%1 / Length(v)); }\n\n"_sl, name, suffix);
 }
 
+static void GenerateScalarFunctions(StringBuilder& builder) {
+	builder.Append("inline u64 Min(u64 lh, u64 rh) { return lh < rh ? lh : rh; }\n"_sl);
+	builder.Append("inline u64 Max(u64 lh, u64 rh) { return lh > rh ? lh : rh; }\n"_sl);
+	builder.Append("inline u32 Min(u32 lh, u32 rh) { return lh < rh ? lh : rh; }\n"_sl);
+	builder.Append("inline u32 Max(u32 lh, u32 rh) { return lh > rh ? lh : rh; }\n"_sl);
+	builder.Append("inline u16 Min(u16 lh, u16 rh) { return lh < rh ? lh : rh; }\n"_sl);
+	builder.Append("inline u16 Max(u16 lh, u16 rh) { return lh > rh ? lh : rh; }\n"_sl);
+	builder.Append("inline u8  Min(u8  lh, u8  rh) { return lh < rh ? lh : rh; }\n"_sl);
+	builder.Append("inline u8  Max(u8  lh, u8  rh) { return lh > rh ? lh : rh; }\n\n"_sl);
+	
+	builder.Append("inline s64 Min(s64 lh, s64 rh) { return lh < rh ? lh : rh; }\n"_sl);
+	builder.Append("inline s64 Max(s64 lh, s64 rh) { return lh > rh ? lh : rh; }\n"_sl);
+	builder.Append("inline s32 Min(s32 lh, s32 rh) { return lh < rh ? lh : rh; }\n"_sl);
+	builder.Append("inline s32 Max(s32 lh, s32 rh) { return lh > rh ? lh : rh; }\n"_sl);
+	builder.Append("inline s16 Min(s16 lh, s16 rh) { return lh < rh ? lh : rh; }\n"_sl);
+	builder.Append("inline s16 Max(s16 lh, s16 rh) { return lh > rh ? lh : rh; }\n"_sl);
+	builder.Append("inline s8  Min(s8  lh, s8  rh) { return lh < rh ? lh : rh; }\n"_sl);
+	builder.Append("inline s8  Max(s8  lh, s8  rh) { return lh > rh ? lh : rh; }\n\n"_sl);
+	
+	builder.Append("inline float Min(float lh, float rh) { return lh < rh ? lh : rh; }\n"_sl);
+	builder.Append("inline float Max(float lh, float rh) { return lh > rh ? lh : rh; }\n\n"_sl);
+}
+
 void WriteCodeForMathLibrary(StackAllocator* alloc) {
 	StringBuilder builder;
 	builder.alloc = alloc;
@@ -248,6 +282,7 @@ void WriteCodeForMathLibrary(StackAllocator* alloc) {
 	builder.Append("namespace Math {\n\n"_sl);
 	builder.Indent();
 	
+	GenerateScalarFunctions(builder);
 	
 	FixedCountArray<String, 10> uint_vector_ops;
 	uint_vector_ops[0] = "+"_sl;

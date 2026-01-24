@@ -339,7 +339,7 @@ u64 StringFormatToMemory(String output, String format, ArrayView<StringFormatArg
 	u64 output_size  = 0;
 	
 	auto copy_string_to_output = [&](String string) {
-		u64 count = Min(output.count - output_index, string.count);
+		u64 count = Math::Min(output.count - output_index, string.count);
 		memcpy(output.data + output_index, string.data, count);
 		output_index += count;
 		output_size  += string.count;

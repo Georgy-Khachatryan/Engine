@@ -61,7 +61,7 @@ static s32 InputTextHeapStringCallback(ImGuiInputTextCallbackData* data) {
 	
 	if (data->EventFlag == ImGuiInputTextFlags_CallbackResize) {
 		if (data->BufTextLen + 1 > callback_data.capacity) {
-			u64 new_capacity = Max(data->BufTextLen + 1, callback_data.capacity * 3 / 2);
+			u64 new_capacity = Math::Max((u64)data->BufTextLen + 1, callback_data.capacity * 3 / 2);
 			callback_data.string.data = (char*)callback_data.heap->Reallocate(callback_data.string.data, callback_data.capacity, new_capacity);
 			callback_data.capacity = new_capacity;
 		}
@@ -330,7 +330,7 @@ void ImGui::PushScalingOrigin3D(const float3& scaling_origin, const float3& came
 		numerator = Math::Length(scaling_origin - camera_position);
 	}
 	
-	float scale = widget_to_pixel_scale * numerator / Max(denominator, 0.01f);
+	float scale = widget_to_pixel_scale * numerator / Math::Max(denominator, 0.01f);
 	
 	auto* draw_list_3d = ImGui::GetWindowDrawList3D();
 	ArrayAppend(draw_list_3d->scale_stack, draw_list_3d->scale);
@@ -586,7 +586,7 @@ void ImGuiDrawList3D::AddArrow(const float3& position, const float3& direction, 
 	
 	float arrow_head_radius  = radius * 2.f;
 	float arrow_head_length  = arrow_head_radius * 3.f; // 3:1 arrow_head_length to arrow_head_diameter ratio.
-	float arrow_shaft_length = Max(length - arrow_head_length, 0.f);
+	float arrow_shaft_length = Math::Max(length - arrow_head_length, 0.f);
 	
 	AddCylinder(position, rotation, arrow_shaft_length, radius, radius, color);
 	AddCylinder(position + direction * arrow_shaft_length, rotation, arrow_head_length, arrow_head_radius, 0.f, color);

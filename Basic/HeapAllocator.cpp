@@ -189,7 +189,7 @@ static void AllocateNewPage(HeapAllocator* heap, u64 reserved_size) {
 }
 
 static u64 ComputeBlockSize(u64 size, u64 alignment) {
-	return Max(AlignUp(size + (alignment - minimum_alignment), minimum_alignment) + sizeof(HeapAllocatorBlockHeader), sizeof(HeapAllocatorBlock));
+	return Math::Max(AlignUp(size + (alignment - minimum_alignment), minimum_alignment) + sizeof(HeapAllocatorBlockHeader), sizeof(HeapAllocatorBlock));
 }
 
 static HeapAllocatorBlock* AllocatorBlockFromMemory(void* memory) {
@@ -248,7 +248,7 @@ static void* AllocateFromHeap(HeapAllocator* heap, u64 size, u64 alignment) {
 void* HeapAllocator::Allocate(u64 size, u64 alignment) {
 	if (size == 0) return nullptr;
 	
-	alignment = Max(alignment, minimum_alignment);
+	alignment = Math::Max(alignment, minimum_alignment);
 	u64 block_size = ComputeBlockSize(size, alignment);
 	
 	auto* memory = AllocateFromHeap(this, block_size, alignment);
@@ -266,7 +266,7 @@ void* HeapAllocator::Reallocate(void* old_memory, u64 old_size, u64 new_size, u6
 	if (new_size == 0)         return Deallocate(old_memory, old_size), nullptr;
 	if (new_size <= old_size)  return old_memory;
 	
-	alignment = Max(alignment, minimum_alignment);
+	alignment = Math::Max(alignment, minimum_alignment);
 	u64 new_block_size = ComputeBlockSize(new_size, alignment);
 	
 	auto* block = AllocatorBlockFromMemory(old_memory);

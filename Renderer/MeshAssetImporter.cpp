@@ -45,8 +45,8 @@ MeshRuntimeDataLayout ImportFbxMeshFile(StackAllocator* alloc, String filepath, 
 	u32 max_mesh_triangles = 0;
 	u32 max_result_triangles = 0;
 	for (auto* mesh : scene->meshes) {
-		max_face_triangles = Max(max_face_triangles, (u32)mesh->max_face_triangles);
-		max_mesh_triangles = Max(max_mesh_triangles, (u32)mesh->num_triangles);
+		max_face_triangles = Math::Max(max_face_triangles, (u32)mesh->max_face_triangles);
+		max_mesh_triangles = Math::Max(max_mesh_triangles, (u32)mesh->num_triangles);
 		max_result_triangles += (u32)(mesh->num_triangles * mesh->instances.count);
 	}
 	

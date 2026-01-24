@@ -31,17 +31,6 @@ inline u32 AlignUp(u32 size, u32 alignment) { DebugAssert(IsPowerOfTwo32(alignme
 inline u64 RoundUp(u64 size, u64 alignment) { return ((size + alignment - 1) / alignment) * alignment; }
 inline u32 RoundUp(u32 size, u32 alignment) { return ((size + alignment - 1) / alignment) * alignment; }
 
-inline u64 Min(u64 lh, u64 rh) { return lh < rh ? lh : rh; }
-inline u64 Max(u64 lh, u64 rh) { return lh > rh ? lh : rh; }
-inline u32 Min(u32 lh, u32 rh) { return lh < rh ? lh : rh; }
-inline u32 Max(u32 lh, u32 rh) { return lh > rh ? lh : rh; }
-inline u16 Min(u16 lh, u16 rh) { return lh < rh ? lh : rh; }
-inline u16 Max(u16 lh, u16 rh) { return lh > rh ? lh : rh; }
-inline u8  Min(u8  lh, u8  rh) { return lh < rh ? lh : rh; }
-inline u8  Max(u8  lh, u8  rh) { return lh > rh ? lh : rh; }
-inline float Min(float lh, float rh) { return lh < rh ? lh : rh; }
-inline float Max(float lh, float rh) { return lh > rh ? lh : rh; }
-
 template<typename T, T(FirstBitLowT)(T)>
 struct BitScanLowT {
 	explicit BitScanLowT(T mask) : mask(mask) {}

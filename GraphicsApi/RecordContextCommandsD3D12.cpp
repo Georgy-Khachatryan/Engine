@@ -30,7 +30,7 @@ static void CreateDescriptorTables(GraphicsContextD3D12* context, ArrayView<HLSL
 				desc.ViewDimension                 = D3D12_SRV_DIMENSION_TEXTURE2D;
 				desc.Shader4ComponentMapping       = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 				desc.Texture2D.MostDetailedMip     = descriptor.texture.mip_index;
-				desc.Texture2D.MipLevels           = Min(descriptor.texture.mip_count, resource.texture.size.mips - descriptor.texture.mip_index);
+				desc.Texture2D.MipLevels           = Math::Min(descriptor.texture.mip_count, (u8)(resource.texture.size.mips - descriptor.texture.mip_index));
 				desc.Texture2D.PlaneSlice          = 0;
 				desc.Texture2D.ResourceMinLODClamp = 0.f;
 				
@@ -51,7 +51,7 @@ static void CreateDescriptorTables(GraphicsContextD3D12* context, ArrayView<HLSL
 				desc.ViewDimension              = D3D12_SRV_DIMENSION_BUFFER;
 				desc.Shader4ComponentMapping    = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 				desc.Buffer.FirstElement        = descriptor.buffer.offset / descriptor.buffer.stride;
-				desc.Buffer.NumElements         = Min(descriptor.buffer.size, resource.buffer.size - descriptor.buffer.offset) / descriptor.buffer.stride;
+				desc.Buffer.NumElements         = Math::Min(descriptor.buffer.size, resource.buffer.size - descriptor.buffer.offset) / descriptor.buffer.stride;
 				desc.Buffer.StructureByteStride = descriptor.buffer.stride;
 				desc.Buffer.Flags               = D3D12_BUFFER_SRV_FLAG_NONE;
 				DebugAssert(descriptor.buffer.offset % descriptor.buffer.stride == 0, "RegularBuffer offset is not correctly aligned.");
@@ -63,7 +63,7 @@ static void CreateDescriptorTables(GraphicsContextD3D12* context, ArrayView<HLSL
 				desc.Format                      = DXGI_FORMAT_UNKNOWN;
 				desc.ViewDimension               = D3D12_UAV_DIMENSION_BUFFER;
 				desc.Buffer.FirstElement         = descriptor.buffer.offset / descriptor.buffer.stride;
-				desc.Buffer.NumElements          = Min(descriptor.buffer.size, resource.buffer.size - descriptor.buffer.offset) / descriptor.buffer.stride;
+				desc.Buffer.NumElements          = Math::Min(descriptor.buffer.size, resource.buffer.size - descriptor.buffer.offset) / descriptor.buffer.stride;
 				desc.Buffer.StructureByteStride  = descriptor.buffer.stride;
 				desc.Buffer.CounterOffsetInBytes = 0;
 				desc.Buffer.Flags                = D3D12_BUFFER_UAV_FLAG_NONE;
@@ -77,7 +77,7 @@ static void CreateDescriptorTables(GraphicsContextD3D12* context, ArrayView<HLSL
 				desc.ViewDimension              = D3D12_SRV_DIMENSION_BUFFER;
 				desc.Shader4ComponentMapping    = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 				desc.Buffer.FirstElement        = descriptor.buffer.offset / sizeof(u32);
-				desc.Buffer.NumElements         = Min(descriptor.buffer.size, resource.buffer.size - descriptor.buffer.offset) / sizeof(u32);
+				desc.Buffer.NumElements         = Math::Min(descriptor.buffer.size, resource.buffer.size - descriptor.buffer.offset) / sizeof(u32);
 				desc.Buffer.StructureByteStride = 0;
 				desc.Buffer.Flags               = D3D12_BUFFER_SRV_FLAG_RAW;
 				DebugAssert(descriptor.buffer.offset % 16 == 0, "ByteBuffer offset is not correctly aligned.");
@@ -89,7 +89,7 @@ static void CreateDescriptorTables(GraphicsContextD3D12* context, ArrayView<HLSL
 				desc.Format                      = DXGI_FORMAT_R32_TYPELESS;
 				desc.ViewDimension               = D3D12_UAV_DIMENSION_BUFFER;
 				desc.Buffer.FirstElement         = descriptor.buffer.offset / sizeof(u32);
-				desc.Buffer.NumElements          = Min(descriptor.buffer.size, resource.buffer.size - descriptor.buffer.offset) / sizeof(u32);
+				desc.Buffer.NumElements          = Math::Min(descriptor.buffer.size, resource.buffer.size - descriptor.buffer.offset) / sizeof(u32);
 				desc.Buffer.StructureByteStride  = 0;
 				desc.Buffer.CounterOffsetInBytes = 0;
 				desc.Buffer.Flags                = D3D12_BUFFER_UAV_FLAG_RAW;
@@ -533,9 +533,9 @@ static void CreateTextureBarrier(Array<D3D12_TEXTURE_BARRIER>& barriers, Virtual
 		// TODO: What if mip/array ranges mismatch between last_access and next_access?
 		auto* access = next_access ? next_access : last_access;
 		barrier.Subresources.IndexOrFirstMipLevel = access->mip_index;
-		barrier.Subresources.NumMipLevels         = Min(access->mip_count, resource.texture.size.mips - access->mip_index);
+		barrier.Subresources.NumMipLevels         = Math::Min(access->mip_count, (u8)(resource.texture.size.mips - access->mip_index));
 		barrier.Subresources.FirstArraySlice      = access->array_index;
-		barrier.Subresources.NumArraySlices       = Min(access->array_count, (u16)resource.texture.size.ArraySliceCount() - access->array_index);
+		barrier.Subresources.NumArraySlices       = Math::Min(access->array_count, (u16)(resource.texture.size.ArraySliceCount() - access->array_index));
 		
 		if (access->plane_mask == 0) {
 			barrier.Subresources.FirstPlane = 0;

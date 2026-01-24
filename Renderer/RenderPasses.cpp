@@ -35,7 +35,7 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	auto& camera         = camera_entity.camera[0];
 	
 	// Clamp render target size to a reasonable minimum. Aspect ratio for view to clip is still computed using unclamped values.
-	uint2 render_target_size = uint2((u32)Max(renderer_world.window_size.x, 16.f), (u32)Max(renderer_world.window_size.y, 16.f));
+	uint2 render_target_size = uint2((u32)Math::Max(renderer_world.window_size.x, 16.f), (u32)Math::Max(renderer_world.window_size.y, 16.f));
 	
 	BuildResourceTable(record_context, world_system, &renderer_world, render_target_size);
 	
@@ -68,7 +68,7 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	scene.world_to_view.r1 = float4(world_to_view_rotation.r1, -view_space_camera_position.y);
 	scene.world_to_view.r2 = float4(world_to_view_rotation.r2, -view_space_camera_position.z);
 	
-	scene.world_to_pixel_scale = scene.view_to_clip_coef.x * scene.render_target_size.x * 0.5f / Max(renderer_world.meshlet_target_error_pixels, 1.f);
+	scene.world_to_pixel_scale = scene.view_to_clip_coef.x * scene.render_target_size.x * 0.5f / Math::Max(renderer_world.meshlet_target_error_pixels, 1.f);
 	scene.world_space_camera_position = world_space_camera_position;
 	
 	u32 jitter_frame_index = renderer_world.jitter_frame_index;

@@ -192,7 +192,7 @@ Token Tokenizer::ExpectKeyword(KeywordType expected_keyword) {
 
 
 u64 EncodeSourceLocation(u64 file_index, u64 length, u64 offset) {
-	return (file_index << 48) | (Min(length, (u64)u16_max) << 32) | Min(offset, (u64)u32_max);
+	return (file_index << 48) | (Math::Min(length, (u64)u16_max) << 32) | Math::Min(offset, (u64)u32_max);
 }
 
 TokenSourceLocation DecodeSourceLocation(u64 source_location) {
@@ -206,7 +206,7 @@ TokenSourceLocation DecodeSourceLocation(u64 source_location) {
 u64 ErrorReportContext::StringToSourceLocation(String string) {
 	DebugAssert(string.count == 0 || string.data >= file.data && string.data + string.count <= file.data + file.count, "Source location string '%' is outside of the source file range.", string);
 	
-	u64 offset = string.count ? Min(string.data - file.data, (u64)u32_max) : 0;
+	u64 offset = string.count ? string.data - file.data : 0;
 	return EncodeSourceLocation(file_index, string.count, offset);
 }
 

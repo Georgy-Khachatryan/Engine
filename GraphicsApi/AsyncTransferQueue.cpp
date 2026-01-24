@@ -138,7 +138,7 @@ static void SplitAsyncTransferCommands(AsyncTransferQueue* queue) {
 			auto allocation_command = AsyncTransferExecutionState{ command };
 			
 			u64 sub_command_offset = allocation_index * max_upload_buffer_allocation_size;
-			u64 sub_command_size   = Min(command_size - sub_command_offset, max_upload_buffer_allocation_size);
+			u64 sub_command_size   = Math::Min(command_size - sub_command_offset, max_upload_buffer_allocation_size);
 			
 			// Offset src data:
 			switch (allocation_command.src_type) {
