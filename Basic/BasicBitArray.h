@@ -63,7 +63,7 @@ inline u64 BitArrayCountSetBitsAndNonZeroQwords(ArrayView<u64> mask, u64& set_qw
 struct BitArrayIt {
 	BitArrayIt(ArrayView<u64> mask) : data(mask.data), count(mask.count) {}
 	
-	u64* data = 0;
+	u64* data = nullptr;
 	u64 count = 0;
 	
 	struct Iterator {

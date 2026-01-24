@@ -66,6 +66,15 @@ struct Token {
 	KeywordType keyword = KeywordType::None;
 };
 
+struct TokenSourceLocation {
+	u64 file_index = 0;
+	u64 length = 0;
+	u64 offset = 0;
+};
+
+u64 EncodeSourceLocation(u64 file_index, u64 length, u64 offset);
+TokenSourceLocation DecodeSourceLocation(u64 source_location);
+
 struct ErrorReportContext {
 	String file;
 	String filepath;

@@ -62,23 +62,6 @@ struct CameraEntityType {
 };
 
 
-NOTES(Meta::ComponentQuery{})
-struct EntityEditorQuery {
-	GuidComponent* guid = nullptr;
-	NameComponent* name = nullptr;
-	
-	PositionComponent* position = nullptr;
-	RotationComponent* rotation = nullptr;
-	ScaleComponent*    scale    = nullptr;
-	
-	MeshAssetGUID* mesh_asset = nullptr;
-	
-	CameraComponent* camera = nullptr;
-	
-	MeshSourceData* mesh_source_data = nullptr;
-};
-
-
 struct RecordContext;
 void UpdateEntityGpuComponents(StackAllocator* alloc, RecordContext* record_context, WorldEntitySystem& world_system, AssetEntitySystem& asset_system, Array<GpuComponentUploadBuffer>& gpu_uploads);
 

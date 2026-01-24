@@ -75,10 +75,7 @@ s32 main(s32 argument_count, const char* arguments[]) {
 
 void ReportErrorV(StackAllocator* alloc, u64 source_location, String format, ArrayView<StringFormatArgument> arguments) {
 	extern ArrayView<TypeInfoSourceFile> source_file_table;
-	
-	u64 file_index = (source_location >> 48);
-	u64 length = (source_location >> 32) & u16_max;
-	u64 offset = (source_location >> 0 ) & u32_max;
+	auto [file_index, length, offset] = DecodeSourceLocation(source_location);
 	
 	auto source_file = source_file_table[file_index];
 	auto file = SystemReadFileToString(alloc, source_file.filepath);

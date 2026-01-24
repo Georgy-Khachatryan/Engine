@@ -47,7 +47,7 @@
     <ClCompile Include="Engine/UndoRedoSystem.cpp" />
     <ClCompile Include="Engine/Entities.cpp" />
     
-    <!-- Editor -->
+    <!-- Editor. -->
     <ClCompile Include="Editor/LevelEditor.cpp" />
     
     <!-- Entity System. -->
@@ -87,6 +87,10 @@
     <ClInclude Include="Engine/ImGuiCustomWidgets.h" />
     <ClInclude Include="Engine/SystemWindow.h" />
     <ClInclude Include="Engine/UndoRedoSystem.h" />
+    
+    <!-- Editor. -->
+    <ClInclude Include="Editor/Entities.h" />
+    <ClInclude Include="Editor/LevelEditor.h" />
     
     <!-- Entity System. -->
     <ClInclude Include="EntitySystem/EntitySystem.h" />

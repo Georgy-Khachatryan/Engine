@@ -4,6 +4,7 @@
 #include "EntitySystem/EntitySystem.h"
 #include "MetaprogramCommon.h"
 #include "MetaprogramSystems.h"
+#include "Tokens.h"
 #include "TypeInfo.h"
 
 compile_const auto entity_type_suffix = "EntityType"_sl;
@@ -199,7 +200,26 @@ void WriteEntitySystemMetadata(StackAllocator* alloc, ArrayView<TypeInfoStruct*>
 	builder.alloc = alloc;
 	builder.Append("#include \"Basic/Basic.h\"\n"_sl);
 	builder.Append("#include \"Basic/BasicSaveLoad.h\"\n"_sl);
-	builder.Append("#include \"Engine/Entities.h\"\n\n"_sl);
+	
+	HashTable<u64, void> include_files;
+	HashTableReserve(include_files, alloc, 16);
+	
+	for (auto* type_info : entity_type_infos) {
+		auto [file_index, length, offset] = DecodeSourceLocation(type_info->source_location);
+		HashTableAddOrFind(include_files, alloc, file_index);
+	}
+	
+	for (auto* type_info : entity_query_type_infos) {
+		auto [file_index, length, offset] = DecodeSourceLocation(type_info->source_location);
+		HashTableAddOrFind(include_files, alloc, file_index);
+	}
+	
+	extern ArrayView<TypeInfoSourceFile> source_file_table;
+	for (auto [file_index] : include_files) {
+		builder.Append("#include \"%\"\n"_sl, source_file_table[file_index].filepath);
+	}
+	builder.Append("\n"_sl);
+	
 	
 	for (u32 entity_type_index = 0; entity_type_index < entity_type_infos.count; entity_type_index += 1) {
 		auto* type_info = entity_type_infos[entity_type_index];
