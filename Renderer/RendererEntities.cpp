@@ -65,11 +65,9 @@ void UpdateRendererEntityGpuComponents(StackAllocator* alloc, RecordContext* rec
 			u32 base_offset = streams.allocation[i].base_offset;
 			
 			GpuMeshAssetData mesh_asset;
-			mesh_asset.vertex_buffer_offset  = base_offset + layout.VertexBufferOffset();
-			mesh_asset.meshlet_buffer_offset = base_offset + layout.MeshletBufferOffset();
+			mesh_asset.page_buffer_offset  = base_offset + layout.PageBufferOffset();
 			mesh_asset.meshlet_group_buffer_offset = base_offset + layout.MeshletGroupBufferOffset();
-			mesh_asset.index_buffer_offset   = base_offset + layout.IndexBufferOffset();
-			mesh_asset.meshlet_group_count   = layout.meshlet_group_count;
+			mesh_asset.meshlet_group_count = layout.meshlet_group_count;
 			AppendGpuTransferCommand(gpu_mesh_asset_data, i, mesh_asset);
 		}
 		ArrayAppend(gpu_uploads, alloc, gpu_mesh_asset_data);

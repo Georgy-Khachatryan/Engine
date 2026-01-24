@@ -26,19 +26,22 @@ void MainMS(
 	uint2 meshlet_instance = visible_meshlets[group_id]; 
 	
 	uint mesh_entity_index = meshlet_instance.y;
-	uint meshlet_index     = meshlet_instance.x;
+	uint meshlet_header_offset = meshlet_instance.x;
 	uint mesh_asset_index  = mesh_entity_data[mesh_entity_index].mesh_asset_index;
 	
 	GpuTransform model_to_world = mesh_transforms[mesh_entity_index];
 	GpuMeshAssetData mesh_asset = mesh_asset_data[mesh_asset_index];
 	GpuTransform prev_model_to_world = prev_mesh_transforms[mesh_entity_index];
 	
-	BasicMeshlet meshlet = mesh_asset_buffer.Load<BasicMeshlet>(mesh_asset.meshlet_buffer_offset + meshlet_index * sizeof(BasicMeshlet));
+	MeshletHeader meshlet = mesh_asset_buffer.Load<MeshletHeader>(meshlet_header_offset);
 	
 	SetMeshOutputCounts(meshlet.vertex_count, meshlet.triangle_count);
 	
+	uint vertex_buffer_offset = meshlet_header_offset + sizeof(MeshletHeader);
+	uint index_buffer_offset  = vertex_buffer_offset + meshlet.vertex_count * sizeof(BasicVertex);
+	
 	if (thread_index < meshlet.vertex_count) {
-		BasicVertex vertex = mesh_asset_buffer.Load<BasicVertex>(mesh_asset.vertex_buffer_offset + (meshlet.vertex_buffer_offset + thread_index) * sizeof(BasicVertex));
+		BasicVertex vertex = mesh_asset_buffer.Load<BasicVertex>(vertex_buffer_offset + thread_index * sizeof(BasicVertex));
 		
 		float3 world_space_position = QuatMul(model_to_world.rotation, vertex.position * model_to_world.scale) + model_to_world.position;
 		float3 view_space_position  = mul(scene.world_to_view, float4(world_space_position, 1.0));
@@ -59,12 +62,13 @@ void MainMS(
 	}
 	
 	if (thread_index < meshlet.triangle_count) {
-		uint load_offset = mesh_asset.index_buffer_offset + (meshlet.index_buffer_offset + thread_index * 3);
+		compile_const uint triangle_size_bytes = 3;
+		uint load_offset = index_buffer_offset + thread_index * triangle_size_bytes;
 		uint2 packed_indices = mesh_asset_buffer.Load<uint2>(load_offset & ~0x3);
 		
 		uint indices = uint((u64(packed_indices.x) | (u64(packed_indices.y) << 32)) >> ((load_offset & 0x3) * 8));
 		result_indices[thread_index] = uint3(indices >> 0, indices >> 8, indices >> 16) & 0xFF;
-		result_primitives[thread_index].meshlet_index = meshlet_index;
+		result_primitives[thread_index].meshlet_index = meshlet_header_offset >> 4;
 	}
 }
 #endif // defined(MESH_SHADER)

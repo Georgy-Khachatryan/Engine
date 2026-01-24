@@ -42,26 +42,43 @@ void MainCS(uint2 thread_id : SV_DispatchThreadID) {
 	GpuTransform model_to_world = mesh_transforms[mesh_entity_index];
 	
 	for (uint meshlet_group_index = thread_id.x; meshlet_group_index < mesh_asset.meshlet_group_count; meshlet_group_index += thread_group_size) {
-		BasicMeshletGroup group = mesh_asset_buffer.Load<BasicMeshletGroup>(mesh_asset.meshlet_group_buffer_offset + meshlet_group_index * sizeof(BasicMeshletGroup));
+		MeshletGroup group = mesh_asset_buffer.Load<MeshletGroup>(mesh_asset.meshlet_group_buffer_offset + meshlet_group_index * sizeof(MeshletGroup));
 		float2 coarser_level_error_metric = EvaluateMeshletErrorMetric(group.error_metric, model_to_world);
+		
 		bool is_visible = LodCullCoarserLevelError(coarser_level_error_metric);
 		if (is_visible == false) continue;
 		
-		for (uint meshlet_index = group.meshlet_offset; meshlet_index < (group.meshlet_offset + group.meshlet_count); meshlet_index += 1) {
-			BasicMeshlet meshlet = mesh_asset_buffer.Load<BasicMeshlet>(mesh_asset.meshlet_buffer_offset + meshlet_index * sizeof(BasicMeshlet));
+		uint meshlet_offset = group.meshlet_offset; // Offset from the beginning of the first page, in meshlets.
+		uint meshlet_count  = group.meshlet_count;  // Total meshlet count across all pages.
+		for (uint page_index = 0; page_index < group.page_count; page_index += 1) {
+			uint page_offset = mesh_asset.page_buffer_offset + (page_index + group.page_index) * MeshletPageHeader::page_size;
 			
-			float2 current_level_error_metric = EvaluateMeshletErrorMetric(meshlet.current_level_error_metric, model_to_world);
+			MeshletPageHeader page_header = mesh_asset_buffer.Load<MeshletPageHeader>(page_offset);
+			page_offset += sizeof(MeshletPageHeader);
 			
-			bool is_visible = LodCullCurrentLevelError(current_level_error_metric);
-			if (is_visible == false) continue;
+			uint page_meshlet_count = min(page_header.meshlet_count - meshlet_offset, meshlet_count);
+			meshlet_count -= page_meshlet_count;
 			
-			uint visible_meshlet_index = 0;
-			InterlockedAdd(indirect_arguments[0].x, 1u, visible_meshlet_index);
+			page_offset += meshlet_offset * sizeof(MeshletCullingData);
+			meshlet_offset = 0;
 			
-			if (visible_meshlet_index < SceneConstants::visible_meshlet_buffer_count) {
-				visible_meshlets[visible_meshlet_index] = uint2(meshlet_index, mesh_entity_index);
-			} else {
-				InterlockedAdd(indirect_arguments[0].x, -1);
+			for (uint meshlet_index = 0; meshlet_index < page_meshlet_count; meshlet_index += 1) {
+				uint meshlet_culling_data_offset = page_offset + meshlet_index * sizeof(MeshletCullingData);
+				MeshletCullingData meshlet = mesh_asset_buffer.Load<MeshletCullingData>(meshlet_culling_data_offset);
+				
+				float2 current_level_error_metric = EvaluateMeshletErrorMetric(meshlet.current_level_error_metric, model_to_world);
+				
+				bool is_visible = LodCullCurrentLevelError(current_level_error_metric);
+				if (is_visible == false) continue;
+				
+				uint visible_meshlet_index = 0;
+				InterlockedAdd(indirect_arguments[0].x, 1u, visible_meshlet_index);
+				
+				if (visible_meshlet_index < SceneConstants::visible_meshlet_buffer_count) {
+					visible_meshlets[visible_meshlet_index] = uint2(meshlet_culling_data_offset + meshlet.meshlet_header_offset, mesh_entity_index);
+				} else {
+					InterlockedAdd(indirect_arguments[0].x, -1);
+				}
 			}
 		}
 	}

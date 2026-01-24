@@ -24,6 +24,11 @@ static MeshletErrorMetric LoadMdtErrorMetric(const MdtErrorMetric& metric) {
 	return result;
 }
 
+struct MeshletGroupSortKey {
+	u64 key = 0;
+	u32 group_index = 0;
+};
+
 MeshRuntimeDataLayout ImportFbxMeshFile(StackAllocator* alloc, String filepath, u64 runtime_data_guid) {
 	ProfilerScope("ImportFbxMeshFile");
 	TempAllocationScope(alloc);
@@ -154,36 +159,154 @@ MeshRuntimeDataLayout ImportFbxMeshFile(StackAllocator* alloc, String filepath, 
 	auto mdt_meshlet_vertices       = ArrayView<BasicVertex>{ (BasicVertex*)result.vertices, result.vertex_count };
 	auto mdt_levels_of_detail       = ArrayView<MdtContinuousLodLevel>{ result.levels, result.level_count };
 	
-	auto result_vertices = ArrayViewAllocate<BasicVertex>(alloc, mdt_meshlet_vertex_indices.count);
-	auto result_meshlets = ArrayViewAllocate<BasicMeshlet>(alloc, mdt_meshlets.count);
-	auto result_indices  = ArrayViewAllocate<u8>(alloc, mdt_meshlet_triangles.count * 3);
-	auto result_meshlet_groups = ArrayViewAllocate<BasicMeshletGroup>(alloc, mdt_meshlet_groups.count);
+	auto result_meshlet_groups = ArrayViewAllocate<MeshletGroup>(alloc, mdt_meshlet_groups.count);
 	
-	memcpy(result_indices.data, mdt_meshlet_triangles.data, mdt_meshlet_triangles.count * sizeof(MdtMeshletTriangle));
-	static_assert(sizeof(MdtMeshletTriangle) == 3);
-	
-	for (u32 i = 0; i < mdt_meshlet_vertex_indices.count; i += 1) {
-		result_vertices[i] = mdt_meshlet_vertices[mdt_meshlet_vertex_indices[i]];
-	}
-	
-	for (u32 i = 0; i < mdt_meshlets.count; i += 1) {
-		auto& src_meshlet = mdt_meshlets[i];
-		auto& dst_meshlet = result_meshlets[i];
-		
-		dst_meshlet.index_buffer_offset  = src_meshlet.begin_meshlet_triangles_index * 3;
-		dst_meshlet.vertex_buffer_offset = src_meshlet.begin_vertex_indices_index;
-		dst_meshlet.triangle_count       = src_meshlet.end_meshlet_triangles_index - src_meshlet.begin_meshlet_triangles_index;
-		dst_meshlet.vertex_count         = src_meshlet.end_vertex_indices_index    - src_meshlet.begin_vertex_indices_index;
-		dst_meshlet.current_level_error_metric = LoadMdtErrorMetric(src_meshlet.current_level_error_metric);
-	}
-	
+	auto mesh_aabb_min = float3(+FLT_MAX, +FLT_MAX, +FLT_MAX);
+	auto mesh_aabb_max = float3(-FLT_MAX, -FLT_MAX, -FLT_MAX);
 	for (u32 i = 0; i < mdt_meshlet_groups.count; i += 1) {
 		auto& src_group = mdt_meshlet_groups[i];
-		auto& dst_group = result_meshlet_groups[i];
+		mesh_aabb_min = Math::Min(mesh_aabb_min, float3(src_group.aabb_min));
+		mesh_aabb_max = Math::Max(mesh_aabb_max, float3(src_group.aabb_max));
+	}
+	auto mesh_to_unit_scale = float3(1.f) / Math::Max(mesh_aabb_max - mesh_aabb_min, float3(1.f));
+	
+	auto meshlet_group_sort_keys = ArrayViewAllocate<MeshletGroupSortKey>(alloc, mdt_meshlet_groups.count);
+	for (u32 i = 0; i < mdt_meshlet_groups.count; i += 1) {
+		auto& src_group = mdt_meshlet_groups[i];
+		auto& dst_group = meshlet_group_sort_keys[i];
 		
-		dst_group.meshlet_offset = src_group.begin_meshlet_index;
-		dst_group.meshlet_count  = src_group.end_meshlet_index - src_group.begin_meshlet_index;
-		dst_group.error_metric   = LoadMdtErrorMetric(src_group.error_metric);
+		auto center = (float3(src_group.aabb_min) + float3(src_group.aabb_max)) * 0.5f;
+		auto center_01  = (center - mesh_aabb_min) * mesh_to_unit_scale;
+		auto center_u32 = uint3(center_01 * 0xFFFFFu);
+		
+		// Sort by 4 bit LOD first, then spatially by 60 bit morton code of the AABB center.
+		u64 key = (u64)(MDT_MAX_CLOD_LEVEL_COUNT - 1 - src_group.level_of_detail_index) << 60;
+		key |= DepositBits(center_u32.x, 0x0249249249249249);
+		key |= DepositBits(center_u32.y, 0x0492492492492492);
+		key |= DepositBits(center_u32.z, 0x0924924924924924);
+		
+		dst_group.key = key;
+		dst_group.group_index = i;
+	}
+	
+	HeapSort(meshlet_group_sort_keys, [](auto& lh, auto& rh)-> bool {
+		return lh.key < rh.key;
+	});
+	
+	
+	compile_const u32 page_size = MeshletPageHeader::page_size;
+	
+	Array<u32> page_meshlet_indices;
+	Array<u32> page_meshlet_prefix_sum;
+	
+	u32 page_offset = sizeof(MeshletPageHeader);
+	u32 page_meshlet_count = 0;
+	for (u32 meshlet_group_index = 0; meshlet_group_index < mdt_meshlet_groups.count; meshlet_group_index += 1) {
+		auto& src_group = mdt_meshlet_groups[meshlet_group_sort_keys[meshlet_group_index].group_index];
+		auto& dst_group = result_meshlet_groups[meshlet_group_index];
+		
+		dst_group.meshlet_count = src_group.end_meshlet_index - src_group.begin_meshlet_index;
+		dst_group.error_metric  = LoadMdtErrorMetric(src_group.error_metric);
+		
+		for (u32 meshlet_index = src_group.begin_meshlet_index; meshlet_index < src_group.end_meshlet_index; meshlet_index += 1) {
+			auto& src_meshlet = mdt_meshlets[meshlet_index];
+			
+			u32 triangle_count = src_meshlet.end_meshlet_triangles_index - src_meshlet.begin_meshlet_triangles_index;
+			u32 vertex_count   = src_meshlet.end_vertex_indices_index    - src_meshlet.begin_vertex_indices_index;
+			
+			u32 meshlet_size = (u32)(sizeof(MeshletCullingData) + sizeof(MeshletHeader) + vertex_count * sizeof(BasicVertex) + AlignUp(triangle_count * sizeof(MdtMeshletTriangle), 4));
+			DebugAssert(meshlet_size <= page_size, "Meshlet is larger than a single page. (%/%).", meshlet_size, page_size);
+			
+			if (page_offset + meshlet_size > page_size) {
+				ArrayAppend(page_meshlet_prefix_sum, alloc, (u32)page_meshlet_indices.count);
+				page_offset = sizeof(MeshletPageHeader);
+				page_meshlet_count = 0;
+			}
+			
+			if (meshlet_index == src_group.begin_meshlet_index) {
+				dst_group.meshlet_offset = page_meshlet_count;
+				dst_group.page_index     = (u32)page_meshlet_prefix_sum.count;
+			}
+			
+			ArrayAppend(page_meshlet_indices, alloc, meshlet_index);
+			page_offset += meshlet_size;
+			page_meshlet_count += 1;
+		}
+		
+		dst_group.page_count = ((u32)page_meshlet_prefix_sum.count + 1 - dst_group.page_index);
+	}
+	
+	if (page_meshlet_count != 0) {
+		ArrayAppend(page_meshlet_prefix_sum, alloc, (u32)page_meshlet_indices.count);
+	}
+	
+	
+	Array<ArrayView<u8>> result_pages;
+	ArrayReserve(result_pages, alloc, page_meshlet_prefix_sum.count);
+	
+	for (u32 page_index = 0, begin_meshlet_index = 0; page_index < page_meshlet_prefix_sum.count; page_index += 1) {
+		auto page = ArrayViewAllocate<u8>(alloc, page_size);
+		ArrayAppend(result_pages, page);
+		
+		u32 end_meshlet_index = page_meshlet_prefix_sum[page_index];
+		u32 meshlet_count = (end_meshlet_index - begin_meshlet_index);
+		
+		// Write page header:
+		{
+			MeshletPageHeader page_header;
+			page_header.meshlet_count = meshlet_count;
+			
+			memcpy(page.data, &page_header, sizeof(page_header));
+		}
+		
+		u64 page_culling_data_offset = sizeof(MeshletPageHeader);
+		u64 page_meshlet_data_offset = page_culling_data_offset + meshlet_count * sizeof(MeshletCullingData);
+		
+		for (u32 page_meshlet_index = begin_meshlet_index; page_meshlet_index < end_meshlet_index; page_meshlet_index += 1) {
+			u32 meshlet_index = page_meshlet_indices[page_meshlet_index];
+			auto& src_meshlet = mdt_meshlets[meshlet_index];
+			
+			u32 triangle_count = src_meshlet.end_meshlet_triangles_index - src_meshlet.begin_meshlet_triangles_index;
+			u32 vertex_count   = src_meshlet.end_vertex_indices_index    - src_meshlet.begin_vertex_indices_index;
+			
+			// Write culling data:
+			{
+				MeshletCullingData culling_data;
+				culling_data.current_level_error_metric = LoadMdtErrorMetric(src_meshlet.current_level_error_metric);
+				culling_data.meshlet_header_offset      = (u32)(page_meshlet_data_offset - page_culling_data_offset);
+				
+				memcpy(page.data + page_culling_data_offset, &culling_data, sizeof(culling_data));
+				page_culling_data_offset += sizeof(culling_data);
+			}
+			
+			// Write header:
+			{
+				MeshletHeader meshlet_header;
+				meshlet_header.triangle_count = triangle_count;
+				meshlet_header.vertex_count   = vertex_count;
+				
+				memcpy(page.data + page_meshlet_data_offset, &meshlet_header, sizeof(meshlet_header));
+				page_meshlet_data_offset += sizeof(meshlet_header);
+			}
+			
+			// Write vertices:
+			for (u32 i = src_meshlet.begin_vertex_indices_index; i < src_meshlet.end_vertex_indices_index; i += 1) {
+				auto& vertex = mdt_meshlet_vertices[mdt_meshlet_vertex_indices[i]];
+				memcpy(page.data + page_meshlet_data_offset, &vertex, sizeof(vertex));
+				page_meshlet_data_offset += sizeof(vertex);
+			}
+			
+			// Write indices:
+			{
+				memcpy(page.data + page_meshlet_data_offset, mdt_meshlet_triangles.data + src_meshlet.begin_meshlet_triangles_index, triangle_count * sizeof(MdtMeshletTriangle));
+				page_meshlet_data_offset += AlignUp(triangle_count * sizeof(MdtMeshletTriangle), 4);
+			}
+		}
+		
+		// Clear padding to zero:
+		memset(page.data + page_meshlet_data_offset, 0, page_size - page_meshlet_data_offset);
+		
+		begin_meshlet_index = end_meshlet_index;
 	}
 	
 	MdtFreeContinuousLodBuildResult(&result, &callbacks);
@@ -196,17 +319,16 @@ MeshRuntimeDataLayout ImportFbxMeshFile(StackAllocator* alloc, String filepath, 
 	defer{ SystemCloseFile(runtime_file); };
 	
 	MeshRuntimeDataLayout runtime_data_layout;
-	runtime_data_layout.file_guid     = runtime_data_guid;
-	runtime_data_layout.version       = MeshRuntimeDataLayout::current_version;
-	runtime_data_layout.vertex_count  = (u32)result_vertices.count;
-	runtime_data_layout.meshlet_count = (u32)result_meshlets.count;
+	runtime_data_layout.file_guid  = runtime_data_guid;
+	runtime_data_layout.version    = MeshRuntimeDataLayout::current_version;
+	runtime_data_layout.page_count = (u32)result_pages.count;
 	runtime_data_layout.meshlet_group_count = (u32)result_meshlet_groups.count;
-	runtime_data_layout.indices_count = (u32)result_indices.count;
 	
-	SystemWriteFile(runtime_file, result_vertices.data, result_vertices.count * sizeof(BasicVertex),  runtime_data_layout.VertexBufferOffset());
-	SystemWriteFile(runtime_file, result_meshlets.data, result_meshlets.count * sizeof(BasicMeshlet), runtime_data_layout.MeshletBufferOffset());
-	SystemWriteFile(runtime_file, result_meshlet_groups.data, result_meshlet_groups.count * sizeof(BasicMeshletGroup), runtime_data_layout.MeshletGroupBufferOffset());
-	SystemWriteFile(runtime_file, result_indices.data, result_indices.count * sizeof(u8), runtime_data_layout.IndexBufferOffset());
+	for (u64 i = 0; i < result_pages.count; i += 1) {
+		SystemWriteFile(runtime_file, result_pages[i].data, page_size, i * page_size + runtime_data_layout.PageBufferOffset());
+	}
+	
+	SystemWriteFile(runtime_file, result_meshlet_groups.data, result_meshlet_groups.count * sizeof(MeshletGroup), runtime_data_layout.MeshletGroupBufferOffset());
 	
 	return runtime_data_layout;
 }

@@ -21,30 +21,38 @@ struct MeshletErrorMetric {
 };
 
 NOTES(Meta::HlslFile{ "MeshData.hlsl"_sl })
-struct BasicMeshlet {
-	u32 index_buffer_offset  = 0;
-	u32 vertex_buffer_offset = 0;
-	u32 triangle_count = 0;
-	u32 vertex_count   = 0;
-	
+struct MeshletCullingData {
 	MeshletErrorMetric current_level_error_metric;
+	u32 meshlet_header_offset = 0;
 };
 
 NOTES(Meta::HlslFile{ "MeshData.hlsl"_sl })
-struct BasicMeshletGroup {
+struct MeshletHeader {
+	u32 triangle_count = 0;
+	u32 vertex_count   = 0;
+};
+
+NOTES(Meta::HlslFile{ "MeshData.hlsl"_sl })
+struct MeshletPageHeader {
+	compile_const u32 page_size = 64 * 1024; // TODO: Experiment with different page sizes.
+	u32 meshlet_count = 0;
+};
+
+NOTES(Meta::HlslFile{ "MeshData.hlsl"_sl })
+struct MeshletGroup {
 	u32 meshlet_offset = 0;
 	u32 meshlet_count  = 0;
+	u32 page_index = 0;
+	u32 page_count = 0;
 	
 	MeshletErrorMetric error_metric;
 };
 
 NOTES(Meta::HlslFile{ "MeshData.hlsl"_sl })
 struct GpuMeshAssetData {
-	u32 vertex_buffer_offset  = 0;
-	u32 meshlet_buffer_offset = 0;
+	u32 page_buffer_offset  = 0;
 	u32 meshlet_group_buffer_offset = 0;
-	u32 index_buffer_offset   = 0;
-	u32 meshlet_group_count   = 0;
+	u32 meshlet_group_count = 0;
 };
 
 NOTES()
@@ -54,21 +62,17 @@ struct MeshSourceData {
 
 NOTES()
 struct MeshRuntimeDataLayout {
-	compile_const u64 current_version = 5;
+	compile_const u64 current_version = 12;
 	
 	u64 file_guid = 0;
 	u64 version   = 0;
 	
-	u32 vertex_count  = 0;
-	u32 meshlet_count = 0;
+	u32 page_count = 0;
 	u32 meshlet_group_count = 0;
-	u32 indices_count = 0;
 	
-	u32 VertexBufferOffset() { return 0; }
-	u32 MeshletBufferOffset() { return VertexBufferOffset() + vertex_count  * sizeof(BasicVertex); }
-	u32 MeshletGroupBufferOffset() { return MeshletBufferOffset() + meshlet_count * sizeof(BasicMeshlet); }
-	u32 IndexBufferOffset() { return MeshletGroupBufferOffset() + meshlet_group_count * sizeof(BasicMeshletGroup); }
-	u32 AllocationSize() { return IndexBufferOffset() + indices_count * sizeof(u8); }
+	u32 PageBufferOffset() { return 0; }
+	u32 MeshletGroupBufferOffset() { return PageBufferOffset() + page_count * MeshletPageHeader::page_size; }
+	u32 AllocationSize() { return MeshletGroupBufferOffset() + meshlet_group_count * sizeof(MeshletGroup); }
 };
 
 NOTES(Meta::NoSaveLoad{})
