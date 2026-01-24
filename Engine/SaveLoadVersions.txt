@@ -72,6 +72,14 @@ struct MeshRuntimeDataLayout {
 		meshlet_count u32 0;
 		indices_count u32 0;
 	}
+	/*Version*/ 4 {
+		file_guid u64 0;
+		version u64 0;
+		vertex_count u32 0;
+		meshlet_count u32 0;
+		meshlet_group_count u32 0;
+		indices_count u32 0;
+	}
 }
 
 enum CameraTransformType {

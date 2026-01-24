@@ -28,15 +28,23 @@ struct BasicMeshlet {
 	u32 vertex_count   = 0;
 	
 	MeshletErrorMetric current_level_error_metric;
-	MeshletErrorMetric coarser_level_error_metric;
+};
+
+NOTES(Meta::HlslFile{ "MeshData.hlsl"_sl })
+struct BasicMeshletGroup {
+	u32 meshlet_offset = 0;
+	u32 meshlet_count  = 0;
+	
+	MeshletErrorMetric error_metric;
 };
 
 NOTES(Meta::HlslFile{ "MeshData.hlsl"_sl })
 struct GpuMeshAssetData {
 	u32 vertex_buffer_offset  = 0;
 	u32 meshlet_buffer_offset = 0;
+	u32 meshlet_group_buffer_offset = 0;
 	u32 index_buffer_offset   = 0;
-	u32 meshlet_count         = 0;
+	u32 meshlet_group_count   = 0;
 };
 
 NOTES()
@@ -46,16 +54,21 @@ struct MeshSourceData {
 
 NOTES()
 struct MeshRuntimeDataLayout {
+	compile_const u64 current_version = 5;
+	
 	u64 file_guid = 0;
+	u64 version   = 0;
 	
 	u32 vertex_count  = 0;
 	u32 meshlet_count = 0;
+	u32 meshlet_group_count = 0;
 	u32 indices_count = 0;
 	
-	u32 VertexBufferOffset()  { return 0; }
-	u32 MeshletBufferOffset() { return VertexBufferOffset()  + vertex_count  * sizeof(BasicVertex);  }
-	u32 IndexBufferOffset()   { return MeshletBufferOffset() + meshlet_count * sizeof(BasicMeshlet); }
-	u32 AllocationSize()      { return IndexBufferOffset()   + indices_count * sizeof(u8);           }
+	u32 VertexBufferOffset() { return 0; }
+	u32 MeshletBufferOffset() { return VertexBufferOffset() + vertex_count  * sizeof(BasicVertex); }
+	u32 MeshletGroupBufferOffset() { return MeshletBufferOffset() + meshlet_count * sizeof(BasicMeshlet); }
+	u32 IndexBufferOffset() { return MeshletGroupBufferOffset() + meshlet_group_count * sizeof(BasicMeshletGroup); }
+	u32 AllocationSize() { return IndexBufferOffset() + indices_count * sizeof(u8); }
 };
 
 NOTES(Meta::NoSaveLoad{})

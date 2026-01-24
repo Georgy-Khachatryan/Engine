@@ -7,6 +7,8 @@
 #include "RendererEntities.h"
 #include "RenderPasses.h"
 
+extern MeshRuntimeDataLayout ImportFbxMeshFile(StackAllocator* alloc, String filepath, u64 runtime_data_guid);
+
 void UpdateRendererEntityGpuComponents(StackAllocator* alloc, RecordContext* record_context, RendererContext* renderer_context, WorldEntitySystem& world_system, AssetEntitySystem& asset_system, Array<GpuComponentUploadBuffer>& gpu_uploads) {
 	ProfilerScope("UpdateRendererEntityGpuComponents");
 	
@@ -15,7 +17,24 @@ void UpdateRendererEntityGpuComponents(StackAllocator* alloc, RecordContext* rec
 	u64 mesh_asset_buffer_offset = renderer_context->mesh_asset_buffer_offset;
 	auto* async_transfer_queue = renderer_context->async_transfer_queue;
 	
-	for (auto* entity_array : QueryEntities<MeshAssetType>(alloc, asset_system)) {
+	auto entity_view = QueryEntities<MeshAssetType>(alloc, asset_system);
+	
+	for (auto* entity_array : entity_view) {
+		auto streams = ExtractComponentStreams<MeshAssetType>(entity_array);
+		for (u64 i : BitArrayIt(entity_array->created_mask)) {
+			auto& layout = streams.runtime_data_layout[i];
+			if (layout.version == MeshRuntimeDataLayout::current_version) continue;
+			
+			if (layout.file_guid == 0) {
+				layout.file_guid = GenerateRandomNumber64(asset_system.guid_random_seed);
+			}
+			
+			auto& source_data = streams.source_data[i];
+			layout = ImportFbxMeshFile(alloc, source_data.filepath, layout.file_guid);
+		}
+	}
+	
+	for (auto* entity_array : entity_view) {
 		ProfilerScope("MeshAssetTypeGpuComponentUpdate");
 		
 		u32 dirty_entity_count = (u32)BitArrayCountSetBits(entity_array->dirty_mask);
@@ -48,8 +67,9 @@ void UpdateRendererEntityGpuComponents(StackAllocator* alloc, RecordContext* rec
 			GpuMeshAssetData mesh_asset;
 			mesh_asset.vertex_buffer_offset  = base_offset + layout.VertexBufferOffset();
 			mesh_asset.meshlet_buffer_offset = base_offset + layout.MeshletBufferOffset();
+			mesh_asset.meshlet_group_buffer_offset = base_offset + layout.MeshletGroupBufferOffset();
 			mesh_asset.index_buffer_offset   = base_offset + layout.IndexBufferOffset();
-			mesh_asset.meshlet_count         = layout.meshlet_count;
+			mesh_asset.meshlet_group_count   = layout.meshlet_group_count;
 			AppendGpuTransferCommand(gpu_mesh_asset_data, i, mesh_asset);
 		}
 		ArrayAppend(gpu_uploads, alloc, gpu_mesh_asset_data);

@@ -140,8 +140,7 @@ String PrintTypeValue(StackAllocator* alloc, TypeInfo* type_info, const void* va
 		
 		bool is_first_field = true;
 		for (auto& field : type_info_struct->fields) {
-			if (field.type == &type_info_type) continue;
-			if (field.constant_value) continue;
+			if (field.type == &type_info_type || field.constant_value) continue;
 			
 			if (is_first_field == false) {
 				builder.Append(", "_sl);

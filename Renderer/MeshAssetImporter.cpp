@@ -16,6 +16,14 @@ static float3x4 LoadUfbxMatrix(const ufbx_matrix& m) {
 	return result;
 }
 
+static MeshletErrorMetric LoadMdtErrorMetric(const MdtErrorMetric& metric) {
+	MeshletErrorMetric result;
+	result.center = float3(metric.bounds.center);
+	result.radius = metric.bounds.radius;
+	result.error  = metric.error;
+	return result;
+}
+
 MeshRuntimeDataLayout ImportFbxMeshFile(StackAllocator* alloc, String filepath, u64 runtime_data_guid) {
 	ProfilerScope("ImportFbxMeshFile");
 	TempAllocationScope(alloc);
@@ -149,6 +157,7 @@ MeshRuntimeDataLayout ImportFbxMeshFile(StackAllocator* alloc, String filepath, 
 	auto result_vertices = ArrayViewAllocate<BasicVertex>(alloc, mdt_meshlet_vertex_indices.count);
 	auto result_meshlets = ArrayViewAllocate<BasicMeshlet>(alloc, mdt_meshlets.count);
 	auto result_indices  = ArrayViewAllocate<u8>(alloc, mdt_meshlet_triangles.count * 3);
+	auto result_meshlet_groups = ArrayViewAllocate<BasicMeshletGroup>(alloc, mdt_meshlet_groups.count);
 	
 	memcpy(result_indices.data, mdt_meshlet_triangles.data, mdt_meshlet_triangles.count * sizeof(MdtMeshletTriangle));
 	static_assert(sizeof(MdtMeshletTriangle) == 3);
@@ -165,13 +174,16 @@ MeshRuntimeDataLayout ImportFbxMeshFile(StackAllocator* alloc, String filepath, 
 		dst_meshlet.vertex_buffer_offset = src_meshlet.begin_vertex_indices_index;
 		dst_meshlet.triangle_count       = src_meshlet.end_meshlet_triangles_index - src_meshlet.begin_meshlet_triangles_index;
 		dst_meshlet.vertex_count         = src_meshlet.end_vertex_indices_index    - src_meshlet.begin_vertex_indices_index;
+		dst_meshlet.current_level_error_metric = LoadMdtErrorMetric(src_meshlet.current_level_error_metric);
+	}
+	
+	for (u32 i = 0; i < mdt_meshlet_groups.count; i += 1) {
+		auto& src_group = mdt_meshlet_groups[i];
+		auto& dst_group = result_meshlet_groups[i];
 		
-		dst_meshlet.current_level_error_metric.center = float3(src_meshlet.current_level_error_metric.bounds.center);
-		dst_meshlet.coarser_level_error_metric.center = float3(src_meshlet.coarser_level_error_metric.bounds.center);
-		dst_meshlet.current_level_error_metric.radius = src_meshlet.current_level_error_metric.bounds.radius;
-		dst_meshlet.coarser_level_error_metric.radius = src_meshlet.coarser_level_error_metric.bounds.radius;
-		dst_meshlet.current_level_error_metric.error  = src_meshlet.current_level_error_metric.error;
-		dst_meshlet.coarser_level_error_metric.error  = src_meshlet.coarser_level_error_metric.error;
+		dst_group.meshlet_offset = src_group.begin_meshlet_index;
+		dst_group.meshlet_count  = src_group.end_meshlet_index - src_group.begin_meshlet_index;
+		dst_group.error_metric   = LoadMdtErrorMetric(src_group.error_metric);
 	}
 	
 	MdtFreeContinuousLodBuildResult(&result, &callbacks);
@@ -185,13 +197,16 @@ MeshRuntimeDataLayout ImportFbxMeshFile(StackAllocator* alloc, String filepath, 
 	
 	MeshRuntimeDataLayout runtime_data_layout;
 	runtime_data_layout.file_guid     = runtime_data_guid;
+	runtime_data_layout.version       = MeshRuntimeDataLayout::current_version;
 	runtime_data_layout.vertex_count  = (u32)result_vertices.count;
 	runtime_data_layout.meshlet_count = (u32)result_meshlets.count;
+	runtime_data_layout.meshlet_group_count = (u32)result_meshlet_groups.count;
 	runtime_data_layout.indices_count = (u32)result_indices.count;
 	
 	SystemWriteFile(runtime_file, result_vertices.data, result_vertices.count * sizeof(BasicVertex),  runtime_data_layout.VertexBufferOffset());
 	SystemWriteFile(runtime_file, result_meshlets.data, result_meshlets.count * sizeof(BasicMeshlet), runtime_data_layout.MeshletBufferOffset());
-	SystemWriteFile(runtime_file, result_indices.data,  result_indices.count  * sizeof(u8),           runtime_data_layout.IndexBufferOffset());
+	SystemWriteFile(runtime_file, result_meshlet_groups.data, result_meshlet_groups.count * sizeof(BasicMeshletGroup), runtime_data_layout.MeshletGroupBufferOffset());
+	SystemWriteFile(runtime_file, result_indices.data, result_indices.count * sizeof(u8), runtime_data_layout.IndexBufferOffset());
 	
 	return runtime_data_layout;
 }

@@ -60,7 +60,7 @@ u64 AddTypeInfoToSaveLoadHistory(StackAllocator* alloc, HashTable<String, Versio
 		Array<VersionedField> fields;
 		ArrayReserve(fields, alloc, type_info_struct->fields.count);
 		for (auto& field : type_info_struct->fields) {
-			if (field.type == &type_info_type) continue;
+			if (field.type == &type_info_type || field.constant_value) continue;
 			
 			CheckFieldIsReflected(alloc, type_info_struct, field);
 			

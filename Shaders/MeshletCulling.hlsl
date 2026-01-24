@@ -16,7 +16,7 @@ float2 EvaluateMeshletErrorMetric(MeshletErrorMetric error_metric, GpuTransform 
 		float3 center_world_space = QuatMul(model_to_world.rotation, error_metric.center * model_to_world.scale) + model_to_world.position;
 		float  radius_world_space = error_metric.radius * model_to_world.scale;
 		
-		result.y = max(length(center_world_space - scene.world_space_camera_position) - radius_world_space, 0.f);
+		result.y = max(length(center_world_space - scene.world_space_camera_position) - radius_world_space, 0.0);
 	} else {
 		result.y = 1.0;
 	}
@@ -41,22 +41,28 @@ void MainCS(uint2 thread_id : SV_DispatchThreadID) {
 	GpuMeshAssetData mesh_asset = mesh_asset_data[mesh_asset_index];
 	GpuTransform model_to_world = mesh_transforms[mesh_entity_index];
 	
-	for (uint meshlet_index = thread_id.x; meshlet_index < mesh_asset.meshlet_count; meshlet_index += thread_group_size) {
-		BasicMeshlet meshlet = mesh_asset_buffer.Load<BasicMeshlet>(mesh_asset.meshlet_buffer_offset + meshlet_index * sizeof(BasicMeshlet));
-		
-		float2 current_level_error_metric = EvaluateMeshletErrorMetric(meshlet.current_level_error_metric, model_to_world);
-		float2 coarser_level_error_metric = EvaluateMeshletErrorMetric(meshlet.coarser_level_error_metric, model_to_world);
-		
-		bool is_visible = LodCullCurrentLevelError(current_level_error_metric) && LodCullCoarserLevelError(coarser_level_error_metric);
+	for (uint meshlet_group_index = thread_id.x; meshlet_group_index < mesh_asset.meshlet_group_count; meshlet_group_index += thread_group_size) {
+		BasicMeshletGroup group = mesh_asset_buffer.Load<BasicMeshletGroup>(mesh_asset.meshlet_group_buffer_offset + meshlet_group_index * sizeof(BasicMeshletGroup));
+		float2 coarser_level_error_metric = EvaluateMeshletErrorMetric(group.error_metric, model_to_world);
+		bool is_visible = LodCullCoarserLevelError(coarser_level_error_metric);
 		if (is_visible == false) continue;
 		
-		uint visible_meshlet_index = 0;
-		InterlockedAdd(indirect_arguments[0].x, 1u, visible_meshlet_index);
-		
-		if (visible_meshlet_index < SceneConstants::visible_meshlet_buffer_count) {
-			visible_meshlets[visible_meshlet_index] = uint2(meshlet_index, mesh_entity_index);
-		} else {
-			InterlockedAdd(indirect_arguments[0].x, -1);
+		for (uint meshlet_index = group.meshlet_offset; meshlet_index < (group.meshlet_offset + group.meshlet_count); meshlet_index += 1) {
+			BasicMeshlet meshlet = mesh_asset_buffer.Load<BasicMeshlet>(mesh_asset.meshlet_buffer_offset + meshlet_index * sizeof(BasicMeshlet));
+			
+			float2 current_level_error_metric = EvaluateMeshletErrorMetric(meshlet.current_level_error_metric, model_to_world);
+			
+			bool is_visible = LodCullCurrentLevelError(current_level_error_metric);
+			if (is_visible == false) continue;
+			
+			uint visible_meshlet_index = 0;
+			InterlockedAdd(indirect_arguments[0].x, 1u, visible_meshlet_index);
+			
+			if (visible_meshlet_index < SceneConstants::visible_meshlet_buffer_count) {
+				visible_meshlets[visible_meshlet_index] = uint2(meshlet_index, mesh_entity_index);
+			} else {
+				InterlockedAdd(indirect_arguments[0].x, -1);
+			}
 		}
 	}
 }
