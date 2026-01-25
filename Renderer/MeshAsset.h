@@ -35,17 +35,22 @@ struct MeshletHeader {
 NOTES(Meta::HlslFile{ "MeshData.hlsl"_sl })
 struct MeshletPageHeader {
 	compile_const u32 page_size = 64 * 1024; // TODO: Experiment with different page sizes.
+	compile_const u32 max_page_count = 256;
+	
 	u32 meshlet_count = 0;
 };
 
 NOTES(Meta::HlslFile{ "MeshData.hlsl"_sl })
 struct MeshletGroup {
 	u32 meshlet_offset = 0;
-	u32 meshlet_count  = 0;
+	u16 meshlet_count  = 0;
+	u16 is_resident    = 0;
 	u32 page_index = 0;
 	u32 page_count = 0;
 	
 	MeshletErrorMetric error_metric;
+	
+	compile_const u32 offset_of_is_resident = 6;
 };
 
 NOTES(Meta::HlslFile{ "MeshData.hlsl"_sl })
@@ -62,7 +67,7 @@ struct MeshSourceData {
 
 NOTES()
 struct MeshRuntimeDataLayout {
-	compile_const u64 current_version = 12;
+	compile_const u64 current_version = 15;
 	
 	u64 file_guid = 0;
 	u64 version   = 0;
@@ -72,7 +77,8 @@ struct MeshRuntimeDataLayout {
 	
 	u32 PageBufferOffset() { return 0; }
 	u32 MeshletGroupBufferOffset() { return PageBufferOffset() + page_count * MeshletPageHeader::page_size; }
-	u32 AllocationSize() { return MeshletGroupBufferOffset() + meshlet_group_count * sizeof(MeshletGroup); }
+	u32 PageResidencyMaskOffset()  { return MeshletGroupBufferOffset() + meshlet_group_count * sizeof(MeshletGroup); }
+	u32 AllocationSize() { return PageResidencyMaskOffset() + meshlet_group_count * (MeshletPageHeader::max_page_count / 8u); }
 };
 
 NOTES(Meta::NoSaveLoad{})
@@ -83,6 +89,7 @@ struct MeshRuntimeFile {
 NOTES(Meta::NoSaveLoad{})
 struct MeshRuntimeAllocation {
 	u32 base_offset = u32_max;
+	u32 streamed_in_page_count = 0;
 };
 
 NOTES()

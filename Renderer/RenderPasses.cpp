@@ -94,6 +94,7 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	*atmosphere_parameters_cpu_address = atmosphere_parameters;
 	
 	EntitySystemUpdateRenderPass{ world_system, asset_system, renderer_world.gpu_uploads }.RecordPass(record_context);
+	UpdateMeshletPageTableRenderPass{ asset_system }.RecordPass(record_context);
 	TransmittanceLutRenderPass{ atmosphere_parameters_gpu_address }.RecordPass(record_context);
 	MultipleScatteringLutRenderPass{ atmosphere_parameters_gpu_address }.RecordPass(record_context);
 	SkyPanoramaLutRenderPass{ atmosphere_parameters_gpu_address }.RecordPass(record_context);

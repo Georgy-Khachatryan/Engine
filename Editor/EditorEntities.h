@@ -22,4 +22,6 @@ struct AssetEditorQuery {
 	NameComponent* name = nullptr;
 	
 	MeshSourceData* mesh_source_data = nullptr;
+	MeshRuntimeDataLayout* mesh_runtime_data_layout = nullptr;
+	MeshRuntimeAllocation* mesh_runtime_allocation  = nullptr;
 };

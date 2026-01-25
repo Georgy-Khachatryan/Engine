@@ -1,3 +1,4 @@
+#include "Basic/BasicBitArray.h"
 #include "RenderPasses.h"
 #include "GraphicsApi/GraphicsApi.h"
 #include "GraphicsApi/RecordContext.h"
@@ -77,3 +78,62 @@ void BasicMeshRenderPass::RecordPass(RecordContext* record_context) {
 	CmdDispatchMeshIndirect(record_context, VirtualResourceID::MeshletIndirectArguments);
 }
 
+
+void UpdateMeshletPageTableRenderPass::CreatePipelines(PipelineLibrary* lib) {
+	pipeline_id = CreateComputePipeline(lib, UpdateMeshletPageTableShadersID);
+}
+
+void UpdateMeshletPageTableRenderPass::RecordPass(RecordContext* record_context) {
+	auto entity_view = QueryEntities<MeshAssetType>(record_context->alloc, *asset_system);
+	
+	u32 page_list_size = 0;
+	u32 command_count  = 0;
+	for (auto* entity_array : entity_view) {
+		auto streams = ExtractComponentStreams<MeshAssetType>(entity_array);
+		
+		for (u64 i : BitArrayIt(entity_array->alive_mask)) {
+			page_list_size += streams.runtime_data_layout[i].page_count;
+			command_count  += 1;
+		}
+	}
+	if (page_list_size == 0) return;
+	
+	
+	auto [page_list_gpu_address, page_list_cpu_address] = AllocateTransientUploadBuffer<u32, 16u>(record_context, page_list_size);
+	auto [commands_gpu_address,  commands_cpu_address]  = AllocateTransientUploadBuffer<MeshletPageTableUpdateCommand, 16u>(record_context, command_count);
+	
+	u32 page_list_offset = 0;
+	u32 commands_offset  = 0;
+	for (auto* entity_array : entity_view) {
+		auto streams = ExtractComponentStreams<MeshAssetType>(entity_array);
+		
+		for (u64 i : BitArrayIt(entity_array->alive_mask)) {
+			u32 page_count = streams.runtime_data_layout[i].page_count;
+			
+			MeshletPageTableUpdateCommand command;
+			command.mesh_asset_index = (u32)i;
+			command.page_list_offset = (u16)page_list_offset;
+			command.page_list_count  = (u16)page_count;
+			commands_cpu_address[commands_offset] = command;
+			commands_offset += 1;
+			
+			u32 streamed_in_page_count = streams.allocation[i].streamed_in_page_count;
+			for (u32 page_index = 0; page_index < page_count; page_index += 1) {
+				auto command_type = page_index < streamed_in_page_count ? MeshletPageTableUpdateCommandType::PageIn : MeshletPageTableUpdateCommandType::PageOut;
+				page_list_cpu_address[page_list_offset] = page_index | ((u32)command_type << 31);
+				page_list_offset += 1;
+			}
+		}
+	}
+	
+	auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
+	descriptor_table.commands.Bind(commands_gpu_address, command_count * sizeof(MeshletPageTableUpdateCommand));
+	descriptor_table.page_list.Bind(page_list_gpu_address, page_list_size * sizeof(u32));
+	
+	CmdSetRootSignature(record_context, root_signature);
+	CmdSetPipelineState(record_context, pipeline_id);
+	
+	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
+	
+	CmdDispatch(record_context, 1u, command_count);
+}

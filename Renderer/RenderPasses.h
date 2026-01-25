@@ -245,6 +245,44 @@ struct AtmosphereCompositeRenderPass {
 };
 
 
+NOTES(Meta::ShaderName{ "UpdateMeshletPageTable.hlsl"_sl })
+enum struct UpdateMeshletPageTableShaders : u32 {};
+SHADER_DEFINITION_GENERATED_CODE(UpdateMeshletPageTableShaders);
+
+NOTES(Meta::HlslFile{ "UpdateMeshletPageTableData.hlsl"_sl })
+enum struct MeshletPageTableUpdateCommandType : u32 {
+	PageIn  = 0, // Page is streamed in, set it in the page table.
+	PageOut = 1, // Page is being removed, remove it from the page table.
+};
+
+NOTES(Meta::HlslFile{ "UpdateMeshletPageTableData.hlsl"_sl })
+struct MeshletPageTableUpdateCommand {
+	u32 mesh_asset_index = 0;
+	u16 page_list_offset = 0;
+	u16 page_list_count  = 0;
+};
+
+NOTES(Meta::RenderPass{})
+struct UpdateMeshletPageTableRenderPass {
+	RENDER_PASS_GENERATED_CODE();
+	
+	AssetEntitySystem* asset_system = nullptr;
+	
+	struct Descriptors : HLSL::BaseDescriptorTable {
+		HLSL::RegularBuffer<GpuMeshAssetData> mesh_asset_data = VirtualResourceID::GpuMeshAssetData;
+		HLSL::RegularBuffer<MeshletPageTableUpdateCommand> commands;
+		HLSL::RegularBuffer<u32> page_list;
+		HLSL::RWByteBuffer mesh_asset_buffer = VirtualResourceID::MeshAssetBuffer;
+	};
+	
+	struct RootSignature : HLSL::BaseRootSignature {
+		HLSL::DescriptorTable<Descriptors> descriptor_table;
+	};
+	
+	inline static PipelineID pipeline_id;
+};
+
+
 NOTES(Meta::ShaderName{ "MeshletCulling.hlsl"_sl })
 enum struct MeshletCullingShaders : u32 {
 	ClearBuffers   = 1u << 0,

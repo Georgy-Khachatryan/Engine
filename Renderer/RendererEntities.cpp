@@ -50,6 +50,7 @@ void UpdateRendererEntityGpuComponents(StackAllocator* alloc, RecordContext* rec
 			
 			mesh_asset_buffer_offset += allocation_size;
 			streams.allocation[i].base_offset = allocation_offset;
+			streams.allocation[i].streamed_in_page_count = streams.runtime_data_layout[i].page_count;
 			
 			u64 guid = streams.runtime_data_layout[i].file_guid;
 			auto file = SystemOpenFile(alloc, StringFormat(alloc, "./Assets/Runtime/%x..mrd"_sl, guid), OpenFileFlags::Read | OpenFileFlags::Async);

@@ -48,6 +48,8 @@ void MainCS(uint2 thread_id : SV_DispatchThreadID) {
 		bool is_visible = LodCullCoarserLevelError(coarser_level_error_metric);
 		if (is_visible == false) continue;
 		
+		if (group.is_resident == 0) continue;
+		
 		uint meshlet_offset = group.meshlet_offset; // Offset from the beginning of the first page, in meshlets.
 		uint meshlet_count  = group.meshlet_count;  // Total meshlet count across all pages.
 		for (uint page_index = 0; page_index < group.page_count; page_index += 1) {

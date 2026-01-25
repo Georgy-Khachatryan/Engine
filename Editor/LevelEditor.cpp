@@ -593,6 +593,33 @@ static void AssetBrowserEntityView(StackAllocator* alloc, AssetEntitySystem& ass
 	if (entity.mesh_source_data) {
 		ImGui::TableInputText("Mesh Source Data", entity.mesh_source_data->filepath, nullptr);
 	}
+	
+	if (entity.mesh_runtime_data_layout) {
+		auto guid_string = StringFormat(alloc, "0x%"_sl, (void*)entity.mesh_runtime_data_layout->file_guid);
+		ImGui::TableInputText("File GUID", guid_string, nullptr);
+		
+		if (ImGui::BeginTableItem("File Version")) {
+			ImGui::Text("%llu", entity.mesh_runtime_data_layout->version);
+			ImGui::EndTableItem();
+		}
+		
+		if (ImGui::BeginTableItem("Page Count")) {
+			ImGui::Text("%llu", entity.mesh_runtime_data_layout->page_count);
+			ImGui::EndTableItem();
+		}
+		
+		if (ImGui::BeginTableItem("Meshlet Group Count")) {
+			ImGui::Text("%llu", entity.mesh_runtime_data_layout->meshlet_group_count);
+			ImGui::EndTableItem();
+		}
+	}
+	
+	if (entity.mesh_runtime_allocation && entity.mesh_runtime_data_layout) {
+		if (ImGui::BeginTableItem("Meshlet Group Count")) {
+			ImGui::SliderInt("", (s32*)&entity.mesh_runtime_allocation->streamed_in_page_count, 0, (s32)entity.mesh_runtime_data_layout->page_count, "%d", ImGuiSliderFlags_AlwaysClamp);
+			ImGui::EndTableItem();
+		}
+	}
 }
 
 compile_const auto entities_save_load_path = "./Assets/Scene.csb"_sl;
