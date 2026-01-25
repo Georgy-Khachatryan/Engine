@@ -68,10 +68,16 @@ void MainCS(uint2 thread_id : SV_DispatchThreadID) {
 				uint meshlet_culling_data_offset = page_offset + meshlet_index * sizeof(MeshletCullingData);
 				MeshletCullingData meshlet = mesh_asset_buffer.Load<MeshletCullingData>(meshlet_culling_data_offset);
 				
+				bool has_higher_level_of_detail = false;
+				if (meshlet.current_level_meshlet_group_index != u32_max) {
+					uint higher_detail_group_offset = mesh_asset.meshlet_group_buffer_offset + meshlet.current_level_meshlet_group_index * sizeof(MeshletGroup);
+					has_higher_level_of_detail = mesh_asset_buffer.Load<MeshletGroup>(higher_detail_group_offset).is_resident != 0;
+				}
+				
 				float2 current_level_error_metric = EvaluateMeshletErrorMetric(meshlet.current_level_error_metric, model_to_world);
 				
 				bool is_visible = LodCullCurrentLevelError(current_level_error_metric);
-				if (is_visible == false) continue;
+				if (is_visible == false && has_higher_level_of_detail) continue;
 				
 				uint visible_meshlet_index = 0;
 				InterlockedAdd(indirect_arguments[0].x, 1u, visible_meshlet_index);

@@ -26,7 +26,7 @@ static MeshletErrorMetric LoadMdtErrorMetric(const MdtErrorMetric& metric) {
 
 struct MeshletGroupSortKey {
 	u64 key = 0;
-	u32 group_index = 0;
+	u32 mdt_group_index = 0;
 };
 
 MeshRuntimeDataLayout ImportFbxMeshFile(StackAllocator* alloc, String filepath, u64 runtime_data_guid) {
@@ -186,12 +186,22 @@ MeshRuntimeDataLayout ImportFbxMeshFile(StackAllocator* alloc, String filepath, 
 		key |= DepositBits(center_u32.z, 0x0924924924924924);
 		
 		dst_group.key = key;
-		dst_group.group_index = i;
+		dst_group.mdt_group_index = i;
 	}
 	
 	HeapSort(meshlet_group_sort_keys, [](auto& lh, auto& rh)-> bool {
 		return lh.key < rh.key;
 	});
+	
+	
+	auto mdt_to_result_meshlet_group_index = ArrayViewAllocate<u32>(alloc, meshlet_group_sort_keys.count);
+	auto result_to_mdt_meshlet_group_index = ArrayViewAllocate<u32>(alloc, meshlet_group_sort_keys.count);
+	for (u32 result_group_index = 0; result_group_index < meshlet_group_sort_keys.count; result_group_index += 1) {
+		u32 mdt_group_index = meshlet_group_sort_keys[result_group_index].mdt_group_index;
+		
+		mdt_to_result_meshlet_group_index[mdt_group_index] = result_group_index;
+		result_to_mdt_meshlet_group_index[result_group_index] = mdt_group_index;
+	}
 	
 	
 	compile_const u32 page_size = MeshletPageHeader::page_size;
@@ -202,7 +212,7 @@ MeshRuntimeDataLayout ImportFbxMeshFile(StackAllocator* alloc, String filepath, 
 	u32 page_offset = sizeof(MeshletPageHeader);
 	u32 page_meshlet_count = 0;
 	for (u32 meshlet_group_index = 0; meshlet_group_index < mdt_meshlet_groups.count; meshlet_group_index += 1) {
-		auto& src_group = mdt_meshlet_groups[meshlet_group_sort_keys[meshlet_group_index].group_index];
+		auto& src_group = mdt_meshlet_groups[result_to_mdt_meshlet_group_index[meshlet_group_index]];
 		auto& dst_group = result_meshlet_groups[meshlet_group_index];
 		
 		dst_group.meshlet_count = src_group.end_meshlet_index - src_group.begin_meshlet_index;
@@ -274,6 +284,10 @@ MeshRuntimeDataLayout ImportFbxMeshFile(StackAllocator* alloc, String filepath, 
 				MeshletCullingData culling_data;
 				culling_data.current_level_error_metric = LoadMdtErrorMetric(src_meshlet.current_level_error_metric);
 				culling_data.meshlet_header_offset      = (u32)(page_meshlet_data_offset - page_culling_data_offset);
+				
+				if (src_meshlet.current_level_meshlet_group_index != u32_max) {
+					culling_data.current_level_meshlet_group_index = mdt_to_result_meshlet_group_index[src_meshlet.current_level_meshlet_group_index];
+				}
 				
 				memcpy(page.data + page_culling_data_offset, &culling_data, sizeof(culling_data));
 				page_culling_data_offset += sizeof(culling_data);
