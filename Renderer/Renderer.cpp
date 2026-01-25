@@ -5,6 +5,7 @@
 #include "RenderPasses.h"
 
 compile_const u32 upload_buffer_size     = 8 * 1024 * 1024;
+compile_const u32 readback_buffer_size   = 1 * 1024 * 1024;
 compile_const u32 mesh_asset_buffer_size = 32 * 1024 * 1024;
 compile_const u32 max_transient_resource_table_entries = 16;
 
@@ -15,6 +16,7 @@ RendererContext* CreateRendererContext(StackAllocator* alloc) {
 	
 	for (u32 i = 0; i < number_of_frames_in_flight; i += 1) {
 		context->upload_buffers[i] = CreateBufferResource(graphics_context, upload_buffer_size, GpuMemoryAccessType::Upload, &context->upload_buffer_cpu_addresses[i]);
+		context->readback_buffers[i] = CreateBufferResource(graphics_context, readback_buffer_size, GpuMemoryAccessType::Readback, &context->readback_buffer_cpu_addresses[i]);
 	}
 	
 	context->graphics_context       = graphics_context;
@@ -32,6 +34,10 @@ void ReleaseRendererContext(RendererContext* context, StackAllocator* alloc) {
 	ReleaseAsyncTransferQueue(context->async_transfer_queue);
 	
 	for (auto& buffer : context->upload_buffers) {
+		ReleaseBufferResource(context->graphics_context, buffer);
+	}
+	
+	for (auto& buffer : context->readback_buffers) {
 		ReleaseBufferResource(context->graphics_context, buffer);
 	}
 	
@@ -59,6 +65,7 @@ void ReleaseResourceTable(GraphicsContext* graphics_context, VirtualResourceTabl
 	
 	ReleaseBufferResource(graphics_context, resource_table->virtual_resources[(u32)VirtualResourceID::GpuMeshAssetData].buffer.resource);
 	ReleaseBufferResource(graphics_context, resource_table->virtual_resources[(u32)VirtualResourceID::GpuMeshEntityData].buffer.resource);
+	ReleaseBufferResource(graphics_context, resource_table->virtual_resources[(u32)VirtualResourceID::MeshAssetAliveMask].buffer.resource);
 	ReleaseBufferResource(graphics_context, resource_table->virtual_resources[(u32)VirtualResourceID::MeshEntityAliveMask].buffer.resource);
 	ReleaseBufferResource(graphics_context, resource_table->virtual_resources[(u32)VirtualResourceID::MeshEntityGpuTransform].buffer.resource);
 	ReleaseBufferResource(graphics_context, resource_table->virtual_resources[(u32)VirtualResourceID::MeshEntityPrevGpuTransform].buffer.resource);
@@ -70,12 +77,16 @@ RecordContext* BeginRecordContext(StackAllocator* alloc, RendererContext* contex
 	record_context->alloc          = alloc;
 	record_context->context        = context->graphics_context;
 	record_context->resource_table = resource_table;
+	record_context->frame_index    = context->graphics_context->frame_sync_index;
 	
 	resource_table->Set(VirtualResourceID::CurrentBackBuffer, WindowSwapGetCurrentBackBuffer(swap_chain), swap_chain->size);
 	resource_table->Set(VirtualResourceID::MeshAssetBuffer, context->mesh_asset_buffer, mesh_asset_buffer_size);
 	resource_table->Set(VirtualResourceID::DebugMeshBuffer, context->debug_geometry_buffer.resource, (u32)context->debug_geometry_buffer.resource_size);
-	resource_table->Set(VirtualResourceID::TransientUploadBuffer, context->upload_buffers[context->upload_buffer_index], upload_buffer_size, context->upload_buffer_cpu_addresses[context->upload_buffer_index]);
-	context->upload_buffer_index = (context->upload_buffer_index + 1) % number_of_frames_in_flight;
+	
+	u64 buffer_index = context->transient_buffer_index;
+	resource_table->Set(VirtualResourceID::TransientUploadBuffer, context->upload_buffers[buffer_index], upload_buffer_size, context->upload_buffer_cpu_addresses[buffer_index]);
+	resource_table->Set(VirtualResourceID::TransientReadbackBuffer, context->readback_buffers[buffer_index], readback_buffer_size, context->readback_buffer_cpu_addresses[buffer_index]);
+	context->transient_buffer_index = (buffer_index + 1) % number_of_frames_in_flight;
 	
 	return record_context;
 }

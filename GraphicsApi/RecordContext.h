@@ -38,8 +38,9 @@ struct RecordContext {
 	u32 command_count  = 0;
 	u8* command_memory_base = nullptr;
 	
+	u64 frame_index = 0;
 	u32 upload_buffer_offset = 0;
-	u32 padding_0 = 0;
+	u32 readback_buffer_offset = 0;
 	
 	Array<HLSL::BaseDescriptorTable*> descriptor_tables;
 	VirtualResourceTable* resource_table = nullptr;
@@ -157,10 +158,10 @@ struct TransientBufferAllocation {
 };
 
 template<typename T = u8, u32 alignment = 256u>
-inline TransientBufferAllocation<T> AllocateTransientUploadBuffer(RecordContext* record_context, u32 size = 1u) {
-	auto& upload_buffer = GetVirtualResource(record_context, VirtualResourceID::TransientUploadBuffer);
+inline TransientBufferAllocation<T> AllocateTransientBuffer(RecordContext* record_context, u32 size, VirtualResourceID resource_id, u32& transient_buffer_offset) {
+	auto& upload_buffer = GetVirtualResource(record_context, resource_id);
 	
-	u32 offset     = record_context->upload_buffer_offset;
+	u32 offset     = transient_buffer_offset;
 	u32 size_bytes = (u32)(size * sizeof(T));
 	
 	if constexpr (alignment & (alignment - 1)) {
@@ -172,13 +173,23 @@ inline TransientBufferAllocation<T> AllocateTransientUploadBuffer(RecordContext*
 	}
 	
 	TransientBufferAllocation<T> result;
-	result.gpu_address = GpuAddress(VirtualResourceID::TransientUploadBuffer, offset);
+	result.gpu_address = GpuAddress(resource_id, offset);
 	result.cpu_address = (T*)(upload_buffer.buffer.cpu_address + offset);
 	
 	offset += size_bytes;
-	DebugAssert(offset <= upload_buffer.buffer.size, "Upload buffer overflow. (%/%).", offset, upload_buffer.buffer.size);
-	record_context->upload_buffer_offset = offset;
+	DebugAssert(offset <= upload_buffer.buffer.size, "Transient buffer overflow. (%/%).", offset, upload_buffer.buffer.size);
+	transient_buffer_offset = offset;
 	
 	return result;
+}
+
+template<typename T = u8, u32 alignment = 256u>
+inline TransientBufferAllocation<T> AllocateTransientUploadBuffer(RecordContext* record_context, u32 size = 1u) {
+	return AllocateTransientBuffer<T, alignment>(record_context, size, VirtualResourceID::TransientUploadBuffer, record_context->upload_buffer_offset);
+}
+
+template<typename T = u8, u32 alignment = 256u>
+inline TransientBufferAllocation<T> AllocateTransientReadbackBuffer(RecordContext* record_context, u32 size = 1u) {
+	return AllocateTransientBuffer<T, alignment>(record_context, size, VirtualResourceID::TransientReadbackBuffer, record_context->readback_buffer_offset);
 }
 

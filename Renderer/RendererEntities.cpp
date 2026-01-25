@@ -68,7 +68,8 @@ void UpdateRendererEntityGpuComponents(StackAllocator* alloc, RecordContext* rec
 			GpuMeshAssetData mesh_asset;
 			mesh_asset.page_buffer_offset  = base_offset + layout.PageBufferOffset();
 			mesh_asset.meshlet_group_buffer_offset = base_offset + layout.MeshletGroupBufferOffset();
-			mesh_asset.meshlet_group_count = layout.meshlet_group_count;
+			mesh_asset.meshlet_group_count = (u16)layout.meshlet_group_count;
+			mesh_asset.meshlet_page_count  = (u16)layout.page_count;
 			AppendGpuTransferCommand(gpu_mesh_asset_data, i, mesh_asset);
 		}
 		ArrayAppend(gpu_uploads, alloc, gpu_mesh_asset_data);

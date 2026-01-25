@@ -114,6 +114,7 @@ Token Tokenizer::FindNextToken() {
 	case ':': return string[1] == ':' ? MakeToken(string, 2, TokenType::DoubleColon) : MakeToken(string, 1, TokenType::Colon);
 	case ';': return MakeToken(string, 1, TokenType::Semicolon);
 	case '#': return MakeToken(string, 1, TokenType::Hash);
+	case '?': return MakeToken(string, 1, TokenType::QuestionMark);
 	case '"': return ParseStringLiteral(string);
 	}
 	
@@ -162,6 +163,11 @@ Token Tokenizer::FindNextToken() {
 			break;
 		}
 		}
+	}
+	
+	if (token.type == TokenType::None && *string) {
+		token.string.count = 1;
+		ReportError(token, "Unexpected character."_sl);
 	}
 	
 	return token;
@@ -301,6 +307,7 @@ String token_type_names[] = {
 	"Keyword"_sl,
 	"String"_sl,
 	"Arrow"_sl,
+	"QuestionMark"_sl,
 };
 static_assert(ArraySize(token_type_names) == (u32)TokenType::Count, "Mismatching token_type_name count.");
 

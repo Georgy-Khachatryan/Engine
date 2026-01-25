@@ -3,7 +3,7 @@
 #include "Basic/BasicMath.h"
 #include "EntitySystem/EntitySystem.h"
 #include "EntitySystem/Components.h"
-
+#include "GraphicsApi/GraphicsApiTypes.h"
 
 struct GpuComponentUploadBuffer;
 struct DebugMeshInstanceArray;
@@ -43,6 +43,8 @@ struct RendererWorld {
 	
 	bool enable_anti_aliasing = true;
 	u32 jitter_frame_index = 0;
+	
+	GpuReadbackQueue meshlet_streaming_feedback_queue;
 	
 	Array<GpuComponentUploadBuffer> gpu_uploads;
 	

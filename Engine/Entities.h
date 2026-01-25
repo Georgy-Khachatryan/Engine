@@ -61,6 +61,11 @@ struct CameraEntityType {
 	ECS::Component<CameraComponent>   camera;
 };
 
+NOTES(Meta::ComponentQuery{})
+struct AliveEntityMaskQuery {
+	ECS::GpuMaskComponent<AliveEntityMask> alive_mask;
+};
+
 
 struct RecordContext;
 void UpdateEntityGpuComponents(StackAllocator* alloc, RecordContext* record_context, WorldEntitySystem& world_system, AssetEntitySystem& asset_system, Array<GpuComponentUploadBuffer>& gpu_uploads);

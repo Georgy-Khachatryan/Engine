@@ -21,16 +21,16 @@ void WaitForLastFrame(GraphicsContext* api_context) {
 	ProfilerScope("WaitForLastFrame");
 	
 	auto* context = (GraphicsContextD3D12*)api_context;
-	if (context->frame_index <= 1) return;
-	context->frame_sync_fence->SetEventOnCompletion(context->frame_index - 1, nullptr);
+	if (context->frame_sync_index <= 1) return;
+	context->frame_sync_fence->SetEventOnCompletion(context->frame_sync_index - 1, nullptr);
 }
 
 void WaitForNextFrame(GraphicsContext* api_context) {
 	ProfilerScope("WaitForNextFrame");
 	
 	auto* context = (GraphicsContextD3D12*)api_context;
-	if (context->frame_index <= number_of_frames_in_flight) return;
-	context->frame_sync_fence->SetEventOnCompletion(context->frame_index - number_of_frames_in_flight, nullptr);
+	if (context->frame_sync_index <= number_of_frames_in_flight) return;
+	context->frame_sync_fence->SetEventOnCompletion(context->frame_sync_index - number_of_frames_in_flight, nullptr);
 }
 
 static void BuildPipelineStates(GraphicsContextD3D12* context, StackAllocator* alloc, bool build_only_dirty_pipelines = true);
@@ -147,7 +147,7 @@ GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
 			return nullptr;
 		}
 		context->frame_sync_fence = fence;
-		context->frame_index = 1;
+		context->frame_sync_index = 1;
 	}
 	
 	
@@ -894,7 +894,7 @@ void WindowSwapChainBeginFrame(WindowSwapChain* api_swap_chain, GraphicsContext*
 		BuildPipelineStates(context, alloc);
 	}
 	
-	auto* command_allocator = context->command_allocators[context->frame_index % number_of_frames_in_flight];
+	auto* command_allocator = context->command_allocators[context->frame_sync_index % number_of_frames_in_flight];
 	auto* command_list = context->command_list;
 	
 	command_allocator->Reset();
@@ -923,10 +923,10 @@ void WindowSwapChainEndFrame(WindowSwapChain* api_swap_chain, GraphicsContext* a
 	if (FAILED(swap_chain->dxgi_swap_chain->Present(sync_interval, 0))) {
 		DebugAssertAlways("Present failed.");
 	}
-	command_queue->Signal(context->frame_sync_fence, context->frame_index);
+	command_queue->Signal(context->frame_sync_fence, context->frame_sync_index);
 	command_queue->Signal(context->async_copy_fence, context->async_copy_index);
 	
-	context->frame_index += 1;
+	context->frame_sync_index += 1;
 }
 
 

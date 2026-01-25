@@ -11,7 +11,8 @@ compile_const u32 transient_srv_descriptor_count  = 1024;
 struct RecordContext;
 
 struct GraphicsContext {
-	
+	// At the end of each frame we signal this index on the internal frame_sync_fence, then it's incremented. Might not actually start from 0.
+	u64 frame_sync_index = 0;
 };
 
 struct WindowSwapChain {

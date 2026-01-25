@@ -44,6 +44,7 @@ float2 Pow2(float2 value) { return value * value; }
 float3 Pow2(float3 value) { return value * value; }
 float4 Pow2(float4 value) { return value * value; }
 
+uint DivideAndRoundUp(uint numerator, uint denominator) { return (numerator + (denominator - 1)) / denominator; }
 
 //
 // Based on https://fgiesen.wordpress.com/2022/09/09/morton-codes-addendum/

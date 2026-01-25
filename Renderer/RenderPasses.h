@@ -17,6 +17,7 @@ enum struct VirtualResourceID : u32 {
 	MeshEntityPrevGpuTransform,
 	GpuMeshEntityData,
 	GpuMeshAssetData,
+	MeshAssetAliveMask,
 	
 	// Streaming buffers:
 	MeshAssetBuffer,
@@ -24,6 +25,7 @@ enum struct VirtualResourceID : u32 {
 	// Core resources:
 	CurrentBackBuffer,
 	TransientUploadBuffer,
+	TransientReadbackBuffer,
 	
 	// Common scene resources:
 	DepthStencil,
@@ -35,6 +37,7 @@ enum struct VirtualResourceID : u32 {
 	// Mesh rendering:
 	VisibleMeshlets,
 	MeshletIndirectArguments,
+	MeshletStreamingFeedback,
 	
 	// Atmosphere resources:
 	TransmittanceLut,
@@ -285,8 +288,9 @@ struct UpdateMeshletPageTableRenderPass {
 
 NOTES(Meta::ShaderName{ "MeshletCulling.hlsl"_sl })
 enum struct MeshletCullingShaders : u32 {
-	ClearBuffers   = 1u << 0,
-	MeshletCulling = 1u << 1,
+	ClearBuffers              = 1u << 0,
+	AllocateStreamingFeedback = 1u << 1,
+	MeshletCulling            = 1u << 2,
 };
 SHADER_DEFINITION_GENERATED_CODE(MeshletCullingShaders);
 
@@ -296,6 +300,26 @@ struct MeshletClearBuffersRenderPass {
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
 		HLSL::RWRegularBuffer<uint4> indirect_arguments = VirtualResourceID::MeshletIndirectArguments;
+		HLSL::RWRegularBuffer<u32> meshlet_streaming_feedback = VirtualResourceID::MeshletStreamingFeedback;
+	};
+	
+	struct RootSignature : HLSL::BaseRootSignature {
+		HLSL::DescriptorTable<Descriptors> descriptor_table;
+	};
+	
+	inline static PipelineID pipeline_id;
+};
+
+NOTES(Meta::RenderPass{})
+struct MeshletAllocateStreamingFeedbackRenderPass {
+	RENDER_PASS_GENERATED_CODE();
+	
+	AssetEntitySystem* asset_system = nullptr;
+	
+	struct Descriptors : HLSL::BaseDescriptorTable {
+		HLSL::RegularBuffer<u32> mesh_asset_alive_mask = VirtualResourceID::MeshAssetAliveMask;
+		HLSL::RWRegularBuffer<GpuMeshAssetData> mesh_asset_data = VirtualResourceID::GpuMeshAssetData;
+		HLSL::RWRegularBuffer<u32> meshlet_streaming_feedback = VirtualResourceID::MeshletStreamingFeedback;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {
@@ -310,6 +334,7 @@ struct MeshletCullingRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
 	WorldEntitySystem* world_system = nullptr;
+	GpuReadbackQueue* meshlet_streaming_feedback_queue = nullptr;
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
 		HLSL::RegularBuffer<u32>              mesh_alive_mask = VirtualResourceID::MeshEntityAliveMask;
@@ -319,6 +344,7 @@ struct MeshletCullingRenderPass {
 		HLSL::ByteBuffer             mesh_asset_buffer  = VirtualResourceID::MeshAssetBuffer;
 		HLSL::RWRegularBuffer<uint2> visible_meshlets   = VirtualResourceID::VisibleMeshlets;
 		HLSL::RWRegularBuffer<uint4> indirect_arguments = VirtualResourceID::MeshletIndirectArguments;
+		HLSL::RWRegularBuffer<u32> meshlet_streaming_feedback = VirtualResourceID::MeshletStreamingFeedback;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {

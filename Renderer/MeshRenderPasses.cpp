@@ -16,7 +16,26 @@ void MeshletClearBuffersRenderPass::RecordPass(RecordContext* record_context) {
 	
 	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
 	
-	CmdDispatch(record_context);
+	auto& meshlet_streaming_feedback = GetVirtualResource(record_context, VirtualResourceID::MeshletStreamingFeedback);
+	CmdDispatch(record_context, DivideAndRoundUp(meshlet_streaming_feedback.buffer.size, (u32)(256u * sizeof(u32))));
+}
+
+void MeshletAllocateStreamingFeedbackRenderPass::CreatePipelines(PipelineLibrary* lib) {
+	pipeline_id = CreateComputePipeline(lib, MeshletCullingShadersID, MeshletCullingShaders::AllocateStreamingFeedback);
+}
+
+void MeshletAllocateStreamingFeedbackRenderPass::RecordPass(RecordContext* record_context) {
+	auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
+	
+	CmdSetRootSignature(record_context, root_signature);
+	CmdSetPipelineState(record_context, pipeline_id);
+	
+	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
+	
+	auto* mesh_assets = QueryEntities<MeshAssetType>(record_context->alloc, *asset_system)[0];
+	if (mesh_assets->capacity != 0) { // TODO: Use the minimize the dispatch size.
+		CmdDispatch(record_context, DivideAndRoundUp(mesh_assets->capacity, 256u));
+	}
 }
 
 
@@ -36,6 +55,37 @@ void MeshletCullingRenderPass::RecordPass(RecordContext* record_context) {
 	if (mesh_entities->capacity != 0) { // TODO: Use the minimize the dispatch size.
 		CmdDispatch(record_context, 1u, mesh_entities->capacity);
 	}
+	
+	
+	auto& meshlet_streaming_feedback = GetVirtualResource(record_context, VirtualResourceID::MeshletStreamingFeedback);
+	auto [readback_gpu_address, readback_cpu_address] = AllocateTransientReadbackBuffer(record_context, meshlet_streaming_feedback.buffer.size);
+	
+	CmdCopyBufferToBuffer(record_context, VirtualResourceID::MeshletStreamingFeedback, readback_gpu_address, meshlet_streaming_feedback.buffer.size);
+	meshlet_streaming_feedback_queue->Store(readback_cpu_address, record_context->frame_index);
+	
+#if 0
+	auto element = meshlet_streaming_feedback_queue->Load(record_context->frame_index);
+	if (element.data) {
+		u32* meshlet_streaming_feedback_data = (u32*)element.data;
+		
+		u32 read_index = 0;
+		u32 size = meshlet_streaming_feedback_data[read_index++];
+		while (read_index < size) {
+			u32 mesh_asset_index     = meshlet_streaming_feedback_data[read_index++];
+			u32 feedback_buffer_size = meshlet_streaming_feedback_data[read_index++];
+			
+			SystemWriteToConsole(record_context->alloc, "MeshAssetIndex: %\n"_sl, mesh_asset_index);
+			for (u32 i = 0; i < feedback_buffer_size; i += 1) {
+				u32 page_mask = meshlet_streaming_feedback_data[read_index++];
+				
+				for (u32 bit_index : BitScanLow32(page_mask)) {
+					u32 page_index = i * 32u + bit_index;
+					SystemWriteToConsole(record_context->alloc, "\tPageIndex: %\n"_sl, page_index);
+				}
+			}
+		}
+	}
+#endif
 }
 
 

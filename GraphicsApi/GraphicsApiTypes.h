@@ -393,6 +393,27 @@ struct PipelineStateDescription {
 };
 
 
+struct GpuReadbackQueueElement {
+	u8* data = nullptr;
+	u64 frame_index = 0;
+};
+
+struct GpuReadbackQueue {
+	FixedCountArray<GpuReadbackQueueElement, number_of_frames_in_flight * 2> elements;
+	
+	void Store(u8* data, u64 frame_index) {
+		auto& element = elements[(frame_index + number_of_frames_in_flight) % elements.capacity];
+		element.data = data;
+		element.frame_index = frame_index;
+	}
+	
+	GpuReadbackQueueElement Load(u64 frame_index) {
+		auto& element = elements[frame_index % elements.capacity];
+		bool is_valid_element = (element.frame_index + number_of_frames_in_flight) == frame_index;
+		return is_valid_element ? element : GpuReadbackQueueElement{};
+	}
+};
+
 struct AsyncCopyBufferToBufferCommand {
 	NativeBufferResource src_resource;
 	NativeBufferResource dst_resource;

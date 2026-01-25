@@ -44,7 +44,6 @@ struct GraphicsContextD3D12 : GraphicsContext {
 	u64 async_copy_index = 0;
 	
 	ID3D12Fence* frame_sync_fence = nullptr;
-	u64 frame_index = 0;
 	
 	ID3D12GraphicsCommandList7* command_list = nullptr;
 	FixedCountArray<ID3D12CommandAllocator*, number_of_frames_in_flight> command_allocators = {};

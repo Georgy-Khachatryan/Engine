@@ -179,8 +179,12 @@ void WriteEntitySystemMetadata(StackAllocator* alloc, ArrayView<TypeInfoStruct*>
 			
 			auto* element = HashTableFind(component_types, component_type_info_key);
 			
+			if (element == nullptr) {
+				ReportError(alloc, field.source_location, "Component type '%' is used in a query, but no entity with this component type exists. Check if query and entity components are declared using matching CPU/GPU/GpuMask type."_sl, component_type_info->name);
+			}
+			
 			QueryComponentMetadata component_metadata;
-			component_metadata.component_type_id.index = element ? element->value : u32_max;
+			component_metadata.component_type_id.index = element->value;
 			component_metadata.component_stream_index  = stream_index++;
 			
 			ArrayAppend(component_type_infos, component_metadata);

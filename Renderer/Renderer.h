@@ -32,8 +32,10 @@ struct RendererContext {
 	AsyncTransferQueue* async_transfer_queue = nullptr;
 	
 	FixedCountArray<NativeBufferResource, number_of_frames_in_flight> upload_buffers;
+	FixedCountArray<NativeBufferResource, number_of_frames_in_flight> readback_buffers;
 	FixedCountArray<u8*, number_of_frames_in_flight> upload_buffer_cpu_addresses;
-	u64 upload_buffer_index = 0;
+	FixedCountArray<u8*, number_of_frames_in_flight> readback_buffer_cpu_addresses;
+	u64 transient_buffer_index = 0;
 	
 	NativeBufferResource mesh_asset_buffer;
 	u64 mesh_asset_buffer_offset = 0;

@@ -58,7 +58,9 @@ NOTES(Meta::HlslFile{ "MeshData.hlsl"_sl })
 struct GpuMeshAssetData {
 	u32 page_buffer_offset  = 0;
 	u32 meshlet_group_buffer_offset = 0;
-	u32 meshlet_group_count = 0;
+	u16 meshlet_group_count = 0;
+	u16 meshlet_page_count  = 0;
+	u32 feedback_buffer_offset = 0; // GPU allocated every frame.
 };
 
 NOTES()
@@ -110,5 +112,8 @@ struct MeshAssetType {
 	
 	NOTES(VirtualResourceID::GpuMeshAssetData)
 	ECS::GpuComponent<GpuMeshAssetData> gpu_mesh_asset_data;
+	
+	NOTES(VirtualResourceID::MeshAssetAliveMask)
+	ECS::GpuMaskComponent<AliveEntityMask> alive_mask;
 };
 

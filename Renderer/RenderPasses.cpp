@@ -16,6 +16,7 @@ static void BuildResourceTable(RecordContext* record_context, WorldEntitySystem*
 	auto* mesh_entities = QueryEntities<GpuMeshEntityQuery>(record_context->alloc, *world_system)[0];
 	table.Set(ID::VisibleMeshlets, SceneConstants::visible_meshlet_buffer_count * sizeof(uint2));
 	table.Set(ID::MeshletIndirectArguments, sizeof(uint4));
+	table.Set(ID::MeshletStreamingFeedback, 64u * 1024u);
 	
 	table.Set(ID::SceneRadiance, TextureSize(TextureFormat::R16G16B16A16_FLOAT, render_target_size));
 	table.Set(ID::DepthStencil,  TextureSize(TextureFormat::D32_FLOAT, render_target_size));
@@ -101,7 +102,8 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	AtmosphereCompositeRenderPass{ atmosphere_parameters_gpu_address }.RecordPass(record_context);
 	
 	MeshletClearBuffersRenderPass{}.RecordPass(record_context);
-	MeshletCullingRenderPass{ world_system }.RecordPass(record_context);
+	MeshletAllocateStreamingFeedbackRenderPass{ asset_system }.RecordPass(record_context);
+	MeshletCullingRenderPass{ world_system, &renderer_world.meshlet_streaming_feedback_queue }.RecordPass(record_context);
 	BasicMeshRenderPass{}.RecordPass(record_context);
 	DebugGeometryRenderPass{ renderer_world.debug_mesh_instance_arrays, &renderer_context->debug_geometry_buffer }.RecordPass(record_context);
 	
