@@ -59,6 +59,13 @@ struct MeshSourceData {
 	}
 }
 
+struct AabbComponent {
+	/*Version*/ 0 {
+		min float3 0;
+		max float3 0;
+	}
+}
+
 struct PositionComponent {
 	/*Version*/ 0 {
 		position float3 0;

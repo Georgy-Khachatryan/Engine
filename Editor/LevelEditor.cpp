@@ -174,6 +174,19 @@ static void GizmoControls(CameraEntityType camera_entity, WorldEntitySystem& wor
 	}
 }
 
+static void DrawDebugFrustumCullingBounds(ImGuiDrawList3D* draw_list_3d, CameraEntityType camera_entity, WorldEntityType world_entity) {
+	auto& scene = world_entity.renderer_world->scene_constants;
+	auto clip_to_view_coef = Math::ViewToClipInverse(scene.culling_view_to_clip_coef);
+	auto world_space_position = scene.world_space_camera_position;
+	auto view_to_world_quat = world_entity.renderer_world->debug_freeze_culling_camera.view_to_world_rotation;
+	
+	for (u32 i = 0; i < 4; i += 1) {
+		auto uv_corner = float2((float)(i & 0x1), (float((i >> 1) & 0x1)));
+		auto ray_info = Math::TransformRayViewToWorld(Math::RayInfoFromScreenUv(uv_corner, clip_to_view_coef), world_space_position, view_to_world_quat);
+		draw_list_3d->AddArrow(ray_info.origin, ray_info.direction, 100.f, 0.1f, ~0u);
+	}
+}
+
 static void DuplicateSelectedEntities(StackAllocator* alloc, WorldEntitySystem& world_system, UndoRedoSystem& undo_redo_system, HashTable<u64, void>& selected_entities_hash_table, u64 selection_state_entity) {
 	TempAllocationScope(alloc);
 	
@@ -755,6 +768,7 @@ void LevelEditorUpdate(LevelEditorContext* editor_context, StackAllocator* alloc
 	ImGui::SliderFloat("Meshlet Target Error Pixels", &world_entity.renderer_world->meshlet_target_error_pixels, 1.f, 128.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
 	ImGui::SliderFloat("Sun Elevation", &world_entity.renderer_world->sun_elevation_degrees, -10.f, +190.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
 	ImGui::Checkbox("Enable Anti Aliasing", &world_entity.renderer_world->enable_anti_aliasing);
+	ImGui::Checkbox("Freeze Culling state", &world_entity.renderer_world->debug_freeze_culling_camera.enabled);
 	
 	ImGui::SetNextItemWidth(-FLT_MIN);
 	if (ImGui::BeginCombo("##CreateEntity", "Create Entity")) {
@@ -797,6 +811,10 @@ void LevelEditorUpdate(LevelEditorContext* editor_context, StackAllocator* alloc
 	auto camera_entity = QueryEntityByGUID<CameraEntityType>(world_system, world_entity.camera_entity->guid);
 	CameraControls(camera_entity, scene_focused, scene_hovered, mouse_lock, float2(window_pos), float2(window_size));
 	GizmoControls(camera_entity, world_system, undo_redo_system, selected_entities_hash_table, &draw_list_3d, float2(window_pos), float2(window_size), editor_context->use_local_space_gizmo);
+	
+	if (world_entity.renderer_world->debug_freeze_culling_camera.enabled) {
+		DrawDebugFrustumCullingBounds(&draw_list_3d, camera_entity, world_entity);
+	}
 	
 	auto renderer_world = world_entity.renderer_world;
 	renderer_world->window_size = float2(window_size);

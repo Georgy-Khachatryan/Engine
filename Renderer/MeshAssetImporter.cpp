@@ -29,7 +29,7 @@ struct MeshletGroupSortKey {
 	u32 mdt_group_index = 0;
 };
 
-MeshRuntimeDataLayout ImportFbxMeshFile(StackAllocator* alloc, String filepath, u64 runtime_data_guid) {
+MeshImportResult ImportFbxMeshFile(StackAllocator* alloc, String filepath, u64 runtime_data_guid) {
 	ProfilerScope("ImportFbxMeshFile");
 	TempAllocationScope(alloc);
 	
@@ -217,6 +217,8 @@ MeshRuntimeDataLayout ImportFbxMeshFile(StackAllocator* alloc, String filepath, 
 		
 		dst_group.meshlet_count = src_group.end_meshlet_index - src_group.begin_meshlet_index;
 		dst_group.error_metric  = LoadMdtErrorMetric(src_group.error_metric);
+		dst_group.aabb_center   = (float3(src_group.aabb_max) + float3(src_group.aabb_min)) * 0.5f;
+		dst_group.aabb_radius   = (float3(src_group.aabb_max) - float3(src_group.aabb_min)) * 0.5f;
 		
 		for (u32 meshlet_index = src_group.begin_meshlet_index; meshlet_index < src_group.end_meshlet_index; meshlet_index += 1) {
 			auto& src_meshlet = mdt_meshlets[meshlet_index];
@@ -284,6 +286,8 @@ MeshRuntimeDataLayout ImportFbxMeshFile(StackAllocator* alloc, String filepath, 
 				MeshletCullingData culling_data;
 				culling_data.current_level_error_metric = LoadMdtErrorMetric(src_meshlet.current_level_error_metric);
 				culling_data.meshlet_header_offset      = (u32)(page_meshlet_data_offset - page_culling_data_offset);
+				culling_data.aabb_center                = (float3(src_meshlet.aabb_max) + float3(src_meshlet.aabb_min)) * 0.5f;
+				culling_data.aabb_radius                = (float3(src_meshlet.aabb_max) - float3(src_meshlet.aabb_min)) * 0.5f;
 				
 				if (src_meshlet.current_level_meshlet_group_index != u32_max) {
 					culling_data.current_level_meshlet_group_index = mdt_to_result_meshlet_group_index[src_meshlet.current_level_meshlet_group_index];
@@ -351,5 +355,5 @@ MeshRuntimeDataLayout ImportFbxMeshFile(StackAllocator* alloc, String filepath, 
 	SystemWriteFile(runtime_file, &page_residency_mask, sizeof(page_residency_mask), write_offset);
 	write_offset += sizeof(page_residency_mask);
 	
-	return runtime_data_layout;
+	return { runtime_data_layout, mesh_aabb_min, mesh_aabb_max };
 }

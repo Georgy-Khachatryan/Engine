@@ -13,6 +13,12 @@ NOTES() struct NameComponent { String name;  };
 
 NOTES() struct AliveEntityMask { u64 mask = 0; };
 
+NOTES()
+struct AabbComponent {
+	float3 min;
+	float3 max;
+};
+
 NOTES(Meta::ComponentQuery{})
 struct GuidQuery {
 	GuidComponent* guid = nullptr;

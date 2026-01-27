@@ -23,6 +23,10 @@ struct MeshletErrorMetric {
 NOTES(Meta::HlslFile{ "MeshData.hlsl"_sl })
 struct MeshletCullingData {
 	MeshletErrorMetric current_level_error_metric;
+	
+	float3 aabb_center;
+	float3 aabb_radius;
+	
 	u32 meshlet_header_offset = 0;
 	u32 current_level_meshlet_group_index = u32_max;
 };
@@ -44,15 +48,18 @@ struct MeshletPageHeader {
 
 NOTES(Meta::HlslFile{ "MeshData.hlsl"_sl })
 struct MeshletGroup {
+	MeshletErrorMetric error_metric;
+	
+	float3 aabb_center;
+	float3 aabb_radius;
+	
 	u32 meshlet_offset = 0;
 	u16 meshlet_count  = 0;
 	u16 is_resident    = 0;
 	u32 page_index = 0;
 	u32 page_count = 0;
 	
-	MeshletErrorMetric error_metric;
-	
-	compile_const u32 offset_of_is_resident = 6;
+	compile_const u32 offset_of_is_resident = 50;
 };
 
 NOTES(Meta::HlslFile{ "MeshData.hlsl"_sl })
@@ -61,6 +68,9 @@ struct GpuMeshAssetData {
 	u16 meshlet_group_count = 0;
 	u16 meshlet_page_count  = 0;
 	u32 feedback_buffer_offset = 0; // GPU allocated every frame.
+	
+	float3 aabb_center;
+	float3 aabb_radius;
 };
 
 NOTES()
@@ -70,13 +80,19 @@ struct MeshSourceData {
 
 NOTES()
 struct MeshRuntimeDataLayout {
-	compile_const u64 current_version = 18;
+	compile_const u64 current_version = 23;
 	
 	u64 file_guid = 0;
 	u64 version   = 0;
 	
 	u32 page_count = 0;
 	u32 meshlet_group_count = 0;
+};
+
+struct MeshImportResult {
+	MeshRuntimeDataLayout layout;
+	float3 aabb_min;
+	float3 aabb_max;
 };
 
 NOTES(Meta::NoSaveLoad{})
@@ -103,6 +119,7 @@ struct MeshAssetType {
 	ECS::Component<MeshRuntimeDataLayout> runtime_data_layout;
 	ECS::Component<MeshRuntimeFile>       runtime_file;
 	ECS::Component<MeshRuntimeAllocation> allocation;
+	ECS::Component<AabbComponent>         aabb;
 	
 	NOTES(VirtualResourceID::GpuMeshAssetData)
 	ECS::GpuComponent<GpuMeshAssetData> gpu_mesh_asset_data;

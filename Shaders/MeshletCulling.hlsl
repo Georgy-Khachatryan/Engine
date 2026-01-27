@@ -40,7 +40,7 @@ float2 EvaluateMeshletErrorMetric(MeshletErrorMetric error_metric, GpuTransform 
 	float2 result;
 	result.x = model_to_world.scale * error_metric.error * scene.world_to_pixel_scale;
 	
-	if (IsPerspectiveMatrix(scene.view_to_clip_coef)) {
+	if (IsPerspectiveMatrix(scene.culling_view_to_clip_coef)) {
 		float3 center_world_space = QuatMul(model_to_world.rotation, error_metric.center * model_to_world.scale) + model_to_world.position;
 		float  radius_world_space = error_metric.radius * model_to_world.scale;
 		
@@ -54,6 +54,28 @@ float2 EvaluateMeshletErrorMetric(MeshletErrorMetric error_metric, GpuTransform 
 
 bool LodCullCurrentLevelError(float2 error_metric) { return (error_metric.x <= error_metric.y); }
 bool LodCullCoarserLevelError(float2 error_metric) { return (error_metric.x <= error_metric.y) == false; }
+
+bool IsModelSpaceBoxVisible(GpuTransform model_to_world, float3 aabb_center, float3 aabb_radius) {
+	uint visible_plane_mask = 0;
+	
+	// TODO: Optimize. We could transform center and 3 extent vectors instead of 8 corners, precompute rotation matrix, classify corners, etc.
+	for (uint i = 0; i < 8; i += 1) {
+		float3 uv_space_corner    = float3(i & 0x1, (i >> 1) & 0x1, (i >> 2) & 0x1) * 2.0 - 1.0;
+		float3 model_space_corner = aabb_center + aabb_radius * uv_space_corner;
+		float3 world_space_corner = QuatMul(model_to_world.rotation, model_space_corner * model_to_world.scale) + model_to_world.position;
+		float3 view_space_corner  = mul(scene.culling_world_to_view, float4(world_space_corner, 1.0));
+		float4 clip_space_corner  = TransformViewToClipSpace(view_space_corner, scene.culling_view_to_clip_coef);
+		
+		if (clip_space_corner.x > -clip_space_corner.w) visible_plane_mask |= 0x1;
+		if (clip_space_corner.x < +clip_space_corner.w) visible_plane_mask |= 0x2;
+		if (clip_space_corner.y > -clip_space_corner.w) visible_plane_mask |= 0x4;
+		if (clip_space_corner.y < +clip_space_corner.w) visible_plane_mask |= 0x8;
+		if (clip_space_corner.z > 0.0)                  visible_plane_mask |= 0x10;
+		if (clip_space_corner.z < +clip_space_corner.w) visible_plane_mask |= 0x20;
+	}
+	
+	return visible_plane_mask == 0x3F;
+}
 
 compile_const uint thread_group_size = 256;
 
@@ -69,6 +91,8 @@ void MainCS(uint2 thread_id : SV_DispatchThreadID) {
 	GpuMeshAssetData mesh_asset = mesh_asset_data[mesh_asset_index];
 	GpuTransform model_to_world = mesh_transforms[mesh_entity_index];
 	
+	if (IsModelSpaceBoxVisible(model_to_world, mesh_asset.aabb_center, mesh_asset.aabb_radius) == false) return;
+	
 	compile_const uint page_residency_mask_size = MeshletPageHeader::max_page_count / 32u;
 	uint page_table_offset = mesh_asset.meshlet_group_buffer_offset + mesh_asset.meshlet_group_count * sizeof(MeshletGroup) + page_residency_mask_size * sizeof(uint);
 	
@@ -78,6 +102,8 @@ void MainCS(uint2 thread_id : SV_DispatchThreadID) {
 		
 		bool is_visible = LodCullCoarserLevelError(coarser_level_error_metric);
 		if (is_visible == false) continue;
+		
+		if (IsModelSpaceBoxVisible(model_to_world, group.aabb_center, group.aabb_radius) == false) continue;
 		
 		// Write streaming feedback for both resident and non resident pages.
 		for (uint page_index = group.page_index; page_index < (group.page_index + group.page_count); page_index += 1) {
@@ -114,6 +140,8 @@ void MainCS(uint2 thread_id : SV_DispatchThreadID) {
 				
 				bool is_visible = LodCullCurrentLevelError(current_level_error_metric);
 				if (is_visible == false && has_higher_level_of_detail) continue;
+				
+				if (IsModelSpaceBoxVisible(model_to_world, meshlet.aabb_center, meshlet.aabb_radius) == false) continue;
 				
 				uint visible_meshlet_index = 0;
 				InterlockedAdd(indirect_arguments[0].x, 1u, visible_meshlet_index);

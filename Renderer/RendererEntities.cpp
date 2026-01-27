@@ -7,7 +7,7 @@
 #include "RendererEntities.h"
 #include "RenderPasses.h"
 
-extern MeshRuntimeDataLayout ImportFbxMeshFile(StackAllocator* alloc, String filepath, u64 runtime_data_guid);
+extern MeshImportResult ImportFbxMeshFile(StackAllocator* alloc, String filepath, u64 runtime_data_guid);
 
 void UpdateRendererEntityGpuComponents(StackAllocator* alloc, RecordContext* record_context, RendererContext* renderer_context, WorldEntitySystem& world_system, AssetEntitySystem& asset_system, Array<GpuComponentUploadBuffer>& gpu_uploads) {
 	ProfilerScope("UpdateRendererEntityGpuComponents");
@@ -23,14 +23,18 @@ void UpdateRendererEntityGpuComponents(StackAllocator* alloc, RecordContext* rec
 		auto streams = ExtractComponentStreams<MeshAssetType>(entity_array);
 		for (u64 i : BitArrayIt(entity_array->created_mask)) {
 			auto& layout = streams.runtime_data_layout[i];
+			auto& aabb = streams.aabb[i];
+			
 			if (layout.version == MeshRuntimeDataLayout::current_version) continue;
 			
 			if (layout.file_guid == 0) {
 				layout.file_guid = GenerateRandomNumber64(asset_system.guid_random_seed);
 			}
 			
-			auto& source_data = streams.source_data[i];
-			layout = ImportFbxMeshFile(alloc, source_data.filepath, layout.file_guid);
+			auto result = ImportFbxMeshFile(alloc, streams.source_data[i].filepath, layout.file_guid);
+			layout   = result.layout;
+			aabb.min = result.aabb_min;
+			aabb.max = result.aabb_max;
 		}
 	}
 	
@@ -70,11 +74,14 @@ void UpdateRendererEntityGpuComponents(StackAllocator* alloc, RecordContext* rec
 		for (u64 i : BitArrayIt(entity_array->dirty_mask)) {
 			auto& layout = streams.runtime_data_layout[i];
 			auto& allocation = streams.allocation[i];
+			auto& aabb = streams.aabb[i];
 			
 			GpuMeshAssetData mesh_asset;
 			mesh_asset.meshlet_group_buffer_offset = allocation.base_offset;
 			mesh_asset.meshlet_group_count = (u16)layout.meshlet_group_count;
 			mesh_asset.meshlet_page_count  = (u16)layout.page_count;
+			mesh_asset.aabb_center = (aabb.max + aabb.min) * 0.5f;
+			mesh_asset.aabb_radius = (aabb.max - aabb.min) * 0.5f;
 			AppendGpuTransferCommand(gpu_mesh_asset_data, i, mesh_asset);
 		}
 		ArrayAppend(gpu_uploads, alloc, gpu_mesh_asset_data);

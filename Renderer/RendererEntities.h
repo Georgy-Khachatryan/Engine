@@ -24,6 +24,10 @@ struct SceneConstants {
 	float3x4 prev_view_to_world;
 	float3x4 prev_world_to_view;
 	
+	// Separate from the regular camera transform because we might want to freeze these values for debugging.
+	float3x4 culling_world_to_view;
+	float4 culling_view_to_clip_coef;
+	
 	float2 jitter_offset_pixels;
 	float2 jitter_offset_ndc;
 	
@@ -33,6 +37,11 @@ struct SceneConstants {
 	compile_const u32 visible_meshlet_buffer_count = 1024 * 1024;
 };
 
+struct DebugFreezeCullingCamera {
+	bool enabled = false;
+	quat view_to_world_rotation;
+};
+
 NOTES(Meta::NoSaveLoad{})
 struct RendererWorld {
 	SceneConstants scene_constants;
@@ -40,6 +49,8 @@ struct RendererWorld {
 	float2 window_size = float2(1.f, 1.f);
 	float sun_elevation_degrees = 3.f;
 	float meshlet_target_error_pixels = 1.f;
+	
+	DebugFreezeCullingCamera debug_freeze_culling_camera;
 	
 	bool enable_anti_aliasing = true;
 	u32 jitter_frame_index = 0;
