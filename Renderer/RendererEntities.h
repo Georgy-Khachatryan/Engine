@@ -51,6 +51,19 @@ struct RendererWorld {
 	ArrayView<DebugMeshInstanceArray> debug_mesh_instance_arrays;
 };
 
+struct MeshletStreamingPage;
+struct MeshletStreamingPageOutCommand;
+struct MeshletStreamingPageFileReadCommand;
+struct MeshletStreamingPageInCommand;
+
+NOTES(Meta::NoSaveLoad{})
+struct MeshletStreamingSystem {
+	Array<MeshletStreamingPage> allocated_pages;
+	Array<u32> free_pages;
+	Array<MeshletStreamingPageOutCommand> page_out_commands;
+	Array<MeshletStreamingPageFileReadCommand> file_read_commands;
+	Array<MeshletStreamingPageInCommand> page_in_commands;
+};
 
 NOTES(Meta::HlslFile{ "MeshData.hlsl"_sl })
 struct GpuTransform {
@@ -113,6 +126,7 @@ NOTES(Meta::ComponentQuery{})
 struct WorldEntityQuery {
 	ECS::Component<CameraEntityGUID> camera_entity;
 	ECS::Component<RendererWorld> renderer_world;
+	ECS::Component<MeshletStreamingSystem> meshlet_streaming_system;
 	ECS::GpuComponent<SceneConstants> gpu_scene_constants;
 };
 

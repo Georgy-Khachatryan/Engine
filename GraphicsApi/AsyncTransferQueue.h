@@ -53,6 +53,8 @@ u64 AppendAsyncTransferCommand(AsyncTransferQueue* queue, const AsyncTransferCom
 u64 AsyncCopyMemoryToBuffer(AsyncTransferQueue* async_transfer_queue, NativeBufferResource dst_buffer, u64 dst_buffer_offset, u64 dst_buffer_size, void* src_data, u64 copy_size);
 u64 AsyncCopyFileToBuffer(AsyncTransferQueue* async_transfer_queue, NativeBufferResource dst_buffer, u64 dst_buffer_offset, u64 dst_buffer_size, FileHandle src_file, u64 src_file_offset, u64 copy_size);
 
+u64 CompletedGpuAsyncTransferIndex(AsyncTransferQueue* async_transfer_queue);
+
 AsyncTransferQueue* CreateAsyncTransferQueue(StackAllocator* alloc, GraphicsContext* graphics_context);
 void ReleaseAsyncTransferQueue(AsyncTransferQueue* queue);
 void UpdateAsyncTransferQueue(AsyncTransferQueue* queue);

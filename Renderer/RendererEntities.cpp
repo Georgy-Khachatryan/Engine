@@ -43,31 +43,36 @@ void UpdateRendererEntityGpuComponents(StackAllocator* alloc, RecordContext* rec
 		auto streams = ExtractComponentStreams<MeshAssetType>(entity_array);
 		
 		for (u64 i : BitArrayIt(entity_array->dirty_mask)) {
-			if (streams.allocation[i].base_offset != u32_max) continue;
+			auto& layout = streams.runtime_data_layout[i];
+			auto& allocation = streams.allocation[i];
 			
-			u32 allocation_size   = AlignUp(streams.runtime_data_layout[i].AllocationSize(), 4096u);
+			if (allocation.base_offset != u32_max) continue;
+			
+			compile_const u32 page_residency_mask_size = (MeshletPageHeader::max_page_count / 32u) * sizeof(u32);
+			u32 file_data_size  = layout.meshlet_group_count * sizeof(MeshletGroup) + page_residency_mask_size;
+			u32 allocation_size = file_data_size + layout.page_count * sizeof(u32);
+			
+			u32 aligned_allocation_size = AlignUp(allocation_size, 4096u);
+			
 			u32 allocation_offset = (u32)mesh_asset_buffer_offset;
+			mesh_asset_buffer_offset += aligned_allocation_size;
 			
-			mesh_asset_buffer_offset += allocation_size;
-			streams.allocation[i].base_offset = allocation_offset;
-			streams.allocation[i].streamed_in_page_count = streams.runtime_data_layout[i].page_count;
+			allocation.base_offset = allocation_offset;
 			
-			u64 guid = streams.runtime_data_layout[i].file_guid;
-			auto file = SystemOpenFile(alloc, StringFormat(alloc, "./Assets/Runtime/%x..mrd"_sl, guid), OpenFileFlags::Read | OpenFileFlags::Async);
-			
+			auto file = SystemOpenFile(alloc, StringFormat(alloc, "./Assets/Runtime/%x..mrd"_sl, layout.file_guid), OpenFileFlags::Read | OpenFileFlags::Async);
 			streams.runtime_file[i].file = file;
 			
-			AsyncCopyFileToBuffer(async_transfer_queue, mesh_asset_buffer, allocation_offset, mesh_asset_buffer_size, file, 0, allocation_size);
+			u64 file_offset = layout.page_count * MeshletPageHeader::page_size;
+			AsyncCopyFileToBuffer(async_transfer_queue, mesh_asset_buffer, allocation_offset, mesh_asset_buffer_size, file, file_offset, AlignUp(file_data_size, 4096u));
 		}
 		
 		auto gpu_mesh_asset_data = AllocateGpuComponentUploadBuffer(record_context, dirty_entity_count, streams.gpu_mesh_asset_data);
 		for (u64 i : BitArrayIt(entity_array->dirty_mask)) {
-			auto layout = streams.runtime_data_layout[i];
-			u32 base_offset = streams.allocation[i].base_offset;
+			auto& layout = streams.runtime_data_layout[i];
+			auto& allocation = streams.allocation[i];
 			
 			GpuMeshAssetData mesh_asset;
-			mesh_asset.page_buffer_offset  = base_offset + layout.PageBufferOffset();
-			mesh_asset.meshlet_group_buffer_offset = base_offset + layout.MeshletGroupBufferOffset();
+			mesh_asset.meshlet_group_buffer_offset = allocation.base_offset;
 			mesh_asset.meshlet_group_count = (u16)layout.meshlet_group_count;
 			mesh_asset.meshlet_page_count  = (u16)layout.page_count;
 			AppendGpuTransferCommand(gpu_mesh_asset_data, i, mesh_asset);

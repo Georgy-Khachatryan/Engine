@@ -338,14 +338,18 @@ MeshRuntimeDataLayout ImportFbxMeshFile(StackAllocator* alloc, String filepath, 
 	runtime_data_layout.page_count = (u32)result_pages.count;
 	runtime_data_layout.meshlet_group_count = (u32)result_meshlet_groups.count;
 	
-	for (u64 i = 0; i < result_pages.count; i += 1) {
-		SystemWriteFile(runtime_file, result_pages[i].data, page_size, i * page_size + runtime_data_layout.PageBufferOffset());
+	u64 write_offset = 0;
+	for (auto page : result_pages) {
+		SystemWriteFile(runtime_file, page.data, page_size, write_offset);
+		write_offset += page_size;
 	}
 	
-	SystemWriteFile(runtime_file, result_meshlet_groups.data, result_meshlet_groups.count * sizeof(MeshletGroup), runtime_data_layout.MeshletGroupBufferOffset());
+	SystemWriteFile(runtime_file, result_meshlet_groups.data, result_meshlet_groups.count * sizeof(MeshletGroup), write_offset);
+	write_offset += result_meshlet_groups.count * sizeof(MeshletGroup);
 	
 	u32 page_residency_mask[MeshletPageHeader::max_page_count / 32u] = {};
-	SystemWriteFile(runtime_file, &page_residency_mask, sizeof(page_residency_mask), runtime_data_layout.PageResidencyMaskOffset());
+	SystemWriteFile(runtime_file, &page_residency_mask, sizeof(page_residency_mask), write_offset);
+	write_offset += sizeof(page_residency_mask);
 	
 	return runtime_data_layout;
 }

@@ -324,3 +324,8 @@ u64 AsyncCopyFileToBuffer(AsyncTransferQueue* async_transfer_queue, NativeBuffer
 	command.dst.buffer.offset   = dst_buffer_offset;
 	return AppendAsyncTransferCommand(async_transfer_queue, command);
 }
+
+u64 CompletedGpuAsyncTransferIndex(AsyncTransferQueue* async_transfer_queue) {
+	return GetCompletedAsyncCopyCommandValue(async_transfer_queue->graphics_context);
+}
+

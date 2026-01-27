@@ -613,13 +613,6 @@ static void AssetBrowserEntityView(StackAllocator* alloc, AssetEntitySystem& ass
 			ImGui::EndTableItem();
 		}
 	}
-	
-	if (entity.mesh_runtime_allocation && entity.mesh_runtime_data_layout) {
-		if (ImGui::BeginTableItem("Meshlet Group Count")) {
-			ImGui::SliderInt("", (s32*)&entity.mesh_runtime_allocation->streamed_in_page_count, 0, (s32)entity.mesh_runtime_data_layout->page_count, "%d", ImGuiSliderFlags_AlwaysClamp);
-			ImGui::EndTableItem();
-		}
-	}
 }
 
 compile_const auto entities_save_load_path = "./Assets/Scene.csb"_sl;

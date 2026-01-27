@@ -6,7 +6,7 @@
 
 compile_const u32 upload_buffer_size     = 8 * 1024 * 1024;
 compile_const u32 readback_buffer_size   = 1 * 1024 * 1024;
-compile_const u32 mesh_asset_buffer_size = 32 * 1024 * 1024;
+compile_const u32 mesh_asset_buffer_size = MeshletPageHeader::page_size * MeshletPageHeader::runtime_page_count + (2 * 1024 * 1024);
 compile_const u32 max_transient_resource_table_entries = 16;
 
 RendererContext* CreateRendererContext(StackAllocator* alloc) {
@@ -23,6 +23,7 @@ RendererContext* CreateRendererContext(StackAllocator* alloc) {
 	context->async_transfer_queue   = CreateAsyncTransferQueue(alloc, graphics_context);
 	context->mesh_asset_buffer      = CreateBufferResource(graphics_context, mesh_asset_buffer_size);
 	context->mesh_asset_buffer_size = mesh_asset_buffer_size;
+	context->mesh_asset_buffer_offset = MeshletPageHeader::page_size * MeshletPageHeader::runtime_page_count;
 	context->debug_geometry_buffer  = DebugGeometryRenderPass::CreateDebugGeometryBuffer(alloc, graphics_context, context->async_transfer_queue);
 	
 	return context;

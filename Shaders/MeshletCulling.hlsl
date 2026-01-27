@@ -7,7 +7,7 @@ void MainCS(uint thread_id : SV_DispatchThreadID) {
 		indirect_arguments[0] = uint4(0, 1, 1, 0);
 	}
 	
-	meshlet_streaming_feedback[thread_id] = thread_id == 0 ? 1 : 0;
+	meshlet_streaming_feedback[thread_id] = thread_id == 0 ? 2 : 0;
 }
 #endif // defined(CLEAR_BUFFERS)
 
@@ -26,6 +26,7 @@ void MainCS(uint thread_id : SV_DispatchThreadID) {
 	
 	uint feedback_buffer_offset = 0;
 	InterlockedAdd(meshlet_streaming_feedback[0], feedback_buffer_size + mesh_asset_header_size, feedback_buffer_offset);
+	InterlockedAdd(meshlet_streaming_feedback[1], meshlet_page_count);
 	
 	mesh_asset_data[mesh_asset_index].feedback_buffer_offset = feedback_buffer_offset + mesh_asset_header_size;
 	meshlet_streaming_feedback[feedback_buffer_offset + 0] = mesh_asset_index;
@@ -68,6 +69,9 @@ void MainCS(uint2 thread_id : SV_DispatchThreadID) {
 	GpuMeshAssetData mesh_asset = mesh_asset_data[mesh_asset_index];
 	GpuTransform model_to_world = mesh_transforms[mesh_entity_index];
 	
+	compile_const uint page_residency_mask_size = MeshletPageHeader::max_page_count / 32u;
+	uint page_table_offset = mesh_asset.meshlet_group_buffer_offset + mesh_asset.meshlet_group_count * sizeof(MeshletGroup) + page_residency_mask_size * sizeof(uint);
+	
 	for (uint meshlet_group_index = thread_id.x; meshlet_group_index < mesh_asset.meshlet_group_count; meshlet_group_index += thread_group_size) {
 		MeshletGroup group = mesh_asset_buffer.Load<MeshletGroup>(mesh_asset.meshlet_group_buffer_offset + meshlet_group_index * sizeof(MeshletGroup));
 		float2 coarser_level_error_metric = EvaluateMeshletErrorMetric(group.error_metric, model_to_world);
@@ -85,7 +89,7 @@ void MainCS(uint2 thread_id : SV_DispatchThreadID) {
 		uint meshlet_offset = group.meshlet_offset; // Offset from the beginning of the first page, in meshlets.
 		uint meshlet_count  = group.meshlet_count;  // Total meshlet count across all pages.
 		for (uint page_index = group.page_index; page_index < (group.page_index + group.page_count); page_index += 1) {
-			uint page_offset = mesh_asset.page_buffer_offset + page_index * MeshletPageHeader::page_size;
+			uint page_offset = mesh_asset_buffer.Load(page_table_offset + page_index * sizeof(uint));
 			
 			MeshletPageHeader page_header = mesh_asset_buffer.Load<MeshletPageHeader>(page_offset);
 			page_offset += sizeof(MeshletPageHeader);
