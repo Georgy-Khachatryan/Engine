@@ -132,12 +132,6 @@ inline void AppendGpuTransferCommand(GpuComponentUploadBuffer& view, u64 dst_ind
 	view.indices_cpu_address[src_index]    = (u32)dst_index | ((u32)flags << 30u);
 };
 
-NOTES(Meta::HlslFile{ "EntitySystemUpdateData.hlsl"_sl })
-struct EntitySystemUpdatePushConstants {
-	u32 count  = 0;
-	u32 stride = 0;
-};
-
 NOTES(Meta::RenderPass{})
 struct EntitySystemUpdateRenderPass {
 	RENDER_PASS_GENERATED_CODE();
@@ -154,7 +148,12 @@ struct EntitySystemUpdateRenderPass {
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {
-		HLSL::PushConstantBuffer<EntitySystemUpdatePushConstants> constants;
+		struct PushConstants {
+			u32 count  = 0;
+			u32 stride = 0;
+		};
+		
+		HLSL::PushConstantBuffer<PushConstants> constants;
 		HLSL::DescriptorTable<Descriptors> descriptor_table;
 	};
 	
@@ -365,15 +364,10 @@ struct MeshletCullingRenderPass {
 	inline static PipelineID pipeline_id;
 };
 
+
 NOTES(Meta::ShaderName{ "BuildHZB.hlsl"_sl })
 enum struct BuildHzbShaders : u32 {};
 SHADER_DEFINITION_GENERATED_CODE(BuildHzbShaders);
-
-NOTES(Meta::HlslFile{ "BuildHzbData.hlsl"_sl })
-struct BuildHzbPushConstants {
-	u32 last_thread_group_index = 0;
-};
-
 
 NOTES(Meta::RenderPass{})
 struct BuildHzbRenderPass {
@@ -390,8 +384,12 @@ struct BuildHzbRenderPass {
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {
+		struct PushConstants {
+			u32 last_thread_group_index = 0;
+		};
+		
+		HLSL::PushConstantBuffer<PushConstants> constants;
 		HLSL::DescriptorTable<Descriptors> descriptor_table;
-		HLSL::PushConstantBuffer<BuildHzbPushConstants> constants;
 	};
 	
 	inline static PipelineID pipeline_id;
@@ -442,12 +440,6 @@ NOTES(Meta::ShaderName{ "DebugGeometry.hlsl"_sl })
 enum struct DebugGeometryShaders : u32 {};
 SHADER_DEFINITION_GENERATED_CODE(DebugGeometryShaders);
 
-
-NOTES(Meta::HlslFile{ debug_geometry_data_filename })
-struct DebugGeometryPushConstants {
-	DebugMeshInstanceType instance_type = DebugMeshInstanceType::Sphere;
-};
-
 NOTES(Meta::RenderPass{ CommandQueueType::Graphics })
 struct DebugGeometryRenderPass {
 	RENDER_PASS_GENERATED_CODE();
@@ -461,7 +453,11 @@ struct DebugGeometryRenderPass {
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {
-		HLSL::PushConstantBuffer<DebugGeometryPushConstants> constants;
+		struct PushConstants {
+			DebugMeshInstanceType instance_type = DebugMeshInstanceType::Sphere;
+		};
+		
+		HLSL::PushConstantBuffer<PushConstants> constants;
 		HLSL::ConstantBuffer<SceneConstants> scene;
 		HLSL::DescriptorTable<Descriptors> descriptor_table;
 	};

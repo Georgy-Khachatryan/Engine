@@ -61,7 +61,7 @@ void EntitySystemUpdateRenderPass::RecordPass(RecordContext* record_context) {
 		descriptor_table.dst_data.Bind(upload_buffer.dst_data_gpu_address);
 		descriptor_table.dst_prev_data.Bind(upload_buffer.dst_prev_data_gpu_address);
 		
-		EntitySystemUpdatePushConstants constants;
+		RootSignature::PushConstants constants;
 		constants.count  = upload_buffer.count;
 		constants.stride = upload_buffer.stride;
 		

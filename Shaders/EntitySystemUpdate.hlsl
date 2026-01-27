@@ -1,4 +1,5 @@
 #include "Basic.hlsl"
+#include "Generated/EntitySystemUpdateData.hlsl"
 
 template<typename SrcByteBufferT>
 void Memcpy(RWByteAddressBuffer dst_buffer, uint dst_offset, SrcByteBufferT src_buffer, uint src_offset, uint remaining_size) {

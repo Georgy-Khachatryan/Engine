@@ -34,6 +34,10 @@ compile_const u64 u64_min = (u64)0x0000000000000000;
 compile_const s64 s64_max = (s64)0x7FFFFFFFFFFFFFFF;
 compile_const s64 s64_min = (s64)0x8000000000000000;
 
+
+#define BEGIN_ROOT_SIGNATURE_NAMESPACE(pass_name, scope_name) namespace pass_name { namespace scope_name {
+#define END_ROOT_SIGNATURE_NAMESPACE(pass_name, scope_name) } }
+
 #include ROOT_SIGNATURE_FILEPATH
 
 
