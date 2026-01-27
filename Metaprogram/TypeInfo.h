@@ -13,6 +13,7 @@ enum struct TypeInfoType : u8 {
 	Void    = 6,
 	String  = 7,
 	Pointer = 8,
+	Array   = 9,
 	
 	Count
 };
@@ -39,6 +40,23 @@ struct TypeInfoPointer : TypeInfo {
 	compile_const TypeInfoType my_type = TypeInfoType::Pointer;
 	
 	TypeInfo* pointer_to = nullptr;
+};
+
+enum struct TypeInfoArrayType : u32 {
+	Array              = 0,
+	FixedCapacityArray = 1,
+	FixedCountArray    = 2,
+	
+	Count
+};
+extern String type_info_array_type_names[];
+
+struct TypeInfoArray : TypeInfo {
+	compile_const TypeInfoType my_type = TypeInfoType::Array;
+	
+	TypeInfoArrayType array_type = TypeInfoArrayType::Array;
+	TypeInfo* array_of = nullptr;
+	u64 fixed_size = 0; // Fixed count or capacity.
 };
 
 struct TypeInfoNote {
@@ -155,6 +173,41 @@ template<typename T> struct TypeInfoOfInternal<T* const> {
 		static TypeInfoPointer type_info = {
 			TypeInfoType::Pointer,
 			TypeInfoOf<T>(),
+		};
+		return &type_info;
+	}
+};
+
+template<typename T> struct TypeInfoOfInternal<const Array<T>> {
+	static TypeInfoArray* Get() {
+		static TypeInfoArray type_info = {
+			TypeInfoType::Array,
+			TypeInfoArrayType::Array,
+			TypeInfoOf<T>(),
+		};
+		return &type_info;
+	}
+};
+
+template<typename T, u64 fixed_capacity> struct TypeInfoOfInternal<const FixedCapacityArray<T, fixed_capacity>> {
+	static TypeInfoArray* Get() {
+		static TypeInfoArray type_info = {
+			TypeInfoType::Array,
+			TypeInfoArrayType::FixedCapacityArray,
+			TypeInfoOf<T>(),
+			fixed_capacity,
+		};
+		return &type_info;
+	}
+};
+
+template<typename T, u64 fixed_count> struct TypeInfoOfInternal<const FixedCountArray<T, fixed_count>> {
+	static TypeInfoArray* Get() {
+		static TypeInfoArray type_info = {
+			TypeInfoType::Array,
+			TypeInfoArrayType::FixedCountArray,
+			TypeInfoOf<T>(),
+			fixed_count,
 		};
 		return &type_info;
 	}

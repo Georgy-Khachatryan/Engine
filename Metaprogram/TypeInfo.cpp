@@ -50,6 +50,13 @@ String type_info_type_names[] = {
 	"Void"_sl,
 	"String"_sl,
 	"Pointer"_sl,
+	"Array"_sl,
 };
 static_assert(ArraySize(type_info_type_names) == (u32)TypeInfoType::Count);
 
+String type_info_array_type_names[] = {
+	"Array"_sl,
+	"FixedCapacityArray"_sl,
+	"FixedCountArray"_sl,
+};
+static_assert(ArraySize(type_info_array_type_names) == (u32)TypeInfoArrayType::Count);

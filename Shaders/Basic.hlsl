@@ -70,6 +70,9 @@ uint2 MortonDecode(uint code) {
 	return uint2(t, t >> 16) & 0xFF;
 }
 
+template<typename T>
+T WaveShuffleXor(T value, uint mask) { return WaveReadLaneAt(value, WaveGetLaneIndex() ^ mask); }
+
 float3 DecodeSRGB(float3 x) { return select(x < 0.04045, (x / 12.92), pow((x + 0.055) / 1.055, 2.4)); }
 float3 EncodeSRGB(float3 x) { return select(x < 0.0031308, 12.92 * x, (1.055 * pow(x, 1.0 / 2.4) - 0.055)); }
 float4 DecodeSRGB(float4 x) { return float4(DecodeSRGB(x.xyz), x.w); }

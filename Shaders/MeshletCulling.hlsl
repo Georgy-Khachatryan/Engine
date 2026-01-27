@@ -5,6 +5,7 @@
 void MainCS(uint thread_id : SV_DispatchThreadID) {
 	if (thread_id == 0) {
 		indirect_arguments[0] = uint4(0, 1, 1, 0);
+		culling_hzb_build_state[0] = 0;
 	}
 	
 	meshlet_streaming_feedback[thread_id] = thread_id == 0 ? 2 : 0;
@@ -58,6 +59,11 @@ bool LodCullCoarserLevelError(float2 error_metric) { return (error_metric.x <= e
 bool IsModelSpaceBoxVisible(GpuTransform model_to_world, float3 aabb_center, float3 aabb_radius) {
 	uint visible_plane_mask = 0;
 	
+	float2 ndc_min = +2.0;
+	float2 ndc_max = -2.0;
+	float closest_depth = 0.0;
+	bool clips_near_plane = false;
+	
 	// TODO: Optimize. We could transform center and 3 extent vectors instead of 8 corners, precompute rotation matrix, classify corners, etc.
 	for (uint i = 0; i < 8; i += 1) {
 		float3 uv_space_corner    = float3(i & 0x1, (i >> 1) & 0x1, (i >> 2) & 0x1) * 2.0 - 1.0;
@@ -72,9 +78,36 @@ bool IsModelSpaceBoxVisible(GpuTransform model_to_world, float3 aabb_center, flo
 		if (clip_space_corner.y < +clip_space_corner.w) visible_plane_mask |= 0x8;
 		if (clip_space_corner.z > 0.0)                  visible_plane_mask |= 0x10;
 		if (clip_space_corner.z < +clip_space_corner.w) visible_plane_mask |= 0x20;
+		
+		bool corner_clips_near_plane = (clip_space_corner.z >= clip_space_corner.w);
+		if (corner_clips_near_plane == false) {
+			float3 ndc = clip_space_corner.xyz / clip_space_corner.w;
+			ndc_min = min(ndc.xy, ndc_min);
+			ndc_max = max(ndc.xy, ndc_max);
+			closest_depth = max(ndc.z, closest_depth);
+		}
+		
+		clips_near_plane |= corner_clips_near_plane;
 	}
 	
-	return visible_plane_mask == 0x3F;
+	if (visible_plane_mask != 0x3F) return false;
+	
+	if (clips_near_plane == false) {
+		float2 uv_min = saturate(NdcToScreenUv(float2(ndc_min.x, ndc_max.y)));
+		float2 uv_max = saturate(NdcToScreenUv(float2(ndc_max.x, ndc_min.y)));
+		
+		// TODO: Load from a constant buffer.
+		uint2 culling_hzb_size; culling_hzb.GetDimensions(culling_hzb_size.x, culling_hzb_size.y);
+		
+		// Scale by 0.5 because we're sampling 2x2 rect.
+		float2 rect_size_pixels = culling_hzb_size * (uv_max - uv_min) * 0.5;
+		float mip_level = ceil(log2(max(rect_size_pixels.x, rect_size_pixels.y)));
+		
+		float depth = culling_hzb.SampleLevel(sampler_min_clamp, (uv_max + uv_min) * 0.5, mip_level);
+		if (closest_depth < depth) return false;
+	}
+	
+	return true;
 }
 
 compile_const uint thread_group_size = 256;

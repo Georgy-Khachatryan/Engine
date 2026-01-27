@@ -191,10 +191,20 @@ static void GenerateCodeForRenderPass(StackAllocator* alloc, String filename, St
 			}
 			
 			for (auto& field : template_type->fields) {
-				auto* descriptor_type_note = FindNote<ResourceDescriptorType>(field.type);
+				auto* descriptor_type = field.type;
+				if (descriptor_type->info_type == TypeInfoType::Array) {
+					auto* type_info_array = (TypeInfoArray*)descriptor_type;
+					if (type_info_array->array_type != TypeInfoArrayType::FixedCountArray) {
+						auto type_name = PrintTypeName(alloc, field.type);
+						ReportError(alloc, field.source_location, "Unexpected field '%' of type '%' used in a descriptor table of pass '%'. Only descriptors and fixed count arrays of descriptors are allowed."_sl, field.name, type_name, name);
+					}
+					descriptor_type = type_info_array->array_of;
+				}
+				
+				auto* descriptor_type_note = FindNote<ResourceDescriptorType>(descriptor_type);
 				if (descriptor_type_note == nullptr) {
 					auto type_name = PrintTypeName(alloc, field.type);
-					ReportError(alloc, field.source_location, "Unexpected field '%' of type '%' used in a descriptor table of pass '%'. Only descriptors are allowed."_sl, field.name, type_name, name);
+					ReportError(alloc, field.source_location, "Unexpected field '%' of type '%' used in a descriptor table of pass '%'. Only descriptors and fixed count arrays of descriptors are allowed."_sl, field.name, type_name, name);
 				}
 			}
 		} else if (root_argument_type == RootArgumentType::ConstantBuffer) {
@@ -220,11 +230,31 @@ static void GenerateCodeForRenderPass(StackAllocator* alloc, String filename, St
 		
 		auto* template_type = TypeInfoCast<TypeInfoStruct>(ExtractTemplateParameterType(field.type, 0));
 		if (root_argument_type == RootArgumentType::DescriptorTable) {
-			ArrayAppend(root_signature_stream, alloc, (u32)template_type->fields.count);
+			u64 descriptor_count = 0;
+			for (auto& field : template_type->fields) {
+				if (field.type->info_type == TypeInfoType::Array) {
+					auto* type_info_array = (TypeInfoArray*)field.type;
+					descriptor_count += type_info_array->fixed_size;
+				} else {
+					descriptor_count += 1;
+				}
+			}
+			
+			ArrayAppend(root_signature_stream, alloc, (u32)descriptor_count);
 			
 			for (auto& field : template_type->fields) {
-				auto descriptor_type = *FindNote<ResourceDescriptorType>(field.type);
-				ArrayAppend(root_signature_stream, alloc, (u32)descriptor_type);
+				auto* descriptor_type = field.type;
+				u64 descriptor_array_size = 1;
+				if (descriptor_type->info_type == TypeInfoType::Array) {
+					auto* type_info_array = (TypeInfoArray*)descriptor_type;
+					descriptor_type = type_info_array->array_of;
+					descriptor_array_size = type_info_array->fixed_size;
+				}
+				
+				auto descriptor_type_note = *FindNote<ResourceDescriptorType>(descriptor_type);
+				for (u64 i = 0; i < descriptor_array_size; i += 1) {
+					ArrayAppend(root_signature_stream, alloc, (u32)descriptor_type_note);
+				}
 			}
 			root_parameter_count += 1;
 		} else if (root_argument_type == RootArgumentType::ConstantBuffer) {
@@ -253,7 +283,17 @@ static void GenerateCodeForRenderPass(StackAllocator* alloc, String filename, St
 			
 			auto* template_type = TypeInfoCast<TypeInfoStruct>(ExtractTemplateParameterType(field.type, 0));
 			if (root_argument_type == RootArgumentType::DescriptorTable) {
-				builder.Append("{ %, % },\n"_sl, root_parameter_index, (u32)template_type->fields.count);
+				u64 descriptor_count = 0;
+				for (auto& field : template_type->fields) {
+					if (field.type->info_type == TypeInfoType::Array) {
+						auto* type_info_array = (TypeInfoArray*)field.type;
+						descriptor_count += type_info_array->fixed_size;
+					} else {
+						descriptor_count += 1;
+					}
+				}
+				
+				builder.Append("{ %, % },\n"_sl, root_parameter_index, (u32)descriptor_count);
 			} else if (root_argument_type == RootArgumentType::ConstantBuffer) {
 				builder.Append("{ % },\n"_sl, root_parameter_index);
 			} else if (root_argument_type == RootArgumentType::PushConstantBuffer) {
@@ -298,20 +338,40 @@ static void GenerateCodeForRenderPass(StackAllocator* alloc, String filename, St
 			};
 			
 			for (auto& field : template_type->fields) {
-				auto descriptor_type = *FindNote<ResourceDescriptorType>(field.type);
-				u32 descriptor_type_index = (u32)descriptor_type >> (u32)ResourceDescriptorType::IndexOffset;
+				auto* descriptor_type = field.type;
+				u64 descriptor_array_size = 1;
+				if (descriptor_type->info_type == TypeInfoType::Array) {
+					auto* type_info_array = (TypeInfoArray*)descriptor_type;
+					descriptor_type = type_info_array->array_of;
+					descriptor_array_size = type_info_array->fixed_size;
+				}
+				
+				auto descriptor_type_note = *FindNote<ResourceDescriptorType>(descriptor_type);
+				
+				u32 descriptor_type_index = (u32)descriptor_type_note >> (u32)ResourceDescriptorType::IndexOffset;
 				const char* descriptor_name = hlsl_descriptor_type_names[descriptor_type_index];
 				
-				bool is_srv = HasAnyFlags(descriptor_type, ResourceDescriptorType::AnySRV);
-				u32 register_index = is_srv ? srv_index++ : uav_index++;
+				bool is_srv = HasAnyFlags(descriptor_type_note, ResourceDescriptorType::AnySRV);
+				u32 register_index = is_srv ? srv_index : uav_index;
 				char register_type = is_srv ? 't' : 'u';
 				
-				auto* template_type = ExtractTemplateParameterType(field.type, 0);
+				auto name_suffix = ""_sl;
+				if (descriptor_array_size >= 2) {
+					name_suffix = StringFormat(alloc, "[%]"_sl, descriptor_array_size);
+				}
+				
+				if (is_srv) {
+					srv_index += (u32)descriptor_array_size;
+				} else {
+					uav_index += (u32)descriptor_array_size;
+				}
+				
+				auto* template_type = ExtractTemplateParameterType(descriptor_type, 0);
 				if (template_type != nullptr) {
 					auto template_type_name = PrintTypeName(alloc, template_type);
-					builder.Append("%<%> % : register(%.%);\n"_sl, descriptor_name, template_type_name, field.name, register_type, register_index);
+					builder.Append("%<%> %.% : register(%.%);\n"_sl, descriptor_name, template_type_name, field.name, name_suffix, register_type, register_index);
 				} else {
-					builder.Append("% % : register(%.%);\n"_sl, descriptor_name, field.name, register_type, register_index);
+					builder.Append("% %.% : register(%.%);\n"_sl, descriptor_name, field.name, name_suffix, register_type, register_index);
 				}
 			}
 		} else if (root_argument_type == RootArgumentType::ConstantBuffer) {

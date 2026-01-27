@@ -104,7 +104,9 @@ enum struct TextureFormat : u8 {
 	D16_UNORM             = 77,
 	D32_FLOAT             = 78,
 	D32_FLOAT_S8          = 79,
-	X32_TYPELESS_G8       = 80,
+	
+	R32_FLOAT_X8_TYPELESS = 80,
+	X32_TYPELESS_G8_UINT  = 81,
 	
 	Count
 };
@@ -124,6 +126,7 @@ struct TextureFormatInfo {
 };
 
 TextureFormat ToNonSrgbFormat(TextureFormat format);
+TextureFormat ToSrvFormat(TextureFormat format);
 
 enum DXGI_FORMAT;
 extern ArrayView<DXGI_FORMAT> dxgi_texture_format_map;

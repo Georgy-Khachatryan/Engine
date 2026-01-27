@@ -181,7 +181,7 @@ static void DrawDebugFrustumCullingBounds(ImGuiDrawList3D* draw_list_3d, CameraE
 	auto view_to_world_quat = world_entity.renderer_world->debug_freeze_culling_camera.view_to_world_rotation;
 	
 	for (u32 i = 0; i < 4; i += 1) {
-		auto uv_corner = float2((float)(i & 0x1), (float((i >> 1) & 0x1)));
+		auto uv_corner = float2((float)(i & 0x1), (float)((i >> 1) & 0x1));
 		auto ray_info = Math::TransformRayViewToWorld(Math::RayInfoFromScreenUv(uv_corner, clip_to_view_coef), world_space_position, view_to_world_quat);
 		draw_list_3d->AddArrow(ray_info.origin, ray_info.direction, 100.f, 0.1f, ~0u);
 	}
@@ -702,7 +702,7 @@ void LevelEditorUpdate(LevelEditorContext* editor_context, StackAllocator* alloc
 	
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.f, 0.f));
 	ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,  ImVec2(0.f, 0.f));
-	ImGui::Begin("Scene");
+	ImGui::Begin("Scene", nullptr, ImGuiWindowFlags_NoScrollbar);
 	
 	auto window_size = ImGui::GetWindowSize();
 	auto window_pos  = ImGui::GetWindowPos();

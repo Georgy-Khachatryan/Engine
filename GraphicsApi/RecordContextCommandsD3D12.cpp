@@ -26,7 +26,7 @@ static void CreateDescriptorTables(GraphicsContextD3D12* context, ArrayView<HLSL
 			switch (descriptor.common.type) {
 			case ResourceDescriptorType::Texture2D: {
 				D3D12_SHADER_RESOURCE_VIEW_DESC desc = {};
-				desc.Format                        = dxgi_texture_format_map[(u32)resource.texture.size.format];
+				desc.Format                        = resource.texture.resource.d3d12 ? dxgi_texture_format_map[(u32)ToSrvFormat(resource.texture.size.format)] : DXGI_FORMAT_R8G8B8A8_UNORM;
 				desc.ViewDimension                 = D3D12_SRV_DIMENSION_TEXTURE2D;
 				desc.Shader4ComponentMapping       = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 				desc.Texture2D.MostDetailedMip     = descriptor.texture.mip_index;
@@ -38,7 +38,7 @@ static void CreateDescriptorTables(GraphicsContextD3D12* context, ArrayView<HLSL
 				break;
 			} case ResourceDescriptorType::RWTexture2D: {
 				D3D12_UNORDERED_ACCESS_VIEW_DESC desc = {};
-				desc.Format               = dxgi_texture_format_map[(u32)resource.texture.size.format];
+				desc.Format               = resource.texture.resource.d3d12 ? dxgi_texture_format_map[(u32)resource.texture.size.format] : DXGI_FORMAT_R8G8B8A8_UNORM;
 				desc.ViewDimension        = D3D12_UAV_DIMENSION_TEXTURE2D;
 				desc.Texture2D.MipSlice   = descriptor.texture.mip_index;
 				desc.Texture2D.PlaneSlice = 0;
@@ -645,11 +645,21 @@ static Array<ResourceAccessDefinition*> ResolveResourceAccesses(StackAllocator* 
 			
 			auto* last_access = last_resource_access[resource_index];
 			if (accesses.begin() <= last_access && last_access < accesses.end()) {
-				DebugAssert(access.is_texture == false, "TODO: Texture resource is bound multiple times.");
-				
-				// Fold current access into the last access of the same group.
-				last_access->stages_mask |= access.stages_mask;
-				last_access->access_mask |= access.access_mask;
+				if (access.is_texture) {
+					DebugAssert(last_access->stages_mask == access.stages_mask, "Mismatching access.");
+					DebugAssert(last_access->access_mask == access.access_mask, "Mismatching access.");
+					
+					// TODO: This is correct only when the whole resource is accessed one subresource at a time.
+					last_access->mip_index   = Math::Min(last_access->mip_index,   access.mip_index);
+					last_access->array_index = Math::Min(last_access->array_index, access.array_index);
+					
+					last_access->mip_count   += access.mip_count;
+					last_access->array_count += access.array_count;
+				} else {
+					// Fold current access into the last access of the same group.
+					last_access->stages_mask |= access.stages_mask;
+					last_access->access_mask |= access.access_mask;
+				}
 				
 				ArrayEraseSwapLast(accesses, i);
 			} else if (last_access && IsReadOnly(last_access->access_mask) && IsReadOnly(access.access_mask)) {

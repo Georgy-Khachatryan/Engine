@@ -103,6 +103,14 @@ String PrintTypeName(StackAllocator* alloc, TypeInfo* type_info) {
 		auto* type_info_pointer = (TypeInfoPointer*)type_info;
 		auto pointer_to_name = PrintTypeName(alloc, type_info_pointer->pointer_to);
 		return StringFormat(alloc, "%*"_sl, pointer_to_name);
+	} case TypeInfoType::Array: {
+		auto* type_info_array = (TypeInfoArray*)type_info;
+		auto array_of_name = PrintTypeName(alloc, type_info_array->array_of);
+		if (type_info_array->array_type == TypeInfoArrayType::Array) {
+			return StringFormat(alloc, "%<%>"_sl, type_info_array_type_names[(u32)type_info_array->array_type], array_of_name);
+		} else {
+			return StringFormat(alloc, "%<%, %>"_sl, type_info_array_type_names[(u32)type_info_array->array_type], array_of_name, type_info_array->fixed_size);
+		}
 	} case TypeInfoType::None: {
 		return "None"_sl;
 	} default: {

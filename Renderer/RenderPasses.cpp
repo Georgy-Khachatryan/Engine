@@ -22,6 +22,8 @@ static void BuildResourceTable(RecordContext* record_context, WorldEntitySystem*
 	table.Set(ID::DepthStencil,  TextureSize(TextureFormat::D32_FLOAT, render_target_size));
 	table.Set(ID::MotionVectors, TextureSize(TextureFormat::R16G16_FLOAT, render_target_size));
 	table.Set(ID::SceneRadianceResult, TextureSize(TextureFormat::R16G16B16A16_FLOAT, render_target_size));
+	table.Set(ID::CullingHZB, BuildHzbRenderPass::ComputeCullingHzbSize(render_target_size));
+	table.Set(ID::CullingHzbBuildState, BuildHzbRenderPass::culling_hzb_build_state_size);
 	
 	table.Set(ID::DebugGeometryDepthStencil, TextureSize(TextureFormat::D32_FLOAT, render_target_size));
 }
@@ -111,6 +113,9 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	MeshletAllocateStreamingFeedbackRenderPass{ asset_system }.RecordPass(record_context);
 	MeshletCullingRenderPass{ world_system, &renderer_world.meshlet_streaming_feedback_queue }.RecordPass(record_context);
 	BasicMeshRenderPass{}.RecordPass(record_context);
+	if (renderer_world.debug_freeze_culling_camera.enabled == false) {
+		BuildHzbRenderPass{}.RecordPass(record_context);
+	}
 	DebugGeometryRenderPass{ renderer_world.debug_mesh_instance_arrays, &renderer_context->debug_geometry_buffer }.RecordPass(record_context);
 	
 	// TODO: Select dynamically.

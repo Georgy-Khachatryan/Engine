@@ -33,6 +33,8 @@ enum struct VirtualResourceID : u32 {
 	MotionVectors,
 	SceneRadianceResult,
 	SceneConstants,
+	CullingHZB,
+	CullingHzbBuildState,
 	
 	// Mesh rendering:
 	VisibleMeshlets,
@@ -305,6 +307,7 @@ struct MeshletClearBuffersRenderPass {
 	struct Descriptors : HLSL::BaseDescriptorTable {
 		HLSL::RWRegularBuffer<uint4> indirect_arguments = VirtualResourceID::MeshletIndirectArguments;
 		HLSL::RWRegularBuffer<u32> meshlet_streaming_feedback = VirtualResourceID::MeshletStreamingFeedback;
+		HLSL::RWRegularBuffer<u32> culling_hzb_build_state = VirtualResourceID::CullingHzbBuildState;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {
@@ -341,11 +344,14 @@ struct MeshletCullingRenderPass {
 	GpuReadbackQueue* meshlet_streaming_feedback_queue = nullptr;
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
-		HLSL::RegularBuffer<u32>              mesh_alive_mask = VirtualResourceID::MeshEntityAliveMask;
-		HLSL::RegularBuffer<GpuTransform>     mesh_transforms = VirtualResourceID::MeshEntityGpuTransform;
-		HLSL::RegularBuffer<GpuMeshAssetData> mesh_asset_data = VirtualResourceID::GpuMeshAssetData;
-		HLSL::RegularBuffer<GpuMeshEntityData> mesh_entity_data = VirtualResourceID::GpuMeshEntityData;
-		HLSL::ByteBuffer             mesh_asset_buffer  = VirtualResourceID::MeshAssetBuffer;
+		HLSL::RegularBuffer<u32>               mesh_alive_mask   = VirtualResourceID::MeshEntityAliveMask;
+		HLSL::RegularBuffer<GpuTransform>      mesh_transforms   = VirtualResourceID::MeshEntityGpuTransform;
+		HLSL::RegularBuffer<GpuMeshAssetData>  mesh_asset_data   = VirtualResourceID::GpuMeshAssetData;
+		HLSL::RegularBuffer<GpuMeshEntityData> mesh_entity_data  = VirtualResourceID::GpuMeshEntityData;
+		HLSL::ByteBuffer                       mesh_asset_buffer = VirtualResourceID::MeshAssetBuffer;
+		
+		HLSL::Texture2D<float> culling_hzb = VirtualResourceID::CullingHZB;
+		
 		HLSL::RWRegularBuffer<uint2> visible_meshlets   = VirtualResourceID::VisibleMeshlets;
 		HLSL::RWRegularBuffer<uint4> indirect_arguments = VirtualResourceID::MeshletIndirectArguments;
 		HLSL::RWRegularBuffer<u32> meshlet_streaming_feedback = VirtualResourceID::MeshletStreamingFeedback;
@@ -358,6 +364,39 @@ struct MeshletCullingRenderPass {
 	
 	inline static PipelineID pipeline_id;
 };
+
+NOTES(Meta::ShaderName{ "BuildHZB.hlsl"_sl })
+enum struct BuildHzbShaders : u32 {};
+SHADER_DEFINITION_GENERATED_CODE(BuildHzbShaders);
+
+NOTES(Meta::HlslFile{ "BuildHzbData.hlsl"_sl })
+struct BuildHzbPushConstants {
+	u32 last_thread_group_index = 0;
+};
+
+
+NOTES(Meta::RenderPass{})
+struct BuildHzbRenderPass {
+	RENDER_PASS_GENERATED_CODE();
+	
+	compile_const u32 culling_hzb_build_state_size = (64u * 64u + 1) * sizeof(u32);
+	compile_const u32 culling_hzb_max_mip_count = 12;
+	static TextureSize ComputeCullingHzbSize(uint2 render_target_size);
+	
+	struct Descriptors : HLSL::BaseDescriptorTable {
+		HLSL::Texture2D<float> depth_stencil = VirtualResourceID::DepthStencil;
+		HLSL::RWRegularBuffer<u32> culling_hzb_build_state = VirtualResourceID::CullingHzbBuildState;
+		FixedCountArray<HLSL::RWTexture2D<float>, culling_hzb_max_mip_count> culling_hzb;
+	};
+	
+	struct RootSignature : HLSL::BaseRootSignature {
+		HLSL::DescriptorTable<Descriptors> descriptor_table;
+		HLSL::PushConstantBuffer<BuildHzbPushConstants> constants;
+	};
+	
+	inline static PipelineID pipeline_id;
+};
+
 
 
 NOTES(Meta::ShaderName{ "DrawTestMesh.hlsl"_sl })

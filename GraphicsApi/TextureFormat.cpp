@@ -13,6 +13,15 @@ TextureFormat ToNonSrgbFormat(TextureFormat format) {
 	}
 }
 
+TextureFormat ToSrvFormat(TextureFormat format) {
+	switch (format) {
+	case TextureFormat::D16_UNORM: return TextureFormat::R16_UNORM;
+	case TextureFormat::D32_FLOAT: return TextureFormat::R32_FLOAT;
+	case TextureFormat::D32_FLOAT_S8: return TextureFormat::R32_FLOAT_X8_TYPELESS;
+	default: return format;
+	}
+}
+
 static DXGI_FORMAT dxgi_texture_formats[(u32)TextureFormat::Count] = {
 	DXGI_FORMAT_UNKNOWN,
 	
@@ -114,6 +123,8 @@ static DXGI_FORMAT dxgi_texture_formats[(u32)TextureFormat::Count] = {
 	DXGI_FORMAT_D16_UNORM,
 	DXGI_FORMAT_D32_FLOAT,
 	DXGI_FORMAT_D32_FLOAT_S8X24_UINT,
+	
+	DXGI_FORMAT_R32_FLOAT_X8X24_TYPELESS,
 	DXGI_FORMAT_X32_TYPELESS_G8X24_UINT,
 };
 
@@ -221,7 +232,9 @@ static TextureFormatInfo texture_format_infos[(u32)TextureFormat::Count] = {
 	{ TextureFormatFlags::Depth, 2, uint2(0, 0) }, // D16_UNORM
 	{ TextureFormatFlags::Depth, 4, uint2(0, 0) }, // D32_FLOAT
 	{ TextureFormatFlags::DepthStencil, 8, uint2(0, 0) }, // D32_FLOAT_S8
-	{ TextureFormatFlags::DepthStencil, 8, uint2(0, 0) }, // X32_TYPELESS_G8
+	
+	{ TextureFormatFlags::None, 8, uint2(0, 0) }, // R32_FLOAT_X8_TYPELESS
+	{ TextureFormatFlags::None, 8, uint2(0, 0) }, // X32_TYPELESS_G8_UINT
 };
 
 ArrayView<TextureFormatInfo> texture_format_info_map = { texture_format_infos, (u64)TextureFormat::Count };
