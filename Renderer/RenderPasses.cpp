@@ -14,8 +14,10 @@ static void BuildResourceTable(RecordContext* record_context, WorldEntitySystem*
 	table.Set(ID::SkyPanoramaLut,        TextureSize(TextureFormat::R16G16B16A16_FLOAT, AtmosphereParameters::sky_panorama_lut_size));
 	
 	auto* mesh_entities = QueryEntities<GpuMeshEntityQuery>(record_context->alloc, *world_system)[0];
-	table.Set(ID::VisibleMeshlets, SceneConstants::visible_meshlet_buffer_count * sizeof(uint2));
-	table.Set(ID::MeshletIndirectArguments, sizeof(uint4));
+	table.Set(ID::VisibleMeshlets, SceneConstants::visible_meshlet_buffer_size * sizeof(uint2));
+	table.Set(ID::MeshletGroupCullingCommands, SceneConstants::meshlet_group_culling_command_count * sizeof(uint2));
+	table.Set(ID::MeshletCullingCommands, SceneConstants::meshlet_culling_command_count * sizeof(uint2));
+	table.Set(ID::MeshletIndirectArguments, sizeof(uint4) * 16);
 	table.Set(ID::MeshletStreamingFeedback, 64u * 1024u);
 	
 	table.Set(ID::SceneRadiance, TextureSize(TextureFormat::R16G16B16A16_FLOAT, render_target_size));
@@ -118,6 +120,8 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	
 	MeshletClearBuffersRenderPass{}.RecordPass(record_context);
 	MeshletAllocateStreamingFeedbackRenderPass{ asset_system }.RecordPass(record_context);
+	MeshEntityCullingRenderPass{ world_system }.RecordPass(record_context);
+	MeshletGroupCullingRenderPass{ world_system }.RecordPass(record_context);
 	MeshletCullingRenderPass{ world_system, &renderer_world.meshlet_streaming_feedback_queue }.RecordPass(record_context);
 	BasicMeshRenderPass{}.RecordPass(record_context);
 	if (renderer_world.debug_freeze_culling_camera.enabled == false) {

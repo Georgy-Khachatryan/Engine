@@ -38,6 +38,8 @@ enum struct VirtualResourceID : u32 {
 	
 	// Mesh rendering:
 	VisibleMeshlets,
+	MeshletGroupCullingCommands,
+	MeshletCullingCommands,
 	MeshletIndirectArguments,
 	MeshletStreamingFeedback,
 	
@@ -295,9 +297,11 @@ NOTES(Meta::ShaderName{ "MeshletCulling.hlsl"_sl })
 enum struct MeshletCullingShaders : u32 {
 	ClearBuffers              = 1u << 0,
 	AllocateStreamingFeedback = 1u << 1,
-	MeshletCulling            = 1u << 2,
-	MainPass                  = 1u << 3,
-	DisocclusionPass          = 1u << 4,
+	MeshEntityCulling         = 1u << 2,
+	MeshletGroupCulling       = 1u << 3,
+	MeshletCulling            = 1u << 4,
+	MainPass                  = 1u << 5,
+	DisocclusionPass          = 1u << 6,
 };
 SHADER_DEFINITION_GENERATED_CODE(MeshletCullingShaders);
 
@@ -338,11 +342,10 @@ struct MeshletAllocateStreamingFeedbackRenderPass {
 };
 
 NOTES(Meta::RenderPass{})
-struct MeshletCullingRenderPass {
+struct MeshEntityCullingRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
 	WorldEntitySystem* world_system = nullptr;
-	GpuReadbackQueue* meshlet_streaming_feedback_queue = nullptr;
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
 		HLSL::RegularBuffer<u32>               mesh_alive_mask   = VirtualResourceID::MeshEntityAliveMask;
@@ -354,12 +357,81 @@ struct MeshletCullingRenderPass {
 		
 		HLSL::Texture2D<float> culling_hzb = VirtualResourceID::CullingHZB;
 		
-		HLSL::RWRegularBuffer<uint2> visible_meshlets   = VirtualResourceID::VisibleMeshlets;
+		HLSL::RWRegularBuffer<uint2> meshlet_group_culling_commands = VirtualResourceID::MeshletGroupCullingCommands;
+		HLSL::RWRegularBuffer<uint4> indirect_arguments = VirtualResourceID::MeshletIndirectArguments;
+	};
+	
+	struct RootSignature : HLSL::BaseRootSignature {
+		HLSL::ConstantBuffer<SceneConstants> scene;
+		HLSL::DescriptorTable<Descriptors> descriptor_table;
+	};
+	
+	inline static PipelineID main_pipeline_id;
+	inline static PipelineID disocclusion_pipeline_id;
+};
+
+NOTES(Meta::RenderPass{})
+struct MeshletGroupCullingRenderPass {
+	RENDER_PASS_GENERATED_CODE();
+	
+	WorldEntitySystem* world_system = nullptr;
+	
+	struct Descriptors : HLSL::BaseDescriptorTable {
+		HLSL::RegularBuffer<GpuTransform> prev_mesh_transforms   = VirtualResourceID::MeshEntityPrevGpuTransform;
+		HLSL::RegularBuffer<GpuTransform>      mesh_transforms   = VirtualResourceID::MeshEntityGpuTransform;
+		HLSL::RegularBuffer<GpuMeshAssetData>  mesh_asset_data   = VirtualResourceID::GpuMeshAssetData;
+		HLSL::RegularBuffer<GpuMeshEntityData> mesh_entity_data  = VirtualResourceID::GpuMeshEntityData;
+		HLSL::ByteBuffer                       mesh_asset_buffer = VirtualResourceID::MeshAssetBuffer;
+		
+		HLSL::Texture2D<float> culling_hzb = VirtualResourceID::CullingHZB;
+		
+		HLSL::RegularBuffer<uint2> meshlet_group_culling_commands = VirtualResourceID::MeshletGroupCullingCommands;
+		HLSL::RWRegularBuffer<uint2> meshlet_culling_commands = VirtualResourceID::MeshletCullingCommands;
 		HLSL::RWRegularBuffer<uint4> indirect_arguments = VirtualResourceID::MeshletIndirectArguments;
 		HLSL::RWRegularBuffer<u32> meshlet_streaming_feedback = VirtualResourceID::MeshletStreamingFeedback;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {
+		struct PushConstants {
+			u32 bin_index = 0;
+		};
+		
+		HLSL::PushConstantBuffer<PushConstants> constants;
+		HLSL::ConstantBuffer<SceneConstants> scene;
+		HLSL::DescriptorTable<Descriptors> descriptor_table;
+	};
+	
+	inline static PipelineID main_pipeline_id;
+	inline static PipelineID disocclusion_pipeline_id;
+};
+
+NOTES(Meta::RenderPass{})
+struct MeshletCullingRenderPass {
+	RENDER_PASS_GENERATED_CODE();
+	
+	WorldEntitySystem* world_system = nullptr;
+	GpuReadbackQueue* meshlet_streaming_feedback_queue = nullptr;
+	
+	struct Descriptors : HLSL::BaseDescriptorTable {
+		HLSL::RegularBuffer<GpuTransform> prev_mesh_transforms   = VirtualResourceID::MeshEntityPrevGpuTransform;
+		HLSL::RegularBuffer<GpuTransform>      mesh_transforms   = VirtualResourceID::MeshEntityGpuTransform;
+		HLSL::RegularBuffer<GpuMeshAssetData>  mesh_asset_data   = VirtualResourceID::GpuMeshAssetData;
+		HLSL::RegularBuffer<GpuMeshEntityData> mesh_entity_data  = VirtualResourceID::GpuMeshEntityData;
+		HLSL::ByteBuffer                       mesh_asset_buffer = VirtualResourceID::MeshAssetBuffer;
+		
+		HLSL::Texture2D<float> culling_hzb = VirtualResourceID::CullingHZB;
+		
+		HLSL::RegularBuffer<uint2> meshlet_culling_commands = VirtualResourceID::MeshletCullingCommands;
+		HLSL::RWRegularBuffer<uint2> visible_meshlets   = VirtualResourceID::VisibleMeshlets;
+		HLSL::RWRegularBuffer<uint4> indirect_arguments = VirtualResourceID::MeshletIndirectArguments;
+	};
+	
+	struct RootSignature : HLSL::BaseRootSignature {
+		struct PushConstants {
+			u32 bin_index = 0;
+		};
+		
+		HLSL::PushConstantBuffer<PushConstants> constants;
 		HLSL::ConstantBuffer<SceneConstants> scene;
 		HLSL::DescriptorTable<Descriptors> descriptor_table;
 	};

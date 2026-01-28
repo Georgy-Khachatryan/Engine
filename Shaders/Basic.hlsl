@@ -188,4 +188,12 @@ bool BitArrayTestBit(StructuredBuffer<uint> mask, u32 index) {
 	return ((mask[index / 32u] >> (index % 32u)) & 0x1) != 0;
 }
 
+uint CreateBitMaskSmall(uint bit_count) {
+	return ((1u << bit_count) - 1);
+}
+
+uint CreateBitMask(uint bit_count) {
+	return bit_count >= 32 ? u32_max : CreateBitMaskSmall(bit_count);
+}
+
 #endif // BASIC_HLSL

@@ -40,6 +40,44 @@ void MeshletAllocateStreamingFeedbackRenderPass::RecordPass(RecordContext* recor
 }
 
 
+void MeshEntityCullingRenderPass::CreatePipelines(PipelineLibrary* lib) {
+	main_pipeline_id = CreateComputePipeline(lib, MeshletCullingShadersID, MeshletCullingShaders::MeshEntityCulling | MeshletCullingShaders::MainPass);
+	disocclusion_pipeline_id = CreateComputePipeline(lib, MeshletCullingShadersID, MeshletCullingShaders::MeshEntityCulling | MeshletCullingShaders::DisocclusionPass);
+}
+
+void MeshEntityCullingRenderPass::RecordPass(RecordContext* record_context) {
+	auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
+	CmdSetRootSignature(record_context, root_signature);
+	CmdSetPipelineState(record_context, main_pipeline_id);
+	
+	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
+	CmdSetRootArgument(record_context, root_signature.scene, VirtualResourceID::SceneConstants);
+	
+	auto* mesh_entities = QueryEntities<GpuMeshEntityQuery>(record_context->alloc, *world_system)[0];
+	if (mesh_entities->capacity != 0) { // TODO: Use the minimize the dispatch size.
+		CmdDispatch(record_context, DivideAndRoundUp(mesh_entities->capacity, 256u));
+	}
+}
+
+void MeshletGroupCullingRenderPass::CreatePipelines(PipelineLibrary* lib) {
+	main_pipeline_id = CreateComputePipeline(lib, MeshletCullingShadersID, MeshletCullingShaders::MeshletGroupCulling | MeshletCullingShaders::MainPass);
+	disocclusion_pipeline_id = CreateComputePipeline(lib, MeshletCullingShadersID, MeshletCullingShaders::MeshletGroupCulling | MeshletCullingShaders::DisocclusionPass);
+}
+
+void MeshletGroupCullingRenderPass::RecordPass(RecordContext* record_context) {
+	auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
+	CmdSetRootSignature(record_context, root_signature);
+	CmdSetPipelineState(record_context, main_pipeline_id);
+	
+	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
+	CmdSetRootArgument(record_context, root_signature.scene, VirtualResourceID::SceneConstants);
+	
+	for (u32 i = 0; i < SceneConstants::meshlet_group_culling_command_bin_count; i += 1) {
+		CmdSetRootArgument(record_context, root_signature.constants, { i });
+		CmdDispatchIndirect(record_context, GpuAddress(VirtualResourceID::MeshletIndirectArguments, (i + 1) * sizeof(uint4)));
+	}
+}
+
 void MeshletCullingRenderPass::CreatePipelines(PipelineLibrary* lib) {
 	main_pipeline_id = CreateComputePipeline(lib, MeshletCullingShadersID, MeshletCullingShaders::MeshletCulling | MeshletCullingShaders::MainPass);
 	disocclusion_pipeline_id = CreateComputePipeline(lib, MeshletCullingShadersID, MeshletCullingShaders::MeshletCulling | MeshletCullingShaders::DisocclusionPass);
@@ -53,9 +91,9 @@ void MeshletCullingRenderPass::RecordPass(RecordContext* record_context) {
 	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
 	CmdSetRootArgument(record_context, root_signature.scene, VirtualResourceID::SceneConstants);
 	
-	auto* mesh_entities = QueryEntities<GpuMeshEntityQuery>(record_context->alloc, *world_system)[0];
-	if (mesh_entities->capacity != 0) { // TODO: Use the minimize the dispatch size.
-		CmdDispatch(record_context, 1u, mesh_entities->capacity);
+	for (u32 i = 0; i < SceneConstants::meshlet_culling_command_bin_count; i += 1) {
+		CmdSetRootArgument(record_context, root_signature.constants, { i });
+		CmdDispatchIndirect(record_context, GpuAddress(VirtualResourceID::MeshletIndirectArguments, (i + 9) * sizeof(uint4)));
 	}
 	
 	auto& meshlet_streaming_feedback = GetVirtualResource(record_context, VirtualResourceID::MeshletStreamingFeedback);

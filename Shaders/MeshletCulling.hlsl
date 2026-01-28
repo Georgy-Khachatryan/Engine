@@ -1,11 +1,17 @@
 #include "Basic.hlsl"
 
+
+compile_const uint thread_group_size = 256;
+
 #if defined(CLEAR_BUFFERS)
-[ThreadGroupSize(256, 1, 1)]
+[ThreadGroupSize(thread_group_size, 1, 1)]
 void MainCS(uint thread_id : SV_DispatchThreadID) {
+	if (thread_id < 16) {
+		indirect_arguments[thread_id] = uint4(0, 1, 1, 0);
+	}
+	
 	if (thread_id == 0) {
-		indirect_arguments[0] = uint4(0, 1, 1, 0);
-		culling_hzb_build_state[0] = 0;
+		culling_hzb_build_state[thread_id] = 0;
 	}
 	
 	meshlet_streaming_feedback[thread_id] = thread_id == 0 ? 2 : 0;
@@ -16,7 +22,7 @@ void MainCS(uint thread_id : SV_DispatchThreadID) {
 #if defined(ALLOCATE_STREAMING_FEEDBACK)
 compile_const u32 mesh_asset_header_size = 2;
 
-[ThreadGroupSize(256, 1, 1)]
+[ThreadGroupSize(thread_group_size, 1, 1)]
 void MainCS(uint thread_id : SV_DispatchThreadID) {
 	uint mesh_asset_index = thread_id;
 	
@@ -36,7 +42,7 @@ void MainCS(uint thread_id : SV_DispatchThreadID) {
 #endif // defined(ALLOCATE_STREAMING_FEEDBACK)
 
 
-#if defined(MESHLET_CULLING)
+#if defined(MESH_ENTITY_CULLING) || defined(MESHLET_GROUP_CULLING) || defined(MESHLET_CULLING)
 float2 EvaluateMeshletErrorMetric(MeshletErrorMetric error_metric, GpuTransform model_to_world) {
 	float2 result;
 	result.x = model_to_world.scale * error_metric.error * scene.world_to_pixel_scale;
@@ -147,17 +153,27 @@ VisibilityStatus IsModelSpaceBoxVisible(GpuTransform model_to_world, GpuTransfor
 	
 	return VisibilityStatus::Visible;
 }
+#endif // defined(MESH_ENTITY_CULLING) || defined(MESHLET_GROUP_CULLING) || defined(MESHLET_CULLING)
 
+
+#if defined(MESH_ENTITY_CULLING)
 // TODO: Reorganize the shader to allow culling lists of mesh entities, meshlet groups, and meshlets in the disocclusion pass.
 void AppendOccludedMeshEntity(uint mesh_entity_index) {}
-void AppendOccludedMeshletGroup(uint mesh_entity_index, uint meshlet_group_index) {}
-void AppendOccludedMeshlet(uint mesh_entity_index, uint meshlet_culling_data_offset) {}
 
-compile_const uint thread_group_size = 256;
+void AppendMeshletGroupCullingCommand(uint mesh_entity_index, uint meshlet_group_offset, uint bin_index) {
+	uint visible_group_index = 0;
+	InterlockedAdd(indirect_arguments[bin_index + 1].w, 1u, visible_group_index);
+	
+	if (visible_group_index < SceneConstants::meshlet_group_culling_command_bin_size) {
+		uint bin_base_offset = bin_index * SceneConstants::meshlet_group_culling_command_bin_size;
+		meshlet_group_culling_commands[bin_base_offset + visible_group_index] = uint2(meshlet_group_offset, mesh_entity_index);
+		InterlockedMax(indirect_arguments[bin_index + 1].x, DivideAndRoundUp((visible_group_index + 1) << bin_index, thread_group_size));
+	}
+}
 
 [ThreadGroupSize(thread_group_size, 1, 1)]
-void MainCS(uint2 thread_id : SV_DispatchThreadID) {
-	uint mesh_entity_index = thread_id.y;
+void MainCS(uint thread_id : SV_DispatchThreadID) {
+	uint mesh_entity_index = thread_id;
 	
 	if (BitArrayTestBit(mesh_alive_mask, mesh_entity_index) == false) return;
 	
@@ -174,74 +190,157 @@ void MainCS(uint2 thread_id : SV_DispatchThreadID) {
 #endif // defined(MAIN_PASS)
 	if (mesh_entity_visibility_status != VisibilityStatus::Visible) return;
 	
+	compile_const uint last_bin_index = SceneConstants::meshlet_group_culling_command_bin_count - 1;
+	
+	uint meshlet_group_count  = mesh_asset.meshlet_group_count;
+	uint meshlet_group_offset = 0;
+	while (meshlet_group_count >= (1u << last_bin_index)) {
+		AppendMeshletGroupCullingCommand(mesh_entity_index, meshlet_group_offset, last_bin_index);
+		
+		meshlet_group_count  -= (1u << last_bin_index);
+		meshlet_group_offset += (1u << last_bin_index);
+	}
+	
+	while (meshlet_group_count != 0) {
+		uint bin_index = firstbitlow(meshlet_group_count);
+		
+		AppendMeshletGroupCullingCommand(mesh_entity_index, meshlet_group_offset, bin_index);
+		
+		meshlet_group_count  -= (1u << bin_index);
+		meshlet_group_offset += (1u << bin_index);
+	}
+	
+}
+#endif // defined(MESH_ENTITY_CULLING)
+
+
+#if defined(MESHLET_GROUP_CULLING)
+// TODO: Reorganize the shader to allow culling lists of mesh entities, meshlet groups, and meshlets in the disocclusion pass.
+void AppendOccludedMeshletGroup(uint mesh_entity_index, uint meshlet_group_index) {}
+
+void AppendMeshletCullingCommand(uint mesh_entity_index, uint meshlet_culling_data_offset, uint bin_index) {
+	uint visible_group_index = 0;
+	InterlockedAdd(indirect_arguments[bin_index + 9].w, 1u, visible_group_index);
+	
+	if (visible_group_index < SceneConstants::meshlet_culling_command_bin_size) {
+		uint bin_base_offset = bin_index * SceneConstants::meshlet_culling_command_bin_size;
+		meshlet_culling_commands[bin_base_offset + visible_group_index] = uint2(meshlet_culling_data_offset, mesh_entity_index);
+		InterlockedMax(indirect_arguments[bin_index + 9].x, DivideAndRoundUp((visible_group_index + 1) << bin_index, thread_group_size));
+	}
+}
+
+[ThreadGroupSize(thread_group_size, 1, 1)]
+void MainCS(uint thread_id : SV_DispatchThreadID, uint thread_index : SV_GroupIndex) {
+	if ((thread_id >> constants.bin_index) >= indirect_arguments[constants.bin_index + 1].w) return;
+	
+	uint bin_base_offset = constants.bin_index * SceneConstants::meshlet_group_culling_command_bin_size;
+	uint2 meshlet_group_culling_command = meshlet_group_culling_commands[bin_base_offset + (thread_id >> constants.bin_index)];
+	
+	uint meshlet_group_index = meshlet_group_culling_command.x + (thread_id & CreateBitMaskSmall(constants.bin_index));
+	uint mesh_entity_index   = meshlet_group_culling_command.y;
+	
+	uint mesh_asset_index = mesh_entity_data[mesh_entity_index].mesh_asset_index;
+	
+	GpuMeshAssetData mesh_asset = mesh_asset_data[mesh_asset_index];
+	GpuTransform model_to_world = mesh_transforms[mesh_entity_index];
+	GpuTransform prev_model_to_world = prev_mesh_transforms[mesh_entity_index];
+	
 	compile_const uint page_residency_mask_size = MeshletPageHeader::max_page_count / 32u;
 	uint page_table_offset = mesh_asset.meshlet_group_buffer_offset + mesh_asset.meshlet_group_count * sizeof(MeshletGroup) + page_residency_mask_size * sizeof(uint);
 	
-	for (uint meshlet_group_index = thread_id.x; meshlet_group_index < mesh_asset.meshlet_group_count; meshlet_group_index += thread_group_size) {
-		MeshletGroup group = mesh_asset_buffer.Load<MeshletGroup>(mesh_asset.meshlet_group_buffer_offset + meshlet_group_index * sizeof(MeshletGroup));
-		float2 coarser_level_error_metric = EvaluateMeshletErrorMetric(group.error_metric, model_to_world);
-		
-		bool is_visible = LodCullCoarserLevelError(coarser_level_error_metric);
-		if (is_visible == false) continue;
-		
-		uint group_visibility_status = IsModelSpaceBoxVisible(model_to_world, prev_model_to_world, group.aabb_center, group.aabb_radius); 
+	MeshletGroup group = mesh_asset_buffer.Load<MeshletGroup>(mesh_asset.meshlet_group_buffer_offset + meshlet_group_index * sizeof(MeshletGroup));
+	float2 coarser_level_error_metric = EvaluateMeshletErrorMetric(group.error_metric, model_to_world);
+	if (LodCullCoarserLevelError(coarser_level_error_metric) == false) return;
+	
+	uint group_visibility_status = IsModelSpaceBoxVisible(model_to_world, prev_model_to_world, group.aabb_center, group.aabb_radius); 
 #if defined(MAIN_PASS)
-		if (group_visibility_status == VisibilityStatus::OcclusionCulled) AppendOccludedMeshletGroup(mesh_entity_index, meshlet_group_index);
+	if (group_visibility_status == VisibilityStatus::OcclusionCulled) AppendOccludedMeshletGroup(mesh_entity_index, meshlet_group_index);
 #endif // defined(MAIN_PASS)
-		if (group_visibility_status != VisibilityStatus::Visible) continue;
+	if (group_visibility_status != VisibilityStatus::Visible) return;
+	
+	uint begin_page_index = group.page_index;
+	uint end_page_index   = group.page_index + group.page_count;;
+	
+	// Write streaming feedback for both resident and non resident pages.
+	for (uint page_index = begin_page_index; page_index < end_page_index; page_index += 1) {
+		InterlockedOr(meshlet_streaming_feedback[mesh_asset.feedback_buffer_offset + (page_index / 32u)], 1u << (page_index % 32u));
+	}
+	
+	if (group.is_resident == 0) return;
+	
+	uint meshlet_offset = group.meshlet_offset; // Offset from the beginning of the first page, in meshlets.
+	uint meshlet_count  = group.meshlet_count;  // Total meshlet count across all pages.
+	for (uint page_index = begin_page_index; page_index < end_page_index; page_index += 1) {
+		uint page_offset = mesh_asset_buffer.Load(page_table_offset + page_index * sizeof(uint));
 		
-		// Write streaming feedback for both resident and non resident pages.
-		for (uint page_index = group.page_index; page_index < (group.page_index + group.page_count); page_index += 1) {
-			InterlockedOr(meshlet_streaming_feedback[mesh_asset.feedback_buffer_offset + (page_index / 32u)], 1u << (page_index % 32u));
+		MeshletPageHeader page_header = mesh_asset_buffer.Load<MeshletPageHeader>(page_offset);
+		page_offset += sizeof(MeshletPageHeader);
+		
+		uint page_meshlet_count = min(page_header.meshlet_count - meshlet_offset, meshlet_count);
+		meshlet_count -= page_meshlet_count;
+		
+		uint meshlet_culling_data_offset = page_offset + meshlet_offset * sizeof(MeshletCullingData);
+		meshlet_offset = 0;
+		
+		uint page_meshlet_offset = 0;
+		while (page_meshlet_count != 0) {
+			uint bin_index = firstbitlow(page_meshlet_count);
+			AppendMeshletCullingCommand(mesh_entity_index, meshlet_culling_data_offset + page_meshlet_offset * sizeof(MeshletCullingData), bin_index);
+			
+			page_meshlet_count  -= (1u << bin_index);
+			page_meshlet_offset += (1u << bin_index);
 		}
-		
-		if (group.is_resident == 0) continue;
-		
-		uint meshlet_offset = group.meshlet_offset; // Offset from the beginning of the first page, in meshlets.
-		uint meshlet_count  = group.meshlet_count;  // Total meshlet count across all pages.
-		for (uint page_index = group.page_index; page_index < (group.page_index + group.page_count); page_index += 1) {
-			uint page_offset = mesh_asset_buffer.Load(page_table_offset + page_index * sizeof(uint));
-			
-			MeshletPageHeader page_header = mesh_asset_buffer.Load<MeshletPageHeader>(page_offset);
-			page_offset += sizeof(MeshletPageHeader);
-			
-			uint page_meshlet_count = min(page_header.meshlet_count - meshlet_offset, meshlet_count);
-			meshlet_count -= page_meshlet_count;
-			
-			page_offset += meshlet_offset * sizeof(MeshletCullingData);
-			meshlet_offset = 0;
-			
-			for (uint meshlet_index = 0; meshlet_index < page_meshlet_count; meshlet_index += 1) {
-				uint meshlet_culling_data_offset = page_offset + meshlet_index * sizeof(MeshletCullingData);
-				MeshletCullingData meshlet = mesh_asset_buffer.Load<MeshletCullingData>(meshlet_culling_data_offset);
-				
-				bool has_higher_level_of_detail = false;
-				if (meshlet.current_level_meshlet_group_index != u32_max) {
-					uint higher_detail_group_offset = mesh_asset.meshlet_group_buffer_offset + meshlet.current_level_meshlet_group_index * sizeof(MeshletGroup);
-					has_higher_level_of_detail = mesh_asset_buffer.Load<MeshletGroup>(higher_detail_group_offset).is_resident != 0;
-				}
-				
-				float2 current_level_error_metric = EvaluateMeshletErrorMetric(meshlet.current_level_error_metric, model_to_world);
-				
-				bool is_visible = LodCullCurrentLevelError(current_level_error_metric);
-				if (is_visible == false && has_higher_level_of_detail) continue;
-				
-				uint meshlet_visibility_status = IsModelSpaceBoxVisible(model_to_world, prev_model_to_world, meshlet.aabb_center, meshlet.aabb_radius);
+	}
+}
+#endif // defined(MESHLET_GROUP_CULLING)
+
+
+#if defined(MESHLET_CULLING)
+// TODO: Reorganize the shader to allow culling lists of mesh entities, meshlet groups, and meshlets in the disocclusion pass.
+void AppendOccludedMeshlet(uint mesh_entity_index, uint meshlet_culling_data_offset) {}
+
+[ThreadGroupSize(thread_group_size, 1, 1)]
+void MainCS(uint thread_id : SV_DispatchThreadID, uint thread_index : SV_GroupIndex) {
+	if ((thread_id >> constants.bin_index) >= indirect_arguments[constants.bin_index + 9].w) return;
+	
+	uint bin_base_offset = constants.bin_index * SceneConstants::meshlet_culling_command_bin_size;
+	uint2 meshlet_culling_command = meshlet_culling_commands[bin_base_offset + (thread_id >> constants.bin_index)];
+	
+	uint meshlet_culling_data_offset = meshlet_culling_command.x + (thread_id & CreateBitMaskSmall(constants.bin_index)) * sizeof(MeshletCullingData);
+	uint mesh_entity_index = meshlet_culling_command.y;
+	
+	uint mesh_asset_index = mesh_entity_data[mesh_entity_index].mesh_asset_index;
+	
+	GpuMeshAssetData mesh_asset = mesh_asset_data[mesh_asset_index];
+	GpuTransform model_to_world = mesh_transforms[mesh_entity_index];
+	GpuTransform prev_model_to_world = prev_mesh_transforms[mesh_entity_index];
+	
+	MeshletCullingData meshlet = mesh_asset_buffer.Load<MeshletCullingData>(meshlet_culling_data_offset);
+	
+	bool has_higher_level_of_detail = false;
+	if (meshlet.current_level_meshlet_group_index != u32_max) {
+		uint higher_detail_group_offset = mesh_asset.meshlet_group_buffer_offset + meshlet.current_level_meshlet_group_index * sizeof(MeshletGroup);
+		has_higher_level_of_detail = mesh_asset_buffer.Load<MeshletGroup>(higher_detail_group_offset).is_resident != 0;
+	}
+	
+	float2 current_level_error_metric = EvaluateMeshletErrorMetric(meshlet.current_level_error_metric, model_to_world);
+	
+	bool is_visible = LodCullCurrentLevelError(current_level_error_metric);
+	if (is_visible == false && has_higher_level_of_detail) return;
+	
+	uint meshlet_visibility_status = IsModelSpaceBoxVisible(model_to_world, prev_model_to_world, meshlet.aabb_center, meshlet.aabb_radius);
 #if defined(MAIN_PASS)
-				if (meshlet_visibility_status == VisibilityStatus::OcclusionCulled) AppendOccludedMeshlet(mesh_entity_index, meshlet_culling_data_offset);
+	if (meshlet_visibility_status == VisibilityStatus::OcclusionCulled) AppendOccludedMeshlet(mesh_entity_index, meshlet_culling_data_offset);
 #endif // defined(MAIN_PASS)
-				if (meshlet_visibility_status != VisibilityStatus::Visible) continue;
-				
-				uint visible_meshlet_index = 0;
-				InterlockedAdd(indirect_arguments[0].x, 1u, visible_meshlet_index);
-				
-				if (visible_meshlet_index < SceneConstants::visible_meshlet_buffer_count) {
-					visible_meshlets[visible_meshlet_index] = uint2(meshlet_culling_data_offset + meshlet.meshlet_header_offset, mesh_entity_index);
-				} else {
-					InterlockedAdd(indirect_arguments[0].x, -1);
-				}
-			}
-		}
+	if (meshlet_visibility_status != VisibilityStatus::Visible) return;
+	
+	uint visible_meshlet_index = 0;
+	InterlockedAdd(indirect_arguments[0].x, 1u, visible_meshlet_index);
+	
+	if (visible_meshlet_index < SceneConstants::visible_meshlet_buffer_size) {
+		visible_meshlets[visible_meshlet_index] = uint2(meshlet_culling_data_offset + meshlet.meshlet_header_offset, mesh_entity_index);
+	} else {
+		InterlockedAdd(indirect_arguments[0].x, -1);
 	}
 }
 #endif // defined(MESHLET_CULLING)
