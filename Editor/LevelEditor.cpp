@@ -768,7 +768,7 @@ void LevelEditorUpdate(LevelEditorContext* editor_context, StackAllocator* alloc
 	ImGui::SliderFloat("Meshlet Target Error Pixels", &world_entity.renderer_world->meshlet_target_error_pixels, 1.f, 128.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
 	ImGui::SliderFloat("Sun Elevation", &world_entity.renderer_world->sun_elevation_degrees, -10.f, +190.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
 	ImGui::Checkbox("Enable Anti Aliasing", &world_entity.renderer_world->enable_anti_aliasing);
-	ImGui::Checkbox("Freeze Culling state", &world_entity.renderer_world->debug_freeze_culling_camera.enabled);
+	ImGui::Checkbox("Freeze Culling State", &world_entity.renderer_world->debug_freeze_culling_camera.enabled);
 	
 	ImGui::SetNextItemWidth(-FLT_MIN);
 	if (ImGui::BeginCombo("##CreateEntity", "Create Entity")) {

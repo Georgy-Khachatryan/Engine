@@ -96,11 +96,8 @@ bool IsModelSpaceBoxVisible(GpuTransform model_to_world, float3 aabb_center, flo
 		float2 uv_min = saturate(NdcToScreenUv(float2(ndc_min.x, ndc_max.y)));
 		float2 uv_max = saturate(NdcToScreenUv(float2(ndc_max.x, ndc_min.y)));
 		
-		// TODO: Load from a constant buffer.
-		uint2 culling_hzb_size; culling_hzb.GetDimensions(culling_hzb_size.x, culling_hzb_size.y);
-		
-		// Scale by 0.5 because we're sampling 2x2 rect.
-		float2 rect_size_pixels = culling_hzb_size * (uv_max - uv_min) * 0.5;
+		// Scale by 0.5 because we're sampling a 2x2 rect.
+		float2 rect_size_pixels = scene.culling_hzb_size * (uv_max - uv_min) * 0.5;
 		float mip_level = ceil(log2(max(rect_size_pixels.x, rect_size_pixels.y)));
 		
 		float depth = culling_hzb.SampleLevel(sampler_min_clamp, (uv_max + uv_min) * 0.5, mip_level);

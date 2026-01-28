@@ -24,6 +24,9 @@ struct SceneConstants {
 	float3x4 prev_view_to_world;
 	float3x4 prev_world_to_view;
 	
+	float2 culling_hzb_size;
+	float2 inv_culling_hzb_size;
+	
 	// Separate from the regular camera transform because we might want to freeze these values for debugging.
 	float3x4 culling_world_to_view;
 	float4 culling_view_to_clip_coef;

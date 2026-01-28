@@ -77,6 +77,10 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 		scene.world_to_pixel_scale      = scene.view_to_clip_coef.x * scene.render_target_size.x * 0.5f / Math::Max(renderer_world.meshlet_target_error_pixels, 1.f);
 		scene.world_space_camera_position = world_space_camera_position;
 		
+		auto culling_hzb_size = GetTextureSize(record_context, VirtualResourceID::CullingHZB);
+		scene.culling_hzb_size     = float2(culling_hzb_size);
+		scene.inv_culling_hzb_size = float2(1.f) / scene.culling_hzb_size;
+		
 		renderer_world.debug_freeze_culling_camera.view_to_world_rotation = camera_entity.rotation->rotation;
 	}
 	

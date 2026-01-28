@@ -390,6 +390,7 @@ struct BuildHzbRenderPass {
 		
 		HLSL::PushConstantBuffer<PushConstants> constants;
 		HLSL::DescriptorTable<Descriptors> descriptor_table;
+		HLSL::ConstantBuffer<SceneConstants> scene;
 	};
 	
 	inline static PipelineID pipeline_id;

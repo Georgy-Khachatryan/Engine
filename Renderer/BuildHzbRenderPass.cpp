@@ -20,6 +20,7 @@ void BuildHzbRenderPass::RecordPass(RecordContext* record_context) {
 	
 	auto thread_group_count = DivideAndRoundUp(uint2(culling_hzb_size), 32u);
 	CmdSetRootArgument(record_context, root_signature.constants, { thread_group_count.x * thread_group_count.y - 1 });
+	CmdSetRootArgument(record_context, root_signature.scene, VirtualResourceID::SceneConstants);
 	
 	CmdDispatch(record_context, thread_group_count);
 }
