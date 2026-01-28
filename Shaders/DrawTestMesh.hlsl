@@ -43,18 +43,15 @@ void MainMS(
 	if (thread_index < meshlet.vertex_count) {
 		BasicVertex vertex = mesh_asset_buffer.Load<BasicVertex>(vertex_buffer_offset + thread_index * sizeof(BasicVertex));
 		
-		float3 world_space_position = QuatMul(model_to_world.rotation, vertex.position * model_to_world.scale) + model_to_world.position;
-		float3 view_space_position  = mul(scene.world_to_view, float4(world_space_position, 1.0));
-		
-		float3 prev_world_space_position = QuatMul(prev_model_to_world.rotation, vertex.position * prev_model_to_world.scale) + prev_model_to_world.position;
-		float3 prev_view_space_position  = mul(scene.prev_world_to_view, float4(prev_world_space_position, 1.0));
+		float4 clip_space_position      = TransformModelToClipSpace(vertex.position, model_to_world,      scene.world_to_view,      scene.view_to_clip_coef);
+		float4 prev_clip_space_position = TransformModelToClipSpace(vertex.position, prev_model_to_world, scene.prev_world_to_view, scene.prev_view_to_clip_coef);
 		
 		InputPS output;
-		output.position = TransformViewToClipSpace(view_space_position, scene.view_to_clip_coef);
+		output.position = clip_space_position;
 		output.texcoord = vertex.texcoord;
 		output.normal   = vertex.normal;
-		output.curr_position = output.position.xyw;
-		output.prev_position = TransformViewToClipSpace(prev_view_space_position, scene.prev_view_to_clip_coef).xyw;
+		output.curr_position = clip_space_position.xyw;
+		output.prev_position = prev_clip_space_position.xyw;
 		
 		output.position.xy += scene.jitter_offset_ndc * output.position.w;
 		

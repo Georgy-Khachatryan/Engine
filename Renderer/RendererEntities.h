@@ -30,6 +30,8 @@ struct SceneConstants {
 	// Separate from the regular camera transform because we might want to freeze these values for debugging.
 	float3x4 culling_world_to_view;
 	float4 culling_view_to_clip_coef;
+	float3x4 culling_prev_world_to_view;
+	float4 culling_prev_view_to_clip_coef;
 	
 	float2 jitter_offset_pixels;
 	float2 jitter_offset_ndc;

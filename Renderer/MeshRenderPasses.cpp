@@ -41,13 +41,14 @@ void MeshletAllocateStreamingFeedbackRenderPass::RecordPass(RecordContext* recor
 
 
 void MeshletCullingRenderPass::CreatePipelines(PipelineLibrary* lib) {
-	pipeline_id = CreateComputePipeline(lib, MeshletCullingShadersID, MeshletCullingShaders::MeshletCulling);
+	main_pipeline_id = CreateComputePipeline(lib, MeshletCullingShadersID, MeshletCullingShaders::MeshletCulling | MeshletCullingShaders::MainPass);
+	disocclusion_pipeline_id = CreateComputePipeline(lib, MeshletCullingShadersID, MeshletCullingShaders::MeshletCulling | MeshletCullingShaders::DisocclusionPass);
 }
 
 void MeshletCullingRenderPass::RecordPass(RecordContext* record_context) {
 	auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
 	CmdSetRootSignature(record_context, root_signature);
-	CmdSetPipelineState(record_context, pipeline_id);
+	CmdSetPipelineState(record_context, main_pipeline_id);
 	
 	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
 	CmdSetRootArgument(record_context, root_signature.scene, VirtualResourceID::SceneConstants);
@@ -56,7 +57,6 @@ void MeshletCullingRenderPass::RecordPass(RecordContext* record_context) {
 	if (mesh_entities->capacity != 0) { // TODO: Use the minimize the dispatch size.
 		CmdDispatch(record_context, 1u, mesh_entities->capacity);
 	}
-	
 	
 	auto& meshlet_streaming_feedback = GetVirtualResource(record_context, VirtualResourceID::MeshletStreamingFeedback);
 	auto [readback_gpu_address, readback_cpu_address] = AllocateTransientReadbackBuffer(record_context, meshlet_streaming_feedback.buffer.size);

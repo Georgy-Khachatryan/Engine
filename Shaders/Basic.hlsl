@@ -127,6 +127,7 @@ RayInfo RayInfoFromScreenUv(float2 uv, float4 clip_to_view_coef) {
 	return RayInfoFromNdc(ScreenUvToNdc(uv), clip_to_view_coef);
 }
 
+// See BasicMath.cpp for reference on view_to_clip coefficients.
 float4 TransformViewToClipSpace(float3 view_space_position, float4 view_to_clip_coef) {
 	float4 result;
 	result.xy = view_space_position.xy * view_to_clip_coef.xy;
@@ -142,12 +143,45 @@ float4 TransformViewToClipSpace(float3 view_space_position, float4 view_to_clip_
 	return result;
 }
 
+float4 TransformViewToClipSpaceDirection(float3 view_space_position, float4 view_to_clip_coef) {
+	float4 result;
+	result.xy = view_space_position.xy * view_to_clip_coef.xy;
+	
+	if (IsPerspectiveMatrix(view_to_clip_coef)) {
+		result.z = 0.0;
+		result.w = view_space_position.z;
+	} else {
+		result.z = view_space_position.z * view_to_clip_coef.z;
+		result.w = 0.0;
+	}
+	
+	return result;
+}
+
 float3 QuatMul(quat q, float3 v) {
 	// Rotate a vector with a quaternion. Equivalent to QuatToRotationMatrix(q) * v
 	// https://fgiesen.wordpress.com/2019/02/09/rotating-a-single-vector-using-a-quaternion/
 	float3 t = cross(q.xyz, v) * 2.0;
 	return v + t * q.w + cross(q.xyz, t);
 }
+
+#if defined(GENERATED_MESHDATA_HLSL)
+float4 TransformModelToClipSpace(float3 model_space_position, GpuTransform model_to_world, float3x4 world_to_view, float4 view_to_clip_coef) {
+	float3 world_space_position = QuatMul(model_to_world.rotation, model_space_position * model_to_world.scale) + model_to_world.position;
+	float3 view_space_position  = mul(world_to_view, float4(world_space_position, 1.0));
+	float4 clip_space_position  = TransformViewToClipSpace(view_space_position, view_to_clip_coef);
+	
+	return clip_space_position;
+}
+
+float4 TransformModelToClipSpaceDirection(float3 model_space_direction, GpuTransform model_to_world, float3x4 world_to_view, float4 view_to_clip_coef) {
+	float3 world_space_direction = QuatMul(model_to_world.rotation, model_space_direction * model_to_world.scale);
+	float3 view_space_direction  = mul((float3x3)world_to_view, world_space_direction);
+	float4 clip_space_direction  = TransformViewToClipSpaceDirection(view_space_direction, view_to_clip_coef);
+	
+	return clip_space_direction;
+}
+#endif // defined(GENERATED_MESHDATA_HLSL)
 
 
 bool BitArrayTestBit(StructuredBuffer<uint> mask, u32 index) {

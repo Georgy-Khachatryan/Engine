@@ -296,6 +296,8 @@ enum struct MeshletCullingShaders : u32 {
 	ClearBuffers              = 1u << 0,
 	AllocateStreamingFeedback = 1u << 1,
 	MeshletCulling            = 1u << 2,
+	MainPass                  = 1u << 3,
+	DisocclusionPass          = 1u << 4,
 };
 SHADER_DEFINITION_GENERATED_CODE(MeshletCullingShaders);
 
@@ -344,6 +346,7 @@ struct MeshletCullingRenderPass {
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
 		HLSL::RegularBuffer<u32>               mesh_alive_mask   = VirtualResourceID::MeshEntityAliveMask;
+		HLSL::RegularBuffer<GpuTransform> prev_mesh_transforms   = VirtualResourceID::MeshEntityPrevGpuTransform;
 		HLSL::RegularBuffer<GpuTransform>      mesh_transforms   = VirtualResourceID::MeshEntityGpuTransform;
 		HLSL::RegularBuffer<GpuMeshAssetData>  mesh_asset_data   = VirtualResourceID::GpuMeshAssetData;
 		HLSL::RegularBuffer<GpuMeshEntityData> mesh_entity_data  = VirtualResourceID::GpuMeshEntityData;
@@ -361,7 +364,8 @@ struct MeshletCullingRenderPass {
 		HLSL::DescriptorTable<Descriptors> descriptor_table;
 	};
 	
-	inline static PipelineID pipeline_id;
+	inline static PipelineID main_pipeline_id;
+	inline static PipelineID disocclusion_pipeline_id;
 };
 
 
@@ -407,9 +411,9 @@ struct BasicMeshRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
-		HLSL::RegularBuffer<GpuTransform> prev_mesh_transforms = VirtualResourceID::MeshEntityPrevGpuTransform;
-		HLSL::RegularBuffer<GpuTransform>     mesh_transforms = VirtualResourceID::MeshEntityGpuTransform;
-		HLSL::RegularBuffer<GpuMeshAssetData> mesh_asset_data = VirtualResourceID::GpuMeshAssetData;
+		HLSL::RegularBuffer<GpuTransform> prev_mesh_transforms  = VirtualResourceID::MeshEntityPrevGpuTransform;
+		HLSL::RegularBuffer<GpuTransform>      mesh_transforms  = VirtualResourceID::MeshEntityGpuTransform;
+		HLSL::RegularBuffer<GpuMeshAssetData>  mesh_asset_data  = VirtualResourceID::GpuMeshAssetData;
 		HLSL::RegularBuffer<GpuMeshEntityData> mesh_entity_data = VirtualResourceID::GpuMeshEntityData;
 		HLSL::ByteBuffer           mesh_asset_buffer = VirtualResourceID::MeshAssetBuffer;
 		HLSL::RegularBuffer<uint2> visible_meshlets  = VirtualResourceID::VisibleMeshlets;
