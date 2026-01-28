@@ -38,6 +38,7 @@ enum struct VirtualResourceID : u32 {
 	
 	// Mesh rendering:
 	VisibleMeshlets,
+	MeshEntityCullingCommands,
 	MeshletGroupCullingCommands,
 	MeshletCullingCommands,
 	MeshletIndirectArguments,
@@ -305,6 +306,56 @@ enum struct MeshletCullingShaders : u32 {
 };
 SHADER_DEFINITION_GENERATED_CODE(MeshletCullingShaders);
 
+NOTES(Meta::HlslFile{ "MeshData.hlsl"_sl })
+struct MeshletConstants {
+	compile_const u32 meshlet_culling_thread_group_size = 256u;
+	
+	compile_const u32 visible_meshlet_buffer_size = 1024 * 1024;
+	
+	compile_const u32 disocclusion_bin_count = 1;
+	compile_const u32 disocclusion_bin_index = u32_max;
+	
+	compile_const u32 mesh_entity_culling_command_bin_size = 16 * 1024;
+	compile_const u32 mesh_entity_culling_command_count    = mesh_entity_culling_command_bin_size * disocclusion_bin_count;
+	
+	compile_const u32 meshlet_group_culling_command_bin_count = 8;
+	compile_const u32 meshlet_group_culling_command_bin_size  = 16 * 1024;
+	compile_const u32 meshlet_group_culling_command_count     = meshlet_group_culling_command_bin_size * (meshlet_group_culling_command_bin_count + disocclusion_bin_count);
+	
+	compile_const u32 meshlet_culling_command_bin_count  = 6;
+	compile_const u32 meshlet_culling_command_bin_size   = 16 * 1024;
+	compile_const u32 meshlet_culling_command_count      = meshlet_culling_command_bin_size * (meshlet_culling_command_bin_count + disocclusion_bin_count);
+};
+
+NOTES(Meta::HlslFile{ "MeshData.hlsl"_sl })
+enum struct MeshletCullingIndirectArgumentsLayout : u32 {
+	DispatchMesh,
+	DisocclusionDispatchMesh,
+	
+	MeshletGroupCullingCommands,
+	MeshletGroupCullingEnd = MeshletGroupCullingCommands + MeshletConstants::meshlet_group_culling_command_bin_count - 1,
+	
+	MeshletCullingCommands,
+	MeshletCullingCommandsEnd = MeshletCullingCommands + MeshletConstants::meshlet_culling_command_bin_count - 1,
+	
+	DisocclusionMeshletGroupCullingCommands,
+	DisocclusionMeshletGroupCullingEnd = DisocclusionMeshletGroupCullingCommands + MeshletConstants::meshlet_group_culling_command_bin_count - 1,
+	
+	DisocclusionMeshletCullingCommands,
+	DisocclusionMeshletCullingCommandsEnd = DisocclusionMeshletCullingCommands + MeshletConstants::meshlet_culling_command_bin_count - 1,
+	
+	RetestMeshEntityCullingCommands,
+	RetestMeshletGroupCullingCommands,
+	RetestMeshletCullingCommands,
+	
+	Count
+};
+
+enum struct MeshletCullingPass : u32 {
+	Main         = 0,
+	Disocclusion = 1,
+};
+
 NOTES(Meta::RenderPass{})
 struct MeshletClearBuffersRenderPass {
 	RENDER_PASS_GENERATED_CODE();
@@ -346,6 +397,7 @@ struct MeshEntityCullingRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
 	WorldEntitySystem* world_system = nullptr;
+	MeshletCullingPass pass = MeshletCullingPass::Main;
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
 		HLSL::RegularBuffer<u32>               mesh_alive_mask   = VirtualResourceID::MeshEntityAliveMask;
@@ -357,6 +409,7 @@ struct MeshEntityCullingRenderPass {
 		
 		HLSL::Texture2D<float> culling_hzb = VirtualResourceID::CullingHZB;
 		
+		HLSL::RWRegularBuffer<u32>   mesh_entity_culling_commands   = VirtualResourceID::MeshEntityCullingCommands;
 		HLSL::RWRegularBuffer<uint2> meshlet_group_culling_commands = VirtualResourceID::MeshletGroupCullingCommands;
 		HLSL::RWRegularBuffer<uint4> indirect_arguments = VirtualResourceID::MeshletIndirectArguments;
 	};
@@ -375,6 +428,7 @@ struct MeshletGroupCullingRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
 	WorldEntitySystem* world_system = nullptr;
+	MeshletCullingPass pass = MeshletCullingPass::Main;
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
 		HLSL::RegularBuffer<GpuTransform> prev_mesh_transforms   = VirtualResourceID::MeshEntityPrevGpuTransform;
@@ -385,7 +439,7 @@ struct MeshletGroupCullingRenderPass {
 		
 		HLSL::Texture2D<float> culling_hzb = VirtualResourceID::CullingHZB;
 		
-		HLSL::RegularBuffer<uint2> meshlet_group_culling_commands = VirtualResourceID::MeshletGroupCullingCommands;
+		HLSL::RWRegularBuffer<uint2> meshlet_group_culling_commands = VirtualResourceID::MeshletGroupCullingCommands;
 		HLSL::RWRegularBuffer<uint2> meshlet_culling_commands = VirtualResourceID::MeshletCullingCommands;
 		HLSL::RWRegularBuffer<uint4> indirect_arguments = VirtualResourceID::MeshletIndirectArguments;
 		HLSL::RWRegularBuffer<u32> meshlet_streaming_feedback = VirtualResourceID::MeshletStreamingFeedback;
@@ -411,6 +465,7 @@ struct MeshletCullingRenderPass {
 	
 	WorldEntitySystem* world_system = nullptr;
 	GpuReadbackQueue* meshlet_streaming_feedback_queue = nullptr;
+	MeshletCullingPass pass = MeshletCullingPass::Main;
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
 		HLSL::RegularBuffer<GpuTransform> prev_mesh_transforms   = VirtualResourceID::MeshEntityPrevGpuTransform;
@@ -421,7 +476,7 @@ struct MeshletCullingRenderPass {
 		
 		HLSL::Texture2D<float> culling_hzb = VirtualResourceID::CullingHZB;
 		
-		HLSL::RegularBuffer<uint2> meshlet_culling_commands = VirtualResourceID::MeshletCullingCommands;
+		HLSL::RWRegularBuffer<uint2> meshlet_culling_commands = VirtualResourceID::MeshletCullingCommands;
 		HLSL::RWRegularBuffer<uint2> visible_meshlets   = VirtualResourceID::VisibleMeshlets;
 		HLSL::RWRegularBuffer<uint4> indirect_arguments = VirtualResourceID::MeshletIndirectArguments;
 	};
@@ -481,6 +536,8 @@ SHADER_DEFINITION_GENERATED_CODE(DrawTestMeshShaders);
 NOTES(Meta::RenderPass{ CommandQueueType::Graphics })
 struct BasicMeshRenderPass {
 	RENDER_PASS_GENERATED_CODE();
+	
+	MeshletCullingPass pass = MeshletCullingPass::Main;
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
 		HLSL::RegularBuffer<GpuTransform> prev_mesh_transforms  = VirtualResourceID::MeshEntityPrevGpuTransform;

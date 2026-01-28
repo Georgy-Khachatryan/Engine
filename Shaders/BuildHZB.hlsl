@@ -83,4 +83,9 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	sample2 = asfloat(sample2_uint);
 	sample3 = asfloat(sample3_uint);
 	GroupDownSample4096x6(thread_id, 0, thread_index, 6, sample0, sample1, sample2, sample3);
+	
+	if (thread_index == 0) {
+		uint original = 0;
+		InterlockedExchange(culling_hzb_build_state[0], 0u, original);
+	}
 }

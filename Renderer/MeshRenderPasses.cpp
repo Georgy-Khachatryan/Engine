@@ -18,7 +18,7 @@ void MeshletClearBuffersRenderPass::RecordPass(RecordContext* record_context) {
 	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
 	
 	auto& meshlet_streaming_feedback = GetVirtualResource(record_context, VirtualResourceID::MeshletStreamingFeedback);
-	CmdDispatch(record_context, DivideAndRoundUp(meshlet_streaming_feedback.buffer.size, (u32)(256u * sizeof(u32))));
+	CmdDispatch(record_context, DivideAndRoundUp(meshlet_streaming_feedback.buffer.size, (u32)(MeshletConstants::meshlet_culling_thread_group_size * sizeof(u32))));
 }
 
 void MeshletAllocateStreamingFeedbackRenderPass::CreatePipelines(PipelineLibrary* lib) {
@@ -34,8 +34,8 @@ void MeshletAllocateStreamingFeedbackRenderPass::RecordPass(RecordContext* recor
 	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
 	
 	auto* mesh_assets = QueryEntities<MeshAssetType>(record_context->alloc, *asset_system)[0];
-	if (mesh_assets->capacity != 0) { // TODO: Use the minimize the dispatch size.
-		CmdDispatch(record_context, DivideAndRoundUp(mesh_assets->capacity, 256u));
+	if (mesh_assets->capacity != 0) { // TODO: Minimize the dispatch size.
+		CmdDispatch(record_context, DivideAndRoundUp(mesh_assets->capacity, MeshletConstants::meshlet_culling_thread_group_size));
 	}
 }
 
@@ -48,14 +48,18 @@ void MeshEntityCullingRenderPass::CreatePipelines(PipelineLibrary* lib) {
 void MeshEntityCullingRenderPass::RecordPass(RecordContext* record_context) {
 	auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
 	CmdSetRootSignature(record_context, root_signature);
-	CmdSetPipelineState(record_context, main_pipeline_id);
+	CmdSetPipelineState(record_context, pass == MeshletCullingPass::Main ? main_pipeline_id : disocclusion_pipeline_id);
 	
 	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
 	CmdSetRootArgument(record_context, root_signature.scene, VirtualResourceID::SceneConstants);
 	
-	auto* mesh_entities = QueryEntities<GpuMeshEntityQuery>(record_context->alloc, *world_system)[0];
-	if (mesh_entities->capacity != 0) { // TODO: Use the minimize the dispatch size.
-		CmdDispatch(record_context, DivideAndRoundUp(mesh_entities->capacity, 256u));
+	if (pass == MeshletCullingPass::Main) {
+		auto* mesh_entities = QueryEntities<GpuMeshEntityQuery>(record_context->alloc, *world_system)[0];
+		if (mesh_entities->capacity != 0) { // TODO: Minimize the dispatch size.
+			CmdDispatch(record_context, DivideAndRoundUp(mesh_entities->capacity, MeshletConstants::meshlet_culling_thread_group_size));
+		}
+	} else {
+		CmdDispatchIndirect(record_context, GpuAddress(VirtualResourceID::MeshletIndirectArguments, (u32)MeshletCullingIndirectArgumentsLayout::RetestMeshEntityCullingCommands * sizeof(uint4)));
 	}
 }
 
@@ -67,14 +71,24 @@ void MeshletGroupCullingRenderPass::CreatePipelines(PipelineLibrary* lib) {
 void MeshletGroupCullingRenderPass::RecordPass(RecordContext* record_context) {
 	auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
 	CmdSetRootSignature(record_context, root_signature);
-	CmdSetPipelineState(record_context, main_pipeline_id);
+	CmdSetPipelineState(record_context, pass == MeshletCullingPass::Main ? main_pipeline_id : disocclusion_pipeline_id);
 	
 	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
 	CmdSetRootArgument(record_context, root_signature.scene, VirtualResourceID::SceneConstants);
 	
-	for (u32 i = 0; i < SceneConstants::meshlet_group_culling_command_bin_count; i += 1) {
+	u32 indirect_arguments_offset = 0;
+	if (pass == MeshletCullingPass::Main) {
+		indirect_arguments_offset = (u32)MeshletCullingIndirectArgumentsLayout::MeshletGroupCullingCommands;
+	} else {
+		indirect_arguments_offset = (u32)MeshletCullingIndirectArgumentsLayout::DisocclusionMeshletGroupCullingCommands;
+		
+		CmdSetRootArgument(record_context, root_signature.constants, { MeshletConstants::disocclusion_bin_index });
+		CmdDispatchIndirect(record_context, GpuAddress(VirtualResourceID::MeshletIndirectArguments, (u32)MeshletCullingIndirectArgumentsLayout::RetestMeshletGroupCullingCommands * sizeof(uint4)));
+	}
+	
+	for (u32 i = 0; i < MeshletConstants::meshlet_group_culling_command_bin_count; i += 1) {
 		CmdSetRootArgument(record_context, root_signature.constants, { i });
-		CmdDispatchIndirect(record_context, GpuAddress(VirtualResourceID::MeshletIndirectArguments, (i + 1) * sizeof(uint4)));
+		CmdDispatchIndirect(record_context, GpuAddress(VirtualResourceID::MeshletIndirectArguments, (i + indirect_arguments_offset) * sizeof(uint4)));
 	}
 }
 
@@ -86,21 +100,33 @@ void MeshletCullingRenderPass::CreatePipelines(PipelineLibrary* lib) {
 void MeshletCullingRenderPass::RecordPass(RecordContext* record_context) {
 	auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
 	CmdSetRootSignature(record_context, root_signature);
-	CmdSetPipelineState(record_context, main_pipeline_id);
+	CmdSetPipelineState(record_context, pass == MeshletCullingPass::Main ? main_pipeline_id : disocclusion_pipeline_id);
 	
 	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
 	CmdSetRootArgument(record_context, root_signature.scene, VirtualResourceID::SceneConstants);
 	
-	for (u32 i = 0; i < SceneConstants::meshlet_culling_command_bin_count; i += 1) {
-		CmdSetRootArgument(record_context, root_signature.constants, { i });
-		CmdDispatchIndirect(record_context, GpuAddress(VirtualResourceID::MeshletIndirectArguments, (i + 9) * sizeof(uint4)));
+	u32 indirect_arguments_offset = 0;
+	if (pass == MeshletCullingPass::Main) {
+		indirect_arguments_offset = (u32)MeshletCullingIndirectArgumentsLayout::MeshletCullingCommands;
+	} else {
+		indirect_arguments_offset = (u32)MeshletCullingIndirectArgumentsLayout::DisocclusionMeshletCullingCommands;
+		
+		CmdSetRootArgument(record_context, root_signature.constants, { MeshletConstants::disocclusion_bin_index });
+		CmdDispatchIndirect(record_context, GpuAddress(VirtualResourceID::MeshletIndirectArguments, (u32)MeshletCullingIndirectArgumentsLayout::RetestMeshletCullingCommands * sizeof(uint4)));
 	}
 	
-	auto& meshlet_streaming_feedback = GetVirtualResource(record_context, VirtualResourceID::MeshletStreamingFeedback);
-	auto [readback_gpu_address, readback_cpu_address] = AllocateTransientReadbackBuffer(record_context, meshlet_streaming_feedback.buffer.size);
+	for (u32 i = 0; i < MeshletConstants::meshlet_culling_command_bin_count; i += 1) {
+		CmdSetRootArgument(record_context, root_signature.constants, { i });
+		CmdDispatchIndirect(record_context, GpuAddress(VirtualResourceID::MeshletIndirectArguments, (i + indirect_arguments_offset) * sizeof(uint4)));
+	}
 	
-	CmdCopyBufferToBuffer(record_context, VirtualResourceID::MeshletStreamingFeedback, readback_gpu_address, meshlet_streaming_feedback.buffer.size);
-	meshlet_streaming_feedback_queue->Store(readback_cpu_address, record_context->frame_index);
+	if (pass == MeshletCullingPass::Disocclusion) {
+		auto& meshlet_streaming_feedback = GetVirtualResource(record_context, VirtualResourceID::MeshletStreamingFeedback);
+		auto [readback_gpu_address, readback_cpu_address] = AllocateTransientReadbackBuffer(record_context, meshlet_streaming_feedback.buffer.size);
+		
+		CmdCopyBufferToBuffer(record_context, VirtualResourceID::MeshletStreamingFeedback, readback_gpu_address, meshlet_streaming_feedback.buffer.size);
+		meshlet_streaming_feedback_queue->Store(readback_cpu_address, record_context->frame_index);
+	}
 }
 
 void BasicMeshRenderPass::CreatePipelines(PipelineLibrary* lib) {
@@ -121,8 +147,10 @@ void BasicMeshRenderPass::CreatePipelines(PipelineLibrary* lib) {
 }
 
 void BasicMeshRenderPass::RecordPass(RecordContext* record_context) {
-	CmdClearDepthStencil(record_context, VirtualResourceID::DepthStencil);
-	CmdClearRenderTarget(record_context, VirtualResourceID::MotionVectors);
+	if (pass == MeshletCullingPass::Main) {
+		CmdClearDepthStencil(record_context, VirtualResourceID::DepthStencil);
+		CmdClearRenderTarget(record_context, VirtualResourceID::MotionVectors);
+	}
 	
 	FixedCountArray<VirtualResourceID, 2> render_targets;
 	render_targets[0] = VirtualResourceID::SceneRadiance;
@@ -139,7 +167,14 @@ void BasicMeshRenderPass::RecordPass(RecordContext* record_context) {
 	auto render_target_size = GetTextureSize(record_context, VirtualResourceID::SceneRadiance);
 	CmdSetViewportAndScissor(record_context, uint2(render_target_size));
 	
-	CmdDispatchMeshIndirect(record_context, VirtualResourceID::MeshletIndirectArguments);
+	u32 indirect_arguments_offset = 0;
+	if (pass == MeshletCullingPass::Main) {
+		indirect_arguments_offset = (u32)MeshletCullingIndirectArgumentsLayout::DispatchMesh;
+	} else {
+		indirect_arguments_offset = (u32)MeshletCullingIndirectArgumentsLayout::DisocclusionDispatchMesh;
+	}
+	
+	CmdDispatchMeshIndirect(record_context, GpuAddress(VirtualResourceID::MeshletIndirectArguments, indirect_arguments_offset * sizeof(uint4)));
 }
 
 struct MeshletStreamingPage {

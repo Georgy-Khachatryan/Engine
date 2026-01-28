@@ -38,14 +38,6 @@ struct SceneConstants {
 	
 	float world_to_pixel_scale;
 	float3 world_space_camera_position;
-	
-	compile_const u32 visible_meshlet_buffer_size = 1024 * 1024;
-	compile_const u32 meshlet_group_culling_command_bin_count = 8;
-	compile_const u32 meshlet_group_culling_command_bin_size  = 16 * 1024;
-	compile_const u32 meshlet_group_culling_command_count     = meshlet_group_culling_command_bin_size * meshlet_group_culling_command_bin_count;
-	compile_const u32 meshlet_culling_command_bin_count = 6;
-	compile_const u32 meshlet_culling_command_bin_size  = 16 * 1024;
-	compile_const u32 meshlet_culling_command_count     = meshlet_culling_command_bin_size * meshlet_culling_command_bin_count;
 };
 
 struct DebugFreezeCullingCamera {

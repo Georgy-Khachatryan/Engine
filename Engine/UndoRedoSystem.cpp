@@ -142,7 +142,9 @@ bool EndUndoRedoCommand(UndoRedoSystem& system, EntitySystemBase& entity_system,
 	system.pending_command = {};
 	system.pending_command_id = 0;
 	
-	return entity_changed;
+	// TODO: Detect the case when we drag from some state to the old state and report it as entity_changed.
+	// For now always report that entity changes during dragging.
+	return entity_changed || is_dragging;
 }
 
 void UndoRedoRemoveEntity(UndoRedoSystem& system, EntitySystemBase& entity_system, u64 entity_guid) {
