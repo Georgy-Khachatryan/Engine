@@ -83,8 +83,9 @@ String PrintTypeName(StackAllocator* alloc, TypeInfo* type_info) {
 	} case TypeInfoType::Float: {
 		auto* type_info_float = (TypeInfoFloat*)type_info;
 		switch (type_info_float->bit_width) {
-		case 32: return "float"_sl;
-		case 64: return "double"_sl;
+		case 16: return "float16"_sl;
+		case 32: return "float32"_sl;
+		case 64: return "float64"_sl;
 		default: return "Unknown Float"_sl;
 		}
 	} case TypeInfoType::Struct: {
@@ -135,8 +136,9 @@ String PrintTypeValue(StackAllocator* alloc, TypeInfo* type_info, const void* va
 	} case TypeInfoType::Float: {
 		auto* type_info_float = (TypeInfoFloat*)type_info;
 		switch (type_info_float->bit_width) {
-		case 32: return StringFormat(alloc, "%"_sl, *(float*)value);
-		case 64: return StringFormat(alloc, "%"_sl, *(double*)value);
+		case 16: return StringFormat(alloc, "0x%x"_sl, *(float16*)value);
+		case 32: return StringFormat(alloc, "%"_sl, *(float32*)value);
+		case 64: return StringFormat(alloc, "%"_sl, *(float64*)value);
 		default: return "Unknown Float"_sl;
 		}
 	} case TypeInfoType::Struct: {

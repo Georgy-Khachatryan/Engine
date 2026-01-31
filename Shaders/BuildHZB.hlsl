@@ -28,7 +28,7 @@ float WaveDownSample64x3(uint2 thread_id, uint thread_index, uint result_offset,
 
 // Down sample 4096 input samples in 1024 lanes to a single value and write 6 MIPs.
 float GroupDownSample4096x6(uint2 thread_id, uint2 group_id, uint thread_index, uint result_offset, float sample0, float sample1, float sample2, float sample3) {
-	float sample = WaveDownSample64x3(thread_id, thread_index, result_offset,sample0, sample1, sample2, sample3);
+	float sample = WaveDownSample64x3(thread_id, thread_index, result_offset, sample0, sample1, sample2, sample3);
 	
 	if ((thread_index & 0xF) == 0) {
 		gs_samples[thread_index >> 4] = sample;

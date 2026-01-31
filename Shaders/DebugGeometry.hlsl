@@ -27,14 +27,12 @@ InputPS MainVS(uint start_vertex_location : SV_StartVertexLocation, uint vertex_
 	DebugMeshInstance instance = instances[start_instance_location + instance_id];
 	float4 parametric_vertex = vertices[start_vertex_location + vertex_id];
 	
-	float4 instance_data = DecodeR16G16B16A16_FLOAT(instance.packed_data);
-	
 	float3 vertex = 0.0;
 	switch (constants.instance_type) {
-	case DebugMeshInstanceType::Sphere:   vertex = SphereVertexToModelSpace(parametric_vertex,   instance_data.xyz); break;
-	case DebugMeshInstanceType::Cube:     vertex = CubeVertexToModelSpace(parametric_vertex,     instance_data.xyz); break;
-	case DebugMeshInstanceType::Cylinder: vertex = CylinderVertexToModelSpace(parametric_vertex, instance_data.x, instance_data.yz); break;
-	case DebugMeshInstanceType::Torus:    vertex = TorusVertexToModelSpace(parametric_vertex,    instance_data.x, instance_data.y);  break;
+	case DebugMeshInstanceType::Sphere:   vertex = SphereVertexToModelSpace(parametric_vertex,   instance.packed_data.xyz); break;
+	case DebugMeshInstanceType::Cube:     vertex = CubeVertexToModelSpace(parametric_vertex,     instance.packed_data.xyz); break;
+	case DebugMeshInstanceType::Cylinder: vertex = CylinderVertexToModelSpace(parametric_vertex, instance.packed_data.x, instance.packed_data.yz); break;
+	case DebugMeshInstanceType::Torus:    vertex = TorusVertexToModelSpace(parametric_vertex,    instance.packed_data.x, instance.packed_data.y);  break;
 	default: break;
 	}
 	

@@ -109,6 +109,172 @@ namespace Math {
 	inline Vec2u32 Min(const Vec2u32& lh, const Vec2u32& rh) { return Vec2u32(Min(lh.x, rh.x), Min(lh.y, rh.y)); }
 	inline Vec2u32 Max(const Vec2u32& lh, const Vec2u32& rh) { return Vec2u32(Max(lh.x, rh.x), Max(lh.y, rh.y)); }
 
+	struct Vec2u16 {
+		u16 x; u16 y;
+
+		constexpr Vec2u16() : x(0), y(0) {}
+		constexpr Vec2u16(u16 x) : x(x), y(x) {}
+		constexpr Vec2u16(u16 x, u16 y) : x(x), y(y) {}
+		constexpr Vec2u16(const Vec2u16& xy) : x(xy.x), y(xy.y) {}
+
+		template<typename T> explicit constexpr Vec2u16(const T& xy) : x((u16)xy.x), y((u16)xy.y) {}
+
+		Vec2u16 operator+(const Vec2u16& other) const { return Vec2u16(x + other.x, y + other.y); }
+		Vec2u16 operator+(u16 other) const { return Vec2u16(x + other, y + other); }
+
+		Vec2u16 operator-(const Vec2u16& other) const { return Vec2u16(x - other.x, y - other.y); }
+		Vec2u16 operator-(u16 other) const { return Vec2u16(x - other, y - other); }
+
+		Vec2u16 operator*(const Vec2u16& other) const { return Vec2u16(x * other.x, y * other.y); }
+		Vec2u16 operator*(u16 other) const { return Vec2u16(x * other, y * other); }
+
+		Vec2u16 operator/(const Vec2u16& other) const { return Vec2u16(x / other.x, y / other.y); }
+		Vec2u16 operator/(u16 other) const { return Vec2u16(x / other, y / other); }
+
+		Vec2u16 operator%(const Vec2u16& other) const { return Vec2u16(x % other.x, y % other.y); }
+		Vec2u16 operator%(u16 other) const { return Vec2u16(x % other, y % other); }
+
+		Vec2u16 operator&(const Vec2u16& other) const { return Vec2u16(x & other.x, y & other.y); }
+		Vec2u16 operator&(u16 other) const { return Vec2u16(x & other, y & other); }
+
+		Vec2u16 operator|(const Vec2u16& other) const { return Vec2u16(x | other.x, y | other.y); }
+		Vec2u16 operator|(u16 other) const { return Vec2u16(x | other, y | other); }
+
+		Vec2u16 operator^(const Vec2u16& other) const { return Vec2u16(x ^ other.x, y ^ other.y); }
+		Vec2u16 operator^(u16 other) const { return Vec2u16(x ^ other, y ^ other); }
+
+		Vec2u16 operator<<(const Vec2u16& other) const { return Vec2u16(x << other.x, y << other.y); }
+		Vec2u16 operator<<(u16 other) const { return Vec2u16(x << other, y << other); }
+
+		Vec2u16 operator>>(const Vec2u16& other) const { return Vec2u16(x >> other.x, y >> other.y); }
+		Vec2u16 operator>>(u16 other) const { return Vec2u16(x >> other, y >> other); }
+
+		Vec2u16& operator+=(const Vec2u16& other) { x += other.x; y += other.y; return *this; }
+		Vec2u16& operator+=(u16 other) { x += other; y += other; return *this; }
+
+		Vec2u16& operator-=(const Vec2u16& other) { x -= other.x; y -= other.y; return *this; }
+		Vec2u16& operator-=(u16 other) { x -= other; y -= other; return *this; }
+
+		Vec2u16& operator*=(const Vec2u16& other) { x *= other.x; y *= other.y; return *this; }
+		Vec2u16& operator*=(u16 other) { x *= other; y *= other; return *this; }
+
+		Vec2u16& operator/=(const Vec2u16& other) { x /= other.x; y /= other.y; return *this; }
+		Vec2u16& operator/=(u16 other) { x /= other; y /= other; return *this; }
+
+		Vec2u16& operator%=(const Vec2u16& other) { x %= other.x; y %= other.y; return *this; }
+		Vec2u16& operator%=(u16 other) { x %= other; y %= other; return *this; }
+
+		Vec2u16& operator&=(const Vec2u16& other) { x &= other.x; y &= other.y; return *this; }
+		Vec2u16& operator&=(u16 other) { x &= other; y &= other; return *this; }
+
+		Vec2u16& operator|=(const Vec2u16& other) { x |= other.x; y |= other.y; return *this; }
+		Vec2u16& operator|=(u16 other) { x |= other; y |= other; return *this; }
+
+		Vec2u16& operator^=(const Vec2u16& other) { x ^= other.x; y ^= other.y; return *this; }
+		Vec2u16& operator^=(u16 other) { x ^= other; y ^= other; return *this; }
+
+		Vec2u16& operator<<=(const Vec2u16& other) { x <<= other.x; y <<= other.y; return *this; }
+		Vec2u16& operator<<=(u16 other) { x <<= other; y <<= other; return *this; }
+
+		Vec2u16& operator>>=(const Vec2u16& other) { x >>= other.x; y >>= other.y; return *this; }
+		Vec2u16& operator>>=(u16 other) { x >>= other; y >>= other; return *this; }
+
+		Vec2u16 operator~() const { return Vec2u16(~x, ~y); }
+
+		u16& operator[](u32 index) { return (&x)[index]; }
+		const u16& operator[](u32 index) const { return (&x)[index]; }
+
+		compile_const u64 count = 2;
+		compile_const u64 capacity = 2;
+		using ValueType = u16;
+	};
+
+	inline Vec2u16 Min(const Vec2u16& lh, const Vec2u16& rh) { return Vec2u16(Min(lh.x, rh.x), Min(lh.y, rh.y)); }
+	inline Vec2u16 Max(const Vec2u16& lh, const Vec2u16& rh) { return Vec2u16(Max(lh.x, rh.x), Max(lh.y, rh.y)); }
+
+	struct Vec2u8 {
+		u8 x; u8 y;
+
+		constexpr Vec2u8() : x(0), y(0) {}
+		constexpr Vec2u8(u8 x) : x(x), y(x) {}
+		constexpr Vec2u8(u8 x, u8 y) : x(x), y(y) {}
+		constexpr Vec2u8(const Vec2u8& xy) : x(xy.x), y(xy.y) {}
+
+		template<typename T> explicit constexpr Vec2u8(const T& xy) : x((u8)xy.x), y((u8)xy.y) {}
+
+		Vec2u8 operator+(const Vec2u8& other) const { return Vec2u8(x + other.x, y + other.y); }
+		Vec2u8 operator+(u8 other) const { return Vec2u8(x + other, y + other); }
+
+		Vec2u8 operator-(const Vec2u8& other) const { return Vec2u8(x - other.x, y - other.y); }
+		Vec2u8 operator-(u8 other) const { return Vec2u8(x - other, y - other); }
+
+		Vec2u8 operator*(const Vec2u8& other) const { return Vec2u8(x * other.x, y * other.y); }
+		Vec2u8 operator*(u8 other) const { return Vec2u8(x * other, y * other); }
+
+		Vec2u8 operator/(const Vec2u8& other) const { return Vec2u8(x / other.x, y / other.y); }
+		Vec2u8 operator/(u8 other) const { return Vec2u8(x / other, y / other); }
+
+		Vec2u8 operator%(const Vec2u8& other) const { return Vec2u8(x % other.x, y % other.y); }
+		Vec2u8 operator%(u8 other) const { return Vec2u8(x % other, y % other); }
+
+		Vec2u8 operator&(const Vec2u8& other) const { return Vec2u8(x & other.x, y & other.y); }
+		Vec2u8 operator&(u8 other) const { return Vec2u8(x & other, y & other); }
+
+		Vec2u8 operator|(const Vec2u8& other) const { return Vec2u8(x | other.x, y | other.y); }
+		Vec2u8 operator|(u8 other) const { return Vec2u8(x | other, y | other); }
+
+		Vec2u8 operator^(const Vec2u8& other) const { return Vec2u8(x ^ other.x, y ^ other.y); }
+		Vec2u8 operator^(u8 other) const { return Vec2u8(x ^ other, y ^ other); }
+
+		Vec2u8 operator<<(const Vec2u8& other) const { return Vec2u8(x << other.x, y << other.y); }
+		Vec2u8 operator<<(u8 other) const { return Vec2u8(x << other, y << other); }
+
+		Vec2u8 operator>>(const Vec2u8& other) const { return Vec2u8(x >> other.x, y >> other.y); }
+		Vec2u8 operator>>(u8 other) const { return Vec2u8(x >> other, y >> other); }
+
+		Vec2u8& operator+=(const Vec2u8& other) { x += other.x; y += other.y; return *this; }
+		Vec2u8& operator+=(u8 other) { x += other; y += other; return *this; }
+
+		Vec2u8& operator-=(const Vec2u8& other) { x -= other.x; y -= other.y; return *this; }
+		Vec2u8& operator-=(u8 other) { x -= other; y -= other; return *this; }
+
+		Vec2u8& operator*=(const Vec2u8& other) { x *= other.x; y *= other.y; return *this; }
+		Vec2u8& operator*=(u8 other) { x *= other; y *= other; return *this; }
+
+		Vec2u8& operator/=(const Vec2u8& other) { x /= other.x; y /= other.y; return *this; }
+		Vec2u8& operator/=(u8 other) { x /= other; y /= other; return *this; }
+
+		Vec2u8& operator%=(const Vec2u8& other) { x %= other.x; y %= other.y; return *this; }
+		Vec2u8& operator%=(u8 other) { x %= other; y %= other; return *this; }
+
+		Vec2u8& operator&=(const Vec2u8& other) { x &= other.x; y &= other.y; return *this; }
+		Vec2u8& operator&=(u8 other) { x &= other; y &= other; return *this; }
+
+		Vec2u8& operator|=(const Vec2u8& other) { x |= other.x; y |= other.y; return *this; }
+		Vec2u8& operator|=(u8 other) { x |= other; y |= other; return *this; }
+
+		Vec2u8& operator^=(const Vec2u8& other) { x ^= other.x; y ^= other.y; return *this; }
+		Vec2u8& operator^=(u8 other) { x ^= other; y ^= other; return *this; }
+
+		Vec2u8& operator<<=(const Vec2u8& other) { x <<= other.x; y <<= other.y; return *this; }
+		Vec2u8& operator<<=(u8 other) { x <<= other; y <<= other; return *this; }
+
+		Vec2u8& operator>>=(const Vec2u8& other) { x >>= other.x; y >>= other.y; return *this; }
+		Vec2u8& operator>>=(u8 other) { x >>= other; y >>= other; return *this; }
+
+		Vec2u8 operator~() const { return Vec2u8(~x, ~y); }
+
+		u8& operator[](u32 index) { return (&x)[index]; }
+		const u8& operator[](u32 index) const { return (&x)[index]; }
+
+		compile_const u64 count = 2;
+		compile_const u64 capacity = 2;
+		using ValueType = u8;
+	};
+
+	inline Vec2u8 Min(const Vec2u8& lh, const Vec2u8& rh) { return Vec2u8(Min(lh.x, rh.x), Min(lh.y, rh.y)); }
+	inline Vec2u8 Max(const Vec2u8& lh, const Vec2u8& rh) { return Vec2u8(Max(lh.x, rh.x), Max(lh.y, rh.y)); }
+
 	struct Vec3u32 {
 		union {
 			struct { u32 x; u32 y; u32 z; };
@@ -195,6 +361,180 @@ namespace Math {
 
 	inline Vec3u32 Min(const Vec3u32& lh, const Vec3u32& rh) { return Vec3u32(Min(lh.x, rh.x), Min(lh.y, rh.y), Min(lh.z, rh.z)); }
 	inline Vec3u32 Max(const Vec3u32& lh, const Vec3u32& rh) { return Vec3u32(Max(lh.x, rh.x), Max(lh.y, rh.y), Max(lh.z, rh.z)); }
+
+	struct Vec3u16 {
+		union {
+			struct { u16 x; u16 y; u16 z; };
+			Vec2u16 xy;
+		};
+
+		constexpr Vec3u16() : x(0), y(0), z(0) {}
+		constexpr Vec3u16(u16 x) : x(x), y(x), z(x) {}
+		constexpr Vec3u16(u16 x, u16 y, u16 z) : x(x), y(y), z(z) {}
+		constexpr Vec3u16(const Vec2u16& xy, u16 z) : x(xy.x), y(xy.y), z(z) {}
+		constexpr Vec3u16(const Vec3u16& xyz) : x(xyz.x), y(xyz.y), z(xyz.z) {}
+
+		template<typename T> explicit constexpr Vec3u16(const T& xyz) : x((u16)xyz.x), y((u16)xyz.y), z((u16)xyz.z) {}
+
+		Vec3u16 operator+(const Vec3u16& other) const { return Vec3u16(x + other.x, y + other.y, z + other.z); }
+		Vec3u16 operator+(u16 other) const { return Vec3u16(x + other, y + other, z + other); }
+
+		Vec3u16 operator-(const Vec3u16& other) const { return Vec3u16(x - other.x, y - other.y, z - other.z); }
+		Vec3u16 operator-(u16 other) const { return Vec3u16(x - other, y - other, z - other); }
+
+		Vec3u16 operator*(const Vec3u16& other) const { return Vec3u16(x * other.x, y * other.y, z * other.z); }
+		Vec3u16 operator*(u16 other) const { return Vec3u16(x * other, y * other, z * other); }
+
+		Vec3u16 operator/(const Vec3u16& other) const { return Vec3u16(x / other.x, y / other.y, z / other.z); }
+		Vec3u16 operator/(u16 other) const { return Vec3u16(x / other, y / other, z / other); }
+
+		Vec3u16 operator%(const Vec3u16& other) const { return Vec3u16(x % other.x, y % other.y, z % other.z); }
+		Vec3u16 operator%(u16 other) const { return Vec3u16(x % other, y % other, z % other); }
+
+		Vec3u16 operator&(const Vec3u16& other) const { return Vec3u16(x & other.x, y & other.y, z & other.z); }
+		Vec3u16 operator&(u16 other) const { return Vec3u16(x & other, y & other, z & other); }
+
+		Vec3u16 operator|(const Vec3u16& other) const { return Vec3u16(x | other.x, y | other.y, z | other.z); }
+		Vec3u16 operator|(u16 other) const { return Vec3u16(x | other, y | other, z | other); }
+
+		Vec3u16 operator^(const Vec3u16& other) const { return Vec3u16(x ^ other.x, y ^ other.y, z ^ other.z); }
+		Vec3u16 operator^(u16 other) const { return Vec3u16(x ^ other, y ^ other, z ^ other); }
+
+		Vec3u16 operator<<(const Vec3u16& other) const { return Vec3u16(x << other.x, y << other.y, z << other.z); }
+		Vec3u16 operator<<(u16 other) const { return Vec3u16(x << other, y << other, z << other); }
+
+		Vec3u16 operator>>(const Vec3u16& other) const { return Vec3u16(x >> other.x, y >> other.y, z >> other.z); }
+		Vec3u16 operator>>(u16 other) const { return Vec3u16(x >> other, y >> other, z >> other); }
+
+		Vec3u16& operator+=(const Vec3u16& other) { x += other.x; y += other.y; z += other.z; return *this; }
+		Vec3u16& operator+=(u16 other) { x += other; y += other; z += other; return *this; }
+
+		Vec3u16& operator-=(const Vec3u16& other) { x -= other.x; y -= other.y; z -= other.z; return *this; }
+		Vec3u16& operator-=(u16 other) { x -= other; y -= other; z -= other; return *this; }
+
+		Vec3u16& operator*=(const Vec3u16& other) { x *= other.x; y *= other.y; z *= other.z; return *this; }
+		Vec3u16& operator*=(u16 other) { x *= other; y *= other; z *= other; return *this; }
+
+		Vec3u16& operator/=(const Vec3u16& other) { x /= other.x; y /= other.y; z /= other.z; return *this; }
+		Vec3u16& operator/=(u16 other) { x /= other; y /= other; z /= other; return *this; }
+
+		Vec3u16& operator%=(const Vec3u16& other) { x %= other.x; y %= other.y; z %= other.z; return *this; }
+		Vec3u16& operator%=(u16 other) { x %= other; y %= other; z %= other; return *this; }
+
+		Vec3u16& operator&=(const Vec3u16& other) { x &= other.x; y &= other.y; z &= other.z; return *this; }
+		Vec3u16& operator&=(u16 other) { x &= other; y &= other; z &= other; return *this; }
+
+		Vec3u16& operator|=(const Vec3u16& other) { x |= other.x; y |= other.y; z |= other.z; return *this; }
+		Vec3u16& operator|=(u16 other) { x |= other; y |= other; z |= other; return *this; }
+
+		Vec3u16& operator^=(const Vec3u16& other) { x ^= other.x; y ^= other.y; z ^= other.z; return *this; }
+		Vec3u16& operator^=(u16 other) { x ^= other; y ^= other; z ^= other; return *this; }
+
+		Vec3u16& operator<<=(const Vec3u16& other) { x <<= other.x; y <<= other.y; z <<= other.z; return *this; }
+		Vec3u16& operator<<=(u16 other) { x <<= other; y <<= other; z <<= other; return *this; }
+
+		Vec3u16& operator>>=(const Vec3u16& other) { x >>= other.x; y >>= other.y; z >>= other.z; return *this; }
+		Vec3u16& operator>>=(u16 other) { x >>= other; y >>= other; z >>= other; return *this; }
+
+		Vec3u16 operator~() const { return Vec3u16(~x, ~y, ~z); }
+
+		u16& operator[](u32 index) { return (&x)[index]; }
+		const u16& operator[](u32 index) const { return (&x)[index]; }
+
+		compile_const u64 count = 3;
+		compile_const u64 capacity = 3;
+		using ValueType = u16;
+	};
+
+	inline Vec3u16 Min(const Vec3u16& lh, const Vec3u16& rh) { return Vec3u16(Min(lh.x, rh.x), Min(lh.y, rh.y), Min(lh.z, rh.z)); }
+	inline Vec3u16 Max(const Vec3u16& lh, const Vec3u16& rh) { return Vec3u16(Max(lh.x, rh.x), Max(lh.y, rh.y), Max(lh.z, rh.z)); }
+
+	struct Vec3u8 {
+		union {
+			struct { u8 x; u8 y; u8 z; };
+			Vec2u8 xy;
+		};
+
+		constexpr Vec3u8() : x(0), y(0), z(0) {}
+		constexpr Vec3u8(u8 x) : x(x), y(x), z(x) {}
+		constexpr Vec3u8(u8 x, u8 y, u8 z) : x(x), y(y), z(z) {}
+		constexpr Vec3u8(const Vec2u8& xy, u8 z) : x(xy.x), y(xy.y), z(z) {}
+		constexpr Vec3u8(const Vec3u8& xyz) : x(xyz.x), y(xyz.y), z(xyz.z) {}
+
+		template<typename T> explicit constexpr Vec3u8(const T& xyz) : x((u8)xyz.x), y((u8)xyz.y), z((u8)xyz.z) {}
+
+		Vec3u8 operator+(const Vec3u8& other) const { return Vec3u8(x + other.x, y + other.y, z + other.z); }
+		Vec3u8 operator+(u8 other) const { return Vec3u8(x + other, y + other, z + other); }
+
+		Vec3u8 operator-(const Vec3u8& other) const { return Vec3u8(x - other.x, y - other.y, z - other.z); }
+		Vec3u8 operator-(u8 other) const { return Vec3u8(x - other, y - other, z - other); }
+
+		Vec3u8 operator*(const Vec3u8& other) const { return Vec3u8(x * other.x, y * other.y, z * other.z); }
+		Vec3u8 operator*(u8 other) const { return Vec3u8(x * other, y * other, z * other); }
+
+		Vec3u8 operator/(const Vec3u8& other) const { return Vec3u8(x / other.x, y / other.y, z / other.z); }
+		Vec3u8 operator/(u8 other) const { return Vec3u8(x / other, y / other, z / other); }
+
+		Vec3u8 operator%(const Vec3u8& other) const { return Vec3u8(x % other.x, y % other.y, z % other.z); }
+		Vec3u8 operator%(u8 other) const { return Vec3u8(x % other, y % other, z % other); }
+
+		Vec3u8 operator&(const Vec3u8& other) const { return Vec3u8(x & other.x, y & other.y, z & other.z); }
+		Vec3u8 operator&(u8 other) const { return Vec3u8(x & other, y & other, z & other); }
+
+		Vec3u8 operator|(const Vec3u8& other) const { return Vec3u8(x | other.x, y | other.y, z | other.z); }
+		Vec3u8 operator|(u8 other) const { return Vec3u8(x | other, y | other, z | other); }
+
+		Vec3u8 operator^(const Vec3u8& other) const { return Vec3u8(x ^ other.x, y ^ other.y, z ^ other.z); }
+		Vec3u8 operator^(u8 other) const { return Vec3u8(x ^ other, y ^ other, z ^ other); }
+
+		Vec3u8 operator<<(const Vec3u8& other) const { return Vec3u8(x << other.x, y << other.y, z << other.z); }
+		Vec3u8 operator<<(u8 other) const { return Vec3u8(x << other, y << other, z << other); }
+
+		Vec3u8 operator>>(const Vec3u8& other) const { return Vec3u8(x >> other.x, y >> other.y, z >> other.z); }
+		Vec3u8 operator>>(u8 other) const { return Vec3u8(x >> other, y >> other, z >> other); }
+
+		Vec3u8& operator+=(const Vec3u8& other) { x += other.x; y += other.y; z += other.z; return *this; }
+		Vec3u8& operator+=(u8 other) { x += other; y += other; z += other; return *this; }
+
+		Vec3u8& operator-=(const Vec3u8& other) { x -= other.x; y -= other.y; z -= other.z; return *this; }
+		Vec3u8& operator-=(u8 other) { x -= other; y -= other; z -= other; return *this; }
+
+		Vec3u8& operator*=(const Vec3u8& other) { x *= other.x; y *= other.y; z *= other.z; return *this; }
+		Vec3u8& operator*=(u8 other) { x *= other; y *= other; z *= other; return *this; }
+
+		Vec3u8& operator/=(const Vec3u8& other) { x /= other.x; y /= other.y; z /= other.z; return *this; }
+		Vec3u8& operator/=(u8 other) { x /= other; y /= other; z /= other; return *this; }
+
+		Vec3u8& operator%=(const Vec3u8& other) { x %= other.x; y %= other.y; z %= other.z; return *this; }
+		Vec3u8& operator%=(u8 other) { x %= other; y %= other; z %= other; return *this; }
+
+		Vec3u8& operator&=(const Vec3u8& other) { x &= other.x; y &= other.y; z &= other.z; return *this; }
+		Vec3u8& operator&=(u8 other) { x &= other; y &= other; z &= other; return *this; }
+
+		Vec3u8& operator|=(const Vec3u8& other) { x |= other.x; y |= other.y; z |= other.z; return *this; }
+		Vec3u8& operator|=(u8 other) { x |= other; y |= other; z |= other; return *this; }
+
+		Vec3u8& operator^=(const Vec3u8& other) { x ^= other.x; y ^= other.y; z ^= other.z; return *this; }
+		Vec3u8& operator^=(u8 other) { x ^= other; y ^= other; z ^= other; return *this; }
+
+		Vec3u8& operator<<=(const Vec3u8& other) { x <<= other.x; y <<= other.y; z <<= other.z; return *this; }
+		Vec3u8& operator<<=(u8 other) { x <<= other; y <<= other; z <<= other; return *this; }
+
+		Vec3u8& operator>>=(const Vec3u8& other) { x >>= other.x; y >>= other.y; z >>= other.z; return *this; }
+		Vec3u8& operator>>=(u8 other) { x >>= other; y >>= other; z >>= other; return *this; }
+
+		Vec3u8 operator~() const { return Vec3u8(~x, ~y, ~z); }
+
+		u8& operator[](u32 index) { return (&x)[index]; }
+		const u8& operator[](u32 index) const { return (&x)[index]; }
+
+		compile_const u64 count = 3;
+		compile_const u64 capacity = 3;
+		using ValueType = u8;
+	};
+
+	inline Vec3u8 Min(const Vec3u8& lh, const Vec3u8& rh) { return Vec3u8(Min(lh.x, rh.x), Min(lh.y, rh.y), Min(lh.z, rh.z)); }
+	inline Vec3u8 Max(const Vec3u8& lh, const Vec3u8& rh) { return Vec3u8(Max(lh.x, rh.x), Max(lh.y, rh.y), Max(lh.z, rh.z)); }
 
 	struct Vec4u32 {
 		union {
@@ -286,6 +626,966 @@ namespace Math {
 	inline Vec4u32 Min(const Vec4u32& lh, const Vec4u32& rh) { return Vec4u32(Min(lh.x, rh.x), Min(lh.y, rh.y), Min(lh.z, rh.z), Min(lh.w, rh.w)); }
 	inline Vec4u32 Max(const Vec4u32& lh, const Vec4u32& rh) { return Vec4u32(Max(lh.x, rh.x), Max(lh.y, rh.y), Max(lh.z, rh.z), Max(lh.w, rh.w)); }
 
+	struct Vec4u16 {
+		union {
+			struct { u16 x; u16 y; u16 z; u16 w; };
+			struct { Vec2u16 xy; Vec2u16 zw; };
+			Vec3u16 xyz;
+		};
+
+		constexpr Vec4u16() : x(0), y(0), z(0), w(0) {}
+		constexpr Vec4u16(u16 x) : x(x), y(x), z(x), w(x) {}
+		constexpr Vec4u16(u16 x, u16 y, u16 z, u16 w) : x(x), y(y), z(z), w(w) {}
+		constexpr Vec4u16(const Vec2u16& xy, u16 z, u16 w) : x(xy.x), y(xy.y), z(z), w(w) {}
+		constexpr Vec4u16(const Vec2u16& xy, const Vec2u16& zw) : x(xy.x), y(xy.y), z(zw.x), w(zw.y) {}
+		constexpr Vec4u16(const Vec3u16& xyz, u16 w) : x(xyz.x), y(xyz.y), z(xyz.z), w(w) {}
+		constexpr Vec4u16(const Vec4u16& xyzw) : x(xyzw.x), y(xyzw.y), z(xyzw.z), w(xyzw.w) {}
+
+		template<typename T> explicit constexpr Vec4u16(const T& xyzw) : x((u16)xyzw.x), y((u16)xyzw.y), z((u16)xyzw.z), w((u16)xyzw.w) {}
+
+		Vec4u16 operator+(const Vec4u16& other) const { return Vec4u16(x + other.x, y + other.y, z + other.z, w + other.w); }
+		Vec4u16 operator+(u16 other) const { return Vec4u16(x + other, y + other, z + other, w + other); }
+
+		Vec4u16 operator-(const Vec4u16& other) const { return Vec4u16(x - other.x, y - other.y, z - other.z, w - other.w); }
+		Vec4u16 operator-(u16 other) const { return Vec4u16(x - other, y - other, z - other, w - other); }
+
+		Vec4u16 operator*(const Vec4u16& other) const { return Vec4u16(x * other.x, y * other.y, z * other.z, w * other.w); }
+		Vec4u16 operator*(u16 other) const { return Vec4u16(x * other, y * other, z * other, w * other); }
+
+		Vec4u16 operator/(const Vec4u16& other) const { return Vec4u16(x / other.x, y / other.y, z / other.z, w / other.w); }
+		Vec4u16 operator/(u16 other) const { return Vec4u16(x / other, y / other, z / other, w / other); }
+
+		Vec4u16 operator%(const Vec4u16& other) const { return Vec4u16(x % other.x, y % other.y, z % other.z, w % other.w); }
+		Vec4u16 operator%(u16 other) const { return Vec4u16(x % other, y % other, z % other, w % other); }
+
+		Vec4u16 operator&(const Vec4u16& other) const { return Vec4u16(x & other.x, y & other.y, z & other.z, w & other.w); }
+		Vec4u16 operator&(u16 other) const { return Vec4u16(x & other, y & other, z & other, w & other); }
+
+		Vec4u16 operator|(const Vec4u16& other) const { return Vec4u16(x | other.x, y | other.y, z | other.z, w | other.w); }
+		Vec4u16 operator|(u16 other) const { return Vec4u16(x | other, y | other, z | other, w | other); }
+
+		Vec4u16 operator^(const Vec4u16& other) const { return Vec4u16(x ^ other.x, y ^ other.y, z ^ other.z, w ^ other.w); }
+		Vec4u16 operator^(u16 other) const { return Vec4u16(x ^ other, y ^ other, z ^ other, w ^ other); }
+
+		Vec4u16 operator<<(const Vec4u16& other) const { return Vec4u16(x << other.x, y << other.y, z << other.z, w << other.w); }
+		Vec4u16 operator<<(u16 other) const { return Vec4u16(x << other, y << other, z << other, w << other); }
+
+		Vec4u16 operator>>(const Vec4u16& other) const { return Vec4u16(x >> other.x, y >> other.y, z >> other.z, w >> other.w); }
+		Vec4u16 operator>>(u16 other) const { return Vec4u16(x >> other, y >> other, z >> other, w >> other); }
+
+		Vec4u16& operator+=(const Vec4u16& other) { x += other.x; y += other.y; z += other.z; w += other.w; return *this; }
+		Vec4u16& operator+=(u16 other) { x += other; y += other; z += other; w += other; return *this; }
+
+		Vec4u16& operator-=(const Vec4u16& other) { x -= other.x; y -= other.y; z -= other.z; w -= other.w; return *this; }
+		Vec4u16& operator-=(u16 other) { x -= other; y -= other; z -= other; w -= other; return *this; }
+
+		Vec4u16& operator*=(const Vec4u16& other) { x *= other.x; y *= other.y; z *= other.z; w *= other.w; return *this; }
+		Vec4u16& operator*=(u16 other) { x *= other; y *= other; z *= other; w *= other; return *this; }
+
+		Vec4u16& operator/=(const Vec4u16& other) { x /= other.x; y /= other.y; z /= other.z; w /= other.w; return *this; }
+		Vec4u16& operator/=(u16 other) { x /= other; y /= other; z /= other; w /= other; return *this; }
+
+		Vec4u16& operator%=(const Vec4u16& other) { x %= other.x; y %= other.y; z %= other.z; w %= other.w; return *this; }
+		Vec4u16& operator%=(u16 other) { x %= other; y %= other; z %= other; w %= other; return *this; }
+
+		Vec4u16& operator&=(const Vec4u16& other) { x &= other.x; y &= other.y; z &= other.z; w &= other.w; return *this; }
+		Vec4u16& operator&=(u16 other) { x &= other; y &= other; z &= other; w &= other; return *this; }
+
+		Vec4u16& operator|=(const Vec4u16& other) { x |= other.x; y |= other.y; z |= other.z; w |= other.w; return *this; }
+		Vec4u16& operator|=(u16 other) { x |= other; y |= other; z |= other; w |= other; return *this; }
+
+		Vec4u16& operator^=(const Vec4u16& other) { x ^= other.x; y ^= other.y; z ^= other.z; w ^= other.w; return *this; }
+		Vec4u16& operator^=(u16 other) { x ^= other; y ^= other; z ^= other; w ^= other; return *this; }
+
+		Vec4u16& operator<<=(const Vec4u16& other) { x <<= other.x; y <<= other.y; z <<= other.z; w <<= other.w; return *this; }
+		Vec4u16& operator<<=(u16 other) { x <<= other; y <<= other; z <<= other; w <<= other; return *this; }
+
+		Vec4u16& operator>>=(const Vec4u16& other) { x >>= other.x; y >>= other.y; z >>= other.z; w >>= other.w; return *this; }
+		Vec4u16& operator>>=(u16 other) { x >>= other; y >>= other; z >>= other; w >>= other; return *this; }
+
+		Vec4u16 operator~() const { return Vec4u16(~x, ~y, ~z, ~w); }
+
+		u16& operator[](u32 index) { return (&x)[index]; }
+		const u16& operator[](u32 index) const { return (&x)[index]; }
+
+		compile_const u64 count = 4;
+		compile_const u64 capacity = 4;
+		using ValueType = u16;
+	};
+
+	inline Vec4u16 Min(const Vec4u16& lh, const Vec4u16& rh) { return Vec4u16(Min(lh.x, rh.x), Min(lh.y, rh.y), Min(lh.z, rh.z), Min(lh.w, rh.w)); }
+	inline Vec4u16 Max(const Vec4u16& lh, const Vec4u16& rh) { return Vec4u16(Max(lh.x, rh.x), Max(lh.y, rh.y), Max(lh.z, rh.z), Max(lh.w, rh.w)); }
+
+	struct Vec4u8 {
+		union {
+			struct { u8 x; u8 y; u8 z; u8 w; };
+			struct { Vec2u8 xy; Vec2u8 zw; };
+			Vec3u8 xyz;
+		};
+
+		constexpr Vec4u8() : x(0), y(0), z(0), w(0) {}
+		constexpr Vec4u8(u8 x) : x(x), y(x), z(x), w(x) {}
+		constexpr Vec4u8(u8 x, u8 y, u8 z, u8 w) : x(x), y(y), z(z), w(w) {}
+		constexpr Vec4u8(const Vec2u8& xy, u8 z, u8 w) : x(xy.x), y(xy.y), z(z), w(w) {}
+		constexpr Vec4u8(const Vec2u8& xy, const Vec2u8& zw) : x(xy.x), y(xy.y), z(zw.x), w(zw.y) {}
+		constexpr Vec4u8(const Vec3u8& xyz, u8 w) : x(xyz.x), y(xyz.y), z(xyz.z), w(w) {}
+		constexpr Vec4u8(const Vec4u8& xyzw) : x(xyzw.x), y(xyzw.y), z(xyzw.z), w(xyzw.w) {}
+
+		template<typename T> explicit constexpr Vec4u8(const T& xyzw) : x((u8)xyzw.x), y((u8)xyzw.y), z((u8)xyzw.z), w((u8)xyzw.w) {}
+
+		Vec4u8 operator+(const Vec4u8& other) const { return Vec4u8(x + other.x, y + other.y, z + other.z, w + other.w); }
+		Vec4u8 operator+(u8 other) const { return Vec4u8(x + other, y + other, z + other, w + other); }
+
+		Vec4u8 operator-(const Vec4u8& other) const { return Vec4u8(x - other.x, y - other.y, z - other.z, w - other.w); }
+		Vec4u8 operator-(u8 other) const { return Vec4u8(x - other, y - other, z - other, w - other); }
+
+		Vec4u8 operator*(const Vec4u8& other) const { return Vec4u8(x * other.x, y * other.y, z * other.z, w * other.w); }
+		Vec4u8 operator*(u8 other) const { return Vec4u8(x * other, y * other, z * other, w * other); }
+
+		Vec4u8 operator/(const Vec4u8& other) const { return Vec4u8(x / other.x, y / other.y, z / other.z, w / other.w); }
+		Vec4u8 operator/(u8 other) const { return Vec4u8(x / other, y / other, z / other, w / other); }
+
+		Vec4u8 operator%(const Vec4u8& other) const { return Vec4u8(x % other.x, y % other.y, z % other.z, w % other.w); }
+		Vec4u8 operator%(u8 other) const { return Vec4u8(x % other, y % other, z % other, w % other); }
+
+		Vec4u8 operator&(const Vec4u8& other) const { return Vec4u8(x & other.x, y & other.y, z & other.z, w & other.w); }
+		Vec4u8 operator&(u8 other) const { return Vec4u8(x & other, y & other, z & other, w & other); }
+
+		Vec4u8 operator|(const Vec4u8& other) const { return Vec4u8(x | other.x, y | other.y, z | other.z, w | other.w); }
+		Vec4u8 operator|(u8 other) const { return Vec4u8(x | other, y | other, z | other, w | other); }
+
+		Vec4u8 operator^(const Vec4u8& other) const { return Vec4u8(x ^ other.x, y ^ other.y, z ^ other.z, w ^ other.w); }
+		Vec4u8 operator^(u8 other) const { return Vec4u8(x ^ other, y ^ other, z ^ other, w ^ other); }
+
+		Vec4u8 operator<<(const Vec4u8& other) const { return Vec4u8(x << other.x, y << other.y, z << other.z, w << other.w); }
+		Vec4u8 operator<<(u8 other) const { return Vec4u8(x << other, y << other, z << other, w << other); }
+
+		Vec4u8 operator>>(const Vec4u8& other) const { return Vec4u8(x >> other.x, y >> other.y, z >> other.z, w >> other.w); }
+		Vec4u8 operator>>(u8 other) const { return Vec4u8(x >> other, y >> other, z >> other, w >> other); }
+
+		Vec4u8& operator+=(const Vec4u8& other) { x += other.x; y += other.y; z += other.z; w += other.w; return *this; }
+		Vec4u8& operator+=(u8 other) { x += other; y += other; z += other; w += other; return *this; }
+
+		Vec4u8& operator-=(const Vec4u8& other) { x -= other.x; y -= other.y; z -= other.z; w -= other.w; return *this; }
+		Vec4u8& operator-=(u8 other) { x -= other; y -= other; z -= other; w -= other; return *this; }
+
+		Vec4u8& operator*=(const Vec4u8& other) { x *= other.x; y *= other.y; z *= other.z; w *= other.w; return *this; }
+		Vec4u8& operator*=(u8 other) { x *= other; y *= other; z *= other; w *= other; return *this; }
+
+		Vec4u8& operator/=(const Vec4u8& other) { x /= other.x; y /= other.y; z /= other.z; w /= other.w; return *this; }
+		Vec4u8& operator/=(u8 other) { x /= other; y /= other; z /= other; w /= other; return *this; }
+
+		Vec4u8& operator%=(const Vec4u8& other) { x %= other.x; y %= other.y; z %= other.z; w %= other.w; return *this; }
+		Vec4u8& operator%=(u8 other) { x %= other; y %= other; z %= other; w %= other; return *this; }
+
+		Vec4u8& operator&=(const Vec4u8& other) { x &= other.x; y &= other.y; z &= other.z; w &= other.w; return *this; }
+		Vec4u8& operator&=(u8 other) { x &= other; y &= other; z &= other; w &= other; return *this; }
+
+		Vec4u8& operator|=(const Vec4u8& other) { x |= other.x; y |= other.y; z |= other.z; w |= other.w; return *this; }
+		Vec4u8& operator|=(u8 other) { x |= other; y |= other; z |= other; w |= other; return *this; }
+
+		Vec4u8& operator^=(const Vec4u8& other) { x ^= other.x; y ^= other.y; z ^= other.z; w ^= other.w; return *this; }
+		Vec4u8& operator^=(u8 other) { x ^= other; y ^= other; z ^= other; w ^= other; return *this; }
+
+		Vec4u8& operator<<=(const Vec4u8& other) { x <<= other.x; y <<= other.y; z <<= other.z; w <<= other.w; return *this; }
+		Vec4u8& operator<<=(u8 other) { x <<= other; y <<= other; z <<= other; w <<= other; return *this; }
+
+		Vec4u8& operator>>=(const Vec4u8& other) { x >>= other.x; y >>= other.y; z >>= other.z; w >>= other.w; return *this; }
+		Vec4u8& operator>>=(u8 other) { x >>= other; y >>= other; z >>= other; w >>= other; return *this; }
+
+		Vec4u8 operator~() const { return Vec4u8(~x, ~y, ~z, ~w); }
+
+		u8& operator[](u32 index) { return (&x)[index]; }
+		const u8& operator[](u32 index) const { return (&x)[index]; }
+
+		compile_const u64 count = 4;
+		compile_const u64 capacity = 4;
+		using ValueType = u8;
+	};
+
+	inline Vec4u8 Min(const Vec4u8& lh, const Vec4u8& rh) { return Vec4u8(Min(lh.x, rh.x), Min(lh.y, rh.y), Min(lh.z, rh.z), Min(lh.w, rh.w)); }
+	inline Vec4u8 Max(const Vec4u8& lh, const Vec4u8& rh) { return Vec4u8(Max(lh.x, rh.x), Max(lh.y, rh.y), Max(lh.z, rh.z), Max(lh.w, rh.w)); }
+
+	struct Vec2s32 {
+		s32 x; s32 y;
+
+		constexpr Vec2s32() : x(0), y(0) {}
+		constexpr Vec2s32(s32 x) : x(x), y(x) {}
+		constexpr Vec2s32(s32 x, s32 y) : x(x), y(y) {}
+		constexpr Vec2s32(const Vec2s32& xy) : x(xy.x), y(xy.y) {}
+
+		template<typename T> explicit constexpr Vec2s32(const T& xy) : x((s32)xy.x), y((s32)xy.y) {}
+
+		Vec2s32 operator+(const Vec2s32& other) const { return Vec2s32(x + other.x, y + other.y); }
+		Vec2s32 operator+(s32 other) const { return Vec2s32(x + other, y + other); }
+
+		Vec2s32 operator-(const Vec2s32& other) const { return Vec2s32(x - other.x, y - other.y); }
+		Vec2s32 operator-(s32 other) const { return Vec2s32(x - other, y - other); }
+
+		Vec2s32 operator*(const Vec2s32& other) const { return Vec2s32(x * other.x, y * other.y); }
+		Vec2s32 operator*(s32 other) const { return Vec2s32(x * other, y * other); }
+
+		Vec2s32 operator/(const Vec2s32& other) const { return Vec2s32(x / other.x, y / other.y); }
+		Vec2s32 operator/(s32 other) const { return Vec2s32(x / other, y / other); }
+
+		Vec2s32 operator%(const Vec2s32& other) const { return Vec2s32(x % other.x, y % other.y); }
+		Vec2s32 operator%(s32 other) const { return Vec2s32(x % other, y % other); }
+
+		Vec2s32 operator&(const Vec2s32& other) const { return Vec2s32(x & other.x, y & other.y); }
+		Vec2s32 operator&(s32 other) const { return Vec2s32(x & other, y & other); }
+
+		Vec2s32 operator|(const Vec2s32& other) const { return Vec2s32(x | other.x, y | other.y); }
+		Vec2s32 operator|(s32 other) const { return Vec2s32(x | other, y | other); }
+
+		Vec2s32 operator^(const Vec2s32& other) const { return Vec2s32(x ^ other.x, y ^ other.y); }
+		Vec2s32 operator^(s32 other) const { return Vec2s32(x ^ other, y ^ other); }
+
+		Vec2s32 operator<<(const Vec2s32& other) const { return Vec2s32(x << other.x, y << other.y); }
+		Vec2s32 operator<<(s32 other) const { return Vec2s32(x << other, y << other); }
+
+		Vec2s32 operator>>(const Vec2s32& other) const { return Vec2s32(x >> other.x, y >> other.y); }
+		Vec2s32 operator>>(s32 other) const { return Vec2s32(x >> other, y >> other); }
+
+		Vec2s32& operator+=(const Vec2s32& other) { x += other.x; y += other.y; return *this; }
+		Vec2s32& operator+=(s32 other) { x += other; y += other; return *this; }
+
+		Vec2s32& operator-=(const Vec2s32& other) { x -= other.x; y -= other.y; return *this; }
+		Vec2s32& operator-=(s32 other) { x -= other; y -= other; return *this; }
+
+		Vec2s32& operator*=(const Vec2s32& other) { x *= other.x; y *= other.y; return *this; }
+		Vec2s32& operator*=(s32 other) { x *= other; y *= other; return *this; }
+
+		Vec2s32& operator/=(const Vec2s32& other) { x /= other.x; y /= other.y; return *this; }
+		Vec2s32& operator/=(s32 other) { x /= other; y /= other; return *this; }
+
+		Vec2s32& operator%=(const Vec2s32& other) { x %= other.x; y %= other.y; return *this; }
+		Vec2s32& operator%=(s32 other) { x %= other; y %= other; return *this; }
+
+		Vec2s32& operator&=(const Vec2s32& other) { x &= other.x; y &= other.y; return *this; }
+		Vec2s32& operator&=(s32 other) { x &= other; y &= other; return *this; }
+
+		Vec2s32& operator|=(const Vec2s32& other) { x |= other.x; y |= other.y; return *this; }
+		Vec2s32& operator|=(s32 other) { x |= other; y |= other; return *this; }
+
+		Vec2s32& operator^=(const Vec2s32& other) { x ^= other.x; y ^= other.y; return *this; }
+		Vec2s32& operator^=(s32 other) { x ^= other; y ^= other; return *this; }
+
+		Vec2s32& operator<<=(const Vec2s32& other) { x <<= other.x; y <<= other.y; return *this; }
+		Vec2s32& operator<<=(s32 other) { x <<= other; y <<= other; return *this; }
+
+		Vec2s32& operator>>=(const Vec2s32& other) { x >>= other.x; y >>= other.y; return *this; }
+		Vec2s32& operator>>=(s32 other) { x >>= other; y >>= other; return *this; }
+
+		Vec2s32 operator~() const { return Vec2s32(~x, ~y); }
+
+		s32& operator[](u32 index) { return (&x)[index]; }
+		const s32& operator[](u32 index) const { return (&x)[index]; }
+
+		compile_const u64 count = 2;
+		compile_const u64 capacity = 2;
+		using ValueType = s32;
+	};
+
+	inline Vec2s32 Min(const Vec2s32& lh, const Vec2s32& rh) { return Vec2s32(Min(lh.x, rh.x), Min(lh.y, rh.y)); }
+	inline Vec2s32 Max(const Vec2s32& lh, const Vec2s32& rh) { return Vec2s32(Max(lh.x, rh.x), Max(lh.y, rh.y)); }
+
+	struct Vec2s16 {
+		s16 x; s16 y;
+
+		constexpr Vec2s16() : x(0), y(0) {}
+		constexpr Vec2s16(s16 x) : x(x), y(x) {}
+		constexpr Vec2s16(s16 x, s16 y) : x(x), y(y) {}
+		constexpr Vec2s16(const Vec2s16& xy) : x(xy.x), y(xy.y) {}
+
+		template<typename T> explicit constexpr Vec2s16(const T& xy) : x((s16)xy.x), y((s16)xy.y) {}
+
+		Vec2s16 operator+(const Vec2s16& other) const { return Vec2s16(x + other.x, y + other.y); }
+		Vec2s16 operator+(s16 other) const { return Vec2s16(x + other, y + other); }
+
+		Vec2s16 operator-(const Vec2s16& other) const { return Vec2s16(x - other.x, y - other.y); }
+		Vec2s16 operator-(s16 other) const { return Vec2s16(x - other, y - other); }
+
+		Vec2s16 operator*(const Vec2s16& other) const { return Vec2s16(x * other.x, y * other.y); }
+		Vec2s16 operator*(s16 other) const { return Vec2s16(x * other, y * other); }
+
+		Vec2s16 operator/(const Vec2s16& other) const { return Vec2s16(x / other.x, y / other.y); }
+		Vec2s16 operator/(s16 other) const { return Vec2s16(x / other, y / other); }
+
+		Vec2s16 operator%(const Vec2s16& other) const { return Vec2s16(x % other.x, y % other.y); }
+		Vec2s16 operator%(s16 other) const { return Vec2s16(x % other, y % other); }
+
+		Vec2s16 operator&(const Vec2s16& other) const { return Vec2s16(x & other.x, y & other.y); }
+		Vec2s16 operator&(s16 other) const { return Vec2s16(x & other, y & other); }
+
+		Vec2s16 operator|(const Vec2s16& other) const { return Vec2s16(x | other.x, y | other.y); }
+		Vec2s16 operator|(s16 other) const { return Vec2s16(x | other, y | other); }
+
+		Vec2s16 operator^(const Vec2s16& other) const { return Vec2s16(x ^ other.x, y ^ other.y); }
+		Vec2s16 operator^(s16 other) const { return Vec2s16(x ^ other, y ^ other); }
+
+		Vec2s16 operator<<(const Vec2s16& other) const { return Vec2s16(x << other.x, y << other.y); }
+		Vec2s16 operator<<(s16 other) const { return Vec2s16(x << other, y << other); }
+
+		Vec2s16 operator>>(const Vec2s16& other) const { return Vec2s16(x >> other.x, y >> other.y); }
+		Vec2s16 operator>>(s16 other) const { return Vec2s16(x >> other, y >> other); }
+
+		Vec2s16& operator+=(const Vec2s16& other) { x += other.x; y += other.y; return *this; }
+		Vec2s16& operator+=(s16 other) { x += other; y += other; return *this; }
+
+		Vec2s16& operator-=(const Vec2s16& other) { x -= other.x; y -= other.y; return *this; }
+		Vec2s16& operator-=(s16 other) { x -= other; y -= other; return *this; }
+
+		Vec2s16& operator*=(const Vec2s16& other) { x *= other.x; y *= other.y; return *this; }
+		Vec2s16& operator*=(s16 other) { x *= other; y *= other; return *this; }
+
+		Vec2s16& operator/=(const Vec2s16& other) { x /= other.x; y /= other.y; return *this; }
+		Vec2s16& operator/=(s16 other) { x /= other; y /= other; return *this; }
+
+		Vec2s16& operator%=(const Vec2s16& other) { x %= other.x; y %= other.y; return *this; }
+		Vec2s16& operator%=(s16 other) { x %= other; y %= other; return *this; }
+
+		Vec2s16& operator&=(const Vec2s16& other) { x &= other.x; y &= other.y; return *this; }
+		Vec2s16& operator&=(s16 other) { x &= other; y &= other; return *this; }
+
+		Vec2s16& operator|=(const Vec2s16& other) { x |= other.x; y |= other.y; return *this; }
+		Vec2s16& operator|=(s16 other) { x |= other; y |= other; return *this; }
+
+		Vec2s16& operator^=(const Vec2s16& other) { x ^= other.x; y ^= other.y; return *this; }
+		Vec2s16& operator^=(s16 other) { x ^= other; y ^= other; return *this; }
+
+		Vec2s16& operator<<=(const Vec2s16& other) { x <<= other.x; y <<= other.y; return *this; }
+		Vec2s16& operator<<=(s16 other) { x <<= other; y <<= other; return *this; }
+
+		Vec2s16& operator>>=(const Vec2s16& other) { x >>= other.x; y >>= other.y; return *this; }
+		Vec2s16& operator>>=(s16 other) { x >>= other; y >>= other; return *this; }
+
+		Vec2s16 operator~() const { return Vec2s16(~x, ~y); }
+
+		s16& operator[](u32 index) { return (&x)[index]; }
+		const s16& operator[](u32 index) const { return (&x)[index]; }
+
+		compile_const u64 count = 2;
+		compile_const u64 capacity = 2;
+		using ValueType = s16;
+	};
+
+	inline Vec2s16 Min(const Vec2s16& lh, const Vec2s16& rh) { return Vec2s16(Min(lh.x, rh.x), Min(lh.y, rh.y)); }
+	inline Vec2s16 Max(const Vec2s16& lh, const Vec2s16& rh) { return Vec2s16(Max(lh.x, rh.x), Max(lh.y, rh.y)); }
+
+	struct Vec2s8 {
+		s8 x; s8 y;
+
+		constexpr Vec2s8() : x(0), y(0) {}
+		constexpr Vec2s8(s8 x) : x(x), y(x) {}
+		constexpr Vec2s8(s8 x, s8 y) : x(x), y(y) {}
+		constexpr Vec2s8(const Vec2s8& xy) : x(xy.x), y(xy.y) {}
+
+		template<typename T> explicit constexpr Vec2s8(const T& xy) : x((s8)xy.x), y((s8)xy.y) {}
+
+		Vec2s8 operator+(const Vec2s8& other) const { return Vec2s8(x + other.x, y + other.y); }
+		Vec2s8 operator+(s8 other) const { return Vec2s8(x + other, y + other); }
+
+		Vec2s8 operator-(const Vec2s8& other) const { return Vec2s8(x - other.x, y - other.y); }
+		Vec2s8 operator-(s8 other) const { return Vec2s8(x - other, y - other); }
+
+		Vec2s8 operator*(const Vec2s8& other) const { return Vec2s8(x * other.x, y * other.y); }
+		Vec2s8 operator*(s8 other) const { return Vec2s8(x * other, y * other); }
+
+		Vec2s8 operator/(const Vec2s8& other) const { return Vec2s8(x / other.x, y / other.y); }
+		Vec2s8 operator/(s8 other) const { return Vec2s8(x / other, y / other); }
+
+		Vec2s8 operator%(const Vec2s8& other) const { return Vec2s8(x % other.x, y % other.y); }
+		Vec2s8 operator%(s8 other) const { return Vec2s8(x % other, y % other); }
+
+		Vec2s8 operator&(const Vec2s8& other) const { return Vec2s8(x & other.x, y & other.y); }
+		Vec2s8 operator&(s8 other) const { return Vec2s8(x & other, y & other); }
+
+		Vec2s8 operator|(const Vec2s8& other) const { return Vec2s8(x | other.x, y | other.y); }
+		Vec2s8 operator|(s8 other) const { return Vec2s8(x | other, y | other); }
+
+		Vec2s8 operator^(const Vec2s8& other) const { return Vec2s8(x ^ other.x, y ^ other.y); }
+		Vec2s8 operator^(s8 other) const { return Vec2s8(x ^ other, y ^ other); }
+
+		Vec2s8 operator<<(const Vec2s8& other) const { return Vec2s8(x << other.x, y << other.y); }
+		Vec2s8 operator<<(s8 other) const { return Vec2s8(x << other, y << other); }
+
+		Vec2s8 operator>>(const Vec2s8& other) const { return Vec2s8(x >> other.x, y >> other.y); }
+		Vec2s8 operator>>(s8 other) const { return Vec2s8(x >> other, y >> other); }
+
+		Vec2s8& operator+=(const Vec2s8& other) { x += other.x; y += other.y; return *this; }
+		Vec2s8& operator+=(s8 other) { x += other; y += other; return *this; }
+
+		Vec2s8& operator-=(const Vec2s8& other) { x -= other.x; y -= other.y; return *this; }
+		Vec2s8& operator-=(s8 other) { x -= other; y -= other; return *this; }
+
+		Vec2s8& operator*=(const Vec2s8& other) { x *= other.x; y *= other.y; return *this; }
+		Vec2s8& operator*=(s8 other) { x *= other; y *= other; return *this; }
+
+		Vec2s8& operator/=(const Vec2s8& other) { x /= other.x; y /= other.y; return *this; }
+		Vec2s8& operator/=(s8 other) { x /= other; y /= other; return *this; }
+
+		Vec2s8& operator%=(const Vec2s8& other) { x %= other.x; y %= other.y; return *this; }
+		Vec2s8& operator%=(s8 other) { x %= other; y %= other; return *this; }
+
+		Vec2s8& operator&=(const Vec2s8& other) { x &= other.x; y &= other.y; return *this; }
+		Vec2s8& operator&=(s8 other) { x &= other; y &= other; return *this; }
+
+		Vec2s8& operator|=(const Vec2s8& other) { x |= other.x; y |= other.y; return *this; }
+		Vec2s8& operator|=(s8 other) { x |= other; y |= other; return *this; }
+
+		Vec2s8& operator^=(const Vec2s8& other) { x ^= other.x; y ^= other.y; return *this; }
+		Vec2s8& operator^=(s8 other) { x ^= other; y ^= other; return *this; }
+
+		Vec2s8& operator<<=(const Vec2s8& other) { x <<= other.x; y <<= other.y; return *this; }
+		Vec2s8& operator<<=(s8 other) { x <<= other; y <<= other; return *this; }
+
+		Vec2s8& operator>>=(const Vec2s8& other) { x >>= other.x; y >>= other.y; return *this; }
+		Vec2s8& operator>>=(s8 other) { x >>= other; y >>= other; return *this; }
+
+		Vec2s8 operator~() const { return Vec2s8(~x, ~y); }
+
+		s8& operator[](u32 index) { return (&x)[index]; }
+		const s8& operator[](u32 index) const { return (&x)[index]; }
+
+		compile_const u64 count = 2;
+		compile_const u64 capacity = 2;
+		using ValueType = s8;
+	};
+
+	inline Vec2s8 Min(const Vec2s8& lh, const Vec2s8& rh) { return Vec2s8(Min(lh.x, rh.x), Min(lh.y, rh.y)); }
+	inline Vec2s8 Max(const Vec2s8& lh, const Vec2s8& rh) { return Vec2s8(Max(lh.x, rh.x), Max(lh.y, rh.y)); }
+
+	struct Vec3s32 {
+		union {
+			struct { s32 x; s32 y; s32 z; };
+			Vec2s32 xy;
+		};
+
+		constexpr Vec3s32() : x(0), y(0), z(0) {}
+		constexpr Vec3s32(s32 x) : x(x), y(x), z(x) {}
+		constexpr Vec3s32(s32 x, s32 y, s32 z) : x(x), y(y), z(z) {}
+		constexpr Vec3s32(const Vec2s32& xy, s32 z) : x(xy.x), y(xy.y), z(z) {}
+		constexpr Vec3s32(const Vec3s32& xyz) : x(xyz.x), y(xyz.y), z(xyz.z) {}
+
+		template<typename T> explicit constexpr Vec3s32(const T& xyz) : x((s32)xyz.x), y((s32)xyz.y), z((s32)xyz.z) {}
+
+		Vec3s32 operator+(const Vec3s32& other) const { return Vec3s32(x + other.x, y + other.y, z + other.z); }
+		Vec3s32 operator+(s32 other) const { return Vec3s32(x + other, y + other, z + other); }
+
+		Vec3s32 operator-(const Vec3s32& other) const { return Vec3s32(x - other.x, y - other.y, z - other.z); }
+		Vec3s32 operator-(s32 other) const { return Vec3s32(x - other, y - other, z - other); }
+
+		Vec3s32 operator*(const Vec3s32& other) const { return Vec3s32(x * other.x, y * other.y, z * other.z); }
+		Vec3s32 operator*(s32 other) const { return Vec3s32(x * other, y * other, z * other); }
+
+		Vec3s32 operator/(const Vec3s32& other) const { return Vec3s32(x / other.x, y / other.y, z / other.z); }
+		Vec3s32 operator/(s32 other) const { return Vec3s32(x / other, y / other, z / other); }
+
+		Vec3s32 operator%(const Vec3s32& other) const { return Vec3s32(x % other.x, y % other.y, z % other.z); }
+		Vec3s32 operator%(s32 other) const { return Vec3s32(x % other, y % other, z % other); }
+
+		Vec3s32 operator&(const Vec3s32& other) const { return Vec3s32(x & other.x, y & other.y, z & other.z); }
+		Vec3s32 operator&(s32 other) const { return Vec3s32(x & other, y & other, z & other); }
+
+		Vec3s32 operator|(const Vec3s32& other) const { return Vec3s32(x | other.x, y | other.y, z | other.z); }
+		Vec3s32 operator|(s32 other) const { return Vec3s32(x | other, y | other, z | other); }
+
+		Vec3s32 operator^(const Vec3s32& other) const { return Vec3s32(x ^ other.x, y ^ other.y, z ^ other.z); }
+		Vec3s32 operator^(s32 other) const { return Vec3s32(x ^ other, y ^ other, z ^ other); }
+
+		Vec3s32 operator<<(const Vec3s32& other) const { return Vec3s32(x << other.x, y << other.y, z << other.z); }
+		Vec3s32 operator<<(s32 other) const { return Vec3s32(x << other, y << other, z << other); }
+
+		Vec3s32 operator>>(const Vec3s32& other) const { return Vec3s32(x >> other.x, y >> other.y, z >> other.z); }
+		Vec3s32 operator>>(s32 other) const { return Vec3s32(x >> other, y >> other, z >> other); }
+
+		Vec3s32& operator+=(const Vec3s32& other) { x += other.x; y += other.y; z += other.z; return *this; }
+		Vec3s32& operator+=(s32 other) { x += other; y += other; z += other; return *this; }
+
+		Vec3s32& operator-=(const Vec3s32& other) { x -= other.x; y -= other.y; z -= other.z; return *this; }
+		Vec3s32& operator-=(s32 other) { x -= other; y -= other; z -= other; return *this; }
+
+		Vec3s32& operator*=(const Vec3s32& other) { x *= other.x; y *= other.y; z *= other.z; return *this; }
+		Vec3s32& operator*=(s32 other) { x *= other; y *= other; z *= other; return *this; }
+
+		Vec3s32& operator/=(const Vec3s32& other) { x /= other.x; y /= other.y; z /= other.z; return *this; }
+		Vec3s32& operator/=(s32 other) { x /= other; y /= other; z /= other; return *this; }
+
+		Vec3s32& operator%=(const Vec3s32& other) { x %= other.x; y %= other.y; z %= other.z; return *this; }
+		Vec3s32& operator%=(s32 other) { x %= other; y %= other; z %= other; return *this; }
+
+		Vec3s32& operator&=(const Vec3s32& other) { x &= other.x; y &= other.y; z &= other.z; return *this; }
+		Vec3s32& operator&=(s32 other) { x &= other; y &= other; z &= other; return *this; }
+
+		Vec3s32& operator|=(const Vec3s32& other) { x |= other.x; y |= other.y; z |= other.z; return *this; }
+		Vec3s32& operator|=(s32 other) { x |= other; y |= other; z |= other; return *this; }
+
+		Vec3s32& operator^=(const Vec3s32& other) { x ^= other.x; y ^= other.y; z ^= other.z; return *this; }
+		Vec3s32& operator^=(s32 other) { x ^= other; y ^= other; z ^= other; return *this; }
+
+		Vec3s32& operator<<=(const Vec3s32& other) { x <<= other.x; y <<= other.y; z <<= other.z; return *this; }
+		Vec3s32& operator<<=(s32 other) { x <<= other; y <<= other; z <<= other; return *this; }
+
+		Vec3s32& operator>>=(const Vec3s32& other) { x >>= other.x; y >>= other.y; z >>= other.z; return *this; }
+		Vec3s32& operator>>=(s32 other) { x >>= other; y >>= other; z >>= other; return *this; }
+
+		Vec3s32 operator~() const { return Vec3s32(~x, ~y, ~z); }
+
+		s32& operator[](u32 index) { return (&x)[index]; }
+		const s32& operator[](u32 index) const { return (&x)[index]; }
+
+		compile_const u64 count = 3;
+		compile_const u64 capacity = 3;
+		using ValueType = s32;
+	};
+
+	inline Vec3s32 Min(const Vec3s32& lh, const Vec3s32& rh) { return Vec3s32(Min(lh.x, rh.x), Min(lh.y, rh.y), Min(lh.z, rh.z)); }
+	inline Vec3s32 Max(const Vec3s32& lh, const Vec3s32& rh) { return Vec3s32(Max(lh.x, rh.x), Max(lh.y, rh.y), Max(lh.z, rh.z)); }
+
+	struct Vec3s16 {
+		union {
+			struct { s16 x; s16 y; s16 z; };
+			Vec2s16 xy;
+		};
+
+		constexpr Vec3s16() : x(0), y(0), z(0) {}
+		constexpr Vec3s16(s16 x) : x(x), y(x), z(x) {}
+		constexpr Vec3s16(s16 x, s16 y, s16 z) : x(x), y(y), z(z) {}
+		constexpr Vec3s16(const Vec2s16& xy, s16 z) : x(xy.x), y(xy.y), z(z) {}
+		constexpr Vec3s16(const Vec3s16& xyz) : x(xyz.x), y(xyz.y), z(xyz.z) {}
+
+		template<typename T> explicit constexpr Vec3s16(const T& xyz) : x((s16)xyz.x), y((s16)xyz.y), z((s16)xyz.z) {}
+
+		Vec3s16 operator+(const Vec3s16& other) const { return Vec3s16(x + other.x, y + other.y, z + other.z); }
+		Vec3s16 operator+(s16 other) const { return Vec3s16(x + other, y + other, z + other); }
+
+		Vec3s16 operator-(const Vec3s16& other) const { return Vec3s16(x - other.x, y - other.y, z - other.z); }
+		Vec3s16 operator-(s16 other) const { return Vec3s16(x - other, y - other, z - other); }
+
+		Vec3s16 operator*(const Vec3s16& other) const { return Vec3s16(x * other.x, y * other.y, z * other.z); }
+		Vec3s16 operator*(s16 other) const { return Vec3s16(x * other, y * other, z * other); }
+
+		Vec3s16 operator/(const Vec3s16& other) const { return Vec3s16(x / other.x, y / other.y, z / other.z); }
+		Vec3s16 operator/(s16 other) const { return Vec3s16(x / other, y / other, z / other); }
+
+		Vec3s16 operator%(const Vec3s16& other) const { return Vec3s16(x % other.x, y % other.y, z % other.z); }
+		Vec3s16 operator%(s16 other) const { return Vec3s16(x % other, y % other, z % other); }
+
+		Vec3s16 operator&(const Vec3s16& other) const { return Vec3s16(x & other.x, y & other.y, z & other.z); }
+		Vec3s16 operator&(s16 other) const { return Vec3s16(x & other, y & other, z & other); }
+
+		Vec3s16 operator|(const Vec3s16& other) const { return Vec3s16(x | other.x, y | other.y, z | other.z); }
+		Vec3s16 operator|(s16 other) const { return Vec3s16(x | other, y | other, z | other); }
+
+		Vec3s16 operator^(const Vec3s16& other) const { return Vec3s16(x ^ other.x, y ^ other.y, z ^ other.z); }
+		Vec3s16 operator^(s16 other) const { return Vec3s16(x ^ other, y ^ other, z ^ other); }
+
+		Vec3s16 operator<<(const Vec3s16& other) const { return Vec3s16(x << other.x, y << other.y, z << other.z); }
+		Vec3s16 operator<<(s16 other) const { return Vec3s16(x << other, y << other, z << other); }
+
+		Vec3s16 operator>>(const Vec3s16& other) const { return Vec3s16(x >> other.x, y >> other.y, z >> other.z); }
+		Vec3s16 operator>>(s16 other) const { return Vec3s16(x >> other, y >> other, z >> other); }
+
+		Vec3s16& operator+=(const Vec3s16& other) { x += other.x; y += other.y; z += other.z; return *this; }
+		Vec3s16& operator+=(s16 other) { x += other; y += other; z += other; return *this; }
+
+		Vec3s16& operator-=(const Vec3s16& other) { x -= other.x; y -= other.y; z -= other.z; return *this; }
+		Vec3s16& operator-=(s16 other) { x -= other; y -= other; z -= other; return *this; }
+
+		Vec3s16& operator*=(const Vec3s16& other) { x *= other.x; y *= other.y; z *= other.z; return *this; }
+		Vec3s16& operator*=(s16 other) { x *= other; y *= other; z *= other; return *this; }
+
+		Vec3s16& operator/=(const Vec3s16& other) { x /= other.x; y /= other.y; z /= other.z; return *this; }
+		Vec3s16& operator/=(s16 other) { x /= other; y /= other; z /= other; return *this; }
+
+		Vec3s16& operator%=(const Vec3s16& other) { x %= other.x; y %= other.y; z %= other.z; return *this; }
+		Vec3s16& operator%=(s16 other) { x %= other; y %= other; z %= other; return *this; }
+
+		Vec3s16& operator&=(const Vec3s16& other) { x &= other.x; y &= other.y; z &= other.z; return *this; }
+		Vec3s16& operator&=(s16 other) { x &= other; y &= other; z &= other; return *this; }
+
+		Vec3s16& operator|=(const Vec3s16& other) { x |= other.x; y |= other.y; z |= other.z; return *this; }
+		Vec3s16& operator|=(s16 other) { x |= other; y |= other; z |= other; return *this; }
+
+		Vec3s16& operator^=(const Vec3s16& other) { x ^= other.x; y ^= other.y; z ^= other.z; return *this; }
+		Vec3s16& operator^=(s16 other) { x ^= other; y ^= other; z ^= other; return *this; }
+
+		Vec3s16& operator<<=(const Vec3s16& other) { x <<= other.x; y <<= other.y; z <<= other.z; return *this; }
+		Vec3s16& operator<<=(s16 other) { x <<= other; y <<= other; z <<= other; return *this; }
+
+		Vec3s16& operator>>=(const Vec3s16& other) { x >>= other.x; y >>= other.y; z >>= other.z; return *this; }
+		Vec3s16& operator>>=(s16 other) { x >>= other; y >>= other; z >>= other; return *this; }
+
+		Vec3s16 operator~() const { return Vec3s16(~x, ~y, ~z); }
+
+		s16& operator[](u32 index) { return (&x)[index]; }
+		const s16& operator[](u32 index) const { return (&x)[index]; }
+
+		compile_const u64 count = 3;
+		compile_const u64 capacity = 3;
+		using ValueType = s16;
+	};
+
+	inline Vec3s16 Min(const Vec3s16& lh, const Vec3s16& rh) { return Vec3s16(Min(lh.x, rh.x), Min(lh.y, rh.y), Min(lh.z, rh.z)); }
+	inline Vec3s16 Max(const Vec3s16& lh, const Vec3s16& rh) { return Vec3s16(Max(lh.x, rh.x), Max(lh.y, rh.y), Max(lh.z, rh.z)); }
+
+	struct Vec3s8 {
+		union {
+			struct { s8 x; s8 y; s8 z; };
+			Vec2s8 xy;
+		};
+
+		constexpr Vec3s8() : x(0), y(0), z(0) {}
+		constexpr Vec3s8(s8 x) : x(x), y(x), z(x) {}
+		constexpr Vec3s8(s8 x, s8 y, s8 z) : x(x), y(y), z(z) {}
+		constexpr Vec3s8(const Vec2s8& xy, s8 z) : x(xy.x), y(xy.y), z(z) {}
+		constexpr Vec3s8(const Vec3s8& xyz) : x(xyz.x), y(xyz.y), z(xyz.z) {}
+
+		template<typename T> explicit constexpr Vec3s8(const T& xyz) : x((s8)xyz.x), y((s8)xyz.y), z((s8)xyz.z) {}
+
+		Vec3s8 operator+(const Vec3s8& other) const { return Vec3s8(x + other.x, y + other.y, z + other.z); }
+		Vec3s8 operator+(s8 other) const { return Vec3s8(x + other, y + other, z + other); }
+
+		Vec3s8 operator-(const Vec3s8& other) const { return Vec3s8(x - other.x, y - other.y, z - other.z); }
+		Vec3s8 operator-(s8 other) const { return Vec3s8(x - other, y - other, z - other); }
+
+		Vec3s8 operator*(const Vec3s8& other) const { return Vec3s8(x * other.x, y * other.y, z * other.z); }
+		Vec3s8 operator*(s8 other) const { return Vec3s8(x * other, y * other, z * other); }
+
+		Vec3s8 operator/(const Vec3s8& other) const { return Vec3s8(x / other.x, y / other.y, z / other.z); }
+		Vec3s8 operator/(s8 other) const { return Vec3s8(x / other, y / other, z / other); }
+
+		Vec3s8 operator%(const Vec3s8& other) const { return Vec3s8(x % other.x, y % other.y, z % other.z); }
+		Vec3s8 operator%(s8 other) const { return Vec3s8(x % other, y % other, z % other); }
+
+		Vec3s8 operator&(const Vec3s8& other) const { return Vec3s8(x & other.x, y & other.y, z & other.z); }
+		Vec3s8 operator&(s8 other) const { return Vec3s8(x & other, y & other, z & other); }
+
+		Vec3s8 operator|(const Vec3s8& other) const { return Vec3s8(x | other.x, y | other.y, z | other.z); }
+		Vec3s8 operator|(s8 other) const { return Vec3s8(x | other, y | other, z | other); }
+
+		Vec3s8 operator^(const Vec3s8& other) const { return Vec3s8(x ^ other.x, y ^ other.y, z ^ other.z); }
+		Vec3s8 operator^(s8 other) const { return Vec3s8(x ^ other, y ^ other, z ^ other); }
+
+		Vec3s8 operator<<(const Vec3s8& other) const { return Vec3s8(x << other.x, y << other.y, z << other.z); }
+		Vec3s8 operator<<(s8 other) const { return Vec3s8(x << other, y << other, z << other); }
+
+		Vec3s8 operator>>(const Vec3s8& other) const { return Vec3s8(x >> other.x, y >> other.y, z >> other.z); }
+		Vec3s8 operator>>(s8 other) const { return Vec3s8(x >> other, y >> other, z >> other); }
+
+		Vec3s8& operator+=(const Vec3s8& other) { x += other.x; y += other.y; z += other.z; return *this; }
+		Vec3s8& operator+=(s8 other) { x += other; y += other; z += other; return *this; }
+
+		Vec3s8& operator-=(const Vec3s8& other) { x -= other.x; y -= other.y; z -= other.z; return *this; }
+		Vec3s8& operator-=(s8 other) { x -= other; y -= other; z -= other; return *this; }
+
+		Vec3s8& operator*=(const Vec3s8& other) { x *= other.x; y *= other.y; z *= other.z; return *this; }
+		Vec3s8& operator*=(s8 other) { x *= other; y *= other; z *= other; return *this; }
+
+		Vec3s8& operator/=(const Vec3s8& other) { x /= other.x; y /= other.y; z /= other.z; return *this; }
+		Vec3s8& operator/=(s8 other) { x /= other; y /= other; z /= other; return *this; }
+
+		Vec3s8& operator%=(const Vec3s8& other) { x %= other.x; y %= other.y; z %= other.z; return *this; }
+		Vec3s8& operator%=(s8 other) { x %= other; y %= other; z %= other; return *this; }
+
+		Vec3s8& operator&=(const Vec3s8& other) { x &= other.x; y &= other.y; z &= other.z; return *this; }
+		Vec3s8& operator&=(s8 other) { x &= other; y &= other; z &= other; return *this; }
+
+		Vec3s8& operator|=(const Vec3s8& other) { x |= other.x; y |= other.y; z |= other.z; return *this; }
+		Vec3s8& operator|=(s8 other) { x |= other; y |= other; z |= other; return *this; }
+
+		Vec3s8& operator^=(const Vec3s8& other) { x ^= other.x; y ^= other.y; z ^= other.z; return *this; }
+		Vec3s8& operator^=(s8 other) { x ^= other; y ^= other; z ^= other; return *this; }
+
+		Vec3s8& operator<<=(const Vec3s8& other) { x <<= other.x; y <<= other.y; z <<= other.z; return *this; }
+		Vec3s8& operator<<=(s8 other) { x <<= other; y <<= other; z <<= other; return *this; }
+
+		Vec3s8& operator>>=(const Vec3s8& other) { x >>= other.x; y >>= other.y; z >>= other.z; return *this; }
+		Vec3s8& operator>>=(s8 other) { x >>= other; y >>= other; z >>= other; return *this; }
+
+		Vec3s8 operator~() const { return Vec3s8(~x, ~y, ~z); }
+
+		s8& operator[](u32 index) { return (&x)[index]; }
+		const s8& operator[](u32 index) const { return (&x)[index]; }
+
+		compile_const u64 count = 3;
+		compile_const u64 capacity = 3;
+		using ValueType = s8;
+	};
+
+	inline Vec3s8 Min(const Vec3s8& lh, const Vec3s8& rh) { return Vec3s8(Min(lh.x, rh.x), Min(lh.y, rh.y), Min(lh.z, rh.z)); }
+	inline Vec3s8 Max(const Vec3s8& lh, const Vec3s8& rh) { return Vec3s8(Max(lh.x, rh.x), Max(lh.y, rh.y), Max(lh.z, rh.z)); }
+
+	struct Vec4s32 {
+		union {
+			struct { s32 x; s32 y; s32 z; s32 w; };
+			struct { Vec2s32 xy; Vec2s32 zw; };
+			Vec3s32 xyz;
+		};
+
+		constexpr Vec4s32() : x(0), y(0), z(0), w(0) {}
+		constexpr Vec4s32(s32 x) : x(x), y(x), z(x), w(x) {}
+		constexpr Vec4s32(s32 x, s32 y, s32 z, s32 w) : x(x), y(y), z(z), w(w) {}
+		constexpr Vec4s32(const Vec2s32& xy, s32 z, s32 w) : x(xy.x), y(xy.y), z(z), w(w) {}
+		constexpr Vec4s32(const Vec2s32& xy, const Vec2s32& zw) : x(xy.x), y(xy.y), z(zw.x), w(zw.y) {}
+		constexpr Vec4s32(const Vec3s32& xyz, s32 w) : x(xyz.x), y(xyz.y), z(xyz.z), w(w) {}
+		constexpr Vec4s32(const Vec4s32& xyzw) : x(xyzw.x), y(xyzw.y), z(xyzw.z), w(xyzw.w) {}
+
+		template<typename T> explicit constexpr Vec4s32(const T& xyzw) : x((s32)xyzw.x), y((s32)xyzw.y), z((s32)xyzw.z), w((s32)xyzw.w) {}
+
+		Vec4s32 operator+(const Vec4s32& other) const { return Vec4s32(x + other.x, y + other.y, z + other.z, w + other.w); }
+		Vec4s32 operator+(s32 other) const { return Vec4s32(x + other, y + other, z + other, w + other); }
+
+		Vec4s32 operator-(const Vec4s32& other) const { return Vec4s32(x - other.x, y - other.y, z - other.z, w - other.w); }
+		Vec4s32 operator-(s32 other) const { return Vec4s32(x - other, y - other, z - other, w - other); }
+
+		Vec4s32 operator*(const Vec4s32& other) const { return Vec4s32(x * other.x, y * other.y, z * other.z, w * other.w); }
+		Vec4s32 operator*(s32 other) const { return Vec4s32(x * other, y * other, z * other, w * other); }
+
+		Vec4s32 operator/(const Vec4s32& other) const { return Vec4s32(x / other.x, y / other.y, z / other.z, w / other.w); }
+		Vec4s32 operator/(s32 other) const { return Vec4s32(x / other, y / other, z / other, w / other); }
+
+		Vec4s32 operator%(const Vec4s32& other) const { return Vec4s32(x % other.x, y % other.y, z % other.z, w % other.w); }
+		Vec4s32 operator%(s32 other) const { return Vec4s32(x % other, y % other, z % other, w % other); }
+
+		Vec4s32 operator&(const Vec4s32& other) const { return Vec4s32(x & other.x, y & other.y, z & other.z, w & other.w); }
+		Vec4s32 operator&(s32 other) const { return Vec4s32(x & other, y & other, z & other, w & other); }
+
+		Vec4s32 operator|(const Vec4s32& other) const { return Vec4s32(x | other.x, y | other.y, z | other.z, w | other.w); }
+		Vec4s32 operator|(s32 other) const { return Vec4s32(x | other, y | other, z | other, w | other); }
+
+		Vec4s32 operator^(const Vec4s32& other) const { return Vec4s32(x ^ other.x, y ^ other.y, z ^ other.z, w ^ other.w); }
+		Vec4s32 operator^(s32 other) const { return Vec4s32(x ^ other, y ^ other, z ^ other, w ^ other); }
+
+		Vec4s32 operator<<(const Vec4s32& other) const { return Vec4s32(x << other.x, y << other.y, z << other.z, w << other.w); }
+		Vec4s32 operator<<(s32 other) const { return Vec4s32(x << other, y << other, z << other, w << other); }
+
+		Vec4s32 operator>>(const Vec4s32& other) const { return Vec4s32(x >> other.x, y >> other.y, z >> other.z, w >> other.w); }
+		Vec4s32 operator>>(s32 other) const { return Vec4s32(x >> other, y >> other, z >> other, w >> other); }
+
+		Vec4s32& operator+=(const Vec4s32& other) { x += other.x; y += other.y; z += other.z; w += other.w; return *this; }
+		Vec4s32& operator+=(s32 other) { x += other; y += other; z += other; w += other; return *this; }
+
+		Vec4s32& operator-=(const Vec4s32& other) { x -= other.x; y -= other.y; z -= other.z; w -= other.w; return *this; }
+		Vec4s32& operator-=(s32 other) { x -= other; y -= other; z -= other; w -= other; return *this; }
+
+		Vec4s32& operator*=(const Vec4s32& other) { x *= other.x; y *= other.y; z *= other.z; w *= other.w; return *this; }
+		Vec4s32& operator*=(s32 other) { x *= other; y *= other; z *= other; w *= other; return *this; }
+
+		Vec4s32& operator/=(const Vec4s32& other) { x /= other.x; y /= other.y; z /= other.z; w /= other.w; return *this; }
+		Vec4s32& operator/=(s32 other) { x /= other; y /= other; z /= other; w /= other; return *this; }
+
+		Vec4s32& operator%=(const Vec4s32& other) { x %= other.x; y %= other.y; z %= other.z; w %= other.w; return *this; }
+		Vec4s32& operator%=(s32 other) { x %= other; y %= other; z %= other; w %= other; return *this; }
+
+		Vec4s32& operator&=(const Vec4s32& other) { x &= other.x; y &= other.y; z &= other.z; w &= other.w; return *this; }
+		Vec4s32& operator&=(s32 other) { x &= other; y &= other; z &= other; w &= other; return *this; }
+
+		Vec4s32& operator|=(const Vec4s32& other) { x |= other.x; y |= other.y; z |= other.z; w |= other.w; return *this; }
+		Vec4s32& operator|=(s32 other) { x |= other; y |= other; z |= other; w |= other; return *this; }
+
+		Vec4s32& operator^=(const Vec4s32& other) { x ^= other.x; y ^= other.y; z ^= other.z; w ^= other.w; return *this; }
+		Vec4s32& operator^=(s32 other) { x ^= other; y ^= other; z ^= other; w ^= other; return *this; }
+
+		Vec4s32& operator<<=(const Vec4s32& other) { x <<= other.x; y <<= other.y; z <<= other.z; w <<= other.w; return *this; }
+		Vec4s32& operator<<=(s32 other) { x <<= other; y <<= other; z <<= other; w <<= other; return *this; }
+
+		Vec4s32& operator>>=(const Vec4s32& other) { x >>= other.x; y >>= other.y; z >>= other.z; w >>= other.w; return *this; }
+		Vec4s32& operator>>=(s32 other) { x >>= other; y >>= other; z >>= other; w >>= other; return *this; }
+
+		Vec4s32 operator~() const { return Vec4s32(~x, ~y, ~z, ~w); }
+
+		s32& operator[](u32 index) { return (&x)[index]; }
+		const s32& operator[](u32 index) const { return (&x)[index]; }
+
+		compile_const u64 count = 4;
+		compile_const u64 capacity = 4;
+		using ValueType = s32;
+	};
+
+	inline Vec4s32 Min(const Vec4s32& lh, const Vec4s32& rh) { return Vec4s32(Min(lh.x, rh.x), Min(lh.y, rh.y), Min(lh.z, rh.z), Min(lh.w, rh.w)); }
+	inline Vec4s32 Max(const Vec4s32& lh, const Vec4s32& rh) { return Vec4s32(Max(lh.x, rh.x), Max(lh.y, rh.y), Max(lh.z, rh.z), Max(lh.w, rh.w)); }
+
+	struct Vec4s16 {
+		union {
+			struct { s16 x; s16 y; s16 z; s16 w; };
+			struct { Vec2s16 xy; Vec2s16 zw; };
+			Vec3s16 xyz;
+		};
+
+		constexpr Vec4s16() : x(0), y(0), z(0), w(0) {}
+		constexpr Vec4s16(s16 x) : x(x), y(x), z(x), w(x) {}
+		constexpr Vec4s16(s16 x, s16 y, s16 z, s16 w) : x(x), y(y), z(z), w(w) {}
+		constexpr Vec4s16(const Vec2s16& xy, s16 z, s16 w) : x(xy.x), y(xy.y), z(z), w(w) {}
+		constexpr Vec4s16(const Vec2s16& xy, const Vec2s16& zw) : x(xy.x), y(xy.y), z(zw.x), w(zw.y) {}
+		constexpr Vec4s16(const Vec3s16& xyz, s16 w) : x(xyz.x), y(xyz.y), z(xyz.z), w(w) {}
+		constexpr Vec4s16(const Vec4s16& xyzw) : x(xyzw.x), y(xyzw.y), z(xyzw.z), w(xyzw.w) {}
+
+		template<typename T> explicit constexpr Vec4s16(const T& xyzw) : x((s16)xyzw.x), y((s16)xyzw.y), z((s16)xyzw.z), w((s16)xyzw.w) {}
+
+		Vec4s16 operator+(const Vec4s16& other) const { return Vec4s16(x + other.x, y + other.y, z + other.z, w + other.w); }
+		Vec4s16 operator+(s16 other) const { return Vec4s16(x + other, y + other, z + other, w + other); }
+
+		Vec4s16 operator-(const Vec4s16& other) const { return Vec4s16(x - other.x, y - other.y, z - other.z, w - other.w); }
+		Vec4s16 operator-(s16 other) const { return Vec4s16(x - other, y - other, z - other, w - other); }
+
+		Vec4s16 operator*(const Vec4s16& other) const { return Vec4s16(x * other.x, y * other.y, z * other.z, w * other.w); }
+		Vec4s16 operator*(s16 other) const { return Vec4s16(x * other, y * other, z * other, w * other); }
+
+		Vec4s16 operator/(const Vec4s16& other) const { return Vec4s16(x / other.x, y / other.y, z / other.z, w / other.w); }
+		Vec4s16 operator/(s16 other) const { return Vec4s16(x / other, y / other, z / other, w / other); }
+
+		Vec4s16 operator%(const Vec4s16& other) const { return Vec4s16(x % other.x, y % other.y, z % other.z, w % other.w); }
+		Vec4s16 operator%(s16 other) const { return Vec4s16(x % other, y % other, z % other, w % other); }
+
+		Vec4s16 operator&(const Vec4s16& other) const { return Vec4s16(x & other.x, y & other.y, z & other.z, w & other.w); }
+		Vec4s16 operator&(s16 other) const { return Vec4s16(x & other, y & other, z & other, w & other); }
+
+		Vec4s16 operator|(const Vec4s16& other) const { return Vec4s16(x | other.x, y | other.y, z | other.z, w | other.w); }
+		Vec4s16 operator|(s16 other) const { return Vec4s16(x | other, y | other, z | other, w | other); }
+
+		Vec4s16 operator^(const Vec4s16& other) const { return Vec4s16(x ^ other.x, y ^ other.y, z ^ other.z, w ^ other.w); }
+		Vec4s16 operator^(s16 other) const { return Vec4s16(x ^ other, y ^ other, z ^ other, w ^ other); }
+
+		Vec4s16 operator<<(const Vec4s16& other) const { return Vec4s16(x << other.x, y << other.y, z << other.z, w << other.w); }
+		Vec4s16 operator<<(s16 other) const { return Vec4s16(x << other, y << other, z << other, w << other); }
+
+		Vec4s16 operator>>(const Vec4s16& other) const { return Vec4s16(x >> other.x, y >> other.y, z >> other.z, w >> other.w); }
+		Vec4s16 operator>>(s16 other) const { return Vec4s16(x >> other, y >> other, z >> other, w >> other); }
+
+		Vec4s16& operator+=(const Vec4s16& other) { x += other.x; y += other.y; z += other.z; w += other.w; return *this; }
+		Vec4s16& operator+=(s16 other) { x += other; y += other; z += other; w += other; return *this; }
+
+		Vec4s16& operator-=(const Vec4s16& other) { x -= other.x; y -= other.y; z -= other.z; w -= other.w; return *this; }
+		Vec4s16& operator-=(s16 other) { x -= other; y -= other; z -= other; w -= other; return *this; }
+
+		Vec4s16& operator*=(const Vec4s16& other) { x *= other.x; y *= other.y; z *= other.z; w *= other.w; return *this; }
+		Vec4s16& operator*=(s16 other) { x *= other; y *= other; z *= other; w *= other; return *this; }
+
+		Vec4s16& operator/=(const Vec4s16& other) { x /= other.x; y /= other.y; z /= other.z; w /= other.w; return *this; }
+		Vec4s16& operator/=(s16 other) { x /= other; y /= other; z /= other; w /= other; return *this; }
+
+		Vec4s16& operator%=(const Vec4s16& other) { x %= other.x; y %= other.y; z %= other.z; w %= other.w; return *this; }
+		Vec4s16& operator%=(s16 other) { x %= other; y %= other; z %= other; w %= other; return *this; }
+
+		Vec4s16& operator&=(const Vec4s16& other) { x &= other.x; y &= other.y; z &= other.z; w &= other.w; return *this; }
+		Vec4s16& operator&=(s16 other) { x &= other; y &= other; z &= other; w &= other; return *this; }
+
+		Vec4s16& operator|=(const Vec4s16& other) { x |= other.x; y |= other.y; z |= other.z; w |= other.w; return *this; }
+		Vec4s16& operator|=(s16 other) { x |= other; y |= other; z |= other; w |= other; return *this; }
+
+		Vec4s16& operator^=(const Vec4s16& other) { x ^= other.x; y ^= other.y; z ^= other.z; w ^= other.w; return *this; }
+		Vec4s16& operator^=(s16 other) { x ^= other; y ^= other; z ^= other; w ^= other; return *this; }
+
+		Vec4s16& operator<<=(const Vec4s16& other) { x <<= other.x; y <<= other.y; z <<= other.z; w <<= other.w; return *this; }
+		Vec4s16& operator<<=(s16 other) { x <<= other; y <<= other; z <<= other; w <<= other; return *this; }
+
+		Vec4s16& operator>>=(const Vec4s16& other) { x >>= other.x; y >>= other.y; z >>= other.z; w >>= other.w; return *this; }
+		Vec4s16& operator>>=(s16 other) { x >>= other; y >>= other; z >>= other; w >>= other; return *this; }
+
+		Vec4s16 operator~() const { return Vec4s16(~x, ~y, ~z, ~w); }
+
+		s16& operator[](u32 index) { return (&x)[index]; }
+		const s16& operator[](u32 index) const { return (&x)[index]; }
+
+		compile_const u64 count = 4;
+		compile_const u64 capacity = 4;
+		using ValueType = s16;
+	};
+
+	inline Vec4s16 Min(const Vec4s16& lh, const Vec4s16& rh) { return Vec4s16(Min(lh.x, rh.x), Min(lh.y, rh.y), Min(lh.z, rh.z), Min(lh.w, rh.w)); }
+	inline Vec4s16 Max(const Vec4s16& lh, const Vec4s16& rh) { return Vec4s16(Max(lh.x, rh.x), Max(lh.y, rh.y), Max(lh.z, rh.z), Max(lh.w, rh.w)); }
+
+	struct Vec4s8 {
+		union {
+			struct { s8 x; s8 y; s8 z; s8 w; };
+			struct { Vec2s8 xy; Vec2s8 zw; };
+			Vec3s8 xyz;
+		};
+
+		constexpr Vec4s8() : x(0), y(0), z(0), w(0) {}
+		constexpr Vec4s8(s8 x) : x(x), y(x), z(x), w(x) {}
+		constexpr Vec4s8(s8 x, s8 y, s8 z, s8 w) : x(x), y(y), z(z), w(w) {}
+		constexpr Vec4s8(const Vec2s8& xy, s8 z, s8 w) : x(xy.x), y(xy.y), z(z), w(w) {}
+		constexpr Vec4s8(const Vec2s8& xy, const Vec2s8& zw) : x(xy.x), y(xy.y), z(zw.x), w(zw.y) {}
+		constexpr Vec4s8(const Vec3s8& xyz, s8 w) : x(xyz.x), y(xyz.y), z(xyz.z), w(w) {}
+		constexpr Vec4s8(const Vec4s8& xyzw) : x(xyzw.x), y(xyzw.y), z(xyzw.z), w(xyzw.w) {}
+
+		template<typename T> explicit constexpr Vec4s8(const T& xyzw) : x((s8)xyzw.x), y((s8)xyzw.y), z((s8)xyzw.z), w((s8)xyzw.w) {}
+
+		Vec4s8 operator+(const Vec4s8& other) const { return Vec4s8(x + other.x, y + other.y, z + other.z, w + other.w); }
+		Vec4s8 operator+(s8 other) const { return Vec4s8(x + other, y + other, z + other, w + other); }
+
+		Vec4s8 operator-(const Vec4s8& other) const { return Vec4s8(x - other.x, y - other.y, z - other.z, w - other.w); }
+		Vec4s8 operator-(s8 other) const { return Vec4s8(x - other, y - other, z - other, w - other); }
+
+		Vec4s8 operator*(const Vec4s8& other) const { return Vec4s8(x * other.x, y * other.y, z * other.z, w * other.w); }
+		Vec4s8 operator*(s8 other) const { return Vec4s8(x * other, y * other, z * other, w * other); }
+
+		Vec4s8 operator/(const Vec4s8& other) const { return Vec4s8(x / other.x, y / other.y, z / other.z, w / other.w); }
+		Vec4s8 operator/(s8 other) const { return Vec4s8(x / other, y / other, z / other, w / other); }
+
+		Vec4s8 operator%(const Vec4s8& other) const { return Vec4s8(x % other.x, y % other.y, z % other.z, w % other.w); }
+		Vec4s8 operator%(s8 other) const { return Vec4s8(x % other, y % other, z % other, w % other); }
+
+		Vec4s8 operator&(const Vec4s8& other) const { return Vec4s8(x & other.x, y & other.y, z & other.z, w & other.w); }
+		Vec4s8 operator&(s8 other) const { return Vec4s8(x & other, y & other, z & other, w & other); }
+
+		Vec4s8 operator|(const Vec4s8& other) const { return Vec4s8(x | other.x, y | other.y, z | other.z, w | other.w); }
+		Vec4s8 operator|(s8 other) const { return Vec4s8(x | other, y | other, z | other, w | other); }
+
+		Vec4s8 operator^(const Vec4s8& other) const { return Vec4s8(x ^ other.x, y ^ other.y, z ^ other.z, w ^ other.w); }
+		Vec4s8 operator^(s8 other) const { return Vec4s8(x ^ other, y ^ other, z ^ other, w ^ other); }
+
+		Vec4s8 operator<<(const Vec4s8& other) const { return Vec4s8(x << other.x, y << other.y, z << other.z, w << other.w); }
+		Vec4s8 operator<<(s8 other) const { return Vec4s8(x << other, y << other, z << other, w << other); }
+
+		Vec4s8 operator>>(const Vec4s8& other) const { return Vec4s8(x >> other.x, y >> other.y, z >> other.z, w >> other.w); }
+		Vec4s8 operator>>(s8 other) const { return Vec4s8(x >> other, y >> other, z >> other, w >> other); }
+
+		Vec4s8& operator+=(const Vec4s8& other) { x += other.x; y += other.y; z += other.z; w += other.w; return *this; }
+		Vec4s8& operator+=(s8 other) { x += other; y += other; z += other; w += other; return *this; }
+
+		Vec4s8& operator-=(const Vec4s8& other) { x -= other.x; y -= other.y; z -= other.z; w -= other.w; return *this; }
+		Vec4s8& operator-=(s8 other) { x -= other; y -= other; z -= other; w -= other; return *this; }
+
+		Vec4s8& operator*=(const Vec4s8& other) { x *= other.x; y *= other.y; z *= other.z; w *= other.w; return *this; }
+		Vec4s8& operator*=(s8 other) { x *= other; y *= other; z *= other; w *= other; return *this; }
+
+		Vec4s8& operator/=(const Vec4s8& other) { x /= other.x; y /= other.y; z /= other.z; w /= other.w; return *this; }
+		Vec4s8& operator/=(s8 other) { x /= other; y /= other; z /= other; w /= other; return *this; }
+
+		Vec4s8& operator%=(const Vec4s8& other) { x %= other.x; y %= other.y; z %= other.z; w %= other.w; return *this; }
+		Vec4s8& operator%=(s8 other) { x %= other; y %= other; z %= other; w %= other; return *this; }
+
+		Vec4s8& operator&=(const Vec4s8& other) { x &= other.x; y &= other.y; z &= other.z; w &= other.w; return *this; }
+		Vec4s8& operator&=(s8 other) { x &= other; y &= other; z &= other; w &= other; return *this; }
+
+		Vec4s8& operator|=(const Vec4s8& other) { x |= other.x; y |= other.y; z |= other.z; w |= other.w; return *this; }
+		Vec4s8& operator|=(s8 other) { x |= other; y |= other; z |= other; w |= other; return *this; }
+
+		Vec4s8& operator^=(const Vec4s8& other) { x ^= other.x; y ^= other.y; z ^= other.z; w ^= other.w; return *this; }
+		Vec4s8& operator^=(s8 other) { x ^= other; y ^= other; z ^= other; w ^= other; return *this; }
+
+		Vec4s8& operator<<=(const Vec4s8& other) { x <<= other.x; y <<= other.y; z <<= other.z; w <<= other.w; return *this; }
+		Vec4s8& operator<<=(s8 other) { x <<= other; y <<= other; z <<= other; w <<= other; return *this; }
+
+		Vec4s8& operator>>=(const Vec4s8& other) { x >>= other.x; y >>= other.y; z >>= other.z; w >>= other.w; return *this; }
+		Vec4s8& operator>>=(s8 other) { x >>= other; y >>= other; z >>= other; w >>= other; return *this; }
+
+		Vec4s8 operator~() const { return Vec4s8(~x, ~y, ~z, ~w); }
+
+		s8& operator[](u32 index) { return (&x)[index]; }
+		const s8& operator[](u32 index) const { return (&x)[index]; }
+
+		compile_const u64 count = 4;
+		compile_const u64 capacity = 4;
+		using ValueType = s8;
+	};
+
+	inline Vec4s8 Min(const Vec4s8& lh, const Vec4s8& rh) { return Vec4s8(Min(lh.x, rh.x), Min(lh.y, rh.y), Min(lh.z, rh.z), Min(lh.w, rh.w)); }
+	inline Vec4s8 Max(const Vec4s8& lh, const Vec4s8& rh) { return Vec4s8(Max(lh.x, rh.x), Max(lh.y, rh.y), Max(lh.z, rh.z), Max(lh.w, rh.w)); }
+
 	struct Vec2f {
 		float x; float y;
 
@@ -338,6 +1638,27 @@ namespace Math {
 	inline float LengthSquare(const Vec2f& v) { return Dot(v, v); }
 	inline float Length(const Vec2f& v) { return sqrtf(Dot(v, v)); }
 	inline Vec2f Normalize(const Vec2f& v) { return v * (1.f / Length(v)); }
+
+	struct Vec2h {
+		float16 x; float16 y;
+
+		constexpr Vec2h() : x(0), y(0) {}
+		constexpr Vec2h(float16 x) : x(x), y(x) {}
+		constexpr Vec2h(float16 x, float16 y) : x(x), y(y) {}
+		constexpr Vec2h(const Vec2h& xy) : x(xy.x), y(xy.y) {}
+
+		template<typename T> explicit constexpr Vec2h(const T& xy) : x((float16)xy.x), y((float16)xy.y) {}
+
+		float16& operator[](u32 index) { return (&x)[index]; }
+		const float16& operator[](u32 index) const { return (&x)[index]; }
+
+		compile_const u64 count = 2;
+		compile_const u64 capacity = 2;
+		using ValueType = float16;
+	};
+
+	inline Vec2h Min(const Vec2h& lh, const Vec2h& rh) { return Vec2h(Min(lh.x, rh.x), Min(lh.y, rh.y)); }
+	inline Vec2h Max(const Vec2h& lh, const Vec2h& rh) { return Vec2h(Max(lh.x, rh.x), Max(lh.y, rh.y)); }
 
 	struct Vec3f {
 		union {
@@ -403,6 +1724,31 @@ namespace Math {
 	inline float Length(const Vec3f& v) { return sqrtf(Dot(v, v)); }
 	inline Vec3f Normalize(const Vec3f& v) { return v * (1.f / Length(v)); }
 
+	struct Vec3h {
+		union {
+			struct { float16 x; float16 y; float16 z; };
+			Vec2h xy;
+		};
+
+		constexpr Vec3h() : x(0), y(0), z(0) {}
+		constexpr Vec3h(float16 x) : x(x), y(x), z(x) {}
+		constexpr Vec3h(float16 x, float16 y, float16 z) : x(x), y(y), z(z) {}
+		constexpr Vec3h(const Vec2h& xy, float16 z) : x(xy.x), y(xy.y), z(z) {}
+		constexpr Vec3h(const Vec3h& xyz) : x(xyz.x), y(xyz.y), z(xyz.z) {}
+
+		template<typename T> explicit constexpr Vec3h(const T& xyz) : x((float16)xyz.x), y((float16)xyz.y), z((float16)xyz.z) {}
+
+		float16& operator[](u32 index) { return (&x)[index]; }
+		const float16& operator[](u32 index) const { return (&x)[index]; }
+
+		compile_const u64 count = 3;
+		compile_const u64 capacity = 3;
+		using ValueType = float16;
+	};
+
+	inline Vec3h Min(const Vec3h& lh, const Vec3h& rh) { return Vec3h(Min(lh.x, rh.x), Min(lh.y, rh.y), Min(lh.z, rh.z)); }
+	inline Vec3h Max(const Vec3h& lh, const Vec3h& rh) { return Vec3h(Max(lh.x, rh.x), Max(lh.y, rh.y), Max(lh.z, rh.z)); }
+
 	struct Vec4f {
 		union {
 			struct { float x; float y; float z; float w; };
@@ -461,6 +1807,34 @@ namespace Math {
 	inline float LengthSquare(const Vec4f& v) { return Dot(v, v); }
 	inline float Length(const Vec4f& v) { return sqrtf(Dot(v, v)); }
 	inline Vec4f Normalize(const Vec4f& v) { return v * (1.f / Length(v)); }
+
+	struct Vec4h {
+		union {
+			struct { float16 x; float16 y; float16 z; float16 w; };
+			struct { Vec2h xy; Vec2h zw; };
+			Vec3h xyz;
+		};
+
+		constexpr Vec4h() : x(0), y(0), z(0), w(0) {}
+		constexpr Vec4h(float16 x) : x(x), y(x), z(x), w(x) {}
+		constexpr Vec4h(float16 x, float16 y, float16 z, float16 w) : x(x), y(y), z(z), w(w) {}
+		constexpr Vec4h(const Vec2h& xy, float16 z, float16 w) : x(xy.x), y(xy.y), z(z), w(w) {}
+		constexpr Vec4h(const Vec2h& xy, const Vec2h& zw) : x(xy.x), y(xy.y), z(zw.x), w(zw.y) {}
+		constexpr Vec4h(const Vec3h& xyz, float16 w) : x(xyz.x), y(xyz.y), z(xyz.z), w(w) {}
+		constexpr Vec4h(const Vec4h& xyzw) : x(xyzw.x), y(xyzw.y), z(xyzw.z), w(xyzw.w) {}
+
+		template<typename T> explicit constexpr Vec4h(const T& xyzw) : x((float16)xyzw.x), y((float16)xyzw.y), z((float16)xyzw.z), w((float16)xyzw.w) {}
+
+		float16& operator[](u32 index) { return (&x)[index]; }
+		const float16& operator[](u32 index) const { return (&x)[index]; }
+
+		compile_const u64 count = 4;
+		compile_const u64 capacity = 4;
+		using ValueType = float16;
+	};
+
+	inline Vec4h Min(const Vec4h& lh, const Vec4h& rh) { return Vec4h(Min(lh.x, rh.x), Min(lh.y, rh.y), Min(lh.z, rh.z), Min(lh.w, rh.w)); }
+	inline Vec4h Max(const Vec4h& lh, const Vec4h& rh) { return Vec4h(Max(lh.x, rh.x), Max(lh.y, rh.y), Max(lh.z, rh.z), Max(lh.w, rh.w)); }
 
 	struct Mat4x4f {
 		Vec4f r0 = Vec4f(1.f, 0.f, 0.f, 0.f);

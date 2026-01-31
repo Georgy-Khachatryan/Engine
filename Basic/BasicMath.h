@@ -103,16 +103,39 @@ namespace Math {
 	inline Quatf Conjugate(const Quatf& v) { return Quatf(-v.x, -v.y, -v.z, v.w); }
 }
 
-using quat = Math::Quatf;
-
 using float4 = Math::Vec4f;
 using float3 = Math::Vec3f;
 using float2 = Math::Vec2f;
+
+using float16x4 = Math::Vec4h;
+using float16x3 = Math::Vec3h;
+using float16x2 = Math::Vec2h;
 
 using uint4 = Math::Vec4u32;
 using uint3 = Math::Vec3u32;
 using uint2 = Math::Vec2u32;
 
+using u16x4 = Math::Vec4u16;
+using u16x3 = Math::Vec3u16;
+using u16x2 = Math::Vec2u16;
+
+using u8x4 = Math::Vec4u8;
+using u8x3 = Math::Vec3u8;
+using u8x2 = Math::Vec2u8;
+
+using s32x4 = Math::Vec4s32;
+using s32x3 = Math::Vec3s32;
+using s32x2 = Math::Vec2s32;
+
+using s16x4 = Math::Vec4s16;
+using s16x3 = Math::Vec3s16;
+using s16x2 = Math::Vec2s16;
+
+using s8x4 = Math::Vec4s8;
+using s8x3 = Math::Vec3s8;
+using s8x2 = Math::Vec2s8;
+
+using quat = Math::Quatf;
 using float4x4 = Math::Mat4x4f;
 using float3x4 = Math::Mat3x4f;
 using float3x3 = Math::Mat3x3f;
@@ -168,8 +191,8 @@ namespace Math {
 	float3 QuatToEulerXyzAngles(const quat& q); // Extrinsic XYZ angles, the same as intrinsic ZYX angles. float3(Roll, Pitch, Yaw)
 	quat EulerXyzAnglesToQuat(const float3& e);
 	
-	uint2 EncodeR16G16B16A16_SNORM(const float4& value);
-	uint2 EncodeR16G16B16A16_FLOAT(const float4& value);
+	s16x4 EncodeR16G16B16A16_SNORM(const float4& value);
+	float16x4 EncodeR16G16B16A16_FLOAT(const float4& value);
 	
 	float HaltonSequence(u32 index, u32 base);
 }

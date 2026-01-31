@@ -126,8 +126,8 @@ NOTES(Meta::HlslFile{ debug_geometry_data_filename })
 struct DebugMeshInstance {
 	float3 position;
 	u32   color = u32_max;
-	uint2 rotation;
-	uint2 packed_data;
+	s16x4 rotation;
+	float16x4 packed_data;
 };
 
 struct DebugMeshInstanceArray {

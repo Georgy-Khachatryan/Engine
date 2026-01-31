@@ -278,16 +278,16 @@ quat Math::EulerXyzAnglesToQuat(const float3& e) {
 }
 
 
-uint2 Math::EncodeR16G16B16A16_SNORM(const float4& value) {
-	auto scaled_value_float32 = _mm_mul_ps(_mm_loadu_ps(&value.x), _mm_set1_ps((float)s16_max));
+s16x4 Math::EncodeR16G16B16A16_SNORM(const float4& value) {
+	auto scaled_value_float32 = _mm_mul_ps(_mm_loadu_ps(&value.x), _mm_set_ps1((float)s16_max));
 	auto scaled_value_s32 = _mm_cvtps_epi32(scaled_value_float32);
 	auto scaled_value_s16 = _mm_packs_epi32(scaled_value_s32, scaled_value_s32);
-	return uint2(_mm_extract_epi32(scaled_value_s16, 0), _mm_extract_epi32(scaled_value_s16, 1));
+	return s16x4(_mm_extract_epi16(scaled_value_s16, 0), _mm_extract_epi16(scaled_value_s16, 1), _mm_extract_epi16(scaled_value_s16, 2), _mm_extract_epi16(scaled_value_s16, 3));
 }
 
-uint2 Math::EncodeR16G16B16A16_FLOAT(const float4& value) {
+float16x4 Math::EncodeR16G16B16A16_FLOAT(const float4& value) {
 	auto result = _mm_cvtps_ph(_mm_loadu_ps(&value.x), 0);
-	return uint2(_mm_extract_epi32(result, 0), _mm_extract_epi32(result, 1));
+	return float16x4(_mm_extract_epi16(result, 0), _mm_extract_epi16(result, 1), _mm_extract_epi16(result, 2), _mm_extract_epi16(result, 3));
 }
 
 

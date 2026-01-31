@@ -23,18 +23,22 @@ void UpdateRendererEntityGpuComponents(StackAllocator* alloc, RecordContext* rec
 		auto streams = ExtractComponentStreams<MeshAssetType>(entity_array);
 		for (u64 i : BitArrayIt(entity_array->created_mask)) {
 			auto& layout = streams.runtime_data_layout[i];
-			auto& aabb = streams.aabb[i];
 			
-			if (layout.version == MeshRuntimeDataLayout::current_version) continue;
-			
-			if (layout.file_guid == 0) {
-				layout.file_guid = GenerateRandomNumber64(asset_system.guid_random_seed);
+			if (layout.version != MeshRuntimeDataLayout::current_version) {
+				if (layout.file_guid == 0) {
+					layout.file_guid = GenerateRandomNumber64(asset_system.guid_random_seed);
+				}
+				
+				auto result = ImportFbxMeshFile(alloc, streams.source_data[i].filepath, layout.file_guid);
+				layout = result.layout;
+				
+				auto& aabb = streams.aabb[i];
+				aabb.min = result.aabb_min;
+				aabb.max = result.aabb_max;
 			}
 			
-			auto result = ImportFbxMeshFile(alloc, streams.source_data[i].filepath, layout.file_guid);
-			layout   = result.layout;
-			aabb.min = result.aabb_min;
-			aabb.max = result.aabb_max;
+			auto& runtime_file = streams.runtime_file[i];
+			runtime_file.file = SystemOpenFile(alloc, StringFormat(alloc, "./Assets/Runtime/%x..mrd"_sl, layout.file_guid), OpenFileFlags::Read | OpenFileFlags::Async);
 		}
 	}
 	
@@ -63,11 +67,10 @@ void UpdateRendererEntityGpuComponents(StackAllocator* alloc, RecordContext* rec
 			
 			allocation.base_offset = allocation_offset;
 			
-			auto file = SystemOpenFile(alloc, StringFormat(alloc, "./Assets/Runtime/%x..mrd"_sl, layout.file_guid), OpenFileFlags::Read | OpenFileFlags::Async);
-			streams.runtime_file[i].file = file;
+			auto& file = streams.runtime_file[i];
 			
 			u64 file_offset = layout.page_count * MeshletPageHeader::page_size;
-			AsyncCopyFileToBuffer(async_transfer_queue, mesh_asset_buffer, allocation_offset, mesh_asset_buffer_size, file, file_offset, AlignUp(file_data_size, 4096u));
+			AsyncCopyFileToBuffer(async_transfer_queue, mesh_asset_buffer, allocation_offset, mesh_asset_buffer_size, file.file, file_offset, AlignUp(file_data_size, 4096u));
 		}
 		
 		auto gpu_mesh_asset_data = AllocateGpuComponentUploadBuffer(record_context, dirty_entity_count, streams.gpu_mesh_asset_data);

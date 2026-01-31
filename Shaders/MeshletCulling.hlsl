@@ -243,7 +243,6 @@ void MainCS(uint thread_id : SV_DispatchThreadID) {
 		meshlet_group_count  -= (1u << bin_index);
 		meshlet_group_offset += (1u << bin_index);
 	}
-	
 }
 #endif // defined(MESH_ENTITY_CULLING)
 
@@ -331,17 +330,14 @@ void MainCS(uint thread_id : SV_DispatchThreadID, uint thread_index : SV_GroupIn
 	uint meshlet_count  = group.meshlet_count;  // Total meshlet count across all pages.
 	for (uint page_index = begin_page_index; page_index < end_page_index; page_index += 1) {
 		uint page_offset = mesh_asset_buffer.Load(page_table_offset + page_index * sizeof(uint));
-		
 		MeshletPageHeader page_header = mesh_asset_buffer.Load<MeshletPageHeader>(page_offset);
-		page_offset += sizeof(MeshletPageHeader);
 		
 		uint page_meshlet_count = min(page_header.meshlet_count - meshlet_offset, meshlet_count);
 		meshlet_count -= page_meshlet_count;
 		
-		uint meshlet_culling_data_offset = page_offset + meshlet_offset * sizeof(MeshletCullingData);
-		meshlet_offset = 0;
+		uint meshlet_culling_data_offset = page_offset + sizeof(MeshletPageHeader);
 		
-		uint page_meshlet_offset = 0;
+		uint page_meshlet_offset = meshlet_offset;
 		while (page_meshlet_count != 0) {
 			uint bin_index = firstbitlow(page_meshlet_count);
 			AppendMeshletCullingCommand(mesh_entity_index, meshlet_culling_data_offset + page_meshlet_offset * sizeof(MeshletCullingData), bin_index);
@@ -349,6 +345,8 @@ void MainCS(uint thread_id : SV_DispatchThreadID, uint thread_index : SV_GroupIn
 			page_meshlet_count  -= (1u << bin_index);
 			page_meshlet_offset += (1u << bin_index);
 		}
+		
+		meshlet_offset = 0;
 	}
 }
 #endif // defined(MESHLET_GROUP_CULLING)

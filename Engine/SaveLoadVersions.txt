@@ -2,12 +2,12 @@
 
 struct CameraComponent {
 	/*Version*/ 4 {
-		vertical_fov_degrees float 0;
+		vertical_fov_degrees float32 0;
 		transform_type CameraTransformType 2;
 	}
 	/*Version*/ 5 {
-		vertical_fov_degrees float 0;
-		near_depth float 0;
+		vertical_fov_degrees float32 0;
+		near_depth float32 0;
 		transform_type CameraTransformType 2;
 	}
 }
@@ -26,18 +26,18 @@ struct GuidComponent {
 
 struct float3 {
 	/*Version*/ 0 {
-		x float 0;
-		y float 0;
-		z float 0;
+		x float32 0;
+		y float32 0;
+		z float32 0;
 	}
 }
 
 struct quat {
 	/*Version*/ 0 {
-		x float 0;
-		y float 0;
-		z float 0;
-		w float 0;
+		x float32 0;
+		y float32 0;
+		z float32 0;
+		w float32 0;
 	}
 }
 
@@ -49,7 +49,7 @@ struct MeshAssetGUID {
 
 struct ScaleComponent {
 	/*Version*/ 0 {
-		scale float 0;
+		scale float32 0;
 	}
 }
 

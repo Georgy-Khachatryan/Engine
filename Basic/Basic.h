@@ -42,6 +42,7 @@ using u32 = unsigned int;
 using s32 = signed int;
 using u64 = unsigned long long;
 using s64 = signed long long;
+using float16 = u16;
 using float32 = float;
 using float64 = double;
 

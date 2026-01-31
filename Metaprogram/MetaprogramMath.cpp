@@ -284,23 +284,31 @@ void WriteCodeForMathLibrary(StackAllocator* alloc) {
 	
 	GenerateScalarFunctions(builder);
 	
-	FixedCountArray<String, 10> uint_vector_ops;
-	uint_vector_ops[0] = "+"_sl;
-	uint_vector_ops[1] = "-"_sl;
-	uint_vector_ops[2] = "*"_sl;
-	uint_vector_ops[3] = "/"_sl;
-	uint_vector_ops[4] = "%"_sl;
-	uint_vector_ops[5] = "&"_sl;
-	uint_vector_ops[6] = "|"_sl;
-	uint_vector_ops[7] = "^"_sl;
-	uint_vector_ops[8] = "<<"_sl;
-	uint_vector_ops[9] = ">>"_sl;
+	FixedCountArray<String, 10> int_vector_ops;
+	int_vector_ops[0] = "+"_sl;
+	int_vector_ops[1] = "-"_sl;
+	int_vector_ops[2] = "*"_sl;
+	int_vector_ops[3] = "/"_sl;
+	int_vector_ops[4] = "%"_sl;
+	int_vector_ops[5] = "&"_sl;
+	int_vector_ops[6] = "|"_sl;
+	int_vector_ops[7] = "^"_sl;
+	int_vector_ops[8] = "<<"_sl;
+	int_vector_ops[9] = ">>"_sl;
 	
-	FixedCountArray<String, 1> uint_vector_unary_ops;
-	uint_vector_unary_ops[0] = "~"_sl;
+	FixedCountArray<String, 1> int_vector_unary_ops;
+	int_vector_unary_ops[0] = "~"_sl;
 	
 	for (u32 i = 2; i <= 4; i += 1) {
-		GenerateVectorType(builder, i, "u32"_sl, "u32"_sl, uint_vector_ops, uint_vector_unary_ops);
+		GenerateVectorType(builder, i, "u32"_sl, "u32"_sl, int_vector_ops, int_vector_unary_ops);
+		GenerateVectorType(builder, i, "u16"_sl, "u16"_sl, int_vector_ops, int_vector_unary_ops);
+		GenerateVectorType(builder, i, "u8"_sl,  "u8"_sl,  int_vector_ops, int_vector_unary_ops);
+	}
+	
+	for (u32 i = 2; i <= 4; i += 1) {
+		GenerateVectorType(builder, i, "s32"_sl, "s32"_sl, int_vector_ops, int_vector_unary_ops);
+		GenerateVectorType(builder, i, "s16"_sl, "s16"_sl, int_vector_ops, int_vector_unary_ops);
+		GenerateVectorType(builder, i, "s8"_sl,  "s8"_sl,  int_vector_ops, int_vector_unary_ops);
 	}
 	
 	FixedCountArray<String, 4> float_vector_ops;
@@ -315,6 +323,8 @@ void WriteCodeForMathLibrary(StackAllocator* alloc) {
 	for (u32 i = 2; i <= 4; i += 1) {
 		GenerateVectorType(builder, i, "float"_sl, "f"_sl, float_vector_ops, float_vector_unary_ops);
 		GenerateVectorFunctions(builder, i, "float"_sl, "f"_sl);
+		
+		GenerateVectorType(builder, i, "float16"_sl, "h"_sl, {}, {});
 	}
 	
 	GenerateMatrixType(builder, 4, 4, "float"_sl, "f"_sl);
