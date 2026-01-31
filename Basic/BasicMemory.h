@@ -21,15 +21,23 @@ struct StackAllocator {
 StackAllocator CreateStackAllocator(u64 reserved_size, u64 committed_size);
 void ReleaseStackAllocator(StackAllocator& alloc);
 
-struct HeapAllocatorBlock;
-struct HeapAllocatorPage;
 
-struct HeapAllocator {
+template<typename BlockTypeT>
+struct HeapAllocatorBase {
+	using BlockType = BlockTypeT;
+	
 	u32 mask_level_0 = 0;
 	u8  mask_level_1[32] = {};
 	
 	u32 reserved_size = 0;
-	HeapAllocatorBlock* free_blocks[208] = {}; // 208 = ComputeBinIndex(maximum_size, true);
+	BlockTypeT* free_blocks[208] = {}; // 208 = ComputeBinIndex(maximum_size, true);
+};
+
+
+struct HeapAllocatorBlock;
+struct HeapAllocatorPage;
+
+struct HeapAllocator : HeapAllocatorBase<HeapAllocatorBlock> {
 	HeapAllocatorPage* current_page = nullptr;
 	
 	void* Allocate(u64 size, u64 alignment = 8);
@@ -37,13 +45,32 @@ struct HeapAllocator {
 	void  Deallocate(void* old_memory, u64 old_size = 0);
 	static u64 GetMemoryBlockSize(void* memory);
 	
-	void DeallocateAll();
-	
 	u64 ComputeTotalMemoryUsage();
 };
 
 HeapAllocator CreateHeapAllocator(u64 reserved_size);
 void ReleaseHeapAllocator(HeapAllocator& alloc);
+void ResetHeapAllocator(HeapAllocator& alloc);
+
+
+struct NumaHeapAllocatorBlock;
+struct NumaHeapAllocation { u32 index = u32_max; };
+
+struct NumaHeapAllocator : HeapAllocatorBase<NumaHeapAllocatorBlock> {
+	NumaHeapAllocatorBlock* blocks = nullptr;
+	u32* unused_block_indices = nullptr;
+	u32 unused_block_count = 0;
+	u32 max_allocation_count = 0;
+	
+	NumaHeapAllocation Allocate(u64 size);
+	void Deallocate(NumaHeapAllocation allocation);
+	
+	u64 GetMemoryBlockOffset(NumaHeapAllocation allocation);
+	u64 GetMemoryBlockSize(NumaHeapAllocation allocation);
+};
+
+NumaHeapAllocator CreateNumaHeapAllocator(StackAllocator* alloc, u32 max_allocation_count, u32 reserved_size);
+void ResetNumaHeapAllocator(NumaHeapAllocator& heap);
 
 
 #define TempAllocationScopeNamed(name, alloc) u64 name = (alloc)->total_allocated_size; defer{ (alloc)->DeallocateToSize(name); }

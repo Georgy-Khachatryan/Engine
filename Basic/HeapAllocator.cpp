@@ -5,8 +5,8 @@ compile_const u64 allocation_granularity = 64 * 1024;
 compile_const u64 minimum_alignment_bits = 3;
 compile_const u64 minimum_alignment = (1ull << minimum_alignment_bits);
 compile_const u64 maximum_size      = (1ull << 31) - 1; // Limited by block sizes in HeapAllocatorBlockHeader.
-static_assert(sizeof(HeapAllocator) == 1712, "Incorrect HeapAllocator size.");
 
+// UMA Heap allocator block. Stored intrusively with the allocation.
 struct HeapAllocatorBlockHeader {
 	u32 is_free_block   : 1;
 	u32 size            : 31;
@@ -28,14 +28,65 @@ static_assert(sizeof(HeapAllocatorBlockHeader) == 8, "Incorrect HeapAllocatorBlo
 struct HeapAllocatorBlock : HeapAllocatorBlockHeader {
 	HeapAllocatorBlock* last_free_block = nullptr;
 	HeapAllocatorBlock* next_free_block = nullptr;
+	
+	compile_const u64 minimum_block_size = 24;
 };
-static_assert(sizeof(HeapAllocatorBlock) == 24, "Incorrect HeapAllocatorBlock size.");
+static_assert(sizeof(HeapAllocatorBlock) == HeapAllocatorBlock::minimum_block_size, "Incorrect HeapAllocatorBlock size.");
 
 struct HeapAllocatorPage {
 	HeapAllocatorPage* last_page = nullptr;
 	u64 size = 0;
 };
 static_assert(sizeof(HeapAllocatorPage) == 16, "Incorrect HeapAllocatorPage size.");
+
+static HeapAllocatorBlock* CreateNewBlock(HeapAllocator* heap, HeapAllocatorBlock* block, u64 size) {
+	return NewInPlace((u8*)block + size, HeapAllocatorBlock);
+}
+
+static void ReleaseOldBlock(HeapAllocator* heap, HeapAllocatorBlock* block) {
+	// Nothing to do here.
+}
+
+
+// NUMA Heap allocator block. Stored in a separate array of blocks.
+struct NumaHeapAllocatorBlock {
+	u32 is_free_block : 1;
+	u32 size          : 31;
+	
+	u32 offset = 0;
+	
+	NumaHeapAllocatorBlock* last_block = nullptr;
+	NumaHeapAllocatorBlock* next_block = nullptr;
+	
+	NumaHeapAllocatorBlock* last_free_block = nullptr;
+	NumaHeapAllocatorBlock* next_free_block = nullptr;
+	
+	compile_const u64 minimum_block_size = 1;
+	
+	void SetLastBlock(NumaHeapAllocatorBlock* new_last_block) { last_block = new_last_block; }
+	void SetNextBlock(NumaHeapAllocatorBlock* new_next_block) { next_block = new_next_block; }
+	
+	NumaHeapAllocatorBlock* GetLastBlock() { return last_block; }
+	NumaHeapAllocatorBlock* GetNextBlock() { return next_block; }
+	
+	bool HasLastBlock() { return last_block != nullptr; }
+	bool HasNextBlock() { return next_block != nullptr; }
+};
+static_assert(sizeof(NumaHeapAllocatorBlock) == 40, "Incorrect NumaHeapAllocatorPage size."); // TODO: Could use relative pointers.
+
+static NumaHeapAllocatorBlock* CreateNewBlock(NumaHeapAllocator* heap, NumaHeapAllocatorBlock* block, u64 size) {
+	DebugAssert(heap->unused_block_count != 0, "Trying to allocate more blocks than the limit of '%'.", heap->max_allocation_count);
+	u32 new_block_index = heap->unused_block_indices[--heap->unused_block_count];
+	
+	auto* new_block = &heap->blocks[new_block_index];
+	new_block->offset = block->offset + (u32)size;
+	
+	return new_block;
+}
+
+static void ReleaseOldBlock(NumaHeapAllocator* heap, NumaHeapAllocatorBlock* block) {
+	heap->unused_block_indices[heap->unused_block_count++] = (u32)(block - heap->blocks);
+}
 
 
 // 8 bit float binning introduced by Sebastian Aaltonen in REAC2023 "Modern Mobile Rendering @ HypeHype".
@@ -80,8 +131,9 @@ static u64 AlignToNextBinSize(u64 size) {
 	return (u64)size_index << minimum_alignment_bits;
 }
 
-static void PushFreeBlock(HeapAllocator* heap, HeapAllocatorBlock* block) {
-	DebugAssert(block->size >= sizeof(HeapAllocatorBlock), "Block is too small to be cast to HeapAllocatorBlock.");
+template<typename HeapAllocatorT, typename HeapAllocatorBlockT>
+static void PushFreeBlock(HeapAllocatorT* heap, HeapAllocatorBlockT* block) {
+	DebugAssert(block->size >= HeapAllocatorBlockT::minimum_block_size, "Block is too small to be cast to HeapAllocatorBlock.");
 	
 	u32 bin_index = ComputeBinIndex(block->size);
 	u32 index_level_0 = (bin_index >> 3);
@@ -102,7 +154,8 @@ static void PushFreeBlock(HeapAllocator* heap, HeapAllocatorBlock* block) {
 	heap->free_blocks[bin_index] = block;
 };
 
-static void PopFreeBlock(HeapAllocator* heap, HeapAllocatorBlock* block, u32 bin_index) {
+template<typename HeapAllocatorT, typename HeapAllocatorBlockT>
+static void PopFreeBlock(HeapAllocatorT* heap, HeapAllocatorBlockT* block, u32 bin_index) {
 	u32 index_level_0 = (bin_index >> 3);
 	u32 index_level_1 = (bin_index & 0x7);
 	
@@ -132,10 +185,11 @@ static void PopFreeBlock(HeapAllocator* heap, HeapAllocatorBlock* block, u32 bin
 	block->next_free_block = nullptr;
 }
 
-static void PushFreeBlockExcess(HeapAllocator* heap, HeapAllocatorBlock* block, u64 size) {
-	if (block->size - size < sizeof(HeapAllocatorBlock)) return;
+template<typename HeapAllocatorT, typename HeapAllocatorBlockT>
+static void PushFreeBlockExcess(HeapAllocatorT* heap, HeapAllocatorBlockT* block, u64 size) {
+	if (block->size - size < HeapAllocatorBlockT::minimum_block_size) return;
 	
-	auto* new_block = NewInPlace((u8*)block + size, HeapAllocatorBlock);
+	auto* new_block = CreateNewBlock(heap, block, size);
 	new_block->size = block->size - size;
 	new_block->is_free_block = false;
 	block->size = size;
@@ -151,14 +205,63 @@ static void PushFreeBlockExcess(HeapAllocator* heap, HeapAllocatorBlock* block, 
 	PushFreeBlock(heap, new_block);
 }
 
-static void CombineFreeBlocks(HeapAllocatorBlock* block_0, HeapAllocatorBlock* block_1) {
+template<typename HeapAllocatorT, typename HeapAllocatorBlockT>
+static void CombineFreeBlocks(HeapAllocatorT* heap, HeapAllocatorBlockT* block_0, HeapAllocatorBlockT* block_1) {
 	block_0->size += block_1->size;
 	block_0->SetNextBlock(block_1->GetNextBlock());
 	
 	if (block_1->HasNextBlock()) {
 		block_1->GetNextBlock()->SetLastBlock(block_0);
 	}
+	
+	ReleaseOldBlock(heap, block_1);
 }
+
+template<typename HeapAllocatorT>
+static typename HeapAllocatorT::BlockType* AllocateHeapBlock(HeapAllocatorT* heap, u64 size) {
+	u32 bin_index = ComputeBinIndex(size, true);
+	u32 index_level_0 = (bin_index >> 3);
+	u32 index_level_1 = (bin_index & 0x7);
+	
+	u32 larger_size_mask_level_1 = (u32)heap->mask_level_1[index_level_0] & (u32_max << index_level_1);
+	if (larger_size_mask_level_1 == 0) {
+		u32 larger_size_mask_level_0 = (heap->mask_level_0 & (u32_max << (index_level_0 + 1)));
+		if (larger_size_mask_level_0 == 0) return nullptr;
+		
+		index_level_0 = FirstBitLow32(larger_size_mask_level_0);
+		larger_size_mask_level_1 = (u32)heap->mask_level_1[index_level_0];
+	}
+	index_level_1 = FirstBitLow32(larger_size_mask_level_1);
+	
+	
+	u32 free_bin_index = (index_level_0 << 3) | index_level_1;
+	auto* block = heap->free_blocks[free_bin_index];
+	DebugAssert(block->size >= size, "Block size is too small. (%/%).", block->size, size);
+	
+	PopFreeBlock(heap, block, free_bin_index);
+	PushFreeBlockExcess(heap, block, size);
+	
+	return block;
+}
+
+template<typename HeapAllocatorT, typename HeapAllocatorBlockT>
+static void DeallocateHeapBlock(HeapAllocatorT* heap, HeapAllocatorBlockT* block) {
+	auto* next_block = block->GetNextBlock();
+	if (next_block && next_block->is_free_block) {
+		PopFreeBlock(heap, next_block, ComputeBinIndex(next_block->size));
+		CombineFreeBlocks(heap, block, next_block);
+	}
+	
+	auto* last_block = block->GetLastBlock();
+	if (last_block && last_block->is_free_block) {
+		PopFreeBlock(heap, last_block, ComputeBinIndex(last_block->size));
+		CombineFreeBlocks(heap, last_block, block);
+		block = last_block;
+	}
+	
+	PushFreeBlock(heap, block);
+}
+
 
 static void PushNewPageFreeBlock(HeapAllocator* heap, HeapAllocatorPage* page, u64 reserved_size) {
 	auto* block = NewInPlace(page + 1, HeapAllocatorBlock);
@@ -219,46 +322,28 @@ static void* MemoryFromAllocatorBlock(HeapAllocatorBlock* block, u64 alignment) 
 	return aligned_memory;
 }
 
-static void* AllocateFromHeap(HeapAllocator* heap, u64 size, u64 alignment) {
-	u32 bin_index = ComputeBinIndex(size, true);
-	u32 index_level_0 = (bin_index >> 3);
-	u32 index_level_1 = (bin_index & 0x7);
-	
-	u32 larger_size_mask_level_1 = (u32)heap->mask_level_1[index_level_0] & (u32_max << index_level_1);
-	if (larger_size_mask_level_1 == 0) {
-		u32 larger_size_mask_level_0 = (heap->mask_level_0 & (u32_max << (index_level_0 + 1)));
-		if (larger_size_mask_level_0 == 0) return nullptr;
-		
-		index_level_0 = FirstBitLow32(larger_size_mask_level_0);
-		larger_size_mask_level_1 = (u32)heap->mask_level_1[index_level_0];
-	}
-	index_level_1 = FirstBitLow32(larger_size_mask_level_1);
-	
-	
-	u32 free_bin_index = (index_level_0 << 3) | index_level_1;
-	auto* block = heap->free_blocks[free_bin_index];
-	DebugAssert(block->size >= size, "Block size is too small. (%/%).", block->size, size);
-	
-	PopFreeBlock(heap, block, free_bin_index);
-	PushFreeBlockExcess(heap, block, size);
-	
-	return MemoryFromAllocatorBlock(block, alignment);
-}
-
 void* HeapAllocator::Allocate(u64 size, u64 alignment) {
 	if (size == 0) return nullptr;
 	
 	alignment = Math::Max(alignment, minimum_alignment);
 	u64 block_size = ComputeBlockSize(size, alignment);
 	
-	auto* memory = AllocateFromHeap(this, block_size, alignment);
-	if (memory != nullptr) return memory;
+	auto* block = AllocateHeapBlock(this, block_size);
+	if (block != nullptr) return MemoryFromAllocatorBlock(block, alignment);
 	
 	u64 new_block_committed_size = AlignToNextBinSize(block_size) + sizeof(HeapAllocatorPage);
 	u64 new_block_reserved_size  = reserved_size > new_block_committed_size ? reserved_size : new_block_committed_size;
 	AllocateNewPage(this, new_block_reserved_size);
 	
-	return AllocateFromHeap(this, block_size, alignment);
+	block = AllocateHeapBlock(this, block_size);
+	return MemoryFromAllocatorBlock(block, alignment);
+}
+
+void HeapAllocator::Deallocate(void* old_memory, u64 old_size) {
+	if (old_memory == nullptr) return;
+	
+	auto* block = AllocatorBlockFromMemory(old_memory);
+	DeallocateHeapBlock(this, block);
 }
 
 void* HeapAllocator::Reallocate(void* old_memory, u64 old_size, u64 new_size, u64 alignment) {
@@ -274,7 +359,7 @@ void* HeapAllocator::Reallocate(void* old_memory, u64 old_size, u64 new_size, u6
 	auto* next_block = block->GetNextBlock();
 	if (next_block && next_block->is_free_block) {
 		PopFreeBlock(this, next_block, ComputeBinIndex(next_block->size));
-		CombineFreeBlocks(block, next_block);
+		CombineFreeBlocks(this, block, next_block);
 		
 		if (block->size >= new_block_size) {
 			PushFreeBlockExcess(this, block, new_block_size);
@@ -285,7 +370,7 @@ void* HeapAllocator::Reallocate(void* old_memory, u64 old_size, u64 new_size, u6
 	auto* last_block = block->GetLastBlock();
 	if (last_block && last_block->is_free_block) {
 		PopFreeBlock(this, last_block, ComputeBinIndex(last_block->size));
-		CombineFreeBlocks(last_block, block);
+		CombineFreeBlocks(this, last_block, block);
 		block = last_block;
 		
 		if (block->size >= new_block_size) {
@@ -308,39 +393,6 @@ void* HeapAllocator::Reallocate(void* old_memory, u64 old_size, u64 new_size, u6
 	return new_memory;
 }
 
-void HeapAllocator::Deallocate(void* old_memory, u64 old_size) {
-	if (old_memory == nullptr) return;
-	
-	auto* block = AllocatorBlockFromMemory(old_memory);
-	
-	auto* next_block = block->GetNextBlock();
-	if (next_block && next_block->is_free_block) {
-		PopFreeBlock(this, next_block, ComputeBinIndex(next_block->size));
-		CombineFreeBlocks(block, next_block);
-	}
-	
-	auto* last_block = block->GetLastBlock();
-	if (last_block && last_block->is_free_block) {
-		PopFreeBlock(this, last_block, ComputeBinIndex(last_block->size));
-		CombineFreeBlocks(last_block, block);
-		block = last_block;
-	}
-	
-	PushFreeBlock(this, block);
-}
-
-void HeapAllocator::DeallocateAll() {
-	mask_level_0 = 0;
-	memset(mask_level_1, 0, sizeof(mask_level_1));
-	memset(free_blocks, 0, sizeof(free_blocks));
-	
-	auto* page = current_page;
-	while (page != nullptr) {
-		PushNewPageFreeBlock(this, page, page->size);
-		page = page->last_page;
-	}
-}
-
 u64 HeapAllocator::GetMemoryBlockSize(void* memory) {
 	if (memory == nullptr) return 0;
 	
@@ -348,6 +400,24 @@ u64 HeapAllocator::GetMemoryBlockSize(void* memory) {
 	return (u8*)block + block->size - (u8*)memory;
 }
 
+u64 HeapAllocator::ComputeTotalMemoryUsage() {
+	auto* page = current_page;
+	
+	u64 total_memory_usage = 0;
+	while (page != nullptr) {
+		auto* last_page = page->last_page;
+		
+		auto* block = (HeapAllocatorBlock*)(page + 1);
+		while (block != nullptr) {
+			total_memory_usage += block->is_free_block ? 0 : block->size;
+			block = block->GetNextBlock();
+		}
+		
+		page = last_page;
+	}
+	
+	return total_memory_usage;
+}
 
 HeapAllocator CreateHeapAllocator(u64 reserved_size) {
 	DebugAssert(reserved_size <= maximum_size, "Reserved size is too large. (%/%).", reserved_size, maximum_size);
@@ -373,22 +443,74 @@ void ReleaseHeapAllocator(HeapAllocator& heap) {
 	}
 }
 
-u64 HeapAllocator::ComputeTotalMemoryUsage() {
-	auto* page = current_page;
+void ResetHeapAllocator(HeapAllocator& heap) {
+	heap.mask_level_0 = 0;
+	memset(heap.mask_level_1, 0, sizeof(heap.mask_level_1));
+	memset(heap.free_blocks, 0, sizeof(heap.free_blocks));
 	
-	u64 total_memory_usage = 0;
+	auto* page = heap.current_page;
 	while (page != nullptr) {
-		auto* last_page = page->last_page;
-		
-		auto* block = (HeapAllocatorBlock*)(page + 1);
-		while (block != nullptr) {
-			total_memory_usage += block->is_free_block ? 0 : block->size;
-			block = block->GetNextBlock();
-		}
-		
-		page = last_page;
+		PushNewPageFreeBlock(&heap, page, page->size);
+		page = page->last_page;
 	}
-	
-	return total_memory_usage;
 }
 
+
+NumaHeapAllocation NumaHeapAllocator::Allocate(u64 size) {
+	if (size == 0) return NumaHeapAllocation{};
+	
+	u64 block_size = AlignUp(size, minimum_alignment);
+	auto* block = AllocateHeapBlock(this, block_size);
+	
+	return { block == nullptr ? u32_max : (u32)(block - blocks) };
+}
+
+void NumaHeapAllocator::Deallocate(NumaHeapAllocation allocation) {
+	if (allocation.index == u32_max) return;
+	
+	auto* block = &blocks[allocation.index];
+	DeallocateHeapBlock(this, block);
+}
+
+u64 NumaHeapAllocator::GetMemoryBlockOffset(NumaHeapAllocation allocation) {
+	return allocation.index != u32_max ? blocks[allocation.index].offset : u32_max;
+}
+
+u64 NumaHeapAllocator::GetMemoryBlockSize(NumaHeapAllocation allocation) {
+	return allocation.index != u32_max ? blocks[allocation.index].size : 0;
+}
+
+NumaHeapAllocator CreateNumaHeapAllocator(StackAllocator* alloc, u32 max_allocation_count, u32 reserved_size) {
+	NumaHeapAllocator heap;
+	heap.blocks = (NumaHeapAllocatorBlock*)alloc->Allocate(max_allocation_count * sizeof(NumaHeapAllocatorBlock), alignof(NumaHeapAllocatorBlock));
+	heap.unused_block_indices = (u32*)alloc->Allocate(max_allocation_count * sizeof(u32), alignof(u32));
+	heap.max_allocation_count = max_allocation_count;
+	heap.reserved_size        = reserved_size;
+	
+	ResetNumaHeapAllocator(heap);
+	
+	return heap;
+}
+
+static void PushNewPageFreeBlock(NumaHeapAllocator* heap, u32 reserved_size) {
+	u32 new_block_index = heap->unused_block_indices[--heap->unused_block_count];
+	
+	auto* block = &heap->blocks[new_block_index];
+	memset(block, 0, sizeof(NumaHeapAllocatorBlock));
+	
+	block->size = reserved_size;
+	PushFreeBlock(heap, block);
+}
+
+void ResetNumaHeapAllocator(NumaHeapAllocator& heap) {
+	heap.mask_level_0 = 0;
+	memset(heap.mask_level_1, 0, sizeof(heap.mask_level_1));
+	memset(heap.free_blocks, 0, sizeof(heap.free_blocks));
+	
+	for (u32 i = 0; i < heap.max_allocation_count; i += 1) {
+		heap.unused_block_indices[i] = heap.max_allocation_count - i - 1;
+	}
+	heap.unused_block_count = heap.max_allocation_count;
+	
+	PushNewPageFreeBlock(&heap, heap.reserved_size);
+}

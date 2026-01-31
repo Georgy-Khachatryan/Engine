@@ -251,6 +251,70 @@ void BasicExamples(StackAllocator* alloc) {
 	}
 	
 	{
+		TempAllocationScope(alloc);
+		auto heap = CreateNumaHeapAllocator(alloc, 1024, 64 * 1024);
+		
+		{
+			auto memory0 = heap.Allocate(32 * 1024);
+			auto memory1 = heap.Allocate(32 * 1024);
+			
+			DebugAssert(heap.GetMemoryBlockOffset(memory0) == 0, "Incorrect allocation offset.");
+			DebugAssert(heap.GetMemoryBlockOffset(memory1) == 32 * 1024, "Incorrect allocation offset.");
+			
+			heap.Deallocate(memory0);
+			heap.Deallocate(memory1);
+		}
+		
+		{
+			auto memory0 = heap.Allocate(64 * 1024);
+			
+			DebugAssert(heap.GetMemoryBlockOffset(memory0) == 0, "Incorrect allocation offset.");
+			
+			heap.Deallocate(memory0);
+		}
+		
+		{
+			auto memory0 = heap.Allocate(1024);
+			auto memory1 = heap.Allocate(2048);
+			auto memory2 = heap.Allocate(4096);
+			auto memory3 = heap.Allocate(8192);
+			auto memory4 = heap.Allocate(16384);
+			
+			DebugAssert(heap.GetMemoryBlockOffset(memory0) == 0, "Incorrect allocation offset.");
+			DebugAssert(heap.GetMemoryBlockOffset(memory1) == 1024, "Incorrect allocation offset.");
+			DebugAssert(heap.GetMemoryBlockOffset(memory2) == 3072, "Incorrect allocation offset.");
+			DebugAssert(heap.GetMemoryBlockOffset(memory3) == 7168, "Incorrect allocation offset.");
+			DebugAssert(heap.GetMemoryBlockOffset(memory4) == 15360, "Incorrect allocation offset.");
+			
+			heap.Deallocate(memory1);
+			heap.Deallocate(memory3);
+			heap.Deallocate(memory2);
+			heap.Deallocate(memory0);
+			heap.Deallocate(memory4);
+		}
+		
+		{
+			auto memory0 = heap.Allocate(1024);
+			auto memory1 = heap.Allocate(1024);
+			auto memory2 = heap.Allocate(1024);
+			auto memory3 = heap.Allocate(1024);
+			auto memory4 = heap.Allocate(1024);
+			
+			DebugAssert(heap.GetMemoryBlockOffset(memory0) == 0, "Incorrect allocation offset.");
+			DebugAssert(heap.GetMemoryBlockOffset(memory3) == 3072, "Incorrect allocation offset.");
+			DebugAssert(heap.GetMemoryBlockOffset(memory1) == 1024, "Incorrect allocation offset.");
+			DebugAssert(heap.GetMemoryBlockOffset(memory4) == 4096, "Incorrect allocation offset.");
+			DebugAssert(heap.GetMemoryBlockOffset(memory2) == 2048, "Incorrect allocation offset.");
+			
+			heap.Deallocate(memory1);
+			heap.Deallocate(memory3);
+			heap.Deallocate(memory2);
+			heap.Deallocate(memory0);
+			heap.Deallocate(memory4);
+		}
+	}
+	
+	{
 		auto heap = CreateHeapAllocator(64 * 1024);
 		defer{ ReleaseHeapAllocator(heap); };
 		

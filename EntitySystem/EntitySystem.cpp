@@ -213,7 +213,7 @@ void InitializeEntitySystem(EntitySystemBase& system) {
 static void ResetEntitySystem(EntitySystemBase& system) {
 	system.entity_guid_to_entity_id = {};
 	system.entity_type_arrays = {};
-	system.heap.DeallocateAll();
+	ResetHeapAllocator(system.heap);
 	
 	CreateEntityTypeArrays(system);
 }
