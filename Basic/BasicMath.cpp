@@ -285,9 +285,46 @@ s16x4 Math::EncodeR16G16B16A16_SNORM(const float4& value) {
 	return s16x4(_mm_extract_epi16(scaled_value_s16, 0), _mm_extract_epi16(scaled_value_s16, 1), _mm_extract_epi16(scaled_value_s16, 2), _mm_extract_epi16(scaled_value_s16, 3));
 }
 
+s16x2 Math::EncodeR16G16_SNORM(const float2& value) {
+	auto scaled_value_float32 = _mm_mul_ps(_mm_setr_ps(value.x, value.y, 0.f, 0.f), _mm_set_ps1((float)s16_max));
+	auto scaled_value_s32 = _mm_cvtps_epi32(scaled_value_float32);
+	auto scaled_value_s16 = _mm_packs_epi32(scaled_value_s32, scaled_value_s32);
+	return s16x2(_mm_extract_epi16(scaled_value_s16, 0), _mm_extract_epi16(scaled_value_s16, 1));
+}
+
 float16x4 Math::EncodeR16G16B16A16_FLOAT(const float4& value) {
 	auto result = _mm_cvtps_ph(_mm_loadu_ps(&value.x), 0);
 	return float16x4(_mm_extract_epi16(result, 0), _mm_extract_epi16(result, 1), _mm_extract_epi16(result, 2), _mm_extract_epi16(result, 3));
+}
+
+float16x2 Math::EncodeR16G16_FLOAT(const float2& value) {
+	auto result = _mm_cvtps_ph(_mm_setr_ps(value.x, value.y, 0.f, 0.f), 0);
+	return float16x2(_mm_extract_epi16(result, 0), _mm_extract_epi16(result, 1));
+}
+
+
+// https://knarkowicz.wordpress.com/2014/04/16/octahedron-normal-vector-encoding/
+always_inline static float2 OctahedralWrap(const float2& value) {
+	float2 result;
+	result.x = (1.f - fabsf(value.y)) * (value.x >= 0.f ? 1.f : -1.f);
+	result.y = (1.f - fabsf(value.x)) * (value.y >= 0.f ? 1.f : -1.f);
+	return result;
+};
+
+float2 Math::EncodeOctahedralMap(const float3& value) {
+	float2 result = value.xy * (1.f / (fabsf(value.x) + fabsf(value.y) + fabsf(value.z)));
+	return value.z >= 0.f ? result : OctahedralWrap(result);
+}
+
+// Optimized octahedron decoding by Rune Stubbe.
+float3 Math::DecodeOctahedralMap(const float2& value) {
+	float3 result = float3(value.x, value.y, 1.f - fabsf(value.x) - fabsf(value.y));
+	
+	float t = Math::Min(Math::Max(-result.z, 0.f), 1.f);
+	result.x += result.x >= 0.f ? -t : t;
+	result.y += result.y >= 0.f ? -t : t;
+	
+	return Math::Normalize(result);
 }
 
 

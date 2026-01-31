@@ -85,6 +85,7 @@ void UpdateRendererEntityGpuComponents(StackAllocator* alloc, RecordContext* rec
 			mesh_asset.meshlet_page_count  = (u16)layout.page_count;
 			mesh_asset.aabb_center = (aabb.max + aabb.min) * 0.5f;
 			mesh_asset.aabb_radius = (aabb.max - aabb.min) * 0.5f;
+			mesh_asset.rcp_quantization_scale = layout.rcp_quantization_scale;
 			AppendGpuTransferCommand(gpu_mesh_asset_data, i, mesh_asset);
 		}
 		ArrayAppend(gpu_uploads, alloc, gpu_mesh_asset_data);

@@ -38,18 +38,19 @@ void MainMS(
 	SetMeshOutputCounts(meshlet.vertex_count, meshlet.triangle_count);
 	
 	uint vertex_buffer_offset = meshlet_header_offset + sizeof(MeshletHeader);
-	uint index_buffer_offset  = vertex_buffer_offset + meshlet.vertex_count * sizeof(BasicVertex);
+	uint index_buffer_offset  = vertex_buffer_offset + meshlet.vertex_count * sizeof(MeshletVertex);
 	
 	if (thread_index < meshlet.vertex_count) {
-		BasicVertex vertex = mesh_asset_buffer.Load<BasicVertex>(vertex_buffer_offset + thread_index * sizeof(BasicVertex));
+		MeshletVertex vertex = mesh_asset_buffer.Load<MeshletVertex>(vertex_buffer_offset + thread_index * sizeof(MeshletVertex));
+		float3 vertex_position = float3(vertex.position) * mesh_asset.rcp_quantization_scale + meshlet.position_offset;
 		
-		float4 clip_space_position      = TransformModelToClipSpace(vertex.position, model_to_world,      scene.world_to_view,      scene.view_to_clip_coef);
-		float4 prev_clip_space_position = TransformModelToClipSpace(vertex.position, prev_model_to_world, scene.prev_world_to_view, scene.prev_view_to_clip_coef);
+		float4 clip_space_position      = TransformModelToClipSpace(vertex_position, model_to_world,      scene.world_to_view,      scene.view_to_clip_coef);
+		float4 prev_clip_space_position = TransformModelToClipSpace(vertex_position, prev_model_to_world, scene.prev_world_to_view, scene.prev_view_to_clip_coef);
 		
 		InputPS output;
 		output.position = clip_space_position;
 		output.texcoord = vertex.texcoord;
-		output.normal   = vertex.normal;
+		output.normal   = QuatMul(model_to_world.rotation, DecodeOctahedralMap(DecodeR16G16_SNORM(vertex.normal)));
 		output.curr_position = clip_space_position.xyw;
 		output.prev_position = prev_clip_space_position.xyw;
 		

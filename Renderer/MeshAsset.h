@@ -7,10 +7,10 @@
 
 
 NOTES(Meta::HlslFile{ "MeshData.hlsl"_sl })
-struct BasicVertex {
-	float3 position;
-	float3 normal;
-	float2 texcoord;
+struct MeshletVertex {
+	u16x3 position;
+	s16x2 normal;
+	float16x2 texcoord;
 };
 
 NOTES(Meta::HlslFile{ "MeshData.hlsl"_sl })
@@ -33,8 +33,9 @@ struct MeshletCullingData {
 
 NOTES(Meta::HlslFile{ "MeshData.hlsl"_sl })
 struct MeshletHeader {
-	u32 triangle_count = 0;
-	u32 vertex_count   = 0;
+	float3 position_offset;
+	u16 triangle_count = 0;
+	u16 vertex_count   = 0;
 };
 
 NOTES(Meta::HlslFile{ "MeshData.hlsl"_sl })
@@ -71,6 +72,8 @@ struct GpuMeshAssetData {
 	
 	float3 aabb_center;
 	float3 aabb_radius;
+	
+	float rcp_quantization_scale = 1.f;
 };
 
 NOTES()
@@ -80,13 +83,15 @@ struct MeshSourceData {
 
 NOTES()
 struct MeshRuntimeDataLayout {
-	compile_const u64 current_version = 23;
+	compile_const u64 current_version = 24;
 	
 	u64 file_guid = 0;
 	u64 version   = 0;
 	
 	u32 page_count = 0;
 	u32 meshlet_group_count = 0;
+	
+	float rcp_quantization_scale = 1.f;
 };
 
 struct MeshImportResult {

@@ -192,7 +192,12 @@ namespace Math {
 	quat EulerXyzAnglesToQuat(const float3& e);
 	
 	s16x4 EncodeR16G16B16A16_SNORM(const float4& value);
+	s16x2 EncodeR16G16_SNORM(const float2& value);
 	float16x4 EncodeR16G16B16A16_FLOAT(const float4& value);
+	float16x2 EncodeR16G16_FLOAT(const float2& value);
+	
+	float2 EncodeOctahedralMap(const float3& value);
+	float3 DecodeOctahedralMap(const float2& value);
 	
 	float HaltonSequence(u32 index, u32 base);
 }

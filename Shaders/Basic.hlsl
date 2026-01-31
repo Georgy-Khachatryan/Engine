@@ -64,6 +64,11 @@ float3 Pow2(float3 value) { return value * value; }
 float4 Pow2(float4 value) { return value * value; }
 
 uint DivideAndRoundUp(uint numerator, uint denominator) { return (numerator + (denominator - 1)) / denominator; }
+uint AlignUp(uint size, uint alignment) { return (size + alignment - 1) & ~(alignment - 1); }
+
+template<typename T>
+T WaveShuffleXor(T value, uint mask) { return WaveReadLaneAt(value, WaveGetLaneIndex() ^ mask); }
+
 
 //
 // Based on https://fgiesen.wordpress.com/2022/09/09/morton-codes-addendum/
@@ -89,9 +94,6 @@ uint2 MortonDecode(uint code) {
 	return uint2(t, t >> 16) & 0xFF;
 }
 
-template<typename T>
-T WaveShuffleXor(T value, uint mask) { return WaveReadLaneAt(value, WaveGetLaneIndex() ^ mask); }
-
 float3 DecodeSRGB(float3 x) { return select(x < 0.04045, (x / 12.92), pow((x + 0.055) / 1.055, 2.4)); }
 float3 EncodeSRGB(float3 x) { return select(x < 0.0031308, 12.92 * x, (1.055 * pow(x, 1.0 / 2.4) - 0.055)); }
 float4 DecodeSRGB(float4 x) { return float4(DecodeSRGB(x.xyz), x.w); }
@@ -101,12 +103,26 @@ float4 DecodeR8G8B8A8_UNORM(uint encoded) { return float4(uint4(encoded >> 0, en
 float4 DecodeR8G8B8A8_UNORM_SRGB(uint encoded) { return DecodeSRGB(DecodeR8G8B8A8_UNORM(encoded)); }
 
 float4 DecodeR16G16B16A16_SNORM(s16x4 encoded) { return float4(encoded) * (1.0 / s16_max); }
+float2 DecodeR16G16_SNORM(s16x2 encoded) { return float2(encoded) * (1.0 / s16_max); }
 
 float2 NdcToScreenUv(float2 ndc) { return float2(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5); }
 float2 ScreenUvToNdc(float2 uv)  { return float2(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0); }
 
 float2 NdcToScreenUvDirection(float2 ndc) { return float2(ndc.x * 0.5, ndc.y * -0.5); }
 float2 ScreenUvToNdcDirection(float2 uv)  { return float2(uv.x * 2.0, uv.y * -2.0); }
+
+// https://knarkowicz.wordpress.com/2014/04/16/octahedron-normal-vector-encoding/
+float2 EncodeOctahedralMap(float3 value) {
+	float2 result = value.xy * (1.0 / (abs(value.x) + abs(value.y) + abs(value.z)));
+	return select(value.z >= 0.0, result, (1.0 - abs(result.yx)) * select(result.xy >= 0.0, 1.0, -1.0));
+}
+ 
+// Optimized octahedron decoding by Rune Stubbe.
+float3 DecodeOctahedralMap(float2 value) {
+	float3 result = float3(value.x, value.y, 1.0 - abs(value.x) - abs(value.y));
+	float t = saturate(-result.z);
+	return normalize(float3(result.xy + select(result.xy >= 0.0, -t, t), result.z));
+}
 
 
 float BarycentricWireframe(float3 lambda, float3 lambda_ddx, float3 lambda_ddy, float thickness = 1.0) {

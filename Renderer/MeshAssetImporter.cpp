@@ -8,11 +8,19 @@
 #include <SDK/ufbx/ufbx.h>
 #include <SDK/MeshDecimationTools/MeshDecimationTools.h>
 
-static float3x4 LoadUfbxMatrix(const ufbx_matrix& m) {
+static float3x4 LoadUfbxMatrix3x4(const ufbx_matrix& m) {
 	float3x4 result;
 	result.r0 = float4(m.m00, m.m01, m.m02, m.m03);
 	result.r1 = float4(m.m10, m.m11, m.m12, m.m13);
 	result.r2 = float4(m.m20, m.m21, m.m22, m.m23);
+	return result;
+}
+
+static float3x3 LoadUfbxMatrix3x3(const ufbx_matrix& m) {
+	float3x3 result;
+	result.r0 = float3(m.m00, m.m01, m.m02);
+	result.r1 = float3(m.m10, m.m11, m.m12);
+	result.r2 = float3(m.m20, m.m21, m.m22);
 	return result;
 }
 
@@ -27,6 +35,12 @@ static MeshletErrorMetric LoadMdtErrorMetric(const MdtErrorMetric& metric) {
 struct MeshletGroupSortKey {
 	u64 key = 0;
 	u32 mdt_group_index = 0;
+};
+
+struct SourceMeshVertex {
+	float3 position;
+	float3 normal;
+	float2 texcoord;
 };
 
 MeshImportResult ImportFbxMeshFile(StackAllocator* alloc, String filepath, u64 runtime_data_guid) {
@@ -55,7 +69,7 @@ MeshImportResult ImportFbxMeshFile(StackAllocator* alloc, String filepath, u64 r
 		max_result_triangles += (u32)(mesh->num_triangles * mesh->instances.count);
 	}
 	
-	Array<BasicVertex> source_vertices;
+	Array<SourceMeshVertex> source_vertices;
 	Array<u32> source_indices;
 	ArrayReserve(source_vertices, alloc, max_result_triangles * 3);
 	ArrayReserve(source_indices,  alloc, max_result_triangles * 3);
@@ -63,7 +77,7 @@ MeshImportResult ImportFbxMeshFile(StackAllocator* alloc, String filepath, u64 r
 	Array<u32> face_indices;
 	ArrayReserve(face_indices, alloc, max_face_triangles * 3);
 	
-	Array<BasicVertex> mesh_vertices;
+	Array<SourceMeshVertex> mesh_vertices;
 	ArrayReserve(mesh_vertices, alloc, max_mesh_triangles * 3);
 	
 	Array<u32> mesh_indices;
@@ -76,7 +90,7 @@ MeshImportResult ImportFbxMeshFile(StackAllocator* alloc, String filepath, u64 r
 			face_indices.count = ufbx_triangulate_face(face_indices.data, face_indices.capacity, mesh, face) * 3;
 			
 			for (u32 index : face_indices) {
-				BasicVertex vertex;
+				SourceMeshVertex vertex;
 				vertex.position = float3(mesh->vertex_position[index]);
 				vertex.normal   = float3(mesh->vertex_normal[index]);
 				vertex.texcoord = mesh->vertex_uv.exists ? float2(mesh->vertex_uv[index]) : float2(0.f, 0.f);
@@ -87,18 +101,20 @@ MeshImportResult ImportFbxMeshFile(StackAllocator* alloc, String filepath, u64 r
 		ufbx_vertex_stream stream;
 		stream.data         = mesh_vertices.data;
 		stream.vertex_count = mesh_vertices.count;
-		stream.vertex_size  = sizeof(BasicVertex);
+		stream.vertex_size  = sizeof(SourceMeshVertex);
 		
 		mesh_indices.count  = mesh_vertices.count;
 		mesh_vertices.count = ufbx_generate_indices(&stream, 1, mesh_indices.data, mesh_indices.count, nullptr, nullptr);
 		
 		for (auto* instance : mesh->instances) {
-			auto geometry_to_world = LoadUfbxMatrix(instance->geometry_to_world);
+			auto geometry_to_world          = LoadUfbxMatrix3x4(instance->geometry_to_world);
+			auto geometry_to_world_rotation = LoadUfbxMatrix3x3(ufbx_matrix_for_normals(&instance->geometry_to_world));
 			
 			u32 index_offset = (u32)source_vertices.count;
 			for (auto& vertex : mesh_vertices) {
 				auto instance_vertex = vertex;
 				instance_vertex.position = geometry_to_world * float4(instance_vertex.position, 1.f);
+				instance_vertex.normal   = Math::Normalize(geometry_to_world_rotation * instance_vertex.normal);
 				ArrayAppend(source_vertices, instance_vertex);
 			}
 			
@@ -137,7 +153,7 @@ MeshImportResult ImportFbxMeshFile(StackAllocator* alloc, String filepath, u64 r
 	MdtContinuousLodBuildInputs inputs = {};
 	inputs.mesh.geometry_descs      = geometry_descs;
 	inputs.mesh.geometry_desc_count = 1;
-	inputs.mesh.vertex_stride_bytes = sizeof(BasicVertex);
+	inputs.mesh.vertex_stride_bytes = sizeof(SourceMeshVertex);
 	inputs.mesh.geometric_weight    = 0.f;
 	inputs.mesh.attribute_weights   = nullptr;
 	inputs.mesh.normalize_vertex_attributes = [](float* attributes) {
@@ -156,7 +172,7 @@ MeshImportResult ImportFbxMeshFile(StackAllocator* alloc, String filepath, u64 r
 	auto mdt_meshlets               = ArrayView<MdtMeshlet>{ result.meshlets, result.meshlet_count };
 	auto mdt_meshlet_vertex_indices = ArrayView<u32>{ result.meshlet_vertex_indices, result.meshlet_vertex_index_count };
 	auto mdt_meshlet_triangles      = ArrayView<MdtMeshletTriangle>{ result.meshlet_triangles, result.meshlet_triangle_count };
-	auto mdt_meshlet_vertices       = ArrayView<BasicVertex>{ (BasicVertex*)result.vertices, result.vertex_count };
+	auto mdt_meshlet_vertices       = ArrayView<SourceMeshVertex>{ (SourceMeshVertex*)result.vertices, result.vertex_count };
 	auto mdt_levels_of_detail       = ArrayView<MdtContinuousLodLevel>{ result.levels, result.level_count };
 	
 	auto result_meshlet_groups = ArrayViewAllocate<MeshletGroup>(alloc, mdt_meshlet_groups.count);
@@ -226,7 +242,7 @@ MeshImportResult ImportFbxMeshFile(StackAllocator* alloc, String filepath, u64 r
 			u32 triangle_count = src_meshlet.end_meshlet_triangles_index - src_meshlet.begin_meshlet_triangles_index;
 			u32 vertex_count   = src_meshlet.end_vertex_indices_index    - src_meshlet.begin_vertex_indices_index;
 			
-			u32 meshlet_size = (u32)(sizeof(MeshletCullingData) + sizeof(MeshletHeader) + vertex_count * sizeof(BasicVertex) + AlignUp(triangle_count * sizeof(MdtMeshletTriangle), 4));
+			u32 meshlet_size = (u32)(sizeof(MeshletCullingData) + sizeof(MeshletHeader) + AlignUp(vertex_count * sizeof(MeshletVertex) + triangle_count * sizeof(MdtMeshletTriangle), 4));
 			DebugAssert(meshlet_size <= page_size, "Meshlet is larger than a single page. (%/%).", meshlet_size, page_size);
 			
 			if (page_offset + meshlet_size > page_size) {
@@ -250,6 +266,19 @@ MeshImportResult ImportFbxMeshFile(StackAllocator* alloc, String filepath, u64 r
 	
 	if (page_meshlet_count != 0) {
 		ArrayAppend(page_meshlet_prefix_sum, alloc, (u32)page_meshlet_indices.count);
+	}
+	
+	
+	float max_meshlet_extent = 0.f;
+	for (auto& meshlet : mdt_meshlets) {
+		auto extent = float3(meshlet.aabb_max) - float3(meshlet.aabb_min);
+		max_meshlet_extent = Math::Max(Math::Max(extent.x, extent.y), Math::Max(extent.z, max_meshlet_extent));
+	}
+	
+	float quantization_scale = 1024.f;
+	float bit_count = max_meshlet_extent > 0.f ? ceilf(log2f(max_meshlet_extent * quantization_scale + 1.f)) : 0.f;
+	if (bit_count > 16.f) {
+		quantization_scale = exp2f(floorf(log2f((float)u16_max / max_meshlet_extent)));
 	}
 	
 	
@@ -280,6 +309,7 @@ MeshImportResult ImportFbxMeshFile(StackAllocator* alloc, String filepath, u64 r
 			
 			u32 triangle_count = src_meshlet.end_meshlet_triangles_index - src_meshlet.begin_meshlet_triangles_index;
 			u32 vertex_count   = src_meshlet.end_vertex_indices_index    - src_meshlet.begin_vertex_indices_index;
+			auto position_offset = float3(src_meshlet.aabb_min);
 			
 			// Write culling data:
 			{
@@ -300,8 +330,9 @@ MeshImportResult ImportFbxMeshFile(StackAllocator* alloc, String filepath, u64 r
 			// Write header:
 			{
 				MeshletHeader meshlet_header;
-				meshlet_header.triangle_count = triangle_count;
-				meshlet_header.vertex_count   = vertex_count;
+				meshlet_header.triangle_count  = triangle_count;
+				meshlet_header.vertex_count    = vertex_count;
+				meshlet_header.position_offset = position_offset;
 				
 				memcpy(page.data + page_meshlet_data_offset, &meshlet_header, sizeof(meshlet_header));
 				page_meshlet_data_offset += sizeof(meshlet_header);
@@ -309,16 +340,28 @@ MeshImportResult ImportFbxMeshFile(StackAllocator* alloc, String filepath, u64 r
 			
 			// Write vertices:
 			for (u32 i = src_meshlet.begin_vertex_indices_index; i < src_meshlet.end_vertex_indices_index; i += 1) {
-				auto& vertex = mdt_meshlet_vertices[mdt_meshlet_vertex_indices[i]];
-				memcpy(page.data + page_meshlet_data_offset, &vertex, sizeof(vertex));
-				page_meshlet_data_offset += sizeof(vertex);
+				auto& src_vertex = mdt_meshlet_vertices[mdt_meshlet_vertex_indices[i]];
+				
+				auto octahedral_normal = Math::EncodeOctahedralMap(src_vertex.normal);
+				
+				MeshletVertex dst_vertex; 
+				dst_vertex.position = u16x3((src_vertex.position - position_offset) * quantization_scale);
+				dst_vertex.normal   = Math::EncodeR16G16_SNORM(octahedral_normal);
+				dst_vertex.texcoord = Math::EncodeR16G16_FLOAT(src_vertex.texcoord);
+				
+				memcpy(page.data + page_meshlet_data_offset, &dst_vertex, sizeof(dst_vertex));
+				page_meshlet_data_offset += sizeof(dst_vertex);
 			}
 			
 			// Write indices:
 			{
 				memcpy(page.data + page_meshlet_data_offset, mdt_meshlet_triangles.data + src_meshlet.begin_meshlet_triangles_index, triangle_count * sizeof(MdtMeshletTriangle));
-				page_meshlet_data_offset += AlignUp(triangle_count * sizeof(MdtMeshletTriangle), 4);
+				page_meshlet_data_offset += triangle_count * sizeof(MdtMeshletTriangle);
 			}
+			
+			// Clear padding to zero:
+			memset(page.data + page_meshlet_data_offset, 0, AlignUp(page_meshlet_data_offset, 4) - page_meshlet_data_offset);
+			page_meshlet_data_offset = AlignUp(page_meshlet_data_offset, 4);
 		}
 		
 		// Clear padding to zero:
@@ -341,6 +384,7 @@ MeshImportResult ImportFbxMeshFile(StackAllocator* alloc, String filepath, u64 r
 	runtime_data_layout.version    = MeshRuntimeDataLayout::current_version;
 	runtime_data_layout.page_count = (u32)result_pages.count;
 	runtime_data_layout.meshlet_group_count = (u32)result_meshlet_groups.count;
+	runtime_data_layout.rcp_quantization_scale = 1.f / quantization_scale;
 	
 	u64 write_offset = 0;
 	for (auto page : result_pages) {
