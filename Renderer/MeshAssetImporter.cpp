@@ -280,6 +280,7 @@ MeshImportResult ImportFbxMeshFile(StackAllocator* alloc, String filepath, u64 r
 	if (bit_count > 16.f) {
 		quantization_scale = exp2f(floorf(log2f((float)u16_max / max_meshlet_extent)));
 	}
+	float rcp_quantization_scale = 1.f / quantization_scale;
 	
 	
 	Array<ArrayView<u8>> result_pages;
@@ -309,7 +310,11 @@ MeshImportResult ImportFbxMeshFile(StackAllocator* alloc, String filepath, u64 r
 			
 			u32 triangle_count = src_meshlet.end_meshlet_triangles_index - src_meshlet.begin_meshlet_triangles_index;
 			u32 vertex_count   = src_meshlet.end_vertex_indices_index    - src_meshlet.begin_vertex_indices_index;
-			auto position_offset = float3(src_meshlet.aabb_min);
+			
+			float3 position_offset;
+			position_offset.x = floorf(src_meshlet.aabb_min.x * quantization_scale) * rcp_quantization_scale;
+			position_offset.y = floorf(src_meshlet.aabb_min.y * quantization_scale) * rcp_quantization_scale;
+			position_offset.z = floorf(src_meshlet.aabb_min.z * quantization_scale) * rcp_quantization_scale;
 			
 			// Write culling data:
 			{
@@ -384,7 +389,7 @@ MeshImportResult ImportFbxMeshFile(StackAllocator* alloc, String filepath, u64 r
 	runtime_data_layout.version    = MeshRuntimeDataLayout::current_version;
 	runtime_data_layout.page_count = (u32)result_pages.count;
 	runtime_data_layout.meshlet_group_count = (u32)result_meshlet_groups.count;
-	runtime_data_layout.rcp_quantization_scale = 1.f / quantization_scale;
+	runtime_data_layout.rcp_quantization_scale = rcp_quantization_scale;
 	
 	u64 write_offset = 0;
 	for (auto page : result_pages) {
