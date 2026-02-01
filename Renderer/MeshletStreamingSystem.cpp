@@ -5,59 +5,55 @@
 #include "GraphicsApi/RecordContext.h"
 #include "GraphicsApi/AsyncTransferQueue.h"
 
-struct MeshletStreamingPage {
-	u64 subresource_id = 0; // (asset_page_index << 32) | mesh_asset_index, lowest IDs are streamed in first.
-	u64 cache_priority = 0; // (~frame_index << 32) | asset_page_index, lowest values are retained for the longer.
-	u32 runtime_page_index = 0;
+enum struct MeshletRuntimePageState : u32 {
+	Free     = 0,
+	FileRead = 1,
+	PageIn   = 2,
+	PageOut  = 3,
+	Ready    = 4,
 };
 
-struct MeshletStreamingPageOutCommand {
-	u64 subresource_id = 0;
-	u64 wait_frame_index = 0;
-	u32 runtime_page_index = 0;
+struct MeshletRuntimePage {
+	u32 mesh_asset_index = 0;
+	u32 asset_page_index = 0;
+	u32 cache_frame_index = 0;
+	
+	MeshletRuntimePageState state = MeshletRuntimePageState::Free;
+	u64 wait_index = 0;
 };
 
-struct MeshletStreamingPageFileReadCommand {
-	u64 subresource_id  = 0;
-	u64 wait_file_index = 0;
-	u32 runtime_page_index = 0;
-};
-
-struct MeshletStreamingPageInCommand {
-	u64 subresource_id = 0;
-	u64 wait_frame_index = 0;
+struct MeshletPageOutCandidate {
+	u32 asset_page_index   = 0;
 	u32 runtime_page_index = 0;
 };
 
 struct MeshletStreamingSystem {
 	NumaHeapAllocator heap;
 	
-	Array<MeshletStreamingPage> allocated_pages;
-	Array<u32> free_pages;
-	Array<MeshletStreamingPageOutCommand> page_out_commands;
-	Array<MeshletStreamingPageFileReadCommand> file_read_commands;
-	Array<MeshletStreamingPageInCommand> page_in_commands;
+	Array<MeshletRuntimePage> runtime_pages;
+	Array<u32> free_page_indices;
 	
-	ArrayView<MeshletStreamingPageTableUpdateCommand> page_table_update_commands;
+	ArrayView<MeshletRuntimePageUpdateCommand> page_table_update_commands;
 };
 
 MeshletStreamingSystem* CreateMeshletStreamingSystem(StackAllocator* alloc, u64 buffer_size) {
 	auto* system = NewFromAlloc(alloc, MeshletStreamingSystem);
 	
 	compile_const u32 runtime_page_count = MeshletPageHeader::runtime_page_count;
-	ArrayReserve(system->allocated_pages, alloc, runtime_page_count);
-	ArrayReserve(system->free_pages, alloc, runtime_page_count);
-	ArrayReserve(system->page_out_commands, alloc, runtime_page_count);
-	ArrayReserve(system->file_read_commands, alloc, runtime_page_count);
-	ArrayReserve(system->page_in_commands, alloc, runtime_page_count);
+	ArrayResize(system->runtime_pages, alloc, runtime_page_count);
 	
+	ArrayReserve(system->free_page_indices, alloc, runtime_page_count);
 	for (u32 i = 0; i < runtime_page_count; i += 1) {
-		ArrayAppend(system->free_pages, runtime_page_count - i - 1);
+		ArrayAppend(system->free_page_indices, runtime_page_count - i - 1);
 	}
 	
 	system->heap = CreateNumaHeapAllocator(alloc, 1024, (u32)buffer_size);
 	
 	return system;
+}
+
+static u64 EncodeMeshletSubresourceID(u32 mesh_asset_index, u32 asset_page_index) {
+	return ((u64)asset_page_index << 32) | mesh_asset_index;
 }
 
 static ArrayView<u64> ProcessMeshletStreamingFeedback(RecordContext* record_context, GpuReadbackQueue* meshlet_streaming_feedback_queue) {
@@ -82,7 +78,7 @@ static ArrayView<u64> ProcessMeshletStreamingFeedback(RecordContext* record_cont
 			
 			for (u32 bit_index : BitScanLow32(page_mask)) {
 				u32 asset_page_index = i * 32u + bit_index;
-				ArrayAppend(requests, ((u64)asset_page_index << 32) | mesh_asset_index);
+				ArrayAppend(requests, EncodeMeshletSubresourceID(mesh_asset_index, asset_page_index));
 			}
 		}
 	}
@@ -96,81 +92,71 @@ void UpdateMeshletStreamingSystem(MeshletStreamingSystem* system, AsyncTransferQ
 	
 	auto requests = ProcessMeshletStreamingFeedback(record_context, meshlet_streaming_feedback_queue);
 	
-	auto& allocated_pages = system->allocated_pages;
-	auto& free_pages = system->free_pages;
-	auto& page_out_commands  = system->page_out_commands;
-	auto& file_read_commands = system->file_read_commands;
-	auto& page_in_commands   = system->page_in_commands;
-	u32 cache_inv_frame_index = (u32)(~record_context->frame_index);
+	auto& runtime_pages = system->runtime_pages;
+	auto& free_page_indices = system->free_page_indices;
 	
-	
-	Array<MeshletStreamingPageTableUpdateCommand> page_table_update_commands;
+	Array<MeshletRuntimePageUpdateCommand> page_table_update_commands;
 	ArrayReserve(page_table_update_commands, alloc, runtime_page_count);
 	
-	{
-		u64 current_frame_index = record_context->frame_index;
-		u64 completed_file_read_index = CompletedGpuAsyncTransferIndex(async_transfer_queue);
+	u64 in_flight_page_out_count = 0;
+	u64 current_frame_index = record_context->frame_index;
+	u64 completed_file_read_index = CompletedGpuAsyncTransferIndex(async_transfer_queue);
+	
+	
+	// Update page states:
+	for (u32 runtime_page_index = 0; runtime_page_index < runtime_pages.count; runtime_page_index += 1) {
+		auto& page = runtime_pages[runtime_page_index];
 		
-		for (u32 i = 0; i < page_out_commands.count;) {
-			auto& command = page_out_commands[i];
-			if (command.wait_frame_index <= current_frame_index) {
-				ArrayAppend(free_pages, command.runtime_page_index);
-				ArrayEraseSwapLast(page_out_commands, i);
-			} else {
-				i += 1;
-			}
-		}
-		
-		for (u32 i = 0; i < file_read_commands.count;) {
-			auto& command = file_read_commands[i];
-			if (command.wait_file_index <= completed_file_read_index) {
-				MeshletStreamingPageInCommand page_in_command;
-				page_in_command.wait_frame_index   = current_frame_index + number_of_frames_in_flight;
-				page_in_command.subresource_id     = command.subresource_id;
-				page_in_command.runtime_page_index = command.runtime_page_index;
-				ArrayAppend(page_in_commands, page_in_command); // TODO: Could be a ring buffer.
+		switch (page.state) {
+		case MeshletRuntimePageState::FileRead: {
+			if (page.wait_index <= completed_file_read_index) {
+				page.state      = MeshletRuntimePageState::PageIn;
+				page.wait_index = current_frame_index + number_of_frames_in_flight;
 				
-				MeshletStreamingPageTableUpdateCommand page_table_update_command;
+				MeshletRuntimePageUpdateCommand page_table_update_command;
 				page_table_update_command.type               = MeshletPageTableUpdateCommandType::PageIn;
-				page_table_update_command.runtime_page_index = command.runtime_page_index;
-				page_table_update_command.subresource_id     = command.subresource_id;
+				page_table_update_command.runtime_page_index = runtime_page_index;
+				page_table_update_command.mesh_asset_index   = page.mesh_asset_index;
+				page_table_update_command.asset_page_index   = page.asset_page_index;
 				ArrayAppend(page_table_update_commands, page_table_update_command);
-				
-				ArrayEraseSwapLast(file_read_commands, i);
-			} else {
-				i += 1;
 			}
+			break;
+		} case MeshletRuntimePageState::PageIn: {
+			if (page.wait_index <= current_frame_index) {
+				page.state      = MeshletRuntimePageState::Ready;
+				page.wait_index = 0;
+				page.cache_frame_index = (u32)current_frame_index;
+			}
+			break;
+		} case MeshletRuntimePageState::PageOut: {
+			if (page.wait_index <= current_frame_index) {
+				page = {};
+				ArrayAppend(free_page_indices, runtime_page_index);
+			} else {
+				in_flight_page_out_count += 1;
+			}
+			break;
 		}
-		
-		for (u32 i = 0; i < page_in_commands.count;) {
-			auto& command = page_in_commands[i];
-			if (command.wait_frame_index <= current_frame_index) {
-				MeshletStreamingPage page;
-				page.subresource_id     = command.subresource_id;
-				page.cache_priority     = ((u64)cache_inv_frame_index << 32) | (command.subresource_id >> 32);
-				page.runtime_page_index = command.runtime_page_index;
-				ArrayAppend(allocated_pages, page);
-				
-				ArrayEraseSwapLast(page_in_commands, i);
-			} else {
-				i += 1;
-			}
 		}
 	}
 	
+	
+	// Update cache frame indices of already allocated pages and remove them from the request array.
 	if (requests.count != 0) {
 		TempAllocationScope(alloc);
 		
 		HashTable<u64, u32> allocated_page_subresource_id_to_index;
 		HashTableReserve(allocated_page_subresource_id_to_index, alloc, runtime_page_count);
 		
-		for (u32 i = 0; i < allocated_pages.count; i += 1) {
-			HashTableAddOrFind(allocated_page_subresource_id_to_index, allocated_pages[i].subresource_id, i);
+		for (u32 runtime_page_index = 0; runtime_page_index < runtime_pages.count; runtime_page_index += 1) {
+			auto& page = runtime_pages[runtime_page_index];
+			if (page.state != MeshletRuntimePageState::Free) {
+				u32 runtime_page_index_for_cache_update = page.state == MeshletRuntimePageState::Ready ? runtime_page_index : u32_max;
+				u64 subresource_id = EncodeMeshletSubresourceID(page.mesh_asset_index, page.asset_page_index);
+				
+				HashTableAddOrFind(allocated_page_subresource_id_to_index, subresource_id, runtime_page_index_for_cache_update);
+			}
 		}
-		
-		for (auto& command : page_out_commands)  HashTableAddOrFind(allocated_page_subresource_id_to_index, command.subresource_id, u32_max);
-		for (auto& command : file_read_commands) HashTableAddOrFind(allocated_page_subresource_id_to_index, command.subresource_id, u32_max);
-		for (auto& command : page_in_commands)   HashTableAddOrFind(allocated_page_subresource_id_to_index, command.subresource_id, u32_max);
 		
 		for (u32 i = 0; i < requests.count;) {
 			u64 subresource_id = requests[i];
@@ -178,7 +164,7 @@ void UpdateMeshletStreamingSystem(MeshletStreamingSystem* system, AsyncTransferQ
 			
 			if (element != nullptr) {
 				if (element->value != u32_max) {
-					allocated_pages[element->value].cache_priority = ((u64)cache_inv_frame_index << 32) | (subresource_id >> 32);
+					runtime_pages[element->value].cache_frame_index = (u32)current_frame_index;
 				}
 				ArrayEraseSwapLast(requests, i);
 			} else {
@@ -187,47 +173,62 @@ void UpdateMeshletStreamingSystem(MeshletStreamingSystem* system, AsyncTransferQ
 		}
 	}
 	
-	// At this point we only have requests that don't already have an allocated page.
-	u64 stream_out_count = 0;
-	if (requests.count > free_pages.count) {
+	
+	// At this point we only have requests that don't already have an allocated page. Remove any page requests that won't fit.
+	u64 page_out_count = 0;
+	if (requests.count > free_page_indices.count) {
 		HeapSort(requests);
 		
-		u64 remove_request_count = requests.count - free_pages.count;
+		u64 remove_request_count = requests.count - free_page_indices.count;
 		requests.count -= remove_request_count; // We know we won't be able to fulfill these requests this frame.
 		
-		// Make sure we account for any pending page out commands, we can expect them to be ready soon.
-		stream_out_count = remove_request_count - Math::Min(page_out_commands.count, remove_request_count);
+		// Make sure we account for any in flight page outs, we can expect them to be ready soon.
+		page_out_count = remove_request_count - Math::Min(in_flight_page_out_count, remove_request_count);
 	}
-	DebugAssert(free_pages.count >= requests.count, "Overflowing page requests didn't get correctly removed. (%/%).", free_pages.count, requests.count);
+	DebugAssert(free_page_indices.count >= requests.count, "Overflowing page requests didn't get correctly removed. (%/%).", free_page_indices.count, requests.count);
 	
-	if (stream_out_count != 0) {
-		// Try to remove stream_out_count least significant pages.
-		HeapSort<MeshletStreamingPage>(allocated_pages, [](const MeshletStreamingPage& lh, const MeshletStreamingPage& rh)-> bool {
-			return lh.cache_priority < rh.cache_priority;
-		});
+	
+	// Try to page out pages that are no longer used.
+	if (page_out_count != 0) {
+		TempAllocationScope(alloc);
 		
-		s64 try_deallocate_up_to_index = Math::Max((s64)allocated_pages.count - (s64)stream_out_count, 0ll);
-		for (s64 i = allocated_pages.count - 1; i >= try_deallocate_up_to_index; i -= 1) {
-			auto& page = allocated_pages[i];
+		Array<MeshletPageOutCandidate> page_out_candidates;
+		ArrayReserve(page_out_candidates, alloc, runtime_pages.count);
+		
+		for (u32 runtime_page_index = 0; runtime_page_index < runtime_pages.count; runtime_page_index += 1) {
+			auto& page = runtime_pages[runtime_page_index];
 			
 			// TODO: Should we try to deallocate currently used pages with lower priority than the newly requested pages?
-			if ((page.cache_priority >> 32) == cache_inv_frame_index) break;
+			if (page.state != MeshletRuntimePageState::Ready || page.cache_frame_index == (u32)current_frame_index) continue;
 			
-			MeshletStreamingPageOutCommand page_out_command;
-			page_out_command.wait_frame_index   = record_context->frame_index + number_of_frames_in_flight;
-			page_out_command.subresource_id     = page.subresource_id;
-			page_out_command.runtime_page_index = page.runtime_page_index;
-			ArrayAppend(page_out_commands, page_out_command); // TODO: Could be a ring buffer.
+			MeshletPageOutCandidate candidate;
+			candidate.asset_page_index   = page.asset_page_index;
+			candidate.runtime_page_index = runtime_page_index;
+			ArrayAppend(page_out_candidates, candidate);
+		}
+		
+		// Try to remove page_out_count least significant pages.
+		HeapSort<MeshletPageOutCandidate>(page_out_candidates, [](const MeshletPageOutCandidate& lh, const MeshletPageOutCandidate& rh)-> bool {
+			return lh.asset_page_index > rh.asset_page_index;
+		});
+		page_out_candidates.count = Math::Min(page_out_candidates.count, page_out_count);
+		
+		for (u64 i = 0; i < page_out_candidates.count; i += 1) {
+			auto& candidate = page_out_candidates[i];
+			auto& page = runtime_pages[candidate.runtime_page_index];
 			
-			MeshletStreamingPageTableUpdateCommand page_table_update_command;
+			page.state      = MeshletRuntimePageState::PageOut;
+			page.wait_index = record_context->frame_index + number_of_frames_in_flight;
+			
+			MeshletRuntimePageUpdateCommand page_table_update_command;
 			page_table_update_command.type               = MeshletPageTableUpdateCommandType::PageOut;
-			page_table_update_command.runtime_page_index = page.runtime_page_index;
-			page_table_update_command.subresource_id     = page.subresource_id;
+			page_table_update_command.runtime_page_index = candidate.runtime_page_index;
+			page_table_update_command.mesh_asset_index   = page.mesh_asset_index;
+			page_table_update_command.asset_page_index   = page.asset_page_index;
 			ArrayAppend(page_table_update_commands, page_table_update_command);
-			
-			ArrayPopLast(allocated_pages);
 		}
 	}
+	
 	
 	auto entity_array = QueryEntityTypeArray<MeshAssetType>(*asset_system);
 	auto streams = ExtractComponentStreams<MeshAssetType>(entity_array);
@@ -259,27 +260,29 @@ void UpdateMeshletStreamingSystem(MeshletStreamingSystem* system, AsyncTransferQ
 		AsyncCopyFileToBuffer(async_transfer_queue, mesh_asset_buffer.buffer.resource, allocation_offset, mesh_asset_buffer.buffer.size, file.file, file_offset, AlignUp(file_data_size, 4096u));
 	}
 	
+	
+	// Allocate and read newly requested pages.
 	for (u64 subresource_id : requests) {
 		u32 mesh_asset_index = (u32)subresource_id;
 		u32 asset_page_index = (u32)(subresource_id >> 32);
-		u32 runtime_page_index = ArrayPopLast(free_pages);
+		u32 runtime_page_index = ArrayPopLast(free_page_indices);
 		
 		auto& layout = streams.runtime_data_layout[mesh_asset_index];
 		auto& file   = streams.runtime_file[mesh_asset_index];
 		
 		u64 wait_file_index = AsyncCopyFileToBuffer(async_transfer_queue, mesh_asset_buffer.buffer.resource, runtime_page_index * MeshletPageHeader::page_size, mesh_asset_buffer.buffer.size, file.file, asset_page_index * MeshletPageHeader::page_size, MeshletPageHeader::page_size);
 		
-		MeshletStreamingPageFileReadCommand file_read_command;
-		file_read_command.subresource_id     = subresource_id;
-		file_read_command.wait_file_index    = wait_file_index;
-		file_read_command.runtime_page_index = runtime_page_index;
-		ArrayAppend(file_read_commands, file_read_command);
+		auto& page = runtime_pages[runtime_page_index];
+		page.state            = MeshletRuntimePageState::FileRead;
+		page.mesh_asset_index = mesh_asset_index;
+		page.asset_page_index = asset_page_index;
+		page.wait_index       = wait_file_index;
 	}
 	
 	system->page_table_update_commands = page_table_update_commands;
 }
 
-ArrayView<MeshletStreamingPageTableUpdateCommand> GetPageTableUpdateCommands(MeshletStreamingSystem* system) {
+ArrayView<MeshletRuntimePageUpdateCommand> GetPageTableUpdateCommands(MeshletStreamingSystem* system) {
 	auto commands = system->page_table_update_commands;
 	system->page_table_update_commands = {};
 	

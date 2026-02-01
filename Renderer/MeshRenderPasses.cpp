@@ -184,10 +184,9 @@ void UpdateMeshletPageTableRenderPass::RecordPass(RecordContext* record_context)
 	auto page_table_update_commands = GetPageTableUpdateCommands(meshlet_streaming_system);
 	if (page_table_update_commands.count == 0) return;
 	
-	using Command = MeshletStreamingPageTableUpdateCommand;
-	HeapSort(page_table_update_commands, [](const Command& lh, const Command& rh)-> bool {
-		u64 lh_id = (lh.subresource_id << 32) | (lh.subresource_id >> 32);
-		u64 rh_id = (rh.subresource_id << 32) | (rh.subresource_id >> 32);
+	HeapSort(page_table_update_commands, [](const MeshletRuntimePageUpdateCommand& lh, const MeshletRuntimePageUpdateCommand& rh)-> bool {
+		u64 lh_id = ((u64)lh.mesh_asset_index << 32) | (u64)lh.asset_page_index;
+		u64 rh_id = ((u64)rh.mesh_asset_index << 32) | (u64)rh.asset_page_index;
 		
 		return lh_id < rh_id;
 	});
@@ -198,8 +197,8 @@ void UpdateMeshletPageTableRenderPass::RecordPass(RecordContext* record_context)
 	u32 mesh_asset_count = 0;
 	u32 last_mesh_asset_index = u32_max;
 	for (auto& command : page_table_update_commands) {
-		if (last_mesh_asset_index != (u32)command.subresource_id) {
-			last_mesh_asset_index = (u32)command.subresource_id;
+		if (last_mesh_asset_index != command.mesh_asset_index) {
+			last_mesh_asset_index = command.mesh_asset_index;
 			mesh_asset_count += 1;
 			ArrayAppend(mesh_asset_page_count, 0u);
 		}
@@ -213,8 +212,8 @@ void UpdateMeshletPageTableRenderPass::RecordPass(RecordContext* record_context)
 	u32 commands_offset  = 0;
 	last_mesh_asset_index = u32_max;
 	for (auto& command : page_table_update_commands) {
-		if (last_mesh_asset_index != (u32)command.subresource_id) {
-			last_mesh_asset_index = (u32)command.subresource_id;
+		if (last_mesh_asset_index != command.mesh_asset_index) {
+			last_mesh_asset_index = command.mesh_asset_index;
 			
 			MeshletPageTableUpdateCommand command;
 			command.mesh_asset_index = last_mesh_asset_index;
@@ -223,9 +222,8 @@ void UpdateMeshletPageTableRenderPass::RecordPass(RecordContext* record_context)
 			commands_cpu_address[commands_offset++] = command;
 		}
 		
-		u32 asset_page_index   = (u32)(command.subresource_id >> 32);
+		u32 asset_page_index   = command.asset_page_index;
 		u32 runtime_page_index = command.runtime_page_index;
-		
 		page_list_cpu_address[page_list_offset++] = asset_page_index | (runtime_page_index << 16) | ((u32)command.type << 31);
 	}
 	
