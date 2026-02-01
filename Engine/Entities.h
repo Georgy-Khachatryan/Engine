@@ -19,7 +19,6 @@ struct WorldEntityType {
 	
 	ECS::Component<CameraEntityGUID> camera_entity;
 	ECS::Component<RendererWorld> renderer_world;
-	ECS::Component<MeshletStreamingSystem> meshlet_streaming_system;
 	
 	NOTES(VirtualResourceID::SceneConstants)
 	ECS::GpuComponent<SceneConstants> gpu_scene_constants;

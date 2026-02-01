@@ -604,7 +604,7 @@ static void AssetBrowserEntityView(StackAllocator* alloc, AssetEntitySystem& ass
 	}
 	
 	if (entity.mesh_source_data) {
-		ImGui::TableInputText("Mesh Source Data", entity.mesh_source_data->filepath, nullptr);
+		ImGui::TableInputText("Mesh Source Data", entity.mesh_source_data->filepath, &asset_system.heap);
 	}
 	
 	if (entity.mesh_runtime_data_layout) {

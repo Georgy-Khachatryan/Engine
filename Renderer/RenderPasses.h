@@ -273,11 +273,7 @@ NOTES(Meta::RenderPass{})
 struct UpdateMeshletPageTableRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
-	WorldEntitySystem* world_system = nullptr;
-	AssetEntitySystem* asset_system = nullptr;
-	GpuReadbackQueue* meshlet_streaming_feedback_queue = nullptr;
 	MeshletStreamingSystem* meshlet_streaming_system = nullptr;
-	AsyncTransferQueue* async_transfer_queue = nullptr;
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
 		HLSL::RegularBuffer<GpuMeshAssetData> mesh_asset_data = VirtualResourceID::GpuMeshAssetData;

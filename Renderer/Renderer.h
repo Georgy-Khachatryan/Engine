@@ -8,6 +8,7 @@ struct GraphicsContext;
 struct VirtualResourceTable;
 struct WindowSwapChain;
 struct WorldEntitySystem;
+struct MeshletStreamingSystem;
 
 struct DebugMeshLayout {
 	u32 vertex_offset = 0;
@@ -37,9 +38,9 @@ struct RendererContext {
 	FixedCountArray<u8*, number_of_frames_in_flight> readback_buffer_cpu_addresses;
 	u64 transient_buffer_index = 0;
 	
+	MeshletStreamingSystem* meshlet_streaming_system = nullptr;
 	NativeBufferResource mesh_asset_buffer;
-	u64 mesh_asset_buffer_offset = 0;
-	u64 mesh_asset_buffer_size   = 0;
+	u64 mesh_asset_buffer_size = 0;
 	
 	DebugGeometryBuffer debug_geometry_buffer;
 };
@@ -52,3 +53,5 @@ void ReleaseResourceTable(GraphicsContext* graphics_context, VirtualResourceTabl
 
 RecordContext* BeginRecordContext(StackAllocator* alloc, RendererContext* context, WindowSwapChain* swap_chain, VirtualResourceTable* resource_table);
 void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext* record_context, WorldEntitySystem* world_system, AssetEntitySystem* asset_system, u64 world_entity_guid);
+
+void UpdateStreamingSystems(RendererContext* renderer_context, RecordContext* record_context, WorldEntitySystem* world_system, AssetEntitySystem* asset_system, u64 world_entity_guid);

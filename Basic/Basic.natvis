@@ -107,6 +107,7 @@
 		<Expand> <Item Name="x">x</Item> <Item Name="y">y</Item> </Expand>
 	</Type>
 	
+	
 	<Type Name="Math::Vec4u32">
 		<DisplayString>x={x}, y={y}, z={z}, w={w}</DisplayString>
 		<Expand> <Item Name="x">x</Item> <Item Name="y">y</Item> <Item Name="z">z</Item> <Item Name="w">w</Item> </Expand>
@@ -120,6 +121,88 @@
 	<Type Name="Math::Vec2u32">
 		<DisplayString>x={x}, y={y}</DisplayString>
 		<Expand> <Item Name="x">x</Item> <Item Name="y">y</Item> </Expand>
+	</Type>
+	
+	<Type Name="Math::Vec4u16">
+		<DisplayString>x={x}, y={y}, z={z}, w={w}</DisplayString>
+		<Expand> <Item Name="x">x</Item> <Item Name="y">y</Item> <Item Name="z">z</Item> <Item Name="w">w</Item> </Expand>
+	</Type>
+	
+	<Type Name="Math::Vec3u16">
+		<DisplayString>x={x}, y={y}, z={z}</DisplayString>
+		<Expand> <Item Name="x">x</Item> <Item Name="y">y</Item> <Item Name="z">z</Item> </Expand>
+	</Type>
+	
+	<Type Name="Math::Vec2u16">
+		<DisplayString>x={x}, y={y}</DisplayString>
+		<Expand> <Item Name="x">x</Item> <Item Name="y">y</Item> </Expand>
+	</Type>
+	
+	<Type Name="Math::Vec4u8">
+		<DisplayString>x={x}, y={y}, z={z}, w={w}</DisplayString>
+		<Expand> <Item Name="x">x</Item> <Item Name="y">y</Item> <Item Name="z">z</Item> <Item Name="w">w</Item> </Expand>
+	</Type>
+	
+	<Type Name="Math::Vec3u8">
+		<DisplayString>x={x}, y={y}, z={z}</DisplayString>
+		<Expand> <Item Name="x">x</Item> <Item Name="y">y</Item> <Item Name="z">z</Item> </Expand>
+	</Type>
+	
+	<Type Name="Math::Vec2u8">
+		<DisplayString>x={x}, y={y}</DisplayString>
+		<Expand> <Item Name="x">x</Item> <Item Name="y">y</Item> </Expand>
+	</Type>
+	
+	
+	<Type Name="Math::Vec4s32">
+		<DisplayString>x={x}, y={y}, z={z}, w={w}</DisplayString>
+		<Expand> <Item Name="x">x</Item> <Item Name="y">y</Item> <Item Name="z">z</Item> <Item Name="w">w</Item> </Expand>
+	</Type>
+	
+	<Type Name="Math::Vec3s32">
+		<DisplayString>x={x}, y={y}, z={z}</DisplayString>
+		<Expand> <Item Name="x">x</Item> <Item Name="y">y</Item> <Item Name="z">z</Item> </Expand>
+	</Type>
+	
+	<Type Name="Math::Vec2s32">
+		<DisplayString>x={x}, y={y}</DisplayString>
+		<Expand> <Item Name="x">x</Item> <Item Name="y">y</Item> </Expand>
+	</Type>
+	
+	<Type Name="Math::Vec4s16">
+		<DisplayString>x={x}, y={y}, z={z}, w={w}</DisplayString>
+		<Expand> <Item Name="x">x</Item> <Item Name="y">y</Item> <Item Name="z">z</Item> <Item Name="w">w</Item> </Expand>
+	</Type>
+	
+	<Type Name="Math::Vec3s16">
+		<DisplayString>x={x}, y={y}, z={z}</DisplayString>
+		<Expand> <Item Name="x">x</Item> <Item Name="y">y</Item> <Item Name="z">z</Item> </Expand>
+	</Type>
+	
+	<Type Name="Math::Vec2s16">
+		<DisplayString>x={x}, y={y}</DisplayString>
+		<Expand> <Item Name="x">x</Item> <Item Name="y">y</Item> </Expand>
+	</Type>
+	
+	<Type Name="Math::Vec4s8">
+		<DisplayString>x={x}, y={y}, z={z}, w={w}</DisplayString>
+		<Expand> <Item Name="x">x</Item> <Item Name="y">y</Item> <Item Name="z">z</Item> <Item Name="w">w</Item> </Expand>
+	</Type>
+	
+	<Type Name="Math::Vec3s8">
+		<DisplayString>x={x}, y={y}, z={z}</DisplayString>
+		<Expand> <Item Name="x">x</Item> <Item Name="y">y</Item> <Item Name="z">z</Item> </Expand>
+	</Type>
+	
+	<Type Name="Math::Vec2s8">
+		<DisplayString>x={x}, y={y}</DisplayString>
+		<Expand> <Item Name="x">x</Item> <Item Name="y">y</Item> </Expand>
+	</Type>
+	
+	
+	<Type Name="Math::Quatf">
+		<DisplayString>x={x}, y={y}, z={z}, w={w}</DisplayString>
+		<Expand> <Item Name="x">x</Item> <Item Name="y">y</Item> <Item Name="z">z</Item> <Item Name="w">w</Item> </Expand>
 	</Type>
 	
 	<Type Name="Math::Mat4x4f">

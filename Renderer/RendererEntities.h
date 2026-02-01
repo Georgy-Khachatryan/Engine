@@ -70,15 +70,6 @@ struct MeshletStreamingPageOutCommand;
 struct MeshletStreamingPageFileReadCommand;
 struct MeshletStreamingPageInCommand;
 
-NOTES(Meta::NoSaveLoad{})
-struct MeshletStreamingSystem {
-	Array<MeshletStreamingPage> allocated_pages;
-	Array<u32> free_pages;
-	Array<MeshletStreamingPageOutCommand> page_out_commands;
-	Array<MeshletStreamingPageFileReadCommand> file_read_commands;
-	Array<MeshletStreamingPageInCommand> page_in_commands;
-};
-
 NOTES(Meta::HlslFile{ "MeshData.hlsl"_sl })
 struct GpuTransform {
 	float3 position;
@@ -140,7 +131,6 @@ NOTES(Meta::ComponentQuery{})
 struct WorldEntityQuery {
 	ECS::Component<CameraEntityGUID> camera_entity;
 	ECS::Component<RendererWorld> renderer_world;
-	ECS::Component<MeshletStreamingSystem> meshlet_streaming_system;
 	ECS::GpuComponent<SceneConstants> gpu_scene_constants;
 };
 
@@ -158,4 +148,4 @@ struct CameraEntityQuery {
 
 struct RecordContext;
 struct RendererContext;
-void UpdateRendererEntityGpuComponents(StackAllocator* alloc, RecordContext* record_context, RendererContext* renderer_context, WorldEntitySystem& world_system, AssetEntitySystem& asset_system, Array<GpuComponentUploadBuffer>& gpu_uploads);
+void UpdateRendererEntityGpuComponents(StackAllocator* alloc, RecordContext* record_context, AssetEntitySystem& asset_system, Array<GpuComponentUploadBuffer>& gpu_uploads);

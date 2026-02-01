@@ -1,7 +1,8 @@
-#include "Renderer.h"
-#include "GraphicsApi/GraphicsApi.h"
 #include "GraphicsApi/AsyncTransferQueue.h"
+#include "GraphicsApi/GraphicsApi.h"
 #include "GraphicsApi/RecordContext.h"
+#include "MeshletStreamingSystem.h"
+#include "Renderer.h"
 #include "RenderPasses.h"
 
 compile_const u32 upload_buffer_size     = 8 * 1024 * 1024;
@@ -23,8 +24,8 @@ RendererContext* CreateRendererContext(StackAllocator* alloc) {
 	context->async_transfer_queue   = CreateAsyncTransferQueue(alloc, graphics_context);
 	context->mesh_asset_buffer      = CreateBufferResource(graphics_context, mesh_asset_buffer_size);
 	context->mesh_asset_buffer_size = mesh_asset_buffer_size;
-	context->mesh_asset_buffer_offset = MeshletPageHeader::page_size * MeshletPageHeader::runtime_page_count;
 	context->debug_geometry_buffer  = DebugGeometryRenderPass::CreateDebugGeometryBuffer(alloc, graphics_context, context->async_transfer_queue);
+	context->meshlet_streaming_system = CreateMeshletStreamingSystem(alloc, mesh_asset_buffer_size - MeshletPageHeader::page_size * MeshletPageHeader::runtime_page_count);
 	
 	return context;
 }
@@ -91,3 +92,13 @@ RecordContext* BeginRecordContext(StackAllocator* alloc, RendererContext* contex
 	
 	return record_context;
 }
+
+void UpdateStreamingSystems(RendererContext* renderer_context, RecordContext* record_context, WorldEntitySystem* world_system, AssetEntitySystem* asset_system, u64 world_entity_guid) {
+	auto world_entity = QueryEntityByGUID<WorldEntityQuery>(*world_system, world_entity_guid);
+	auto& renderer_world = *world_entity.renderer_world;
+	
+	UpdateMeshletStreamingFiles(renderer_context->meshlet_streaming_system, record_context->alloc, asset_system);
+	
+	UpdateMeshletStreamingSystem(renderer_context->meshlet_streaming_system, renderer_context->async_transfer_queue, record_context, asset_system, &renderer_world.meshlet_streaming_feedback_queue);
+}
+
