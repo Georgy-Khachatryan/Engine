@@ -24,8 +24,9 @@ enum struct IndirectArgumentsLayout : u32 {
 
 compile_const uint thread_group_size = MeshletConstants::meshlet_culling_thread_group_size;
 
-compile_const u32 feedback_buffer_header_size     = 2;
-compile_const u32 mesh_asset_feedback_header_size = 2;
+compile_const u32 meshlet_feedback_buffer_header_size = 2;
+compile_const u32 meshlet_feedback_asset_header_size  = 2;
+compile_const u32 mesh_feedback_buffer_header_size    = 1;
 
 #if defined(CLEAR_BUFFERS)
 [ThreadGroupSize(thread_group_size, 1, 1)]
@@ -38,7 +39,13 @@ void MainCS(uint thread_id : SV_DispatchThreadID) {
 		culling_hzb_build_state[thread_id] = 0;
 	}
 	
-	meshlet_streaming_feedback[thread_id] = thread_id == 0 ? feedback_buffer_header_size : 0;
+	if (thread_id < constants.meshlet_streaming_feedback_size) {
+		meshlet_streaming_feedback[thread_id] = thread_id == 0 ? meshlet_feedback_buffer_header_size : 0;
+	}
+	
+	if (thread_id < constants.mesh_streaming_feedback_size) {
+		mesh_streaming_feedback[thread_id] = thread_id == 0 ? constants.mesh_streaming_feedback_size : u32_max;
+	}
 }
 #endif // defined(CLEAR_BUFFERS)
 
@@ -50,18 +57,24 @@ void MainCS(uint thread_id : SV_DispatchThreadID) {
 	
 	if (BitArrayTestBit(mesh_asset_alive_mask, mesh_asset_index) == false) return;
 	
-	u32 meshlet_page_count = mesh_asset_data[mesh_asset_index].meshlet_page_count;
-	uint feedback_buffer_size = DivideAndRoundUp(meshlet_page_count, 32u);
-	
-	uint feedback_buffer_offset = 0;
-	InterlockedAdd(meshlet_streaming_feedback[0], feedback_buffer_size + mesh_asset_feedback_header_size, feedback_buffer_offset);
-	InterlockedAdd(meshlet_streaming_feedback[1], meshlet_page_count);
-	_Static_assert(feedback_buffer_header_size == 2, "Feedback buffer header code needs to change.");
-	
-	mesh_asset_data[mesh_asset_index].feedback_buffer_offset = feedback_buffer_offset + mesh_asset_feedback_header_size;
-	meshlet_streaming_feedback[feedback_buffer_offset + 0] = mesh_asset_index;
-	meshlet_streaming_feedback[feedback_buffer_offset + 1] = feedback_buffer_size;
-	_Static_assert(mesh_asset_feedback_header_size == 2, "Mesh asset feedback header code needs to change.");
+	GpuMeshAssetData mesh_asset = mesh_asset_data[mesh_asset_index];
+	if (mesh_asset.meshlet_group_buffer_offset != u32_max) {
+		u32 meshlet_page_count = mesh_asset.meshlet_page_count;
+		uint feedback_buffer_size = DivideAndRoundUp(meshlet_page_count, 32u);
+		
+		uint feedback_buffer_offset = 0;
+		InterlockedAdd(meshlet_streaming_feedback[0], feedback_buffer_size + meshlet_feedback_asset_header_size, feedback_buffer_offset);
+		InterlockedAdd(meshlet_streaming_feedback[1], meshlet_page_count);
+		_Static_assert(meshlet_feedback_buffer_header_size == 2, "Meshlet feedback buffer header code needs to change.");
+		
+		mesh_asset_data[mesh_asset_index].feedback_buffer_offset = feedback_buffer_offset + meshlet_feedback_asset_header_size;
+		meshlet_streaming_feedback[feedback_buffer_offset + 0] = mesh_asset_index;
+		meshlet_streaming_feedback[feedback_buffer_offset + 1] = feedback_buffer_size;
+		_Static_assert(meshlet_feedback_asset_header_size == 2, "Meshlet feedback asset header code needs to change.");
+	} else {
+		mesh_asset_data[mesh_asset_index].feedback_buffer_offset = u32_max;
+		_Static_assert(mesh_feedback_buffer_header_size == 1, "Mesh feedback buffer header code needs to change.");
+	}
 }
 #endif // defined(ALLOCATE_STREAMING_FEEDBACK)
 
@@ -215,9 +228,16 @@ void MainCS(uint thread_id : SV_DispatchThreadID) {
 	uint mesh_asset_index = mesh_entity_data[mesh_entity_index].mesh_asset_index;
 	if (mesh_asset_index == u32_max) return;
 	
-	GpuMeshAssetData mesh_asset = mesh_asset_data[mesh_asset_index];
 	GpuTransform model_to_world = mesh_transforms[mesh_entity_index];
 	GpuTransform prev_model_to_world = prev_mesh_transforms[mesh_entity_index];
+	
+#if defined(MAIN_PASS)
+	float distance_to_camera = length(model_to_world.position - scene.world_space_camera_position);
+	InterlockedMin(mesh_streaming_feedback[mesh_asset_index + mesh_feedback_buffer_header_size], asuint(distance_to_camera));
+#endif // defined(MAIN_PASS)
+	
+	GpuMeshAssetData mesh_asset = mesh_asset_data[mesh_asset_index];
+	if (mesh_asset.meshlet_group_buffer_offset == u32_max) return;
 	
 	uint mesh_entity_visibility_status = IsModelSpaceBoxVisible(model_to_world, prev_model_to_world, mesh_asset.aabb_center, mesh_asset.aabb_radius);
 	if (mesh_entity_visibility_status == VisibilityStatus::OcclusionCulled) {

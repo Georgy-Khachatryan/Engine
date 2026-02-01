@@ -83,7 +83,7 @@ struct MeshSourceData {
 
 NOTES()
 struct MeshRuntimeDataLayout {
-	compile_const u64 current_version = 25;
+	compile_const u64 current_version = 26;
 	
 	u64 file_guid = 0;
 	u64 version   = 0;

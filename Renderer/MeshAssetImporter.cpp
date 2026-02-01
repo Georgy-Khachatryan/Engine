@@ -404,5 +404,10 @@ MeshImportResult ImportFbxMeshFile(StackAllocator* alloc, String filepath, u64 r
 	SystemWriteFile(runtime_file, &page_residency_mask, sizeof(page_residency_mask), write_offset);
 	write_offset += sizeof(page_residency_mask);
 	
+	Array<u32> page_table;
+	ArrayResizeMemset(page_table, alloc, result_pages.count);
+	SystemWriteFile(runtime_file, page_table.data, page_table.count * sizeof(u32), write_offset);
+	write_offset += page_table.count * sizeof(u32);
+	
 	return { runtime_data_layout, mesh_aabb_min, mesh_aabb_max };
 }

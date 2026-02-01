@@ -9,8 +9,8 @@ enum struct MeshletRuntimePageState : u32 {
 	Free     = 0,
 	FileRead = 1,
 	PageIn   = 2,
-	PageOut  = 3,
-	Ready    = 4,
+	Ready    = 3,
+	PageOut  = 4,
 };
 
 struct MeshletRuntimePage {
@@ -28,15 +28,13 @@ struct MeshletPageOutCandidate {
 };
 
 struct MeshletStreamingSystem {
-	NumaHeapAllocator heap;
-	
 	Array<MeshletRuntimePage> runtime_pages;
 	Array<u32> free_page_indices;
 	
 	ArrayView<MeshletRuntimePageUpdateCommand> page_table_update_commands;
 };
 
-MeshletStreamingSystem* CreateMeshletStreamingSystem(StackAllocator* alloc, u64 buffer_size) {
+MeshletStreamingSystem* CreateMeshletStreamingSystem(StackAllocator* alloc) {
 	auto* system = NewFromAlloc(alloc, MeshletStreamingSystem);
 	
 	compile_const u32 runtime_page_count = MeshletPageHeader::runtime_page_count;
@@ -47,8 +45,6 @@ MeshletStreamingSystem* CreateMeshletStreamingSystem(StackAllocator* alloc, u64 
 		ArrayAppend(system->free_page_indices, runtime_page_count - i - 1);
 	}
 	
-	system->heap = CreateNumaHeapAllocator(alloc, 1024, (u32)buffer_size);
-	
 	return system;
 }
 
@@ -56,7 +52,7 @@ static u64 EncodeMeshletSubresourceID(u32 mesh_asset_index, u32 asset_page_index
 	return ((u64)asset_page_index << 32) | mesh_asset_index;
 }
 
-static ArrayView<u64> ProcessMeshletStreamingFeedback(RecordContext* record_context, GpuReadbackQueue* meshlet_streaming_feedback_queue) {
+static ArrayView<u64> ProcessMeshletStreamingFeedback(RecordContext* record_context, GpuReadbackQueue* meshlet_streaming_feedback_queue, ECS::Component<MeshRuntimeAllocation> allocation_stream) {
 	auto element = meshlet_streaming_feedback_queue->Load(record_context->frame_index);
 	if (element.data == nullptr) return {};
 	
@@ -73,13 +69,18 @@ static ArrayView<u64> ProcessMeshletStreamingFeedback(RecordContext* record_cont
 		u32 mesh_asset_index     = meshlet_streaming_feedback_data[read_index++];
 		u32 feedback_buffer_size = meshlet_streaming_feedback_data[read_index++];
 		
-		for (u32 i = 0; i < feedback_buffer_size; i += 1) {
-			u32 page_mask = meshlet_streaming_feedback_data[read_index++];
-			
-			for (u32 bit_index : BitScanLow32(page_mask)) {
-				u32 asset_page_index = i * 32u + bit_index;
-				ArrayAppend(requests, EncodeMeshletSubresourceID(mesh_asset_index, asset_page_index));
+		auto& allocation = allocation_stream[mesh_asset_index];
+		if (allocation.offset != u32_max) {
+			for (u32 i = 0; i < feedback_buffer_size; i += 1) {
+				u32 page_mask = meshlet_streaming_feedback_data[read_index++];
+				
+				for (u32 bit_index : BitScanLow32(page_mask)) {
+					u32 asset_page_index = i * 32u + bit_index;
+					ArrayAppend(requests, EncodeMeshletSubresourceID(mesh_asset_index, asset_page_index));
+				}
 			}
+		} else {
+			read_index += feedback_buffer_size;
 		}
 	}
 	
@@ -88,9 +89,12 @@ static ArrayView<u64> ProcessMeshletStreamingFeedback(RecordContext* record_cont
 
 void UpdateMeshletStreamingSystem(MeshletStreamingSystem* system, AsyncTransferQueue* async_transfer_queue, RecordContext* record_context, AssetEntitySystem* asset_system, GpuReadbackQueue* meshlet_streaming_feedback_queue) {
 	compile_const u32 runtime_page_count = MeshletPageHeader::runtime_page_count;
+	
+	auto entity_array = QueryEntityTypeArray<MeshAssetType>(*asset_system);
+	auto streams = ExtractComponentStreams<MeshAssetType>(entity_array);
 	auto* alloc = record_context->alloc;
 	
-	auto requests = ProcessMeshletStreamingFeedback(record_context, meshlet_streaming_feedback_queue);
+	auto requests = ProcessMeshletStreamingFeedback(record_context, meshlet_streaming_feedback_queue, streams.allocation);
 	
 	auto& runtime_pages = system->runtime_pages;
 	auto& free_page_indices = system->free_page_indices;
@@ -106,6 +110,14 @@ void UpdateMeshletStreamingSystem(MeshletStreamingSystem* system, AsyncTransferQ
 	// Update page states:
 	for (u32 runtime_page_index = 0; runtime_page_index < runtime_pages.count; runtime_page_index += 1) {
 		auto& page = runtime_pages[runtime_page_index];
+		
+		if (page.state != MeshletRuntimePageState::Free) {
+			auto& allocation = streams.allocation[page.mesh_asset_index];
+			if (allocation.offset == u32_max) {
+				page.state = MeshletRuntimePageState::PageOut; // TODO: Might need to wait for file reads to finish before paging out?
+				page.wait_index = (u32)current_frame_index;
+			}
+		}
 		
 		switch (page.state) {
 		case MeshletRuntimePageState::FileRead: {
@@ -218,7 +230,7 @@ void UpdateMeshletStreamingSystem(MeshletStreamingSystem* system, AsyncTransferQ
 			auto& page = runtime_pages[candidate.runtime_page_index];
 			
 			page.state      = MeshletRuntimePageState::PageOut;
-			page.wait_index = record_context->frame_index + number_of_frames_in_flight;
+			page.wait_index = current_frame_index + number_of_frames_in_flight;
 			
 			MeshletRuntimePageUpdateCommand page_table_update_command;
 			page_table_update_command.type               = MeshletPageTableUpdateCommandType::PageOut;
@@ -229,37 +241,7 @@ void UpdateMeshletStreamingSystem(MeshletStreamingSystem* system, AsyncTransferQ
 		}
 	}
 	
-	
-	auto entity_array = QueryEntityTypeArray<MeshAssetType>(*asset_system);
-	auto streams = ExtractComponentStreams<MeshAssetType>(entity_array);
 	auto& mesh_asset_buffer = GetVirtualResource(record_context, VirtualResourceID::MeshAssetBuffer);
-	
-	for (u64 i : BitArrayIt(entity_array->dirty_mask)) {
-		auto& layout = streams.runtime_data_layout[i];
-		auto& allocation = streams.allocation[i];
-		
-		if (allocation.allocation.index != u32_max) continue;
-		
-		compile_const u32 page_residency_mask_size = (MeshletPageHeader::max_page_count / 32u) * sizeof(u32);
-		u32 file_data_size  = layout.meshlet_group_count * sizeof(MeshletGroup) + page_residency_mask_size;
-		u32 allocation_size = file_data_size + layout.page_count * sizeof(u32);
-		
-		u32 aligned_allocation_size = AlignUp(allocation_size, 4096u);
-		
-		auto heap_allocation = system->heap.Allocate(aligned_allocation_size);
-		if (heap_allocation.index == u32_max) continue;
-		
-		u32 allocation_offset = (u32)(system->heap.GetMemoryBlockOffset(heap_allocation) + MeshletPageHeader::page_size * MeshletPageHeader::runtime_page_count);
-		
-		allocation.allocation = heap_allocation;
-		allocation.offset     = allocation_offset;
-		
-		auto& file = streams.runtime_file[i];
-		
-		u64 file_offset = layout.page_count * MeshletPageHeader::page_size;
-		AsyncCopyFileToBuffer(async_transfer_queue, mesh_asset_buffer.buffer.resource, allocation_offset, mesh_asset_buffer.buffer.size, file.file, file_offset, AlignUp(file_data_size, 4096u));
-	}
-	
 	
 	// Allocate and read newly requested pages.
 	for (u64 subresource_id : requests) {
@@ -267,10 +249,15 @@ void UpdateMeshletStreamingSystem(MeshletStreamingSystem* system, AsyncTransferQ
 		u32 asset_page_index = (u32)(subresource_id >> 32);
 		u32 runtime_page_index = ArrayPopLast(free_page_indices);
 		
-		auto& layout = streams.runtime_data_layout[mesh_asset_index];
-		auto& file   = streams.runtime_file[mesh_asset_index];
-		
-		u64 wait_file_index = AsyncCopyFileToBuffer(async_transfer_queue, mesh_asset_buffer.buffer.resource, runtime_page_index * MeshletPageHeader::page_size, mesh_asset_buffer.buffer.size, file.file, asset_page_index * MeshletPageHeader::page_size, MeshletPageHeader::page_size);
+		u64 wait_file_index = AsyncCopyFileToBuffer(
+			async_transfer_queue,
+			mesh_asset_buffer.buffer.resource,
+			runtime_page_index * MeshletPageHeader::page_size,
+			mesh_asset_buffer.buffer.size,
+			streams.runtime_file[mesh_asset_index].file,
+			asset_page_index * MeshletPageHeader::page_size,
+			MeshletPageHeader::page_size
+		);
 		
 		auto& page = runtime_pages[runtime_page_index];
 		page.state            = MeshletRuntimePageState::FileRead;
@@ -289,30 +276,3 @@ ArrayView<MeshletRuntimePageUpdateCommand> GetPageTableUpdateCommands(MeshletStr
 	return commands;
 }
 
-void UpdateMeshletStreamingFiles(MeshletStreamingSystem* system, StackAllocator* alloc, AssetEntitySystem* asset_system) {
-	extern MeshImportResult ImportFbxMeshFile(StackAllocator* alloc, String filepath, u64 runtime_data_guid);
-	
-	for (auto* entity_array : QueryEntities<MeshAssetType>(alloc, *asset_system)) {
-		auto streams = ExtractComponentStreams<MeshAssetType>(entity_array);
-		for (u64 i : BitArrayIt(entity_array->created_mask)) {
-			auto& layout = streams.runtime_data_layout[i];
-			auto& allocation = streams.allocation[i];
-			auto& runtime_file = streams.runtime_file[i];
-			
-			if (layout.version != MeshRuntimeDataLayout::current_version) {
-				if (layout.file_guid == 0) {
-					layout.file_guid = GenerateRandomNumber64(asset_system->guid_random_seed);
-				}
-				
-				auto result = ImportFbxMeshFile(alloc, streams.source_data[i].filepath, layout.file_guid);
-				layout = result.layout;
-				
-				auto& aabb = streams.aabb[i];
-				aabb.min = result.aabb_min;
-				aabb.max = result.aabb_max;
-			}
-			
-			runtime_file.file = SystemOpenFile(alloc, StringFormat(alloc, "./Assets/Runtime/%x..mrd"_sl, layout.file_guid), OpenFileFlags::Read | OpenFileFlags::Async);
-		}
-	}
-}

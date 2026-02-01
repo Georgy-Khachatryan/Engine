@@ -59,6 +59,7 @@ struct RendererWorld {
 	u32 jitter_frame_index = 0;
 	
 	GpuReadbackQueue meshlet_streaming_feedback_queue;
+	GpuReadbackQueue mesh_streaming_feedback_queue;
 	
 	Array<GpuComponentUploadBuffer> gpu_uploads;
 	

@@ -17,7 +17,15 @@ void MeshletClearBuffersRenderPass::RecordPass(RecordContext* record_context) {
 	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
 	
 	auto& meshlet_streaming_feedback = GetVirtualResource(record_context, VirtualResourceID::MeshletStreamingFeedback);
-	CmdDispatch(record_context, DivideAndRoundUp(meshlet_streaming_feedback.buffer.size, (u32)(MeshletConstants::meshlet_culling_thread_group_size * sizeof(u32))));
+	auto& mesh_streaming_feedback    = GetVirtualResource(record_context, VirtualResourceID::MeshStreamingFeedback);
+	
+	RootSignature::PushConstants constants;
+	constants.meshlet_streaming_feedback_size = meshlet_streaming_feedback.buffer.size / sizeof(u32);
+	constants.mesh_streaming_feedback_size    = mesh_streaming_feedback.buffer.size    / sizeof(u32);
+	CmdSetRootArgument(record_context, root_signature.constants, constants);
+	
+	u32 largest_buffer_size = Math::Max(constants.meshlet_streaming_feedback_size, constants.mesh_streaming_feedback_size);
+	CmdDispatch(record_context, DivideAndRoundUp(largest_buffer_size, MeshletConstants::meshlet_culling_thread_group_size));
 }
 
 void MeshletAllocateStreamingFeedbackRenderPass::CreatePipelines(PipelineLibrary* lib) {
@@ -125,6 +133,14 @@ void MeshletCullingRenderPass::RecordPass(RecordContext* record_context) {
 		
 		CmdCopyBufferToBuffer(record_context, VirtualResourceID::MeshletStreamingFeedback, readback_gpu_address, meshlet_streaming_feedback.buffer.size);
 		meshlet_streaming_feedback_queue->Store(readback_cpu_address, record_context->frame_index);
+	}
+	
+	if (pass == MeshletCullingPass::Disocclusion) {
+		auto& mesh_streaming_feedback = GetVirtualResource(record_context, VirtualResourceID::MeshStreamingFeedback);
+		auto [readback_gpu_address, readback_cpu_address] = AllocateTransientReadbackBuffer(record_context, mesh_streaming_feedback.buffer.size);
+		
+		CmdCopyBufferToBuffer(record_context, VirtualResourceID::MeshStreamingFeedback, readback_gpu_address, mesh_streaming_feedback.buffer.size);
+		mesh_streaming_feedback_queue->Store(readback_cpu_address, record_context->frame_index);
 	}
 }
 

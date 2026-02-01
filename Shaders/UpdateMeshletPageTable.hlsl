@@ -9,6 +9,7 @@ compile_const uint thread_group_size = 256;
 void MainCS(uint2 thread_id : SV_DispatchThreadID) {
 	MeshletPageTableUpdateCommand command = commands[thread_id.y];
 	GpuMeshAssetData mesh_asset = mesh_asset_data[command.mesh_asset_index];
+	if (mesh_asset.meshlet_group_buffer_offset == u32_max) return;
 	
 	uint page_residency_mask_offset = mesh_asset.meshlet_group_buffer_offset + mesh_asset.meshlet_group_count * sizeof(MeshletGroup);
 	uint page_table_offset = mesh_asset.meshlet_group_buffer_offset + mesh_asset.meshlet_group_count * sizeof(MeshletGroup) + page_residency_mask_size * sizeof(uint);

@@ -43,6 +43,7 @@ enum struct VirtualResourceID : u32 {
 	MeshletCullingCommands,
 	MeshletIndirectArguments,
 	MeshletStreamingFeedback,
+	MeshStreamingFeedback,
 	
 	// Atmosphere resources:
 	TransmittanceLut,
@@ -359,10 +360,17 @@ struct MeshletClearBuffersRenderPass {
 	struct Descriptors : HLSL::BaseDescriptorTable {
 		HLSL::RWRegularBuffer<uint4> indirect_arguments = VirtualResourceID::MeshletIndirectArguments;
 		HLSL::RWRegularBuffer<u32> meshlet_streaming_feedback = VirtualResourceID::MeshletStreamingFeedback;
+		HLSL::RWRegularBuffer<u32> mesh_streaming_feedback = VirtualResourceID::MeshStreamingFeedback;
 		HLSL::RWRegularBuffer<u32> culling_hzb_build_state = VirtualResourceID::CullingHzbBuildState;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {
+		struct PushConstants {
+			u32 meshlet_streaming_feedback_size = 0;
+			u32 mesh_streaming_feedback_size    = 0;
+		};
+		
+		HLSL::PushConstantBuffer<PushConstants> constants;
 		HLSL::DescriptorTable<Descriptors> descriptor_table;
 	};
 	
@@ -405,6 +413,7 @@ struct MeshEntityCullingRenderPass {
 		
 		HLSL::Texture2D<float> culling_hzb = VirtualResourceID::CullingHZB;
 		
+		HLSL::RWRegularBuffer<u32>   mesh_streaming_feedback        = VirtualResourceID::MeshStreamingFeedback;
 		HLSL::RWRegularBuffer<u32>   mesh_entity_culling_commands   = VirtualResourceID::MeshEntityCullingCommands;
 		HLSL::RWRegularBuffer<uint2> meshlet_group_culling_commands = VirtualResourceID::MeshletGroupCullingCommands;
 		HLSL::RWRegularBuffer<uint4> indirect_arguments = VirtualResourceID::MeshletIndirectArguments;
@@ -461,6 +470,7 @@ struct MeshletCullingRenderPass {
 	
 	WorldEntitySystem* world_system = nullptr;
 	GpuReadbackQueue* meshlet_streaming_feedback_queue = nullptr;
+	GpuReadbackQueue* mesh_streaming_feedback_queue    = nullptr;
 	MeshletCullingPass pass = MeshletCullingPass::Main;
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {

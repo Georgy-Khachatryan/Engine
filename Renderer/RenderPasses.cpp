@@ -4,7 +4,7 @@
 #include "GraphicsApi/RecordContext.h"
 #include "RenderPasses.h"
 
-static void BuildResourceTable(RecordContext* record_context, WorldEntitySystem* world_system, RendererWorld* renderer_world, uint2 render_target_size) {
+static void BuildResourceTable(RecordContext* record_context, WorldEntitySystem* world_system, AssetEntitySystem* asset_system, RendererWorld* renderer_world, uint2 render_target_size) {
 	using ID = VirtualResourceID;
 	auto& table = *record_context->resource_table;
 	
@@ -13,13 +13,14 @@ static void BuildResourceTable(RecordContext* record_context, WorldEntitySystem*
 	table.Set(ID::MultipleScatteringLut, TextureSize(TextureFormat::R16G16B16A16_FLOAT, AtmosphereParameters::multiple_scattering_lut_size));
 	table.Set(ID::SkyPanoramaLut,        TextureSize(TextureFormat::R16G16B16A16_FLOAT, AtmosphereParameters::sky_panorama_lut_size));
 	
-	auto* mesh_entities = QueryEntities<GpuMeshEntityQuery>(record_context->alloc, *world_system)[0];
+	auto* mesh_assets = QueryEntityTypeArray<MeshAssetType>(*asset_system);
 	table.Set(ID::VisibleMeshlets, MeshletConstants::visible_meshlet_buffer_size * sizeof(uint2));
 	table.Set(ID::MeshEntityCullingCommands, MeshletConstants::mesh_entity_culling_command_count * sizeof(u32));
 	table.Set(ID::MeshletGroupCullingCommands, MeshletConstants::meshlet_group_culling_command_count * sizeof(uint2));
 	table.Set(ID::MeshletCullingCommands, MeshletConstants::meshlet_culling_command_count * sizeof(uint2));
 	table.Set(ID::MeshletIndirectArguments, (u32)MeshletCullingIndirectArgumentsLayout::Count * sizeof(uint4));
 	table.Set(ID::MeshletStreamingFeedback, 64u * 1024u);
+	table.Set(ID::MeshStreamingFeedback, mesh_assets->capacity * sizeof(u32) + sizeof(u32));
 	
 	table.Set(ID::SceneRadiance, TextureSize(TextureFormat::R16G16B16A16_FLOAT, render_target_size));
 	table.Set(ID::DepthStencil,  TextureSize(TextureFormat::D32_FLOAT, render_target_size));
@@ -43,7 +44,7 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	// Clamp render target size to a reasonable minimum. Aspect ratio for view to clip is still computed using unclamped values.
 	uint2 render_target_size = uint2((u32)Math::Max(renderer_world.window_size.x, 16.f), (u32)Math::Max(renderer_world.window_size.y, 16.f));
 	
-	BuildResourceTable(record_context, world_system, &renderer_world, render_target_size);
+	BuildResourceTable(record_context, world_system, asset_system, &renderer_world, render_target_size);
 	
 	
 	auto& scene = renderer_world.scene_constants;
@@ -124,7 +125,7 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	
 	MeshEntityCullingRenderPass{ world_system }.RecordPass(record_context);
 	MeshletGroupCullingRenderPass{ world_system }.RecordPass(record_context);
-	MeshletCullingRenderPass{ world_system, &renderer_world.meshlet_streaming_feedback_queue }.RecordPass(record_context);
+	MeshletCullingRenderPass{ world_system, &renderer_world.meshlet_streaming_feedback_queue, &renderer_world.mesh_streaming_feedback_queue }.RecordPass(record_context);
 	BasicMeshRenderPass{}.RecordPass(record_context);
 	
 	if (renderer_world.debug_freeze_culling_camera.enabled == false) {
@@ -132,7 +133,7 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 		
 		MeshEntityCullingRenderPass{ world_system, MeshletCullingPass::Disocclusion }.RecordPass(record_context);
 		MeshletGroupCullingRenderPass{ world_system, MeshletCullingPass::Disocclusion }.RecordPass(record_context);
-		MeshletCullingRenderPass{ world_system, &renderer_world.meshlet_streaming_feedback_queue, MeshletCullingPass::Disocclusion }.RecordPass(record_context);
+		MeshletCullingRenderPass{ world_system, &renderer_world.meshlet_streaming_feedback_queue, &renderer_world.mesh_streaming_feedback_queue, MeshletCullingPass::Disocclusion }.RecordPass(record_context);
 		BasicMeshRenderPass{ MeshletCullingPass::Disocclusion }.RecordPass(record_context);
 		
 		BuildHzbRenderPass{}.RecordPass(record_context);

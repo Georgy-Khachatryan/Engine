@@ -16,7 +16,6 @@ struct MeshletRuntimePageUpdateCommand {
 	MeshletPageTableUpdateCommandType type = (MeshletPageTableUpdateCommandType)0;
 };
 
-MeshletStreamingSystem* CreateMeshletStreamingSystem(StackAllocator* alloc, u64 buffer_size);
+MeshletStreamingSystem* CreateMeshletStreamingSystem(StackAllocator* alloc);
 void UpdateMeshletStreamingSystem(MeshletStreamingSystem* system, AsyncTransferQueue* async_transfer_queue, RecordContext* record_context, AssetEntitySystem* asset_system, GpuReadbackQueue* meshlet_streaming_feedback_queue);
-void UpdateMeshletStreamingFiles(MeshletStreamingSystem* system, StackAllocator* alloc, AssetEntitySystem* asset_system);
 ArrayView<MeshletRuntimePageUpdateCommand> GetPageTableUpdateCommands(MeshletStreamingSystem* system);
