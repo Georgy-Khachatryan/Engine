@@ -233,198 +233,145 @@ void ClearEntityMasks(EntitySystemBase& system) {
 	}
 }
 
-// TODO: Simplify this function. There is a lot of code that handles remapping of entity/component
-// streams when they change order or are added/removed, but in most cases it's not necessary.
+
+struct EntityComponentStreamHash {
+	u64 entity_type_hash    = 0;
+	u64 component_type_hash = 0;
+	
+	bool operator== (const EntityComponentStreamHash& other) {
+		return entity_type_hash == other.entity_type_hash && component_type_hash == other.component_type_hash;
+	}
+};
+
+struct EntitySaveLoadStreamID {
+	u32 offset_bytes = 0;
+	u32 entity_count = 0;
+	u64 version      = 0;
+	
+	EntityTypeID entity_type_id;
+	ComponentTypeID component_type_id;
+	u32 component_stream_index = 0;
+};
+
+static u64 ComputeHash(const EntityComponentStreamHash& stream) {
+	return ComputeHash64(stream.entity_type_hash, stream.component_type_hash);
+}
+
+static void SaveLoad(SaveLoadBuffer& buffer, HashTableElement<EntityComponentStreamHash, EntitySaveLoadStreamID>& element, u64 version = 0) {
+	SaveLoad(buffer, element.key.entity_type_hash);
+	SaveLoad(buffer, element.key.component_type_hash);
+	SaveLoad(buffer, element.value.offset_bytes);
+	SaveLoad(buffer, element.value.entity_count);
+	SaveLoad(buffer, element.value.version);
+}
+
+static void CreateComponentStreamTable(StackAllocator* alloc, HashTable<EntityComponentStreamHash, EntitySaveLoadStreamID>& component_stream_table) {
+	for (u32 entity_type_index = 0; entity_type_index < entity_type_info_table.count; entity_type_index += 1) {
+		auto& entity_type_info = entity_type_info_table[entity_type_index];
+		
+		for (u32 component_stream_index = 0; component_stream_index < entity_type_info.cpu_component_count; component_stream_index += 1) {
+			auto  component_type_id   = entity_type_info.component_type_ids[component_stream_index];
+			auto& component_type_info = component_type_info_table[component_type_id.index];
+			auto  save_load_callback  = component_save_load_callbacks[component_type_id.index];
+			if (save_load_callback == nullptr) continue;
+			
+			EntityComponentStreamHash stream_hash;
+			stream_hash.entity_type_hash    = entity_type_info.type_hash;
+			stream_hash.component_type_hash = component_type_info.type_hash;
+			
+			EntitySaveLoadStreamID stream_id;
+			stream_id.version                = component_type_info.version;
+			stream_id.entity_type_id.index   = { entity_type_index };
+			stream_id.component_type_id      = component_type_id;
+			stream_id.component_stream_index = component_stream_index;
+			HashTableAddOrFind(component_stream_table, alloc, stream_hash, stream_id);
+		}
+	}
+}
+
 void SaveLoadEntitySystem(SaveLoadBuffer& buffer, EntitySystemBase& system) {
 	ProfilerScope("SaveLoadEntitySystem");
+	u64 buffer_base_offset = buffer.data.count;
 	
-	if (buffer.is_loading) {
+	HashTable<EntityComponentStreamHash, EntitySaveLoadStreamID> new_component_stream_table;
+	HashTable<EntityComponentStreamHash, EntitySaveLoadStreamID> old_component_stream_table;
+	CreateComponentStreamTable(buffer.alloc, new_component_stream_table);
+	
+	buffer.heap = nullptr;
+	if (buffer.is_saving) {
+		SaveLoad(buffer, new_component_stream_table); // At this point we don't know component stream offsets, this SaveLoad just reserves space.
+		old_component_stream_table = new_component_stream_table;
+	} else if (buffer.is_loading) {
+		SaveLoad(buffer, old_component_stream_table); // HeapAllocator is set to null, this table would get allocated using StackAllocator.
 		ResetEntitySystem(system);
 	}
-	
 	buffer.heap = &system.heap;
 	
-	HashTable<u64, EntityTypeID>    entity_type_hash_to_id;
-	HashTable<u64, ComponentTypeID> component_type_hash_to_id;
-	if (buffer.is_loading) {
-		HashTableReserve(entity_type_hash_to_id, buffer.alloc, entity_type_info_table.count);
-		for (u32 entity_type_index = 0; entity_type_index < entity_type_info_table.count; entity_type_index += 1) {
-			u64 hash = entity_type_info_table[entity_type_index].type_hash;
-			HashTableAddOrFind(entity_type_hash_to_id, hash, EntityTypeID{ entity_type_index });
-		}
+	u32 loaded_entity_count = 0;
+	for (auto& old_stream : old_component_stream_table) {
+		auto* new_stream = buffer.is_saving ? &old_stream : HashTableFind(new_component_stream_table, old_stream.key);
+		if (new_stream == nullptr) continue;
 		
-		HashTableReserve(component_type_hash_to_id, buffer.alloc, component_type_info_table.count);
-		for (u32 component_type_index = 0; component_type_index < component_type_info_table.count; component_type_index += 1) {
-			u64 hash = component_type_info_table[component_type_index].type_hash;
-			HashTableAddOrFind(component_type_hash_to_id, hash, ComponentTypeID{ component_type_index });
-		}
-	}
-	
-	u64 entity_type_count = entity_type_info_table.count;
-	SaveLoad(buffer, entity_type_count);
-	
-	// Table of entity stream sizes, potentially unaligned.
-	u8* entity_stream_sizes = buffer.ReserveSaveLoadBytes(entity_type_count * sizeof(u32));
-	
-	for (u32 i = 0; i < entity_type_count; i += 1) {
-		u32 entity_type_index = u32_max;
+		auto& old_stream_id = old_stream.value;
+		auto& new_stream_id = new_stream->value;
+		auto& array = system.entity_type_arrays[new_stream_id.entity_type_id.index];
+		
+		auto& entity_type_info    = entity_type_info_table[new_stream_id.entity_type_id.index];
+		auto& component_type_info = component_type_info_table[new_stream_id.component_type_id.index];
 		
 		if (buffer.is_loading) {
-			u64 type_hash = 0;
-			SaveLoad(buffer, type_hash);
+			buffer.data.count = old_stream_id.offset_bytes + buffer_base_offset;
 			
-			auto* element = HashTableFind(entity_type_hash_to_id, type_hash);
-			entity_type_index = element ? element->value.index : u32_max;
-			
-			if (entity_type_index == u32_max) {
-				u32 stream_size = 0;
-				memcpy(&stream_size, entity_stream_sizes + i * sizeof(u32), sizeof(u32));
+			if (array.count != old_stream_id.entity_count) {
+				u32 new_capacity = AlignUp(old_stream_id.entity_count, entity_type_info.base_allocation_count);
+				AllocateEntityMapStreams(array, system.heap, 0, new_capacity);
+				AllocateComponentStreams(array.component_streams, entity_type_info, system.heap, 0, new_capacity);
+				DefaultInitializeStreams(array.component_streams, entity_type_info, 0, old_stream_id.entity_count);
 				
-				buffer.ReserveLoadBytes(stream_size);
-				continue;
+				array.capacity = new_capacity;
+				array.count    = old_stream_id.entity_count;
+				
+				for (u32 i = array.count; i < array.capacity; i += 1) {
+					ArrayAppend(array.entity_id_free_list, &system.heap, EntityID{ i });
+				}
+				BitArraySetBitRange(array.created_mask, 0, array.count);
+				BitArraySetBitRange(array.alive_mask,   0, array.count);
+				BitArraySetBitRange(array.dirty_mask,   0, array.count);
+				
+				loaded_entity_count += array.count;
 			}
 		} else if (buffer.is_saving) {
-			u64 type_hash = entity_type_info_table[i].type_hash;
-			SaveLoad(buffer, type_hash);
-			
-			entity_type_index = i;
+			new_stream_id.offset_bytes = (u32)(buffer.data.count - buffer_base_offset);
+			new_stream_id.entity_count = array.count;
 		}
 		
-		u64 begin_entity_offset = buffer.data.count;
+		u8*  component_stream   = array.component_streams[new_stream_id.component_stream_index].cpu.data;
+		auto save_load_callback = component_save_load_callbacks[new_stream_id.component_type_id.index];
 		
-		auto& array = system.entity_type_arrays[entity_type_index];
-		auto& entity_type_info = entity_type_info_table[entity_type_index];
-		auto component_type_ids = entity_type_info.component_type_ids;
-		
-		u32 count = array.count;
-		SaveLoad(buffer, count);
-		
-		if (buffer.is_loading) {
-			u32 new_capacity = AlignUp(count, entity_type_info.base_allocation_count);
-			AllocateEntityMapStreams(array, system.heap, 0, new_capacity);
-			AllocateComponentStreams(array.component_streams, entity_type_info, system.heap, 0, new_capacity);
-			DefaultInitializeStreams(array.component_streams, entity_type_info, 0, count); // TODO: Only default initialize new component streams.
-			
-			array.capacity = new_capacity;
-			array.count    = count;
-		}
-		
-		u64 component_stream_count = entity_type_info.cpu_component_count;
-		SaveLoad(buffer, component_stream_count);
-		
-		// Table of component stream sizes, potentially unaligned.
-		u8* component_stream_sizes = buffer.ReserveSaveLoadBytes(component_stream_count * sizeof(u32));
-		
-		for (u32 i = 0; i < component_stream_count; i += 1) {
-			auto component_type_id = ComponentTypeID{ u32_max };
-			u32 component_stream_index = u32_max;
-			
-			if (buffer.is_loading) {
-				u64 type_hash = 0;
-				SaveLoad(buffer, type_hash);
-				
-				auto* element = HashTableFind(component_type_hash_to_id, type_hash);
-				component_type_id = element ? element->value : ComponentTypeID{ u32_max };
-				for (u32 i = 0; i < component_type_ids.count; i += 1) {
-					if (component_type_ids[i].index == component_type_id.index) {
-						component_stream_index = i;
-						break;
-					}
-				}
-				
-				if (component_stream_index == u32_max) {
-					u32 stream_size = 0;
-					memcpy(&stream_size, component_stream_sizes + i * sizeof(u32), sizeof(u32));
-					
-					buffer.ReserveLoadBytes(stream_size);
-					continue;
-				}
-			} else if (buffer.is_saving) {
-				component_stream_index = i;
-				component_type_id = component_type_ids[component_stream_index];
-				
-				u64 type_hash = component_type_info_table[component_type_id.index].type_hash;
-				SaveLoad(buffer, type_hash);
-			}
-			
-			u64 begin_component_offset = buffer.data.count;
-			
-			auto type_info = component_type_info_table[component_type_id.index];
-			
-			u64 version = type_info.version;
-			SaveLoad(buffer, version);
-			
-			auto save_load_callback = component_save_load_callbacks[component_type_id.index];
-			if (save_load_callback != nullptr) {
-				u8* component_stream = array.component_streams[component_stream_index].cpu.data;
-				if (buffer.is_loading) {
-					for (u32 i = 0; i < array.count; i += 1) {
-						save_load_callback(buffer, component_stream + i * type_info.size_bytes, version);
-					}
-				} else if (buffer.is_saving) {
-					for (u64 i : BitArrayIt(array.alive_mask)) {
-						save_load_callback(buffer, component_stream + i * type_info.size_bytes, version);
-					}
-				}
-			}
-			u64 end_component_offset = buffer.data.count;
-			
-			u32 component_stream_size = (u32)(end_component_offset - begin_component_offset);
-			
-			if (buffer.is_loading) {
-				u32 stream_size = 0;
-				memcpy(&stream_size, component_stream_sizes + i * sizeof(u32), sizeof(u32));
-				
-				DebugAssert(component_stream_size == stream_size, "Incorrect number of bytes loaded from a component stream. (%/%).", component_stream_size, stream_size);
-			} else if (buffer.is_saving) {
-				memcpy(component_stream_sizes + component_stream_index * sizeof(u32), &component_stream_size, sizeof(u32));
-			}
-		}
-		
-		if (buffer.is_loading) {
-			for (u32 i = array.count; i < array.capacity; i += 1) {
-				ArrayAppend(array.entity_id_free_list, &system.heap, EntityID{ i });
-			}
-			BitArraySetBitRange(array.created_mask, 0, array.count);
-			BitArraySetBitRange(array.alive_mask,   0, array.count);
-			BitArraySetBitRange(array.dirty_mask,   0, array.count);
-		}
-		
-		u64 end_entity_offset = buffer.data.count;
-		
-		u32 entity_stream_size = (u32)(end_entity_offset - begin_entity_offset);
-		
-		if (buffer.is_loading) {
-			u32 stream_size = 0;
-			memcpy(&stream_size, entity_stream_sizes + i * sizeof(u32), sizeof(u32));
-			
-			DebugAssert(entity_stream_size == stream_size, "Incorrect number of bytes loaded from an entity stream. (%/%).", entity_stream_size, stream_size);
-		} else if (buffer.is_saving) {
-			memcpy(entity_stream_sizes + entity_type_index * sizeof(u32), &entity_stream_size, sizeof(u32));
+		for (u64 i : BitArrayIt(array.alive_mask)) {
+			save_load_callback(buffer, component_stream + i * component_type_info.size_bytes, old_stream_id.version);
 		}
 	}
 	
 	if (buffer.is_loading) {
-		auto guid_query = QueryEntities<GuidQuery>(buffer.alloc, system);
+		HashTableReserve(system.entity_guid_to_entity_id, &system.heap, loaded_entity_count);
 		
-		u32 count = 0;
-		for (auto* entity_array : guid_query) {
-			count += entity_array->count;
-		}
-		
-		HashTableReserve(system.entity_guid_to_entity_id, &system.heap, count);
-		
-		for (auto* entity_array : guid_query) {
+		for (auto* entity_array : QueryEntities<GuidQuery>(buffer.alloc, system)) {
 			auto streams = ExtractComponentStreams<GuidQuery>(entity_array);
 			
 			auto entity_type_id = entity_array->entity_type_id;
 			for (u32 entity_index = 0; entity_index < entity_array->count; entity_index += 1) {
 				auto& [guid] = streams.guid[entity_index];
-				auto entity_id = EntityID{ entity_index };
-				
-				HashTableAddOrFind(system.entity_guid_to_entity_id, guid, TypedEntityID{ entity_id, entity_type_id });
+				HashTableAddOrFind(system.entity_guid_to_entity_id, guid, TypedEntityID{ EntityID{ entity_index }, entity_type_id });
 			}
 		}
+	} else if (buffer.is_saving) {
+		u64 old_count = buffer.data.count;
+		buffer.data.count = buffer_base_offset;
+		
+		SaveLoad(buffer, new_component_stream_table);
+		
+		buffer.data.count = old_count;
 	}
 }
 

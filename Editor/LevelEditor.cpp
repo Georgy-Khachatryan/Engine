@@ -641,14 +641,14 @@ static void AssetBrowserEntityView(StackAllocator* alloc, AssetEntitySystem& ass
 compile_const auto entities_save_load_path = "./Assets/Scene.csb"_sl;
 compile_const auto assets_save_load_path   = "./Assets/Assets.csb"_sl;
 
-static bool SaveLoadEntitySystemByPath(StackAllocator* alloc, EntitySystemBase& world_system, String filepath, bool is_loading) {
+static bool SaveLoadEntitySystemToFile(StackAllocator* alloc, EntitySystemBase& entity_system, String filepath, bool is_loading) {
 	TempAllocationScope(alloc);
 	
 	SaveLoadBuffer buffer;
 	bool success = OpenSaveLoadBuffer(alloc, filepath, is_loading, buffer);
 	
 	if (success) {
-		SaveLoadEntitySystem(buffer, world_system);
+		SaveLoadEntitySystem(buffer, entity_system);
 		CloseSaveLoadBuffer(buffer);
 	}
 	
@@ -656,8 +656,8 @@ static bool SaveLoadEntitySystemByPath(StackAllocator* alloc, EntitySystemBase& 
 }
 
 static void LoadOrCreateDefaultWorld(StackAllocator* alloc, WorldEntitySystem& world_system, AssetEntitySystem& asset_system) {
-	bool loaded_entities = SaveLoadEntitySystemByPath(alloc, world_system, entities_save_load_path, true);
-	bool loaded_assets   = SaveLoadEntitySystemByPath(alloc, asset_system, assets_save_load_path, true);
+	bool loaded_entities = SaveLoadEntitySystemToFile(alloc, world_system, entities_save_load_path, true);
+	bool loaded_assets   = SaveLoadEntitySystemToFile(alloc, asset_system, assets_save_load_path, true);
 	
 	if (loaded_entities == false) {
 		TempAllocationScope(alloc);
@@ -764,10 +764,10 @@ void LevelEditorUpdate(LevelEditorContext* editor_context, StackAllocator* alloc
 	bool should_load_scene = ImGui::Button("Load State") && (should_save_scene == false);
 	
 	if (should_save_scene || should_load_scene) {
-		SaveLoadEntitySystemByPath(alloc, world_system, entities_save_load_path, should_load_scene);
+		SaveLoadEntitySystemToFile(alloc, world_system, entities_save_load_path, should_load_scene);
 		
 		if (should_save_scene) {
-			SaveLoadEntitySystemByPath(alloc, asset_system, assets_save_load_path,   should_load_scene);
+			SaveLoadEntitySystemToFile(alloc, asset_system, assets_save_load_path, should_load_scene);
 		}
 		
 		if (should_load_scene) {
