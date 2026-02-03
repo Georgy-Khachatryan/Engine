@@ -74,6 +74,7 @@ String PrintTypeName(StackAllocator* alloc, TypeInfo* type_info) {
 	case TypeInfoType::Integer: {
 		auto* type_info_integer = (TypeInfoInteger*)type_info;
 		switch (type_info_integer->bit_width) {
+		case 1:  return "bool"_sl;
 		case 8:  return type_info_integer->is_signed ? "s8"_sl  : "u8"_sl;
 		case 16: return type_info_integer->is_signed ? "s16"_sl : "u16"_sl;
 		case 32: return type_info_integer->is_signed ? "s32"_sl : "u32"_sl;

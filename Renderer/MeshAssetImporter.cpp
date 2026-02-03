@@ -48,7 +48,7 @@ MeshImportResult ImportFbxMeshFile(StackAllocator* alloc, String filepath, u64 r
 	TempAllocationScope(alloc);
 	
 	auto file_data = SystemReadFileToString(alloc, filepath);
-	DebugAssert(file_data.data != nullptr, "Failed to load mesh file '%'", filepath);
+	if (file_data.data == nullptr) return {};
 	
 	ufbx_load_opts options = {};
 	options.ignore_animation = true;
@@ -59,6 +59,7 @@ MeshImportResult ImportFbxMeshFile(StackAllocator* alloc, String filepath, u64 r
 	
 	ufbx_error error = {};
 	auto* scene = ufbx_load_memory(file_data.data, file_data.count, &options, &error);
+	if (error.type != UFBX_ERROR_NONE) return {};
 	
 	u32 max_face_triangles = 0;
 	u32 max_mesh_triangles = 0;
@@ -128,7 +129,24 @@ MeshImportResult ImportFbxMeshFile(StackAllocator* alloc, String filepath, u64 r
 	MdtSystemCallbacks callbacks = {};
 	callbacks.temp_allocator.reallocate = [](void* old_memory_block, u64 size_bytes, void* user_data)-> void* {
 		auto* alloc = (StackAllocator*)user_data;
-		return alloc->Reallocate(old_memory_block, 0, size_bytes, 16);
+		compile_const u64 minimum_alignment = 16;
+		
+		// Store the old memory block size at the beginning of the allocation.
+		compile_const u64 header_size_qwords = minimum_alignment / sizeof(u64);
+		old_memory_block = old_memory_block ? ((u64*)old_memory_block - header_size_qwords) : nullptr;
+		
+		auto* memory_block = alloc->Reallocate(
+			old_memory_block,
+			old_memory_block ? *(u64*)old_memory_block : 0,
+			size_bytes ? (size_bytes + header_size_qwords * sizeof(u64)) : 0,
+			minimum_alignment
+		);
+		
+		if (memory_block != nullptr) {
+			*(u64*)memory_block = (size_bytes + header_size_qwords * sizeof(u64));
+		}
+		
+		return memory_block ? ((u64*)memory_block + header_size_qwords) : nullptr;
 	};
 	callbacks.temp_allocator.user_data = alloc;
 	
@@ -235,6 +253,7 @@ MeshImportResult ImportFbxMeshFile(StackAllocator* alloc, String filepath, u64 r
 		dst_group.error_metric  = LoadMdtErrorMetric(src_group.error_metric);
 		dst_group.aabb_center   = (float3(src_group.aabb_max) + float3(src_group.aabb_min)) * 0.5f;
 		dst_group.aabb_radius   = (float3(src_group.aabb_max) - float3(src_group.aabb_min)) * 0.5f;
+		dst_group.is_resident   = 0;
 		
 		for (u32 meshlet_index = src_group.begin_meshlet_index; meshlet_index < src_group.end_meshlet_index; meshlet_index += 1) {
 			auto& src_meshlet = mdt_meshlets[meshlet_index];
@@ -381,8 +400,8 @@ MeshImportResult ImportFbxMeshFile(StackAllocator* alloc, String filepath, u64 r
 	auto runtime_filepath = StringFormat(alloc, "./Assets/Runtime/%x..mrd"_sl, runtime_data_guid);
 	
 	auto runtime_file = SystemOpenFile(alloc, runtime_filepath, OpenFileFlags::Write);
-	DebugAssert(runtime_file.handle, "Failed to open mesh output file.");
-	defer{ SystemCloseFile(runtime_file); };
+	if (runtime_file.handle == nullptr) return {};
+	bool write_file_success = true;
 	
 	MeshRuntimeDataLayout runtime_data_layout;
 	runtime_data_layout.file_guid  = runtime_data_guid;
@@ -393,21 +412,23 @@ MeshImportResult ImportFbxMeshFile(StackAllocator* alloc, String filepath, u64 r
 	
 	u64 write_offset = 0;
 	for (auto page : result_pages) {
-		SystemWriteFile(runtime_file, page.data, page_size, write_offset);
+		write_file_success &= SystemWriteFile(runtime_file, page.data, page_size, write_offset);
 		write_offset += page_size;
 	}
 	
-	SystemWriteFile(runtime_file, result_meshlet_groups.data, result_meshlet_groups.count * sizeof(MeshletGroup), write_offset);
+	write_file_success &= SystemWriteFile(runtime_file, result_meshlet_groups.data, result_meshlet_groups.count * sizeof(MeshletGroup), write_offset);
 	write_offset += result_meshlet_groups.count * sizeof(MeshletGroup);
 	
 	u32 page_residency_mask[MeshletPageHeader::max_page_count / 32u] = {};
-	SystemWriteFile(runtime_file, &page_residency_mask, sizeof(page_residency_mask), write_offset);
+	write_file_success &= SystemWriteFile(runtime_file, &page_residency_mask, sizeof(page_residency_mask), write_offset);
 	write_offset += sizeof(page_residency_mask);
 	
 	Array<u32> page_table;
 	ArrayResizeMemset(page_table, alloc, result_pages.count);
-	SystemWriteFile(runtime_file, page_table.data, page_table.count * sizeof(u32), write_offset);
+	write_file_success &= SystemWriteFile(runtime_file, page_table.data, page_table.count * sizeof(u32), write_offset);
 	write_offset += page_table.count * sizeof(u32);
 	
-	return { runtime_data_layout, mesh_aabb_min, mesh_aabb_max };
+	write_file_success &= SystemCloseFile(runtime_file);
+	
+	return { runtime_data_layout, mesh_aabb_min, mesh_aabb_max, write_file_success };
 }

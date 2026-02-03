@@ -27,7 +27,7 @@ enum struct IoOperationStatus : u8 {
 
 
 FileHandle SystemOpenFile(StackAllocator* alloc, String path, OpenFileFlags flags);
-void SystemCloseFile(FileHandle handle);
+bool SystemCloseFile(FileHandle handle);
 
 bool SystemWriteFile(FileHandle handle, const void* data, u64 size, u64 offset);
 bool SystemReadFile(FileHandle handle, void* data, u64 size, u64 offset);

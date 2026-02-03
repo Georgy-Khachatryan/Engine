@@ -75,8 +75,8 @@ FileHandle SystemOpenFile(StackAllocator* alloc, String path, OpenFileFlags flag
 	return FileHandle{ handle == INVALID_HANDLE_VALUE ? nullptr : handle };
 }
 
-void SystemCloseFile(FileHandle handle) {
-	if (handle.handle) CloseHandle(handle.handle);
+bool SystemCloseFile(FileHandle handle) {
+	return handle.handle ? CloseHandle(handle.handle) != 0 : true;
 }
 
 bool SystemWriteFile(FileHandle handle, const void* data, u64 size, u64 offset) {

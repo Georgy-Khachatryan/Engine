@@ -263,11 +263,27 @@ void UpdateMeshStreamingSystem(MeshStreamingSystem* system, AsyncTransferQueue* 
 	}
 }
 
-void UpdateMeshStreamingFiles(MeshStreamingSystem* system, StackAllocator* alloc, AssetEntitySystem* asset_system) {
+static void InvalidateMeshStreaming(MeshStreamingSystem* system, RecordContext* record_context, EntityTypeArray* entity_array, MeshAssetType streams, u32 mesh_asset_index) {
+	for (auto& mesh : system->runtime_meshes) {
+		if (mesh.state == MeshRuntimeState::Free || mesh.mesh_asset_index != mesh_asset_index) continue;
+		
+		mesh.state      = MeshRuntimeState::Deallocate;
+		mesh.wait_index = record_context->frame_index + number_of_frames_in_flight;
+	}
+	
+	auto& allocation = streams.allocation[mesh_asset_index];
+	allocation.offset = u32_max;
+	
+	BitArraySetBit(entity_array->dirty_mask, mesh_asset_index);
+}
+
+void UpdateMeshStreamingFiles(MeshStreamingSystem* system, RecordContext* record_context, AssetEntitySystem* asset_system) {
 	extern MeshImportResult ImportFbxMeshFile(StackAllocator* alloc, String filepath, u64 runtime_data_guid);
 	
+	auto* alloc = record_context->alloc;
 	for (auto* entity_array : QueryEntities<MeshAssetType>(alloc, *asset_system)) {
 		auto streams = ExtractComponentStreams<MeshAssetType>(entity_array);
+		
 		for (u64 i : BitArrayIt(entity_array->created_mask)) {
 			auto& layout = streams.runtime_data_layout[i];
 			auto& allocation = streams.allocation[i];
@@ -278,12 +294,19 @@ void UpdateMeshStreamingFiles(MeshStreamingSystem* system, StackAllocator* alloc
 					layout.file_guid = GenerateRandomNumber64(asset_system->guid_random_seed);
 				}
 				
-				auto result = ImportFbxMeshFile(alloc, streams.source_data[i].filepath, layout.file_guid);
-				layout = result.layout;
+				if (runtime_file.file.handle != nullptr) {
+					InvalidateMeshStreaming(system, record_context, entity_array, streams, (u32)i);
+					SystemCloseFile(runtime_file.file);
+				}
 				
-				auto& aabb = streams.aabb[i];
-				aabb.min = result.aabb_min;
-				aabb.max = result.aabb_max;
+				auto result = ImportFbxMeshFile(alloc, streams.source_data[i].filepath, layout.file_guid);
+				if (result.success) {
+					layout = result.layout;
+					
+					auto& aabb = streams.aabb[i];
+					aabb.min = result.aabb_min;
+					aabb.max = result.aabb_max;
+				}
 			}
 			
 			runtime_file.file = SystemOpenFile(alloc, StringFormat(alloc, "./Assets/Runtime/%x..mrd"_sl, layout.file_guid), OpenFileFlags::Read | OpenFileFlags::Async);

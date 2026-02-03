@@ -626,6 +626,16 @@ static void AssetBrowserEntityView(StackAllocator* alloc, AssetEntitySystem& ass
 			ImGui::EndTableItem();
 		}
 	}
+	
+	if (entity.mesh_source_data) {
+		if (ImGui::BeginTableItem("Reload From Source")) {
+			if (ImGui::Button("Reload", ImVec2(ImGui::GetContentRegionAvail().x, 0.f))) {
+				BitArraySetBit(array->created_mask, typed_entity_id.entity_id.index);
+				entity.mesh_runtime_data_layout->version = 0;
+			}
+			ImGui::EndTableItem();
+		}
+	}
 }
 
 compile_const auto entities_save_load_path = "./Assets/Scene.csb"_sl;

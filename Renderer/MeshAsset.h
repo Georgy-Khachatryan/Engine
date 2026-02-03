@@ -83,7 +83,7 @@ struct MeshSourceData {
 
 NOTES()
 struct MeshRuntimeDataLayout {
-	compile_const u64 current_version = 26;
+	compile_const u64 current_version = 27;
 	
 	u64 file_guid = 0;
 	u64 version   = 0;
@@ -98,6 +98,7 @@ struct MeshImportResult {
 	MeshRuntimeDataLayout layout;
 	float3 aabb_min;
 	float3 aabb_max;
+	bool success = false;
 };
 
 NOTES(Meta::NoSaveLoad{})
