@@ -32,6 +32,40 @@ static void BuildResourceTable(RecordContext* record_context, WorldEntitySystem*
 	table.Set(ID::DebugGeometryDepthStencil, TextureSize(TextureFormat::D32_FLOAT, render_target_size));
 }
 
+using RecordPassCallback = void(*)(void*, RecordContext*);
+
+struct RenderPassArrayEntry {
+	RecordPassCallback record_pass = nullptr;
+	void* render_pass = nullptr;
+	String debug_name = "Unknown"_sl;
+};
+
+struct RenderPassArray {
+	StackAllocator* alloc = nullptr;
+	Array<RenderPassArrayEntry> render_passes;
+	
+	template<typename RenderPassT>
+	RenderPassT& Add(String debug_name_substitution = ""_sl) {
+		auto* render_pass = NewFromAlloc(alloc, RenderPassT);
+		
+		RenderPassArrayEntry entry;
+		entry.render_pass = render_pass;
+		entry.record_pass = [](void* render_pass, RecordContext* record_context) { return ((RenderPassT*)render_pass)->RecordPass(record_context); };
+		entry.debug_name  = debug_name_substitution.count != 0 ? debug_name_substitution : RenderPassT::debug_name;
+		ArrayAppend(render_passes, alloc, entry);
+		
+		return *render_pass;
+	}
+};
+
+static void ReplayRenderPasses(RenderPassArray& array, RecordContext* record_context) {
+	for (auto& entry : array.render_passes) {
+		CmdProfilerBeginScope(record_context, entry.debug_name);
+		entry.record_pass(entry.render_pass, record_context);
+		CmdProfilerEndScope(record_context);
+	}
+}
+
 void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext* record_context, WorldEntitySystem* world_system, AssetEntitySystem* asset_system, u64 world_entity_guid) {
 	ProfilerScope("BuildRenderPassesForFrame");
 	
@@ -113,39 +147,66 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	auto [atmosphere_parameters_gpu_address, atmosphere_parameters_cpu_address] = AllocateTransientUploadBuffer<AtmosphereParameters>(record_context);
 	*atmosphere_parameters_cpu_address = atmosphere_parameters;
 	
-	EntitySystemUpdateRenderPass{ world_system, asset_system, renderer_world.gpu_uploads }.RecordPass(record_context);
-	UpdateMeshletPageTableRenderPass{ renderer_context->meshlet_streaming_system }.RecordPass(record_context);
-	TransmittanceLutRenderPass{ atmosphere_parameters_gpu_address }.RecordPass(record_context);
-	MultipleScatteringLutRenderPass{ atmosphere_parameters_gpu_address }.RecordPass(record_context);
-	SkyPanoramaLutRenderPass{ atmosphere_parameters_gpu_address }.RecordPass(record_context);
-	AtmosphereCompositeRenderPass{ atmosphere_parameters_gpu_address }.RecordPass(record_context);
+	RenderPassArray render_passes;
+	render_passes.alloc = record_context->alloc;
 	
-	MeshletClearBuffersRenderPass{}.RecordPass(record_context);
-	MeshletAllocateStreamingFeedbackRenderPass{ asset_system }.RecordPass(record_context);
+	auto& entity_system_update = render_passes.Add<EntitySystemUpdateRenderPass>();
+	entity_system_update.world_system = world_system;
+	entity_system_update.asset_system = asset_system;
+	entity_system_update.upload_buffers = renderer_world.gpu_uploads;
+	renderer_world.gpu_uploads = {};
 	
-	MeshEntityCullingRenderPass{ world_system }.RecordPass(record_context);
-	MeshletGroupCullingRenderPass{ world_system }.RecordPass(record_context);
-	MeshletCullingRenderPass{ world_system, &renderer_world.meshlet_streaming_feedback_queue, &renderer_world.mesh_streaming_feedback_queue }.RecordPass(record_context);
-	BasicMeshRenderPass{}.RecordPass(record_context);
+	auto& update_meshlet_page_table = render_passes.Add<UpdateMeshletPageTableRenderPass>();
+	update_meshlet_page_table.meshlet_streaming_system = renderer_context->meshlet_streaming_system;
+	
+	
+	render_passes.Add<TransmittanceLutRenderPass>().atmosphere = atmosphere_parameters_gpu_address;
+	render_passes.Add<MultipleScatteringLutRenderPass>().atmosphere = atmosphere_parameters_gpu_address;
+	render_passes.Add<SkyPanoramaLutRenderPass>().atmosphere = atmosphere_parameters_gpu_address;
+	render_passes.Add<AtmosphereCompositeRenderPass>().atmosphere = atmosphere_parameters_gpu_address;
+	
+	
+	render_passes.Add<MeshletClearBuffersRenderPass>();
+	render_passes.Add<MeshletAllocateStreamingFeedbackRenderPass>().asset_system = asset_system;
+	
+	render_passes.Add<MeshEntityCullingRenderPass>().world_system = world_system;
+	render_passes.Add<MeshletGroupCullingRenderPass>();
+	auto& main_meshlet_culling = render_passes.Add<MeshletCullingRenderPass>();
+	main_meshlet_culling.meshlet_streaming_feedback_queue = &renderer_world.meshlet_streaming_feedback_queue;
+	main_meshlet_culling.mesh_streaming_feedback_queue    = &renderer_world.mesh_streaming_feedback_queue;
+	render_passes.Add<BasicMeshRenderPass>();
+	
 	
 	if (renderer_world.debug_freeze_culling_camera.enabled == false) {
-		BuildHzbRenderPass{}.RecordPass(record_context);
+		render_passes.Add<BuildHzbRenderPass>();
 		
-		MeshEntityCullingRenderPass{ world_system, MeshletCullingPass::Disocclusion }.RecordPass(record_context);
-		MeshletGroupCullingRenderPass{ world_system, MeshletCullingPass::Disocclusion }.RecordPass(record_context);
-		MeshletCullingRenderPass{ world_system, &renderer_world.meshlet_streaming_feedback_queue, &renderer_world.mesh_streaming_feedback_queue, MeshletCullingPass::Disocclusion }.RecordPass(record_context);
-		BasicMeshRenderPass{ MeshletCullingPass::Disocclusion }.RecordPass(record_context);
+		auto& disocclusion_entity_culling        = render_passes.Add<MeshEntityCullingRenderPass>("DisocclusionMeshEntityCulling"_sl);
+		auto& disocclusion_mehslet_group_culling = render_passes.Add<MeshletGroupCullingRenderPass>("DisocclusionMeshletGroupCulling"_sl);
+		auto& disocclusion_meshlet_culling       = render_passes.Add<MeshletCullingRenderPass>("DisocclusionMeshletCulling"_sl);
 		
-		BuildHzbRenderPass{}.RecordPass(record_context);
+		disocclusion_entity_culling.pass                              = MeshletCullingPass::Disocclusion;
+		disocclusion_mehslet_group_culling.pass                       = MeshletCullingPass::Disocclusion;
+		disocclusion_meshlet_culling.pass                             = MeshletCullingPass::Disocclusion;
+		disocclusion_meshlet_culling.meshlet_streaming_feedback_queue = &renderer_world.meshlet_streaming_feedback_queue;
+		disocclusion_meshlet_culling.mesh_streaming_feedback_queue    = &renderer_world.mesh_streaming_feedback_queue;
+		
+		auto& disocclusion_mesh_pass = render_passes.Add<BasicMeshRenderPass>("DisocclusionBasicMesh"_sl);
+		disocclusion_mesh_pass.pass = MeshletCullingPass::Disocclusion;
+		
+		render_passes.Add<BuildHzbRenderPass>();
 	}
 	
-	DebugGeometryRenderPass{ renderer_world.debug_mesh_instance_arrays, &renderer_context->debug_geometry_buffer }.RecordPass(record_context);
+	auto& debug_geometry = render_passes.Add<DebugGeometryRenderPass>();
+	debug_geometry.debug_mesh_instance_arrays = renderer_world.debug_mesh_instance_arrays;
+	debug_geometry.debug_geometry_buffer      = &renderer_context->debug_geometry_buffer;
 	
 	// TODO: Select dynamically.
-	// XessRenderPass{ scene.jitter_offset_pixels }.RecordPass(record_context);
-	DlssRenderPass{ scene.jitter_offset_pixels }.RecordPass(record_context);
+	// render_passes.Add<XessRenderPass>().jitter_offset_pixels = scene.jitter_offset_pixels;
+	render_passes.Add<DlssRenderPass>().jitter_offset_pixels = scene.jitter_offset_pixels;
 	
-	ImGuiRenderPass{}.RecordPass(record_context);
+	render_passes.Add<ImGuiRenderPass>();
+	
+	ReplayRenderPasses(render_passes, record_context);
 }
 
 GpuComponentUploadBuffer AllocateGpuComponentUploadBuffer(RecordContext* record_context, u32 stride, u32 count, GpuAddress dst_data_gpu_address, GpuAddress dst_prev_data_gpu_address) {

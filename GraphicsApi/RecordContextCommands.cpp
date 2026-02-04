@@ -375,6 +375,15 @@ void CmdSetConstantBuffer(RecordContext* record_context, u32 offset, GpuAddress 
 	packet.gpu_address = gpu_address;
 }
 
+void CmdProfilerBeginScope(RecordContext* record_context, String label) {
+	auto& packet = AppendPacket<CmdBeginProfilerScopePacket>(record_context);
+	packet.label =  label;
+}
+
+void CmdProfilerEndScope(RecordContext* record_context) {
+	AppendPacket<CmdEndProfilerScopePacket>(record_context);
+	ArrayLastElement(record_context->resource_access_command_prefix_sum) = record_context->command_count;
+}
 
 void CmdDispatchXeSS(RecordContext* record_context, const XessDispatchContext& dispatch_context) {
 	auto& packet = AppendPacket<CmdDispatchXessPacket>(record_context);

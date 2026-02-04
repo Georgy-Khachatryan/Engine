@@ -265,9 +265,10 @@ static void SaveLoad(SaveLoadBuffer& buffer, HashTableElement<EntityComponentStr
 	SaveLoad(buffer, element.value.version);
 }
 
-static void CreateComponentStreamTable(StackAllocator* alloc, HashTable<EntityComponentStreamHash, EntitySaveLoadStreamID>& component_stream_table) {
+static void CreateComponentStreamTable(StackAllocator* alloc, HashTable<EntityComponentStreamHash, EntitySaveLoadStreamID>& component_stream_table, EntitySystemBase* system) {
 	for (u32 entity_type_index = 0; entity_type_index < entity_type_info_table.count; entity_type_index += 1) {
 		auto& entity_type_info = entity_type_info_table[entity_type_index];
+		if (system && system->entity_type_arrays[entity_type_index].count == 0) continue;
 		
 		for (u32 component_stream_index = 0; component_stream_index < entity_type_info.cpu_component_count; component_stream_index += 1) {
 			auto  component_type_id   = entity_type_info.component_type_ids[component_stream_index];
@@ -295,7 +296,7 @@ void SaveLoadEntitySystem(SaveLoadBuffer& buffer, EntitySystemBase& system) {
 	
 	HashTable<EntityComponentStreamHash, EntitySaveLoadStreamID> new_component_stream_table;
 	HashTable<EntityComponentStreamHash, EntitySaveLoadStreamID> old_component_stream_table;
-	CreateComponentStreamTable(buffer.alloc, new_component_stream_table);
+	CreateComponentStreamTable(buffer.alloc, new_component_stream_table, buffer.is_saving ? &system : nullptr);
 	
 	buffer.heap = nullptr;
 	if (buffer.is_saving) {
@@ -376,21 +377,13 @@ void SaveLoadEntitySystem(SaveLoadBuffer& buffer, EntitySystemBase& system) {
 }
 
 void SaveLoadEntityForTooling(SaveLoadBuffer& buffer, EntityTypeArray* array, EntityID entity_id) {
-	auto entity_type_id = array->entity_type_id;
-	
-	auto& entity_type_info = entity_type_info_table[entity_type_id.index];
-	auto component_type_ids = entity_type_info.component_type_ids;
-	
-	u64 component_stream_count = entity_type_info.cpu_component_count;
-	
-	for (u32 i = 0; i < component_stream_count; i += 1) {
-		auto component_type_id = component_type_ids[i];
+	auto& entity_type_info = entity_type_info_table[array->entity_type_id.index];
+	for (u32 i = 0; i < entity_type_info.cpu_component_count; i += 1) {
+		auto component_type_id = entity_type_info.component_type_ids[i];
 		auto type_info = component_type_info_table[component_type_id.index];
 		
-		if (component_type_id.index == ECS::GetComponentTypeID<GuidComponent>::id.index) continue;
-		
 		auto save_load_callback = component_save_load_callbacks[component_type_id.index];
-		if (save_load_callback != nullptr) {
+		if (save_load_callback != nullptr && component_type_id.index != ECS::GetComponentTypeID<GuidComponent>::id.index) {
 			u8* component_stream = array->component_streams[i].cpu.data;
 			save_load_callback(buffer, component_stream + entity_id.index * type_info.size_bytes, type_info.version);
 		}

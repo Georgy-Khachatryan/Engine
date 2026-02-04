@@ -80,6 +80,9 @@ void CmdSetDescriptorTable(RecordContext* record_context, u32 offset, HLSL::Base
 void CmdSetPushConstants(RecordContext* record_context, u32 offset, ArrayView<u32> push_constants);
 void CmdSetConstantBuffer(RecordContext* record_context, u32 offset, GpuAddress gpu_address);
 
+void CmdProfilerBeginScope(RecordContext* record_context, String label);
+void CmdProfilerEndScope(RecordContext* record_context);
+
 void ReplayRecordContext(GraphicsContext* context, RecordContext* record_context);
 
 

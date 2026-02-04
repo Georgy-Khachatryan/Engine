@@ -395,6 +395,19 @@ void WriteCodeForRenderPasses(StackAllocator* alloc, ArrayView<TypeInfo*> hlsl_f
 	WriteHlslFilesToDisk(alloc, hlsl_bindings_files);
 	
 	auto& builder = root_signature_file.builder;
+	for (auto* type_info : render_pass_type_infos) {
+		auto render_pass_name = ExtractNameWithoutNamespace(type_info->name);
+		
+		compile_const auto render_pass_suffix = "RenderPass"_sl;
+		auto render_pass_display_name = render_pass_name;
+		if (StringEndsWith(render_pass_name, render_pass_suffix)) {
+			render_pass_display_name.count -= render_pass_suffix.count;
+		}
+		
+		builder.Append("String %::debug_name = \"%\"_sl;\n"_sl, render_pass_name, render_pass_display_name);
+	}
+	builder.Append("\n"_sl);
+	
 	{
 		builder.Append("static String root_signature_filenames_internal[] = {\n"_sl);
 		builder.Indent();

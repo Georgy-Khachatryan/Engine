@@ -22,8 +22,10 @@ enum struct CommandType : u16 {
 	SetDescriptorTable    = 17,
 	SetPushConstants      = 18,
 	SetConstantBuffer     = 19,
-	DispatchXeSS          = 20,
-	DispatchDLSS          = 21,
+	BeginProfilerScope    = 20,
+	EndProfilerScope      = 21,
+	DispatchXeSS          = 22,
+	DispatchDLSS          = 23,
 	
 	Count
 };
@@ -167,6 +169,16 @@ struct CmdSetConstantBufferPacket : RecordContextCommandPacket {
 	u32 offset = 0;
 	CommandQueueType pass_type = CommandQueueType::Graphics;
 	GpuAddress gpu_address = {};
+};
+
+struct CmdBeginProfilerScopePacket : RecordContextCommandPacket {
+	compile_const CommandType my_type = CommandType::BeginProfilerScope;
+	
+	String label;
+};
+
+struct CmdEndProfilerScopePacket : RecordContextCommandPacket {
+	compile_const CommandType my_type = CommandType::EndProfilerScope;
 };
 
 struct CmdDispatchXessPacket : RecordContextCommandPacket {

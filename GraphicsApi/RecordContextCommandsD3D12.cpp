@@ -295,6 +295,14 @@ static void CmdSetConstantBufferD3D12(CmdSetConstantBufferPacket* packet, ID3D12
 	}
 }
 
+static void CmdBeginProfilerScopeD3D12(CmdBeginProfilerScopePacket* packet, ID3D12GraphicsCommandList7* command_list) {
+	ProfilerBeginScope(packet->label.data, command_list);
+}
+
+static void CmdEndProfilerScopeD3D12(CmdEndProfilerScopePacket* packet, ID3D12GraphicsCommandList7* command_list) {
+	ProfilerEndScope(command_list);
+}
+
 static void CmdDispatchXessD3D12(CmdDispatchXessPacket* packet, ID3D12GraphicsCommandList7* command_list, GraphicsContextD3D12* context, ArrayView<VirtualResource> resources) {
 	ProfilerScope("CmdDispatchXessD3D12", command_list);
 	
@@ -723,8 +731,6 @@ void ReplayRecordContext(GraphicsContext* api_context, RecordContext* record_con
 	for (u64 i = 0; i < command_prefix_sum.count; i += 1) {
 		u32 end_command_index = command_prefix_sum[i];
 		
-		ProfilerScope("ReplayRenderPass", command_list);
-		
 		CmdBarriersD3D12(alloc, resource_accesses[i], command_list, resources);
 		
 		for (u32 command_index = begin_command_index; command_index < end_command_index; command_index += 1) {
@@ -751,6 +757,8 @@ void ReplayRecordContext(GraphicsContext* api_context, RecordContext* record_con
 			case CommandType::SetDescriptorTable:    CmdSetDescriptorTableD3D12((CmdSetDescriptorTablePacket*)packet, command_list, context); break;
 			case CommandType::SetPushConstants:      CmdSetPushConstantsD3D12((CmdSetPushConstantsPacket*)packet, command_list); break;
 			case CommandType::SetConstantBuffer:     CmdSetConstantBufferD3D12((CmdSetConstantBufferPacket*)packet, command_list, resources); break;
+			case CommandType::BeginProfilerScope:    CmdBeginProfilerScopeD3D12((CmdBeginProfilerScopePacket*)packet, command_list); break;
+			case CommandType::EndProfilerScope:      CmdEndProfilerScopeD3D12((CmdEndProfilerScopePacket*)packet, command_list); break;
 			case CommandType::DispatchXeSS:          CmdDispatchXessD3D12((CmdDispatchXessPacket*)packet, command_list, context, resources); break;
 			case CommandType::DispatchDLSS:          CmdDispatchDlssD3D12((CmdDispatchDlssPacket*)packet, command_list, context, resources); break;
 			default: DebugAssertAlways("Unhandled command packet type '%'.", (u32)packet->packet_type); command_index = command_count; break;

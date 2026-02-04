@@ -432,7 +432,6 @@ NOTES(Meta::RenderPass{})
 struct MeshletGroupCullingRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
-	WorldEntitySystem* world_system = nullptr;
 	MeshletCullingPass pass = MeshletCullingPass::Main;
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
@@ -468,7 +467,6 @@ NOTES(Meta::RenderPass{})
 struct MeshletCullingRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
-	WorldEntitySystem* world_system = nullptr;
 	GpuReadbackQueue* meshlet_streaming_feedback_queue = nullptr;
 	GpuReadbackQueue* mesh_streaming_feedback_queue    = nullptr;
 	MeshletCullingPass pass = MeshletCullingPass::Main;

@@ -539,6 +539,7 @@ namespace HLSL {
 #define RENDER_PASS_GENERATED_CODE()\
 	struct RootSignature;\
 	static RootSignature root_signature;\
+	static String debug_name;\
 	static void CreatePipelines(PipelineLibrary* lib);\
 	void RecordPass(RecordContext* record_context)
 
