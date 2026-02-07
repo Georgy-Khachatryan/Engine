@@ -506,6 +506,28 @@ static void AssetBrowser(StackAllocator* alloc, AssetEntitySystem& asset_system,
 	ImGui::Begin("AssetBrowser");
 	defer{ ImGui::End(); };
 	
+	ImGui::SetNextItemWidth(-FLT_MIN);
+	if (ImGui::BeginCombo("##CreateAsset", "Create Asset")) {
+		EntityTypeID entity_type_ids[] = {
+			ECS::GetEntityTypeID<MeshAssetType>::id,
+		};
+		
+		for (auto entity_type_id : entity_type_ids) {
+			auto name = entity_type_name_table[entity_type_id.index];
+			
+			ImGuiScopeID(entity_type_id.index);
+			if (ImGui::Selectable(name.data, false)) {
+				auto entity_id = CreateEntity(asset_system, entity_type_id);
+				auto entity = ExtractComponentStreams<GuidNameQuery>(&asset_system.entity_type_arrays[entity_type_id.index], entity_id);
+				entity.name->name = StringCopy(&asset_system.heap, name);
+				
+				HashTableClear(selected_assets_hash_table);
+				HashTableAddOrFind(selected_assets_hash_table, &asset_system.heap, entity.guid->guid);
+			}
+		}
+		ImGui::EndCombo();
+	}
+	
 	auto flags = ImGuiTableFlags_Resizable | ImGuiTableFlags_NoSavedSettings | ImGuiTableFlags_BordersInner | ImGuiTableFlags_PadOuterX | ImGuiTableFlags_ScrollY;
 	if (ImGui::BeginTable("SceneView", 3, flags) == false) return;
 	defer{ ImGui::EndTable(); };
@@ -544,6 +566,7 @@ static void AssetBrowser(StackAllocator* alloc, AssetEntitySystem& asset_system,
 				bool is_selected = HashTableFind(selected_assets_hash_table, guid) != nullptr;
 				ImGui::SetNextItemSelectionUserData(index);
 				ImGui::Selectable(name.count ? name.data : entity_type_name.data, is_selected, ImGuiSelectableFlags_SpanAllColumns);
+				ImGui::EntityDragDropSource(entity_type_id, guid);
 			}
 			
 			if (ImGui::TableSetColumnIndex(1)) {

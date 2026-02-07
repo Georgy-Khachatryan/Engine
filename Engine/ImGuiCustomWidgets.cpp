@@ -202,9 +202,11 @@ bool ImGui::EntityComboBox(const char* label, EntitySystemBase* entity_system, u
 		clipper.Begin(array->count);
 		
 		while (clipper.Step()) {
+			s32 index = 0;
 			for (u64 i : BitArrayIt(array->alive_mask)) {
-				if (i < clipper.DisplayStart) continue;
-				if (i >= clipper.DisplayEnd) break;
+				defer{ index += 1; };
+				if (index < clipper.DisplayStart) continue;
+				if (index >= clipper.DisplayEnd) break;
 				
 				auto& [guid] = streams.guid[i];
 				auto& [name] = streams.name[i];
@@ -221,12 +223,41 @@ bool ImGui::EntityComboBox(const char* label, EntitySystemBase* entity_system, u
 		ImGui::EndCombo();
 	}
 	
+	ImGui::EntityDragDropTarget(entity_type_id, selected_guid);
+	
 	ImGui::SameLine(0.f, style.ItemInnerSpacing.x);
 	if (ImGui::Button(button_label, ImVec2(button_width, 0.f))) {
 		*selected_guid = 0;
 	}
 	
 	return (current_guid != *selected_guid);
+}
+
+bool ImGui::EntityDragDropSource(EntityTypeID entity_type_id, u64 guid) {
+	bool result = ImGui::BeginDragDropSource();
+	if (result) {
+		ImGui::Text("0x%llX", guid);
+		
+		char type_string[32] = {};
+		ImFormatString(type_string, IM_ARRAYSIZE(type_string), "EntityTypeID:%X", entity_type_id.index);
+		
+		ImGui::SetDragDropPayload(type_string, &guid, sizeof(u64));
+		ImGui::EndDragDropSource();
+	}
+	return result;
+}
+
+bool ImGui::EntityDragDropTarget(EntityTypeID entity_type_id, u64* guid) {
+	u64 current_guid = *guid;
+	if (ImGui::BeginDragDropTarget()) {
+		char type_string[32] = {};
+		ImFormatString(type_string, IM_ARRAYSIZE(type_string), "EntityTypeID:%X", entity_type_id.index);
+		
+		if (auto* payload = ImGui::AcceptDragDropPayload(type_string)) {
+			memcpy(guid, payload->Data, sizeof(u64));
+		}
+	}
+	return (current_guid != *guid);
 }
 
 bool ImGui::ImageButtonEx(const char* str_id, ImTextureRef tex_ref, const ImVec2& image_size, ImGuiButtonFlags flags) {

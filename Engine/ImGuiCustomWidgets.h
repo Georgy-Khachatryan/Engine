@@ -33,6 +33,8 @@ namespace ImGui {
 	bool DragFloatWithReset(const char* label, float* data, u32 component_count, float v_speed = 1.f, float v_min = 0.f, float v_max = 0.f, const char* format = "%.3f", ImGuiSliderFlags flags = 0, const char* const* component_labels = nullptr, const float* default_values = nullptr);
 	bool EntityComboBox(const char* label, EntitySystemBase* entity_system, u64* guid, EntityTypeID entity_type_id);
 	bool ImageButtonEx(const char* str_id, ImTextureRef tex_ref, const ImVec2& image_size, ImGuiButtonFlags flags = 0);
+	bool EntityDragDropSource(EntityTypeID entity_type_id, u64 guid);
+	bool EntityDragDropTarget(EntityTypeID entity_type_id, u64* guid);
 	
 	// Widgets for 2 column (Name, Data) tables:
 	bool BeginTableItem(const char* label);
