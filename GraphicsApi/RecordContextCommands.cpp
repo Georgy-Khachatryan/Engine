@@ -45,7 +45,7 @@ static void AppendResourceAccesses(RecordContext* record_context, ArrayView<Reso
 static ResourceAccessDefinition CreateBufferResourceAccess(VirtualResourceID resource_id, PipelineStagesMask stages_mask, ResourceAccessMask access_mask) {
 	ResourceAccessDefinition access;
 	access.resource_id = resource_id;
-	access.is_texture  = false;
+	access.flags       = ResourceAccessFlags::None;
 	access.stages_mask = stages_mask;
 	access.access_mask = access_mask;
 	return access;
@@ -59,7 +59,7 @@ static ResourceAccessDefinition CreateTextureResourceAccess(VirtualResourceID re
 	access.mip_index   = 0;
 	access.mip_count   = 1;
 	access.plane_mask  = plane_mask;
-	access.is_texture  = true;
+	access.flags       = ResourceAccessFlags::IsTexture;
 	access.stages_mask = stages_mask;
 	access.access_mask = access_mask;
 	return access;
@@ -107,7 +107,7 @@ static void AppendResourceBindings(RecordContext* record_context, ArrayView<Reso
 				access.array_count = descriptor.texture.array_count;
 				access.mip_index   = descriptor.texture.mip_index;
 				access.mip_count   = descriptor.texture.mip_count;
-				access.is_texture  = true;
+				access.flags       = ResourceAccessFlags::IsTexture;
 				access.stages_mask = shader_stages_mask;
 				access.access_mask = HasAnyFlags(type, ResourceDescriptorType::AnySRV) ? ResourceAccessMask::SRV : ResourceAccessMask::UAV;
 				
@@ -115,7 +115,7 @@ static void AppendResourceBindings(RecordContext* record_context, ArrayView<Reso
 			} else if (HasAnyFlags(type, ResourceDescriptorType::AnyBuffer)) {
 				ResourceAccessDefinition access;
 				access.resource_id = descriptor.resource_id;
-				access.is_texture  = false;
+				access.flags       = ResourceAccessFlags::None;
 				access.stages_mask = shader_stages_mask;
 				access.access_mask = HasAnyFlags(type, ResourceDescriptorType::AnySRV) ? ResourceAccessMask::SRV : ResourceAccessMask::UAV;
 				

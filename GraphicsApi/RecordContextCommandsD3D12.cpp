@@ -529,31 +529,74 @@ static void ResolveTextureAccess(D3D12_BARRIER_SYNC& sync, D3D12_BARRIER_ACCESS&
 	layout = D3D12_BARRIER_LAYOUT_COMMON;
 }
 
-static void CreateTextureBarrier(Array<D3D12_TEXTURE_BARRIER>& barriers, VirtualResource& resource, ResourceAccessDefinition* last_access, ResourceAccessDefinition* next_access) {
-	D3D12_TEXTURE_BARRIER barrier = {};
-	ResolveTextureAccess(barrier.SyncBefore, barrier.AccessBefore, barrier.LayoutBefore, last_access);
-	ResolveTextureAccess(barrier.SyncAfter,  barrier.AccessAfter,  barrier.LayoutAfter,  next_access);
+static void CreateTextureBarrier(Array<D3D12_TEXTURE_BARRIER>& barriers, StackAllocator* alloc, VirtualResource& resource, ResourceAccessDefinition* last_access, ResourceAccessDefinition* next_access) {
+	bool is_full_resource_access = true;
 	
-	if (barrier.AccessBefore != barrier.AccessAfter || barrier.LayoutBefore != barrier.LayoutAfter) {
-		barrier.pResource = resource.texture.resource.d3d12;
-		barrier.Flags     = D3D12_TEXTURE_BARRIER_FLAG_NONE;
+	if (next_access) is_full_resource_access &= HasAnyFlags(next_access->flags, ResourceAccessFlags::IsFullResourceAccess);
+	if (last_access) is_full_resource_access &= HasAnyFlags(last_access->flags, ResourceAccessFlags::IsFullResourceAccess);
+	
+	if (is_full_resource_access) {
+		D3D12_TEXTURE_BARRIER barrier = {};
+		ResolveTextureAccess(barrier.SyncBefore, barrier.AccessBefore, barrier.LayoutBefore, last_access);
+		ResolveTextureAccess(barrier.SyncAfter,  barrier.AccessAfter,  barrier.LayoutAfter,  next_access);
 		
-		// TODO: What if mip/array ranges mismatch between last_access and next_access?
-		auto* access = next_access ? next_access : last_access;
-		barrier.Subresources.IndexOrFirstMipLevel = access->mip_index;
-		barrier.Subresources.NumMipLevels         = Math::Min(access->mip_count, (u8)(resource.texture.size.mips - access->mip_index));
-		barrier.Subresources.FirstArraySlice      = access->array_index;
-		barrier.Subresources.NumArraySlices       = Math::Min(access->array_count, (u16)(resource.texture.size.ArraySliceCount() - access->array_index));
-		
-		if (access->plane_mask == 0) {
-			barrier.Subresources.FirstPlane = 0;
-			barrier.Subresources.NumPlanes  = 1;
-		} else {
-			barrier.Subresources.FirstPlane = FirstBitLow32(access->plane_mask);
-			barrier.Subresources.NumPlanes  = CountSetBits32(access->plane_mask);
+		if (barrier.AccessBefore != barrier.AccessAfter || barrier.LayoutBefore != barrier.LayoutAfter) {
+			barrier.pResource = resource.texture.resource.d3d12;
+			barrier.Flags     = D3D12_TEXTURE_BARRIER_FLAG_NONE;
+			
+			auto* access = next_access ? next_access : last_access;
+			barrier.Subresources.IndexOrFirstMipLevel = access->mip_index;
+			barrier.Subresources.NumMipLevels         = access->mip_count;
+			barrier.Subresources.FirstArraySlice      = access->array_index;
+			barrier.Subresources.NumArraySlices       = access->array_count;
+			barrier.Subresources.FirstPlane           = access->plane_mask == 0 ? 0 : FirstBitLow32(access->plane_mask);
+			barrier.Subresources.NumPlanes            = access->plane_mask == 0 ? 1 : CountSetBits32(access->plane_mask);
+			ArrayAppend(barriers, alloc, barrier);
 		}
+	} else {
+		u32 begin_mip_index   = next_access ? next_access->mip_index   : 0;
+		u32 begin_array_index = next_access ? next_access->array_index : 0;
+		u32 end_mip_index     = next_access ? begin_mip_index   + next_access->mip_count   : resource.texture.size.mips;
+		u32 end_array_index   = next_access ? begin_array_index + next_access->array_count : resource.texture.size.ArraySliceCount();
 		
-		ArrayAppend(barriers, barrier);
+		for (u32 mip_index = begin_mip_index; mip_index < end_mip_index; mip_index += 1) {
+			for (u32 array_index = begin_array_index; array_index < end_array_index;) {
+				u32 common_array_count = 1;
+				
+				auto* last_subresource_access = last_access;
+				while (last_subresource_access != nullptr) {
+					bool mip_index_matches   = last_subresource_access->mip_index   <= mip_index   && mip_index   < ((u32)last_subresource_access->mip_index   + last_subresource_access->mip_count);
+					bool array_index_matches = last_subresource_access->array_index <= array_index && array_index < ((u32)last_subresource_access->array_index + last_subresource_access->array_count);
+					
+					if (mip_index_matches && array_index_matches) {
+						common_array_count = Math::Min((u32)last_subresource_access->array_index + last_subresource_access->array_count, end_array_index) - array_index;
+						break;
+					}
+					
+					last_subresource_access = last_subresource_access->last_access;
+				}
+				
+				D3D12_TEXTURE_BARRIER barrier = {};
+				ResolveTextureAccess(barrier.SyncBefore, barrier.AccessBefore, barrier.LayoutBefore, last_subresource_access);
+				ResolveTextureAccess(barrier.SyncAfter,  barrier.AccessAfter,  barrier.LayoutAfter,  next_access);
+				
+				if (barrier.AccessBefore != barrier.AccessAfter || barrier.LayoutBefore != barrier.LayoutAfter) {
+					barrier.pResource = resource.texture.resource.d3d12;
+					barrier.Flags     = D3D12_TEXTURE_BARRIER_FLAG_NONE;
+					
+					auto* access = next_access ? next_access : last_subresource_access;
+					barrier.Subresources.IndexOrFirstMipLevel = mip_index;
+					barrier.Subresources.NumMipLevels         = 1;
+					barrier.Subresources.FirstArraySlice      = array_index;
+					barrier.Subresources.NumArraySlices       = common_array_count;
+					barrier.Subresources.FirstPlane           = access->plane_mask == 0 ? 0 : FirstBitLow32(access->plane_mask);
+					barrier.Subresources.NumPlanes            = access->plane_mask == 0 ? 1 : CountSetBits32(access->plane_mask);
+					ArrayAppend(barriers, alloc, barrier);
+				}
+				
+				array_index += common_array_count;
+			}
+		}
 	}
 }
 
@@ -623,15 +666,41 @@ static void CmdBarriersD3D12(StackAllocator* alloc, ArrayView<ResourceAccessDefi
 	Array<D3D12_TEXTURE_BARRIER> texture_barriers;
 	Array<D3D12_BUFFER_BARRIER> buffer_barriers;
 	ArrayReserve(texture_barriers, alloc, resource_accesses.count);
-	ArrayReserve(buffer_barriers, alloc, resource_accesses.count);
+	ArrayReserve(buffer_barriers,  alloc, resource_accesses.count);
 	
 	for (auto& access : resource_accesses) {
 		auto& resource = resources[(u32)access.resource_id];
+		if (access.last_access == nullptr) continue;
 		
-		if (access.is_texture) {
-			CreateTextureBarrier(texture_barriers, resource, access.last_access, &access);
+		if (HasAnyFlags(access.flags, ResourceAccessFlags::IsTexture)) {
+			CreateTextureBarrier(texture_barriers, alloc, resource, access.last_access, &access);
 		} else {
 			CreateBufferBarrier(buffer_barriers, resource, access.last_access, &access);
+		}
+	}
+	
+	CmdBarriersD3D12(texture_barriers, buffer_barriers, command_list);
+}
+
+static void CmdBarriersD3D12(StackAllocator* alloc, ArrayView<ResourceAccessDefinition*> resource_accesses, ID3D12GraphicsCommandList7* command_list, ArrayView<VirtualResource> resources, bool is_first_access) {
+	TempAllocationScope(alloc);
+	
+	Array<D3D12_TEXTURE_BARRIER> texture_barriers;
+	Array<D3D12_BUFFER_BARRIER> buffer_barriers;
+	ArrayReserve(texture_barriers, alloc, resource_accesses.count);
+	ArrayReserve(buffer_barriers,  alloc, resource_accesses.count);
+	
+	for (u32 resource_index = 0; resource_index < resource_accesses.count; resource_index += 1) {
+		auto* access = resource_accesses[resource_index];
+		if (access == nullptr) continue;
+		
+		auto* last_access = is_first_access ? nullptr : access;
+		auto* next_access = is_first_access ? access : nullptr;
+		
+		if (HasAnyFlags(access->flags, ResourceAccessFlags::IsTexture)) {
+			CreateTextureBarrier(texture_barriers, alloc, resources[resource_index], last_access, next_access);
+		} else {
+			CreateBufferBarrier(buffer_barriers, resources[resource_index], last_access, next_access);
 		}
 	}
 	
@@ -642,50 +711,96 @@ static bool IsReadOnly(ResourceAccessMask access_mask) {
 	return HasAnyFlags(access_mask, ResourceAccessMask::AccessRW) == false;
 }
 
-static Array<ResourceAccessDefinition*> ResolveResourceAccesses(StackAllocator* alloc, ArrayView<ArrayView<ResourceAccessDefinition>> resource_accesses, ArrayView<VirtualResource> resources) {
+static bool AccessRangesAreEqual(ResourceAccessDefinition* access_0, ResourceAccessDefinition* access_1) {
+	return
+		access_0->mip_index   == access_1->mip_index   && access_0->mip_count   == access_1->mip_count &&
+		access_0->array_index == access_1->array_index && access_0->array_count == access_1->array_count;
+}
+
+struct ResourceAccesses {
+	ArrayView<ResourceAccessDefinition*> first_resource_access;
+	ArrayView<ResourceAccessDefinition*> last_resource_access;
+};
+
+static ResourceAccesses ResolveResourceAccesses(StackAllocator* alloc, ArrayView<ArrayView<ResourceAccessDefinition>> resource_accesses, ArrayView<VirtualResource> resources) {
+	Array<ResourceAccessDefinition*> first_resource_access;
 	Array<ResourceAccessDefinition*> last_resource_access;
-	ArrayResizeMemset(last_resource_access, alloc, resources.count);
+	ArrayResizeMemset(first_resource_access, alloc, resources.count);
+	ArrayResizeMemset(last_resource_access,  alloc, resources.count);
 	
 	for (auto& accesses : resource_accesses) {
-		for (u32 i = 0; i < accesses.count;) {
-			auto& access = accesses[i];
+		for (auto& access : accesses) {
 			u32 resource_index = (u32)access.resource_id;
 			
 			auto* last_access = last_resource_access[resource_index];
-			if (accesses.begin() <= last_access && last_access < accesses.end()) {
-				if (access.is_texture) {
-					DebugAssert(last_access->stages_mask == access.stages_mask, "Mismatching access.");
-					DebugAssert(last_access->access_mask == access.access_mask, "Mismatching access.");
+			if (last_access == nullptr) {
+				first_resource_access[resource_index] = &access;
+			}
+			
+			bool erase_access = false;
+			if (HasAnyFlags(access.flags, ResourceAccessFlags::IsTexture)) {
+				auto& resource = resources[resource_index];
+				
+				// Upstream code might set counts to u8_max/u16_max to signal all remaining mip/array slices.
+				// Clamp access ranges so any further code can assume they're correct.
+				access.mip_count   = Math::Min(access.mip_count,   (u8)(resource.texture.size.mips               - access.mip_index));
+				access.array_count = Math::Min(access.array_count, (u16)(resource.texture.size.ArraySliceCount() - access.array_index));
+				
+				if (access.mip_count == resource.texture.size.mips && access.array_count && resource.texture.size.ArraySliceCount()) {
+					access.flags |= ResourceAccessFlags::IsFullResourceAccess;
+				}
+				
+				bool is_same_group  = accesses.begin() <= last_access && last_access < accesses.end();
+				bool is_same_access_and_stages = is_same_group && (last_access->stages_mask == access.stages_mask) && (last_access->access_mask == access.access_mask);
+				bool is_next_mip = is_same_group && (last_access->mip_index + last_access->mip_count) == access.mip_index && (last_access->array_index == access.array_index && last_access->array_count == access.array_count);
+				
+				if (is_same_group && is_same_access_and_stages && is_next_mip) {
+					last_access->mip_count += access.mip_count;
 					
-					// TODO: This is correct only when the whole resource is accessed one subresource at a time.
-					last_access->mip_index   = Math::Min(last_access->mip_index,   access.mip_index);
-					last_access->array_index = Math::Min(last_access->array_index, access.array_index);
+					if (last_access->mip_count == resource.texture.size.mips && last_access->array_count && resource.texture.size.ArraySliceCount()) {
+						last_access->flags |= ResourceAccessFlags::IsFullResourceAccess;
+					}
 					
-					last_access->mip_count   += access.mip_count;
-					last_access->array_count += access.array_count;
-				} else {
+					erase_access = true;
+				} else if (last_access && IsReadOnly(last_access->access_mask) && IsReadOnly(access.access_mask) && AccessRangesAreEqual(last_access, &access)) {
+					// Fold all read only accesses together into the earliest access.
+					last_access->stages_mask |= access.stages_mask;
+					last_access->access_mask |= access.access_mask;
+					erase_access = true;
+				}
+			} else {
+				if (accesses.begin() <= last_access && last_access < accesses.end()) {
 					// Fold current access into the last access of the same group.
 					last_access->stages_mask |= access.stages_mask;
 					last_access->access_mask |= access.access_mask;
+					erase_access = true;
+				} else if (last_access && IsReadOnly(last_access->access_mask) && IsReadOnly(access.access_mask)) {
+					// Fold all read only accesses together into the earliest access.
+					last_access->stages_mask |= access.stages_mask;
+					last_access->access_mask |= access.access_mask;
+					erase_access = true;
 				}
-				
-				ArrayEraseSwapLast(accesses, i);
-			} else if (last_access && IsReadOnly(last_access->access_mask) && IsReadOnly(access.access_mask)) {
-				// Fold all read only accesses together into the earliest access.
-				last_access->stages_mask |= access.stages_mask;
-				last_access->access_mask |= access.access_mask;
-				
-				ArrayEraseSwapLast(accesses, i);
+			}
+			
+			if (erase_access) {
+				// If we call ArrayEraseSwapLast here, texture subresource access merging won't work correctly. Defer erase to the next loop.
+				access.flags |= ResourceAccessFlags::IsErased;
 			} else {
 				last_resource_access[resource_index] = &access;
-				i += 1;
-				
 				access.last_access = last_access;
+			}
+		}
+		
+		for (u32 i = 0; i < accesses.count;) {
+			if (HasAnyFlags(accesses[i].flags, ResourceAccessFlags::IsErased)) {
+				ArrayEraseSwapLast(accesses, i);
+			} else {
+				i += 1;
 			}
 		}
 	}
 	
-	return last_resource_access;
+	return { first_resource_access, last_resource_access };
 }
 
 void ReplayRecordContext(GraphicsContext* api_context, RecordContext* record_context) {
@@ -717,7 +832,8 @@ void ReplayRecordContext(GraphicsContext* api_context, RecordContext* record_con
 	}
 	
 	CreateDescriptorTables(context, record_context->descriptor_tables, resources);
-	auto last_resource_access = ResolveResourceAccesses(alloc, record_context->resource_accesses, resources);
+	
+	auto [first_resource_access, last_resource_access] = ResolveResourceAccesses(alloc, record_context->resource_accesses, resources);
 	
 	auto* command_list = context->command_list;
 	
@@ -726,6 +842,8 @@ void ReplayRecordContext(GraphicsContext* api_context, RecordContext* record_con
 	
 	auto command_prefix_sum = ArrayView<u32>(record_context->resource_access_command_prefix_sum);
 	auto resource_accesses  = record_context->resource_accesses;
+	
+	CmdBarriersD3D12(alloc, first_resource_access, command_list, resources, true);
 	
 	u32 begin_command_index = 0;
 	for (u64 i = 0; i < command_prefix_sum.count; i += 1) {
@@ -768,25 +886,5 @@ void ReplayRecordContext(GraphicsContext* api_context, RecordContext* record_con
 		begin_command_index = end_command_index;
 	}
 	
-	{
-		TempAllocationScope(alloc);
-		
-		Array<D3D12_TEXTURE_BARRIER> texture_barriers;
-		Array<D3D12_BUFFER_BARRIER> buffer_barriers;
-		ArrayReserve(texture_barriers, alloc, last_resource_access.count);
-		ArrayReserve(buffer_barriers, alloc, last_resource_access.count);
-		
-		for (u32 resource_index = 0; resource_index < last_resource_access.count; resource_index += 1) {
-			auto* access = last_resource_access[resource_index];
-			if (access == nullptr) continue;
-			
-			if (access->is_texture) {
-				CreateTextureBarrier(texture_barriers, resources[resource_index], access, nullptr);
-			} else {
-				CreateBufferBarrier(buffer_barriers, resources[resource_index], access, nullptr);
-			}
-		}
-		
-		CmdBarriersD3D12(texture_barriers, buffer_barriers, command_list);
-	}
+	CmdBarriersD3D12(alloc, last_resource_access, command_list, resources, false);
 }

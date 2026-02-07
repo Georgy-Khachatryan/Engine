@@ -128,6 +128,14 @@ struct PipelineID {
 	DepthStencilAccess depth_stencil_access = DepthStencilAccess::None;
 };
 
+enum struct ResourceAccessFlags : u8 {
+	None                 = 0,
+	IsTexture            = 1u << 0,
+	IsFullResourceAccess = 1u << 1,
+	IsErased             = 1u << 2,
+};
+ENUM_FLAGS_OPERATORS(ResourceAccessFlags);
+
 struct ResourceAccessDefinition {
 	ResourceAccessDefinition* last_access = nullptr;
 	VirtualResourceID resource_id = (VirtualResourceID)0;
@@ -135,8 +143,8 @@ struct ResourceAccessDefinition {
 	PipelineStagesMask stages_mask = PipelineStagesMask::None;
 	ResourceAccessMask access_mask = ResourceAccessMask::None;
 	
-	bool is_texture = false;
-	u8   plane_mask = 0;
+	ResourceAccessFlags flags = ResourceAccessFlags::None;
+	u8 plane_mask = 0;
 	
 	u8 mip_index = 0;
 	u8 mip_count = 0;
