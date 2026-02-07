@@ -101,8 +101,8 @@ Token Tokenizer::FindNextToken() {
 	case '&': return MakeToken(string, 1, TokenType::BitwiseAnd);
 	case '|': return MakeToken(string, 1, TokenType::BitwiseOr);
 	case '~': return MakeToken(string, 1, TokenType::BitwiseNot);
-	case '!': return MakeToken(string, 1, TokenType::LogicalNot);
-	case '=': return MakeToken(string, 1, TokenType::Assign);
+	case '!': return string[1] == '=' ? MakeToken(string, 2, TokenType::NotEquals) : MakeToken(string, 1, TokenType::LogicalNot);
+	case '=': return string[1] == '=' ? MakeToken(string, 2, TokenType::Equals)    : MakeToken(string, 1, TokenType::Assign);
 	case '(': return MakeToken(string, 1, TokenType::OpeningParen);
 	case ')': return MakeToken(string, 1, TokenType::ClosingParen);
 	case '{': return MakeToken(string, 1, TokenType::OpeningBrace);
@@ -141,6 +141,7 @@ Token Tokenizer::FindNextToken() {
 		} case 5: {
 			if (CheckKeyword(token, "union", 5, KeywordType::Union)) break;
 			if (CheckKeyword(token, "NOTES", 5, KeywordType::Notes)) break;
+			if (CheckKeyword(token, "const", 5, KeywordType::Const)) break;
 			break;
 		} case 6: {
 			if (CheckKeyword(token, "struct", 6, KeywordType::Struct)) break;
@@ -308,6 +309,8 @@ String token_type_names[] = {
 	"String"_sl,
 	"Arrow"_sl,
 	"QuestionMark"_sl,
+	"Equals"_sl,
+	"NotEquals"_sl,
 };
 static_assert(ArraySize(token_type_names) == (u32)TokenType::Count, "Mismatching token_type_name count.");
 
@@ -325,6 +328,7 @@ String keyword_type_names[] = {
 	"CompileConst"_sl,
 	"Operator"_sl,
 	"AlignAs"_sl,
+	"Const"_sl,
 };
 static_assert(ArraySize(keyword_type_names) == (u32)KeywordType::Count, "Mismatching keyword_type_names count.");
 

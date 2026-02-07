@@ -132,6 +132,7 @@ enum DXGI_FORMAT;
 extern ArrayView<DXGI_FORMAT> dxgi_texture_format_map;
 extern ArrayView<TextureFormatInfo> texture_format_info_map;
 
+NOTES()
 struct TextureSize {
 	enum struct Type : u8 {
 		Texture2D   = 0,

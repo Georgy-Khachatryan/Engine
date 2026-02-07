@@ -4,6 +4,7 @@
 #include "EntitySystem/EntitySystem.h"
 #include "EntitySystem/Components.h"
 #include "Renderer/MeshAsset.h"
+#include "Renderer/TextureAsset.h"
 #include "Renderer/RendererEntities.h"
 
 

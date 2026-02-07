@@ -158,17 +158,18 @@ static AstNodeCodeBlock* ParseTemplate(Tokenizer& tokenizer) {
 }
 
 static AstNodeStruct* ParseStruct(Tokenizer& tokenizer) {
-	tokenizer.ExpectKeyword(KeywordType::Struct);
+	tokenizer.FindNextToken();
 	
 	auto token = tokenizer.PeekNextToken();
 	if (token.keyword == KeywordType::AlignAs) {
 		tokenizer.FindNextToken();
 		SkipTokensWithNestingTracking(tokenizer, TokenType::OpeningParen, TokenType::ClosingParen);
+		token = tokenizer.PeekNextToken();
 	}
 	
-	auto name = tokenizer.ExpectToken(TokenType::Identifier);
-	ArrayAppend(tokenizer.namespace_stack, tokenizer.alloc, name.string);
-	defer{ ArrayPopLast(tokenizer.namespace_stack); };
+	auto name = token.type == TokenType::Identifier ? tokenizer.ExpectToken(TokenType::Identifier).string : ""_sl;
+	if (name.count != 0) ArrayAppend(tokenizer.namespace_stack, tokenizer.alloc, name);
+	defer{ if (name.count != 0) ArrayPopLast(tokenizer.namespace_stack); };
 	
 	token = tokenizer.PeekNextToken();
 	if (token.type == TokenType::Colon) {
@@ -185,7 +186,7 @@ static AstNodeStruct* ParseStruct(Tokenizer& tokenizer) {
 	tokenizer.ExpectToken(TokenType::OpeningBrace);
 	
 	token = tokenizer.PeekNextToken();
-	if (token.type == TokenType::Identifier && token.string == "RENDER_PASS_GENERATED_CODE"_sl) {
+	if (token.type == TokenType::Identifier && StringEndsWith(token.string, "_GENERATED_CODE"_sl)) {
 		tokenizer.ExpectToken(TokenType::Identifier);
 		tokenizer.ExpectToken(TokenType::OpeningParen);
 		tokenizer.ExpectToken(TokenType::ClosingParen);
@@ -208,8 +209,8 @@ static AstNodeStruct* ParseStruct(Tokenizer& tokenizer) {
 	tokenizer.ExpectToken(TokenType::ClosingBrace);
 	
 	auto* ast_node_struct = AstNew<AstNodeStruct>(tokenizer.alloc);
-	ast_node_struct->name            = name.string;
-	ast_node_struct->source_location = tokenizer.error_context.StringToSourceLocation(name.string);
+	ast_node_struct->name            = name;
+	ast_node_struct->source_location = tokenizer.error_context.StringToSourceLocation(name);
 	ast_node_struct->code_block      = code_block;
 	
 	return ast_node_struct;
@@ -315,16 +316,21 @@ static AstNodeDeclaration* ParseDeclaration(Tokenizer& tokenizer) {
 	auto* declaration = AstNew<AstNodeDeclaration>(tokenizer.alloc);
 	declaration->notes = notes;
 	
-	if (token.keyword == KeywordType::Struct) {
+	if (token.keyword == KeywordType::Struct || token.keyword == KeywordType::Union) {
 		auto* ast_node_struct = ParseStruct(tokenizer);
-		ast_node_struct->template_code_block = template_code_block;
-		
 		tokenizer.ExpectToken(TokenType::Semicolon);
 		
-		declaration->name             = ast_node_struct->name;
-		declaration->source_location  = ast_node_struct->source_location;
-		declaration->type_declaration = ast_node_struct;
-		declaration->declaration_type = AstNodeDeclarationType::Typename;
+		if (token.keyword == KeywordType::Struct) {
+			ast_node_struct->template_code_block = template_code_block;
+			
+			declaration->name             = ast_node_struct->name;
+			declaration->source_location  = ast_node_struct->source_location;
+			declaration->type_declaration = ast_node_struct;
+			declaration->declaration_type = AstNodeDeclarationType::Typename;
+		} else if (token.keyword == KeywordType::Union) {
+			// Replace union declaration with it's last field declaration, assuming it's representative of the whole union for the purposes of reflection.
+			declaration = ArrayLastElement(ast_node_struct->code_block->declarations);
+		}
 	} else if (token.keyword == KeywordType::Enum) {
 		auto* ast_node_enum = ParseEnum(tokenizer);
 		tokenizer.ExpectToken(TokenType::Semicolon);
@@ -378,11 +384,38 @@ static AstNodeDeclaration* ParseDeclaration(Tokenizer& tokenizer) {
 		token = tokenizer.PeekNextToken();
 		if (token.type == TokenType::Assign) { // Skip variable initialization.
 			SkipTokens(tokenizer, TokenType::Assign, TokenType::Semicolon);
+		} else if (token.type == TokenType::Colon) { // Skip bit field definition.
+			SkipTokens(tokenizer, TokenType::Colon, TokenType::Semicolon);
 		} else if (token.type == TokenType::OpeningParen) { // Skip function.
 			declaration = nullptr;
 			SkipTokensWithNestingTracking(tokenizer, TokenType::OpeningParen, TokenType::ClosingParen);
 			
 			token = tokenizer.PeekNextToken();
+			if (token.type == TokenType::Colon) { // Skip constructor initializer list.
+				tokenizer.FindNextToken();
+				
+				token = tokenizer.PeekNextToken();
+				while (token.type != TokenType::None && token.type != TokenType::OpeningBrace) {
+					tokenizer.ExpectToken(TokenType::Identifier);
+					SkipTokensWithNestingTracking(tokenizer, TokenType::OpeningParen, TokenType::ClosingParen);
+					
+					token = tokenizer.PeekNextToken();
+					if (token.type == TokenType::Comma) {
+						tokenizer.FindNextToken();
+						token = tokenizer.PeekNextToken();
+					}
+				}
+				
+				token = tokenizer.PeekNextToken();
+			} else if (token.type == TokenType::Assign) { // Skip '= default'.
+				tokenizer.ExpectToken(TokenType::Assign);
+				tokenizer.ExpectToken(TokenType::Identifier);
+				token = tokenizer.PeekNextToken();
+			} else if (token.keyword == KeywordType::Const) { // Skip trailing 'const'.
+				tokenizer.ExpectKeyword(KeywordType::Const);
+				token = tokenizer.PeekNextToken();
+			}
+			
 			if (token.type == TokenType::OpeningBrace) {
 				SkipTokensWithNestingTracking(tokenizer, TokenType::OpeningBrace, TokenType::ClosingBrace);
 			} else {

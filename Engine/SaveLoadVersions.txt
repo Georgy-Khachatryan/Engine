@@ -1,5 +1,23 @@
 // Generated SaveLoad Version History:
 
+struct TextureRuntimeDataLayout {
+	/*Version*/ 0 {
+		file_guid u64 0;
+		version u64 0;
+	}
+	/*Version*/ 1 {
+		file_guid u64 0;
+		version u64 0;
+		size TextureSize 0;
+	}
+}
+
+struct TextureSourceData {
+	/*Version*/ 0 {
+		filepath String 0;
+	}
+}
+
 struct CameraComponent {
 	/*Version*/ 4 {
 		vertical_fov_degrees float32 0;
@@ -56,6 +74,12 @@ struct ScaleComponent {
 struct MeshSourceData {
 	/*Version*/ 0 {
 		filepath String 0;
+	}
+}
+
+struct TextureSize {
+	/*Version*/ 0 {
+		packed u64 0;
 	}
 }
 

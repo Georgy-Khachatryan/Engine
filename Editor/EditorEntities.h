@@ -24,4 +24,8 @@ struct AssetEditorQuery {
 	MeshSourceData* mesh_source_data = nullptr;
 	MeshRuntimeDataLayout* mesh_runtime_data_layout = nullptr;
 	MeshRuntimeAllocation* mesh_runtime_allocation  = nullptr;
+	
+	TextureSourceData* texture_source_data = nullptr;
+	TextureRuntimeDataLayout* texture_runtime_data_layout = nullptr;
+	TextureDescriptorAllocation* texture_descriptor_allocation = nullptr;
 };

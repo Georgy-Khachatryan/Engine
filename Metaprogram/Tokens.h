@@ -36,6 +36,8 @@ enum struct TokenType : u32 {
 	String         = 29, // '"hello"'
 	Arrow          = 30, // '->'
 	QuestionMark   = 31, // '?'
+	Equals         = 32, // '=='
+	NotEquals      = 33, // '!='
 	
 	Count
 };
@@ -55,6 +57,7 @@ enum struct KeywordType : u32 {
 	CompileConst = 10,
 	Operator     = 11,
 	AlignAs      = 12,
+	Const        = 13,
 	
 	Count
 };

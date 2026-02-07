@@ -1,8 +1,9 @@
 #include "Basic/Basic.h"
 #include "Basic/BasicBitArray.h"
 #include "EntitySystem/EntitySystem.h"
-#include "GraphicsApi/AsyncTransferQueue.h"
+#include "GraphicsApi/RecordContext.h"
 #include "MeshAsset.h"
+#include "TextureAsset.h"
 #include "Renderer.h"
 #include "RendererEntities.h"
 #include "RenderPasses.h"
@@ -34,5 +35,20 @@ void UpdateRendererEntityGpuComponents(StackAllocator* alloc, RecordContext* rec
 			AppendGpuTransferCommand(gpu_mesh_asset_data, i, mesh_asset);
 		}
 		ArrayAppend(gpu_uploads, alloc, gpu_mesh_asset_data);
+	}
+	
+	auto* graphics_context = record_context->context;
+	for (auto* entity_array : QueryEntities<TextureAssetType>(alloc, asset_system)) {
+		ProfilerScope("MeshAssetTypeGpuComponentUpdate");
+		
+		auto streams = ExtractComponentStreams<TextureAssetType>(entity_array);
+		for (u64 i : BitArrayIt(entity_array->created_mask)) {
+			streams.descriptor_allocation[i].index = AllocatePersistentSrvDescriptor(graphics_context);
+		}
+		
+		for (u64 i : BitArrayIt(entity_array->removed_mask)) {
+			u32 index = streams.descriptor_allocation[i].index;
+			if (index != u32_max) DeallocatePersistentSrvDescriptor(graphics_context, index);
+		}
 	}
 }

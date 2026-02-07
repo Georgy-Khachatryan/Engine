@@ -115,6 +115,7 @@
     <ClInclude Include="Renderer/Renderer.h" />
     <ClInclude Include="Renderer/RendererEntities.h" />
     <ClInclude Include="Renderer/RenderPasses.h" />
+    <ClInclude Include="Renderer/TextureAsset.h" />
   </ItemGroup>
   
   <Target Name="PreBuild" AfterTargets="PreBuildEvent">

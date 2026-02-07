@@ -510,6 +510,7 @@ static void AssetBrowser(StackAllocator* alloc, AssetEntitySystem& asset_system,
 	if (ImGui::BeginCombo("##CreateAsset", "Create Asset")) {
 		EntityTypeID entity_type_ids[] = {
 			ECS::GetEntityTypeID<MeshAssetType>::id,
+			ECS::GetEntityTypeID<TextureAssetType>::id,
 		};
 		
 		for (auto entity_type_id : entity_type_ids) {
@@ -626,6 +627,7 @@ static void AssetBrowserEntityView(StackAllocator* alloc, AssetEntitySystem& ass
 		ImGui::TableInputText("Name", name, &asset_system.heap);
 	}
 	
+	
 	if (entity.mesh_source_data) {
 		ImGui::TableInputText("Mesh Source Data", entity.mesh_source_data->filepath, &asset_system.heap);
 	}
@@ -658,6 +660,34 @@ static void AssetBrowserEntityView(StackAllocator* alloc, AssetEntitySystem& ass
 			}
 			ImGui::EndTableItem();
 		}
+	}
+	
+	
+	if (entity.texture_source_data) {
+		ImGui::TableInputText("Texture Source Data", entity.texture_source_data->filepath, &asset_system.heap);
+	}
+	
+	if (entity.texture_runtime_data_layout) {
+		auto guid_string = StringFormat(alloc, "0x%"_sl, (void*)entity.texture_runtime_data_layout->file_guid);
+		ImGui::TableInputText("File GUID", guid_string, nullptr);
+		
+		if (ImGui::BeginTableItem("File Version")) {
+			ImGui::Text("%llu", entity.texture_runtime_data_layout->version);
+			ImGui::EndTableItem();
+		}
+		
+		if (ImGui::BeginTableItem("Texture Size")) {
+			auto size = entity.texture_runtime_data_layout->size;
+			ImGui::Text("Size: %ux%ux%u, ArraySize: %u, MipCount: %u", size.x, size.y, size.DepthSliceCount(), size.ArraySliceCount(), size.mips);
+			ImGui::EndTableItem();
+		}
+	}
+	
+	if (entity.texture_descriptor_allocation) {
+		auto descriptor_index_string = StringFormat(alloc, "%"_sl, entity.texture_descriptor_allocation->index);
+		ImGui::TableInputText("Descriptor Index", descriptor_index_string, nullptr);
+		
+		ImGui::ImageButtonEx("Texture", entity.texture_descriptor_allocation->index, ImVec2(128.f, 128.f));
 	}
 }
 
