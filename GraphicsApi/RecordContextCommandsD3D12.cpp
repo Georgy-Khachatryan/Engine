@@ -349,7 +349,7 @@ static void CmdDispatchXessD3D12(CmdDispatchXessPacket* packet, ID3D12GraphicsCo
 		init_params.outputResolution.x = src_size.x;
 		init_params.outputResolution.y = src_size.y;
 		init_params.qualitySetting     = XESS_QUALITY_SETTING_AA;
-		init_params.initFlags          = XESS_INIT_FLAG_INVERTED_DEPTH | XESS_INIT_FLAG_USE_NDC_VELOCITY | XESS_INIT_FLAG_ENABLE_AUTOEXPOSURE;
+		init_params.initFlags          = XESS_INIT_FLAG_INVERTED_DEPTH | XESS_INIT_FLAG_USE_NDC_VELOCITY | XESS_INIT_FLAG_ENABLE_AUTOEXPOSURE | XESS_INIT_FLAG_EXTERNAL_DESCRIPTOR_HEAP;
 		result = xessD3D12Init(xess_context, &init_params);
 		DebugAssert(result == XESS_RESULT_SUCCESS, "xessD3D12Init failed.");
 		
@@ -358,7 +358,13 @@ static void CmdDispatchXessD3D12(CmdDispatchXessPacket* packet, ID3D12GraphicsCo
 		DebugAssert(result == XESS_RESULT_SUCCESS, "xessSetVelocityScale failed.");
 	}
 	
-	// TODO: Support for external descriptor heap.
+	auto xess_context = (xess_context_handle_t)xess_handle_resource.opaque.user_data_0;
+	auto xess_output_resolution = xess_2d_t{ result_resource.texture.size.x, result_resource.texture.size.y };
+	
+	xess_properties_t xess_properties = {};
+	auto result = xessGetProperties(xess_context, &xess_output_resolution, &xess_properties);
+	DebugAssert(result == XESS_RESULT_SUCCESS, "xessGetProperties failed.");
+	
 	xess_d3d12_execute_params_t execute_params = {};
 	execute_params.pColorTexture    = radiance_resource.texture.resource.d3d12;
 	execute_params.pVelocityTexture = motion_vector_resource.texture.resource.d3d12;
@@ -369,9 +375,10 @@ static void CmdDispatchXessD3D12(CmdDispatchXessPacket* packet, ID3D12GraphicsCo
 	execute_params.inputWidth       = src_size.x;
 	execute_params.inputHeight      = src_size.y;
 	execute_params.exposureScale    = 1.f;
+	execute_params.pDescriptorHeap  = context->descriptor_heaps[(u32)DescriptorHeapType::SRV];
+	execute_params.descriptorHeapOffset = AllocateTransientSrvDescriptorTable(context, xess_properties.requiredDescriptorCount) * context->descriptor_sizes[(u32)DescriptorHeapType::SRV];
 	
-	auto xess_context = (xess_context_handle_t)xess_handle_resource.opaque.user_data_0;
-	auto result = xessD3D12Execute(xess_context, command_list, &execute_params);
+	result = xessD3D12Execute(xess_context, command_list, &execute_params);
 	DebugAssert(result == XESS_RESULT_SUCCESS, "xessD3D12Execute failed.");
 	
 	command_list->SetDescriptorHeaps(1, &context->descriptor_heaps[(u32)DescriptorHeapType::SRV]);
