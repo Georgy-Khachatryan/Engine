@@ -636,7 +636,7 @@ NativeTextureResource CreateTextureResource(GraphicsContext* api_context, Textur
 	resource_desc.Format           = dxgi_texture_format_map[(u32)size.format];
 	resource_desc.SampleDesc       = { 1, 0 };
 	resource_desc.Layout           = D3D12_TEXTURE_LAYOUT_UNKNOWN;
-	resource_desc.Flags            = (is_depth_stencil ? D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL : D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS | D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
+	resource_desc.Flags            = (is_depth_stencil ? D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL : (size.format == TextureFormat::BC1_UNORM || size.format == TextureFormat::BC1_UNORM_SRGB || size.format == TextureFormat::BC4_UNORM || size.format == TextureFormat::BC5_UNORM ? D3D12_RESOURCE_FLAG_NONE : D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS | D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET)); // TODO: Explicitelly pass required access flags.
 	resource_desc.SamplerFeedbackMipRegion = { 0, 0, 0 };
 	
 	D3D12_CLEAR_VALUE clear_value = {};

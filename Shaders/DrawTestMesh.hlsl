@@ -91,7 +91,7 @@ OutputPS MainPS(InputPS input, InputPrimitivePS primitive_input, float3 bary : S
 		GpuMaterialTextureData material = material_texture_data[primitive_input.material_index];
 		if (material.albedo != u32_max) {
 			Texture2D<float3> texture = ResourceDescriptorHeap[material.albedo];
-			meshlet_color = texture.Sample(sampler_linear_clamp, input.texcoord);
+			meshlet_color = texture.Sample(sampler_linear_wrap, input.texcoord);
 			wireframe = 1.0;
 		}
 	}

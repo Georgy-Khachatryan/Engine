@@ -22,6 +22,10 @@ struct TextureSourceData {
 	/*Version*/ 0 {
 		filepath String 0;
 	}
+	/*Version*/ 2 {
+		filepath String 0;
+		target_encoding TextureAssetTargetEncoding 1;
+	}
 }
 
 struct CameraComponent {
@@ -93,6 +97,16 @@ struct AabbComponent {
 	/*Version*/ 0 {
 		min float3 0;
 		max float3 0;
+	}
+}
+
+enum TextureAssetTargetEncoding {
+	/*Version*/ 1 u32 {
+		BC1_UNORM_SRGB 0;
+		BC1_UNORM 1;
+		BC4_UNORM 2;
+		BC5_UNORM 3;
+		Count 4;
 	}
 }
 

@@ -8,8 +8,20 @@
 
 
 NOTES()
+enum struct TextureAssetTargetEncoding : u32 {
+	BC1_UNORM_SRGB = 0,
+	BC1_UNORM      = 1,
+	BC4_UNORM      = 2,
+	BC5_UNORM      = 3,
+	// TODO: BC6H, BC7
+	Count
+};
+
+NOTES()
 struct TextureSourceData {
 	String filepath;
+	
+	TextureAssetTargetEncoding target_encoding = TextureAssetTargetEncoding::BC1_UNORM_SRGB;
 };
 
 NOTES()

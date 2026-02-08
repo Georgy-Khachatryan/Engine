@@ -670,6 +670,18 @@ static void AssetBrowserEntityView(StackAllocator* alloc, AssetEntitySystem& ass
 	
 	if (entity.texture_source_data) {
 		ImGui::TableInputText("Texture Source Data", entity.texture_source_data->filepath, &asset_system.heap);
+		
+		compile_const char* texture_asset_target_encoding_names[(u32)TextureAssetTargetEncoding::Count] = {
+			"BC1_UNORM_SRGB",
+			"BC1_UNORM",
+			"BC4_UNORM",
+			"BC5_UNORM",
+		};
+		
+		if (ImGui::BeginTableItem("Encoding Format")) {
+			ImGui::Combo("", (s32*)&entity.texture_source_data->target_encoding, texture_asset_target_encoding_names, (s32)TextureAssetTargetEncoding::Count);
+			ImGui::EndTableItem();
+		}
 	}
 	
 	if (entity.texture_runtime_data_layout) {

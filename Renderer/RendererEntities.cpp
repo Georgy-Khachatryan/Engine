@@ -39,8 +39,8 @@ void UpdateRendererEntityGpuComponents(StackAllocator* alloc, AsyncTransferQueue
 		ArrayAppend(gpu_uploads, alloc, gpu_mesh_asset_data);
 	}
 	
-	extern TextureImportResult ImportTextureFile(StackAllocator* alloc, String filepath, u64 runtime_data_guid);
 	
+	extern TextureImportResult ImportTextureFile(StackAllocator* alloc, const TextureSourceData& source_data, u64 runtime_data_guid);
 	
 	u64 completed_file_read_index = CompletedGpuAsyncTransferIndex(async_transfer_queue);
 	auto* graphics_context = record_context->context;
@@ -71,7 +71,7 @@ void UpdateRendererEntityGpuComponents(StackAllocator* alloc, AsyncTransferQueue
 					resource_allocation = {};
 				}
 				
-				auto result = ImportTextureFile(alloc, streams.source_data[i].filepath, layout.file_guid);
+				auto result = ImportTextureFile(alloc, streams.source_data[i], layout.file_guid);
 				if (result.success) {
 					layout = result.layout;
 				}
@@ -86,20 +86,22 @@ void UpdateRendererEntityGpuComponents(StackAllocator* alloc, AsyncTransferQueue
 			auto resource = CreateTextureResource(graphics_context, layout.size);
 			resource_allocation.resource = resource;
 			
+			auto format = texture_format_info_map[(u32)layout.size.format];
+			
 			u64 offset = 0;
 			u64 file_read_wait_index = 0;
 			for (u32 mip_index = 0; mip_index < (u32)layout.size.mips; mip_index += 1) {
-				u32 mip_size_x = Math::Max((u32)layout.size.x >> mip_index, 1u);
-				u32 mip_size_y = Math::Max((u32)layout.size.y >> mip_index, 1u);
+				auto mip_size = Math::Max(uint2(layout.size) >> mip_index, uint2(1u));
+				auto mip_size_blocks = (mip_size + (uint2(1u) << format.block_size_log2) - 1) >> format.block_size_log2;
 				
 				AsyncTransferCommand command;
 				command.src_type = AsyncTransferSrcType::File;
 				command.dst_type = AsyncTransferDstType::Texture;
 				command.src.file.handle      = runtime_file.file;
 				command.src.file.offset      = offset;
-				command.src.file.size        = AlignUp(mip_size_x * 4, texture_row_pitch_alignment) * mip_size_y;
+				command.src.file.size        = AlignUp(mip_size_blocks.x * format.block_size_bytes, texture_row_pitch_alignment) * mip_size_blocks.y;
 				command.dst.texture.resource = resource;
-				command.dst.texture.size     = TextureSize(layout.size.format, mip_size_x, mip_size_y);
+				command.dst.texture.size     = TextureSize(layout.size.format, mip_size);
 				command.dst.texture.offset   = 0;
 				command.dst.texture.subresource_index = mip_index;
 				file_read_wait_index = AppendAsyncTransferCommand(async_transfer_queue, command);

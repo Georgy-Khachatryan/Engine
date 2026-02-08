@@ -78,6 +78,7 @@ SOFTWARE.
 https://github.com/nothings/stb
 ### stb_image
 ### stb_image_resize2
+### stb_dxt
 
 Public Domain (www.unlicense.org)
 
