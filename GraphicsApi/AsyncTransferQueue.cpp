@@ -68,7 +68,8 @@ struct AsyncTransferQueue {
 	u64 file_read_write_offset  = 0;
 	u64 file_wait_write_offset  = 0;
 	
-	Array<AsyncCopyBufferToBufferCommand> copy_buffer_to_buffer_commands;
+	Array<AsyncCopyBufferToBufferCommand>  copy_buffer_to_buffer_commands;
+	Array<AsyncCopyBufferToTextureCommand> copy_buffer_to_texture_commands;
 	
 	UploadRingBuffer upload_ring_buffer;
 	
@@ -87,7 +88,8 @@ AsyncTransferQueue* CreateAsyncTransferQueue(StackAllocator* alloc, GraphicsCont
 	queue->user_command_ring.write_offset = 1;
 	queue->user_command_ring.read_offset  = 1;
 	
-	ArrayReserve(queue->copy_buffer_to_buffer_commands, alloc, max_async_transfer_command_count);
+	ArrayReserve(queue->copy_buffer_to_buffer_commands,  alloc, max_async_transfer_command_count);
+	ArrayReserve(queue->copy_buffer_to_texture_commands, alloc, max_async_transfer_command_count);
 	
 	u8* upload_buffer_cpu_address = nullptr;
 	queue->upload_ring_buffer.resource = CreateBufferResource(graphics_context, async_upload_buffer_capacity, GpuMemoryAccessType::Upload, &upload_buffer_cpu_address);
@@ -106,11 +108,23 @@ void ReleaseAsyncTransferQueue(AsyncTransferQueue* queue) {
 
 static u64 ComputeTransferCommandSize(const AsyncTransferCommand& command) {
 	u64 command_size = 0;
-	switch (command.src_type) {
-	case AsyncTransferSrcType::File:   command_size = command.src.file.size;   break;
-	case AsyncTransferSrcType::Memory: command_size = command.src.memory.size; break;
+	if (command.src_type == AsyncTransferSrcType::File) {
+		command_size = command.src.file.size;
+	} else if (command.src_type == AsyncTransferSrcType::Memory) {
+		command_size = command.src.memory.size;
 	}
 	return command_size;
+}
+
+static u64 ComputeTransferSubCommandMaxSize(const AsyncTransferCommand& command) {
+	u64 max_sub_command_size = 0;
+	if (command.dst_type == AsyncTransferDstType::Buffer) {
+		max_sub_command_size = max_upload_buffer_allocation_size;
+	} else if (command.dst_type == AsyncTransferDstType::Texture) {
+		u64 row_pitch = AlignUp((u32)command.dst.texture.size.x * 4, texture_row_pitch_alignment);
+		max_sub_command_size = RoundDown(max_upload_buffer_allocation_size, row_pitch);
+	}
+	return max_sub_command_size;
 }
 
 static void SplitAsyncTransferCommands(AsyncTransferQueue* queue) {
@@ -126,8 +140,9 @@ static void SplitAsyncTransferCommands(AsyncTransferQueue* queue) {
 		auto& command = user_command_ring[i];
 		
 		u64 command_size = ComputeTransferCommandSize(command);
+		u64 max_sub_command_size = ComputeTransferSubCommandMaxSize(command);
 		
-		u64 allocation_command_count = DivideAndRoundUp(command_size, max_upload_buffer_allocation_size);
+		u64 allocation_command_count = DivideAndRoundUp(command_size, max_sub_command_size);
 		u64 write_offset = RingBufferTryAppendMultiple(command_ring, allocation_command_count);
 		if (write_offset == u64_max) break; // Stop on ring buffer overflow.
 		
@@ -135,30 +150,26 @@ static void SplitAsyncTransferCommands(AsyncTransferQueue* queue) {
 		
 		u64 base_gpu_submit_wait_index = (i * sub_command_max_count) + (sub_command_max_count - allocation_command_count);
 		for (u64 allocation_index = 0; allocation_index < allocation_command_count; allocation_index += 1) {
-			auto allocation_command = AsyncTransferExecutionState{ command };
+			AsyncTransferExecutionState allocation_command;
+			memcpy(&allocation_command, &command, sizeof(command));
 			
-			u64 sub_command_offset = allocation_index * max_upload_buffer_allocation_size;
-			u64 sub_command_size   = Math::Min(command_size - sub_command_offset, max_upload_buffer_allocation_size);
+			u64 sub_command_offset = allocation_index * max_sub_command_size;
+			u64 sub_command_size   = Math::Min(command_size - sub_command_offset, max_sub_command_size);
 			
 			// Offset src data:
-			switch (allocation_command.src_type) {
-			case AsyncTransferSrcType::File: {
+			if (allocation_command.src_type == AsyncTransferSrcType::File) {
 				allocation_command.src.file.offset += sub_command_offset;
 				allocation_command.src.file.size = sub_command_size;
-				break;
-			} case AsyncTransferSrcType::Memory: {
+			} else if (allocation_command.src_type == AsyncTransferSrcType::Memory) {
 				allocation_command.src.memory.address += sub_command_offset;
 				allocation_command.src.memory.size = sub_command_size;
-				break;
-			}
 			}
 			
 			// Offset dst data:
-			switch (allocation_command.dst_type) {
-			case AsyncTransferDstType::Buffer: {
+			if (allocation_command.dst_type == AsyncTransferDstType::Buffer) {
 				allocation_command.dst.buffer.offset += sub_command_offset;
-				break;
-			}
+			} else if (allocation_command.dst_type == AsyncTransferDstType::Texture) {
+				allocation_command.dst.texture.offset += sub_command_offset;
 			}
 			
 			allocation_command.gpu_submit_wait_index = base_gpu_submit_wait_index + allocation_index;
@@ -194,7 +205,7 @@ void UpdateAsyncTransferQueue(AsyncTransferQueue* queue) {
 			u64 command_size = ComputeTransferCommandSize(command);
 			DebugAssert(command_size <= max_upload_buffer_allocation_size, "Source size is too large. (%/%).", command_size, max_upload_buffer_allocation_size);
 			
-			u64 aligned_command_size = AlignUp(command_size, 4096);
+			u64 aligned_command_size = AlignUp(command_size, (u64)async_file_read_alignment);
 			
 			u64 offset_0 = upload_ring_buffer.write_offset;
 			u64 offset_1 = offset_0 + aligned_command_size;
@@ -226,7 +237,7 @@ void UpdateAsyncTransferQueue(AsyncTransferQueue* queue) {
 			auto& command = command_ring[i];
 			
 			if (command.src_type == AsyncTransferSrcType::File) {
-				u64 wait_index = CmdSystemReadFile(file_io_queue, command.src.file.handle, command.upload_buffer_offset, command.src.file.size, command.src.file.offset);
+				u64 wait_index = CmdSystemReadFile(file_io_queue, command.src.file.handle, command.upload_buffer_offset, AlignUp(command.src.file.size, (u64)async_file_read_alignment), command.src.file.offset);
 				if (wait_index == u64_max) break;
 				
 				command.file_io_submit_wait_index = wait_index;
@@ -249,7 +260,8 @@ void UpdateAsyncTransferQueue(AsyncTransferQueue* queue) {
 	
 	// Issue GPU copy commands:
 	{
-		auto copy_buffer_to_buffer_commands = queue->copy_buffer_to_buffer_commands;
+		auto copy_buffer_to_buffer_commands  = queue->copy_buffer_to_buffer_commands;
+		auto copy_buffer_to_texture_commands = queue->copy_buffer_to_texture_commands;
 		
 		u64 last_gpu_submit_wait_index = 0;
 		for (u64 i = file_wait_write_offset; i < file_read_write_offset; i += 1) {
@@ -262,13 +274,35 @@ void UpdateAsyncTransferQueue(AsyncTransferQueue* queue) {
 				DebugAssert(io_status == IoOperationStatus::Succeeded, "Async file read failed.");
 			}
 			
-			AsyncCopyBufferToBufferCommand copy_command;
-			copy_command.src_resource = upload_ring_buffer.resource;
-			copy_command.dst_resource = command.dst.buffer.resource;
-			copy_command.src_offset   = command.upload_buffer_offset;
-			copy_command.dst_offset   = command.dst.buffer.offset;
-			copy_command.size         = ComputeTransferCommandSize(command);
-			ArrayAppend(copy_buffer_to_buffer_commands, copy_command);
+			if (command.dst_type == AsyncTransferDstType::Buffer) {
+				AsyncCopyBufferToBufferCommand copy_command;
+				copy_command.src_resource = upload_ring_buffer.resource;
+				copy_command.dst_resource = command.dst.buffer.resource;
+				copy_command.src_offset   = command.upload_buffer_offset;
+				copy_command.dst_offset   = command.dst.buffer.offset;
+				copy_command.size         = ComputeTransferCommandSize(command);
+				ArrayAppend(copy_buffer_to_buffer_commands, copy_command);
+			} else if (command.dst_type == AsyncTransferDstType::Texture) {
+				DebugAssert(command.dst.texture.size.type == TextureSize::Type::Texture2D, "TODO: Implement support texture types other than Texture2D.");
+				
+				u64 size   = ComputeTransferCommandSize(command);
+				u64 offset = command.dst.texture.offset;
+				
+				u32 row_pitch = AlignUp((u32)command.dst.texture.size.x * 4, texture_row_pitch_alignment);
+				DebugAssert(size   % row_pitch == 0, "Texture transfer command size is not aligned to row pitch. (%/%).", size, row_pitch);
+				DebugAssert(offset % row_pitch == 0, "Texture transfer command offset is not aligned to row pitch. (%/%).", offset, row_pitch);
+				
+				AsyncCopyBufferToTextureCommand copy_command;
+				copy_command.src_resource          = upload_ring_buffer.resource;
+				copy_command.dst_resource          = command.dst.texture.resource;
+				copy_command.format                = command.dst.texture.size.format;
+				copy_command.src_row_pitch         = row_pitch;
+				copy_command.src_size              = uint3(command.dst.texture.size.x, (u32)Math::Min(size / row_pitch, (u64)command.dst.texture.size.y), 1u);
+				copy_command.src_offset            = command.upload_buffer_offset;
+				copy_command.dst_subresource_index = command.dst.texture.subresource_index;
+				copy_command.dst_offset            = uint3(0, (u32)(offset / row_pitch), 0);
+				ArrayAppend(copy_buffer_to_texture_commands, copy_command);
+			}
 			
 			last_gpu_submit_wait_index = command.gpu_submit_wait_index;
 			
@@ -276,8 +310,8 @@ void UpdateAsyncTransferQueue(AsyncTransferQueue* queue) {
 		}
 		queue->file_wait_write_offset = file_wait_write_offset;
 		
-		if (copy_buffer_to_buffer_commands.count) {
-			SubmitAsyncCopyCommands(queue->graphics_context, copy_buffer_to_buffer_commands, last_gpu_submit_wait_index);
+		if (copy_buffer_to_buffer_commands.count != 0 || copy_buffer_to_texture_commands.count != 0) {
+			SubmitAsyncCopyCommands(queue->graphics_context, copy_buffer_to_buffer_commands, copy_buffer_to_texture_commands, last_gpu_submit_wait_index);
 		}
 	}
 	

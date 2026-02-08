@@ -8,7 +8,6 @@ static void BuildResourceTable(RecordContext* record_context, WorldEntitySystem*
 	using ID = VirtualResourceID;
 	auto& table = *record_context->resource_table;
 	
-	table.virtual_resources.count = (u64)ID::Count;
 	table.Set(ID::TransmittanceLut,      TextureSize(TextureFormat::R16G16B16A16_FLOAT, AtmosphereParameters::transmittance_lut_size));
 	table.Set(ID::MultipleScatteringLut, TextureSize(TextureFormat::R16G16B16A16_FLOAT, AtmosphereParameters::multiple_scattering_lut_size));
 	table.Set(ID::SkyPanoramaLut,        TextureSize(TextureFormat::R16G16B16A16_FLOAT, AtmosphereParameters::sky_panorama_lut_size));

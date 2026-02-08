@@ -30,8 +30,17 @@ struct AsyncTransferDstBuffer {
 	u64 offset = 0;
 };
 
+struct AsyncTransferDstTexture {
+	NativeTextureResource resource;
+	TextureSize size; // Size of the texture subresource.
+	
+	u64 offset = 0;
+	u32 subresource_index = 0;
+};
+
 enum struct AsyncTransferDstType : u32 {
-	Buffer = 0,
+	Buffer  = 0,
+	Texture = 1,
 };
 
 
@@ -46,6 +55,7 @@ struct AsyncTransferCommand {
 	
 	union {
 		AsyncTransferDstBuffer buffer = {};
+		AsyncTransferDstTexture texture;
 	} dst;
 };
 

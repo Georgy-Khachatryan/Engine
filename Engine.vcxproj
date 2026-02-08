@@ -76,6 +76,7 @@
     <ClCompile Include="Renderer/Renderer.cpp" />
     <ClCompile Include="Renderer/RendererEntities.cpp" />
     <ClCompile Include="Renderer/RenderPasses.cpp" />
+    <ClCompile Include="Renderer/TextureAssetImporter.cpp" />
     
     <!-- Generated code. -->
     <ClCompile Include="Engine/Generated/EntitySystemMetadata.cpp" />

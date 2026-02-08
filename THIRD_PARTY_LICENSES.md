@@ -74,6 +74,14 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 
+## STB libraries
+https://github.com/nothings/stb
+### stb_image
+### stb_image_resize2
+
+Public Domain (www.unlicense.org)
+
+
 ## MeshDecimationTools
 https://github.com/Georgy-Khachatryan/MeshDecimationTools
 

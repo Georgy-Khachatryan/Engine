@@ -22,6 +22,11 @@ struct TextureRuntimeDataLayout {
 	TextureSize size;
 };
 
+struct TextureImportResult {
+	TextureRuntimeDataLayout layout;
+	bool success = false;
+};
+
 NOTES(Meta::NoSaveLoad{})
 struct TextureRuntimeFile {
 	FileHandle file;
@@ -35,6 +40,7 @@ struct TextureDescriptorAllocation {
 NOTES(Meta::NoSaveLoad{})
 struct TextureRuntimeAllocation {
 	NativeTextureResource resource;
+	u64 file_read_wait_index = 0;
 };
 
 NOTES()
@@ -51,4 +57,5 @@ struct TextureAssetType {
 	ECS::Component<TextureRuntimeDataLayout> runtime_data_layout;
 	ECS::Component<TextureRuntimeFile>       runtime_file;
 	ECS::Component<TextureDescriptorAllocation> descriptor_allocation;
+	ECS::Component<TextureRuntimeAllocation>    resource_allocation;
 };

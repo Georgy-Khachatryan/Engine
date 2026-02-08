@@ -25,7 +25,7 @@ static void ImGuiUpdateTextures(RecordContext* record_context, ImVector<ImTextur
 			auto upload_size   = (texture->Status == ImTextureStatus_WantCreate) ? uint2(size) : uint2(texture->UpdateRect.w, texture->UpdateRect.h);
 			
 			u32 upload_pitch_src = upload_size.x * texture->BytesPerPixel;
-			u32 upload_pitch_dst = AlignUp(upload_pitch_src, 256u);
+			u32 upload_pitch_dst = AlignUp(upload_pitch_src, texture_row_pitch_alignment);
 			
 			auto [gpu_address, cpu_address] = AllocateTransientUploadBuffer(record_context, upload_pitch_dst * upload_size.y);
 			

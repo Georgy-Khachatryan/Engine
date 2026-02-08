@@ -30,6 +30,8 @@ inline u64 AlignUp(u64 size, u64 alignment) { DebugAssert(IsPowerOfTwo(alignment
 inline u32 AlignUp(u32 size, u32 alignment) { DebugAssert(IsPowerOfTwo32(alignment), "Invalid alignment '0x%x'. Alignment must be a power of 2.", alignment); return (size + alignment - 1) & ~(alignment - 1); }
 inline u64 RoundUp(u64 size, u64 alignment) { return ((size + alignment - 1) / alignment) * alignment; }
 inline u32 RoundUp(u32 size, u32 alignment) { return ((size + alignment - 1) / alignment) * alignment; }
+inline u64 RoundDown(u64 size, u64 alignment) { return (size / alignment) * alignment; }
+inline u32 RoundDown(u32 size, u32 alignment) { return (size / alignment) * alignment; }
 
 template<typename T, T(FirstBitLowT)(T)>
 struct BitScanLowT {

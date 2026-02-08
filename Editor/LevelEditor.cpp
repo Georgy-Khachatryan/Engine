@@ -652,7 +652,7 @@ static void AssetBrowserEntityView(StackAllocator* alloc, AssetEntitySystem& ass
 		}
 	}
 	
-	if (entity.mesh_source_data) {
+	if (entity.mesh_runtime_data_layout) {
 		if (ImGui::BeginTableItem("Reload From Source")) {
 			if (ImGui::Button("Reload", ImVec2(ImGui::GetContentRegionAvail().x, 0.f))) {
 				BitArraySetBit(array->created_mask, typed_entity_id.entity_id.index);
@@ -676,9 +676,23 @@ static void AssetBrowserEntityView(StackAllocator* alloc, AssetEntitySystem& ass
 			ImGui::EndTableItem();
 		}
 		
+		auto size = entity.texture_runtime_data_layout->size;
 		if (ImGui::BeginTableItem("Texture Size")) {
-			auto size = entity.texture_runtime_data_layout->size;
-			ImGui::Text("Size: %ux%ux%u, ArraySize: %u, MipCount: %u", size.x, size.y, size.DepthSliceCount(), size.ArraySliceCount(), size.mips);
+			if (size.type == TextureSize::Type::Texture3D) {
+				ImGui::Text("%ux%ux%u, %u, %u", size.x, size.y, size.DepthSliceCount());
+			} else {
+				ImGui::Text("%ux%u", size.x, size.y, size.DepthSliceCount());
+			}
+			ImGui::EndTableItem();
+		}
+		
+		if (ImGui::BeginTableItem("Texture Array Size")) {
+			ImGui::Text("%u", size.ArraySliceCount());
+			ImGui::EndTableItem();
+		}
+		
+		if (ImGui::BeginTableItem("Texture Mip Count")) {
+			ImGui::Text("%u", size.mips);
 			ImGui::EndTableItem();
 		}
 	}
@@ -687,7 +701,20 @@ static void AssetBrowserEntityView(StackAllocator* alloc, AssetEntitySystem& ass
 		auto descriptor_index_string = StringFormat(alloc, "%"_sl, entity.texture_descriptor_allocation->index);
 		ImGui::TableInputText("Descriptor Index", descriptor_index_string, nullptr);
 		
-		ImGui::ImageButtonEx("Texture", entity.texture_descriptor_allocation->index, ImVec2(128.f, 128.f));
+		if (ImGui::BeginTableItem("Preview")) {
+			ImGui::ImageButtonEx("Texture", entity.texture_descriptor_allocation->index, ImVec2(128.f, 128.f));
+			ImGui::EndTableItem();
+		}
+	}
+	
+	if (entity.texture_runtime_data_layout) {
+		if (ImGui::BeginTableItem("Reload From Source")) {
+			if (ImGui::Button("Reload", ImVec2(ImGui::GetContentRegionAvail().x, 0.f))) {
+				BitArraySetBit(array->created_mask, typed_entity_id.entity_id.index);
+				entity.texture_runtime_data_layout->version = 0;
+			}
+			ImGui::EndTableItem();
+		}
 	}
 }
 

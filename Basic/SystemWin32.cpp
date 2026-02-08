@@ -171,6 +171,7 @@ FileIoQueue* SystemCreateFileIoQueue(StackAllocator* alloc, u32 queue_size, u8* 
 	queue->handle = handle;
 	
 	queue->io_status_array = ArrayViewAllocate<IoOperationStatus>(alloc, queue_size * 2);
+	memset(queue->io_status_array.data, (u8)IoOperationStatus::Free, queue->io_status_array.count);
 	
 	ArrayResize(queue->io_status_free_indices, alloc, queue_size * 2);
 	for (u32 i = 0; i < queue->io_status_free_indices.capacity; i += 1) {

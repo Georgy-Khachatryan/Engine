@@ -930,13 +930,32 @@ void WindowSwapChainEndFrame(WindowSwapChain* api_swap_chain, GraphicsContext* a
 }
 
 
-void SubmitAsyncCopyCommands(GraphicsContext* api_context, ArrayView<AsyncCopyBufferToBufferCommand> copy_commands, u64 async_copy_signal_index) {
+void SubmitAsyncCopyCommands(GraphicsContext* api_context, ArrayView<AsyncCopyBufferToBufferCommand> copy_buffer_to_buffer_commands, ArrayView<AsyncCopyBufferToTextureCommand> copy_buffer_to_texture_commands, u64 async_copy_signal_index) {
 	auto* context = (GraphicsContextD3D12*)api_context;
 	auto* command_list = context->command_list;
 	
 	// TODO: Record and submit these commands to an async copy command queue.
-	for (auto& command : copy_commands) {
+	for (auto& command : copy_buffer_to_buffer_commands) {
 		command_list->CopyBufferRegion(command.dst_resource.d3d12, command.dst_offset, command.src_resource.d3d12, command.src_offset, command.size);
+	}
+	
+	for (auto& command : copy_buffer_to_texture_commands) {
+		D3D12_TEXTURE_COPY_LOCATION src = {};
+		src.pResource                          = command.src_resource.d3d12;
+		src.Type                               = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+		src.PlacedFootprint.Offset             = command.src_offset;
+		src.PlacedFootprint.Footprint.Format   = dxgi_texture_format_map[(u32)command.format];
+		src.PlacedFootprint.Footprint.Width    = command.src_size.x;
+		src.PlacedFootprint.Footprint.Height   = command.src_size.y;
+		src.PlacedFootprint.Footprint.Depth    = command.src_size.z;
+		src.PlacedFootprint.Footprint.RowPitch = command.src_row_pitch;
+		
+		D3D12_TEXTURE_COPY_LOCATION dst = {};
+		dst.pResource        = command.dst_resource.d3d12;
+		dst.Type             = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+		dst.SubresourceIndex = command.dst_subresource_index;
+		
+		command_list->CopyTextureRegion(&dst, command.dst_offset.x, command.dst_offset.y, command.dst_offset.z, &src, nullptr);
 	}
 	
 	DebugAssert(async_copy_signal_index > context->async_copy_index, "Async copy index '%' is already signalled.", async_copy_signal_index);

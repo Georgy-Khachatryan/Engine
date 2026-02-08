@@ -125,6 +125,8 @@ struct TextureFormatInfo {
 	uint2 block_size_log2 = 0;
 };
 
+compile_const u32 texture_row_pitch_alignment = 256u;
+
 TextureFormat ToNonSrgbFormat(TextureFormat format);
 TextureFormat ToSrvFormat(TextureFormat format);
 

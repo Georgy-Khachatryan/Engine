@@ -80,7 +80,7 @@ static u32 ComputeRuntimeMeshSize(const MeshRuntimeDataLayout& layout) {
 	u32 file_data_size  = layout.meshlet_group_count * sizeof(MeshletGroup) + page_residency_mask_size;
 	u32 allocation_size = file_data_size + layout.page_count * sizeof(u32);
 	
-	return AlignUp(allocation_size, 4096u);
+	return AlignUp(allocation_size, async_file_read_alignment);
 }
 
 void UpdateMeshStreamingSystem(MeshStreamingSystem* system, AsyncTransferQueue* async_transfer_queue, RecordContext* record_context, AssetEntitySystem* asset_system, GpuReadbackQueue* mesh_streaming_feedback_queue) {
@@ -297,6 +297,7 @@ void UpdateMeshStreamingFiles(MeshStreamingSystem* system, RecordContext* record
 				if (runtime_file.file.handle != nullptr) {
 					InvalidateMeshStreaming(system, record_context, entity_array, streams, (u32)i);
 					SystemCloseFile(runtime_file.file);
+					runtime_file = {};
 				}
 				
 				auto result = ImportFbxMeshFile(alloc, streams.source_data[i].filepath, layout.file_guid);

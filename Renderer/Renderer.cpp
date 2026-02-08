@@ -83,6 +83,7 @@ RecordContext* BeginRecordContext(StackAllocator* alloc, RendererContext* contex
 	record_context->resource_table = resource_table;
 	record_context->frame_index    = context->graphics_context->frame_sync_index;
 	
+	resource_table->virtual_resources.count = (u64)VirtualResourceID::Count;
 	resource_table->Set(VirtualResourceID::CurrentBackBuffer, WindowSwapGetCurrentBackBuffer(swap_chain), swap_chain->size);
 	resource_table->Set(VirtualResourceID::MeshAssetBuffer, context->mesh_asset_buffer, mesh_asset_buffer_size);
 	resource_table->Set(VirtualResourceID::DebugMeshBuffer, context->debug_geometry_buffer.resource, (u32)context->debug_geometry_buffer.resource_size);

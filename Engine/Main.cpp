@@ -86,7 +86,7 @@ s32 main() {
 		Array<GpuComponentUploadBuffer> gpu_uploads;
 		UpdateStreamingSystems(renderer_context, record_context, &world_system, &asset_system, world_entity_guid);
 		UpdateEntityGpuComponents(&alloc, record_context, world_system, asset_system, gpu_uploads);
-		UpdateRendererEntityGpuComponents(&alloc, record_context, asset_system, gpu_uploads);
+		UpdateRendererEntityGpuComponents(&alloc, renderer_context->async_transfer_queue, record_context, asset_system, gpu_uploads);
 		UpdateAsyncTransferQueue(renderer_context->async_transfer_queue);
 		
 		world_entity.renderer_world->gpu_uploads = gpu_uploads;
@@ -103,6 +103,8 @@ s32 main() {
 		transient_upload_allocation_size = record_context->upload_buffer_offset;
 	}
 	WaitForLastFrame(graphics_context);
+	
+	ReleaseTextureAssets(&alloc, graphics_context, asset_system);
 	
 	return 0;
 }

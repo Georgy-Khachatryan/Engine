@@ -2,13 +2,14 @@
 #include "Basic/BasicBitArray.h"
 #include "EntitySystem/EntitySystem.h"
 #include "GraphicsApi/RecordContext.h"
+#include "GraphicsApi/AsyncTransferQueue.h"
 #include "MeshAsset.h"
 #include "TextureAsset.h"
 #include "Renderer.h"
 #include "RendererEntities.h"
 #include "RenderPasses.h"
 
-void UpdateRendererEntityGpuComponents(StackAllocator* alloc, RecordContext* record_context, AssetEntitySystem& asset_system, Array<GpuComponentUploadBuffer>& gpu_uploads) {
+void UpdateRendererEntityGpuComponents(StackAllocator* alloc, AsyncTransferQueue* async_transfer_queue, RecordContext* record_context, AssetEntitySystem& asset_system, Array<GpuComponentUploadBuffer>& gpu_uploads) {
 	ProfilerScope("UpdateRendererEntityGpuComponents");
 	
 	for (auto* entity_array : QueryEntities<MeshAssetType>(alloc, asset_system)) {
@@ -37,18 +38,99 @@ void UpdateRendererEntityGpuComponents(StackAllocator* alloc, RecordContext* rec
 		ArrayAppend(gpu_uploads, alloc, gpu_mesh_asset_data);
 	}
 	
+	extern TextureImportResult ImportTextureFile(StackAllocator* alloc, String filepath, u64 runtime_data_guid);
+	
+	
+	u64 completed_file_read_index = CompletedGpuAsyncTransferIndex(async_transfer_queue);
 	auto* graphics_context = record_context->context;
 	for (auto* entity_array : QueryEntities<TextureAssetType>(alloc, asset_system)) {
-		ProfilerScope("MeshAssetTypeGpuComponentUpdate");
+		ProfilerScope("TextureAssetTypeGpuComponentUpdate");
 		
 		auto streams = ExtractComponentStreams<TextureAssetType>(entity_array);
 		for (u64 i : BitArrayIt(entity_array->created_mask)) {
-			streams.descriptor_allocation[i].index = AllocatePersistentSrvDescriptor(graphics_context);
+			auto& layout = streams.runtime_data_layout[i];
+			auto& runtime_file = streams.runtime_file[i];
+			auto& resource_allocation = streams.resource_allocation[i];
+			auto& descriptor_allocation = streams.descriptor_allocation[i];
+			
+			if (completed_file_read_index < resource_allocation.file_read_wait_index) continue;
+			
+			if (layout.version != TextureRuntimeDataLayout::current_version) {
+				if (layout.file_guid == 0) {
+					layout.file_guid = GenerateRandomNumber64(asset_system.guid_random_seed);
+				}
+				
+				if (runtime_file.file.handle != nullptr) {
+					SystemCloseFile(runtime_file.file);
+					runtime_file = {};
+				}
+				
+				if (resource_allocation.resource.handle != nullptr) {
+					ReleaseTextureResource(graphics_context, resource_allocation.resource, ResourceReleaseCondition::EndOfThisGpuFrame);
+					resource_allocation = {};
+				}
+				
+				auto result = ImportTextureFile(alloc, streams.source_data[i].filepath, layout.file_guid);
+				if (result.success) {
+					layout = result.layout;
+				}
+			}
+			
+			// TODO: Add support for unaligned async reads.
+			runtime_file.file = SystemOpenFile(alloc, StringFormat(alloc, "./Assets/Runtime/%x..trd"_sl, layout.file_guid), OpenFileFlags::Read /*| OpenFileFlags::Async*/);
+			
+			u32 descriptor_index = descriptor_allocation.index == u32_max ? AllocatePersistentSrvDescriptor(graphics_context) : descriptor_allocation.index;
+			descriptor_allocation.index = descriptor_index;
+			
+			auto resource = CreateTextureResource(graphics_context, layout.size);
+			resource_allocation.resource = resource;
+			
+			u64 offset = 0;
+			u64 file_read_wait_index = 0;
+			for (u32 mip_index = 0; mip_index < (u32)layout.size.mips; mip_index += 1) {
+				u32 mip_size_x = Math::Max((u32)layout.size.x >> mip_index, 1u);
+				u32 mip_size_y = Math::Max((u32)layout.size.y >> mip_index, 1u);
+				
+				AsyncTransferCommand command;
+				command.src_type = AsyncTransferSrcType::File;
+				command.dst_type = AsyncTransferDstType::Texture;
+				command.src.file.handle      = runtime_file.file;
+				command.src.file.offset      = offset;
+				command.src.file.size        = AlignUp(mip_size_x * 4, texture_row_pitch_alignment) * mip_size_y;
+				command.dst.texture.resource = resource;
+				command.dst.texture.size     = TextureSize(layout.size.format, mip_size_x, mip_size_y);
+				command.dst.texture.offset   = 0;
+				command.dst.texture.subresource_index = mip_index;
+				file_read_wait_index = AppendAsyncTransferCommand(async_transfer_queue, command);
+				
+				offset += command.src.file.size;
+			}
+			resource_allocation.file_read_wait_index = file_read_wait_index;
+			
+			auto texture_id = record_context->resource_table->AddTransient(resource, layout.size);
+			CreateResourceDescriptor(record_context, HLSL::Texture2D<float4>(texture_id), descriptor_index);
 		}
 		
 		for (u64 i : BitArrayIt(entity_array->removed_mask)) {
 			u32 index = streams.descriptor_allocation[i].index;
 			if (index != u32_max) DeallocatePersistentSrvDescriptor(graphics_context, index);
+			
+			auto resource = streams.resource_allocation[i].resource;
+			if (resource.handle != nullptr) ReleaseTextureResource(graphics_context, resource, ResourceReleaseCondition::EndOfThisGpuFrame);
+		}
+	}
+}
+
+void ReleaseTextureAssets(StackAllocator* alloc, GraphicsContext* graphics_context, AssetEntitySystem& asset_system) {
+	for (auto* entity_array : QueryEntities<TextureAssetType>(alloc, asset_system)) {
+		auto streams = ExtractComponentStreams<TextureAssetType>(entity_array);
+		
+		for (u64 i : BitArrayIt(entity_array->alive_mask)) {
+			u32 index = streams.descriptor_allocation[i].index;
+			if (index != u32_max) DeallocatePersistentSrvDescriptor(graphics_context, index);
+			
+			auto resource = streams.resource_allocation[i].resource;
+			if (resource.handle != nullptr) ReleaseTextureResource(graphics_context, resource);
 		}
 	}
 }

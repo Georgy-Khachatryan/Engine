@@ -25,6 +25,8 @@ enum struct IoOperationStatus : u8 {
 	Failed    = 3,
 };
 
+compile_const u32 async_file_read_alignment = 4096u;
+
 
 FileHandle SystemOpenFile(StackAllocator* alloc, String path, OpenFileFlags flags);
 bool SystemCloseFile(FileHandle handle);

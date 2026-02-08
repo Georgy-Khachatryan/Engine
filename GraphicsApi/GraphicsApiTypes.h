@@ -430,6 +430,20 @@ struct AsyncCopyBufferToBufferCommand {
 	u64 size = 0;
 };
 
+struct AsyncCopyBufferToTextureCommand {
+	NativeBufferResource src_resource;
+	NativeTextureResource dst_resource;
+	
+	TextureFormat format;
+	
+	u32 src_row_pitch = 0;
+	uint3 src_size = 0;
+	u64 src_offset = 0;
+	
+	u32 dst_subresource_index = 0;
+	uint3 dst_offset = 0;
+};
+
 
 namespace Meta {
 	NOTES() struct RenderPass { CommandQueueType pass_type = CommandQueueType::Compute; };
