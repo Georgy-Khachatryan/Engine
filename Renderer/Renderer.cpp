@@ -69,6 +69,7 @@ void ReleaseResourceTable(GraphicsContext* graphics_context, VirtualResourceTabl
 	
 	ReleaseBufferResource(graphics_context, resource_table->virtual_resources[(u32)VirtualResourceID::GpuMeshAssetData].buffer.resource);
 	ReleaseBufferResource(graphics_context, resource_table->virtual_resources[(u32)VirtualResourceID::GpuMeshEntityData].buffer.resource);
+	ReleaseBufferResource(graphics_context, resource_table->virtual_resources[(u32)VirtualResourceID::MaterialAssetTextureData].buffer.resource);
 	ReleaseBufferResource(graphics_context, resource_table->virtual_resources[(u32)VirtualResourceID::MeshAssetAliveMask].buffer.resource);
 	ReleaseBufferResource(graphics_context, resource_table->virtual_resources[(u32)VirtualResourceID::MeshEntityAliveMask].buffer.resource);
 	ReleaseBufferResource(graphics_context, resource_table->virtual_resources[(u32)VirtualResourceID::MeshEntityGpuTransform].buffer.resource);

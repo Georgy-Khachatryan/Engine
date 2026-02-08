@@ -443,6 +443,10 @@ static void LevelEditorEntityView(StackAllocator* alloc, WorldEntitySystem& worl
 		ImGui::TableEntityComboBox("Mesh Asset", &asset_system, &entity.mesh_asset->guid, ECS::GetEntityTypeID<MeshAssetType>::id);
 	}
 	
+	if (entity.material_asset) {
+		ImGui::TableEntityComboBox("Material Asset", &asset_system, &entity.material_asset->guid, ECS::GetEntityTypeID<MaterialAssetType>::id);
+	}
+	
 	if (entity.camera) {
 		ImGui::TableCombo("Camera Transform Type", (s32*)&entity.camera->transform_type, "Perspective\0Orthographic\0");
 		ImGui::TableSliderFloat("Vertical Field Of View", &entity.camera->vertical_fov_degrees, 10.f, 135.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
@@ -511,6 +515,7 @@ static void AssetBrowser(StackAllocator* alloc, AssetEntitySystem& asset_system,
 		EntityTypeID entity_type_ids[] = {
 			ECS::GetEntityTypeID<MeshAssetType>::id,
 			ECS::GetEntityTypeID<TextureAssetType>::id,
+			ECS::GetEntityTypeID<MaterialAssetType>::id,
 		};
 		
 		for (auto entity_type_id : entity_type_ids) {
@@ -715,6 +720,17 @@ static void AssetBrowserEntityView(StackAllocator* alloc, AssetEntitySystem& ass
 			}
 			ImGui::EndTableItem();
 		}
+	}
+	
+	
+	if (entity.material_texture_data) {
+		auto* texture_data = entity.material_texture_data;
+		ImGui::TableEntityComboBox("Albedo", &asset_system, &texture_data->albedo.guid, ECS::GetEntityTypeID<TextureAssetType>::id);
+	}
+	
+	
+	if (entity.material_asset) {
+		ImGui::TableEntityComboBox("Material Asset", &asset_system, &entity.material_asset->guid, ECS::GetEntityTypeID<MaterialAssetType>::id);
 	}
 }
 

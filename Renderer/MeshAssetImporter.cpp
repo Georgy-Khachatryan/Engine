@@ -94,7 +94,7 @@ MeshImportResult ImportFbxMeshFile(StackAllocator* alloc, String filepath, u64 r
 				SourceMeshVertex vertex;
 				vertex.position = float3(mesh->vertex_position[index]);
 				vertex.normal   = float3(mesh->vertex_normal[index]);
-				vertex.texcoord = mesh->vertex_uv.exists ? float2(mesh->vertex_uv[index]) : float2(0.f, 0.f);
+				vertex.texcoord = mesh->vertex_uv.exists ? float2(mesh->vertex_uv[index].x, 1.f - mesh->vertex_uv[index].y) : float2(0.f, 0.f);
 				ArrayAppend(mesh_vertices, vertex);
 			}
 		}

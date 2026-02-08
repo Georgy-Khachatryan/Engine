@@ -11,7 +11,8 @@ struct EntityEditorQuery {
 	RotationComponent* rotation = nullptr;
 	ScaleComponent*    scale    = nullptr;
 	
-	MeshAssetGUID* mesh_asset = nullptr;
+	MeshAssetGUID*     mesh_asset     = nullptr;
+	MaterialAssetGUID* material_asset = nullptr;
 	
 	CameraComponent* camera = nullptr;
 };
@@ -21,6 +22,8 @@ struct AssetEditorQuery {
 	GuidComponent* guid = nullptr;
 	NameComponent* name = nullptr;
 	
+	MaterialAssetGUID* material_asset = nullptr;
+	
 	MeshSourceData* mesh_source_data = nullptr;
 	MeshRuntimeDataLayout* mesh_runtime_data_layout = nullptr;
 	MeshRuntimeAllocation* mesh_runtime_allocation  = nullptr;
@@ -28,4 +31,6 @@ struct AssetEditorQuery {
 	TextureSourceData* texture_source_data = nullptr;
 	TextureRuntimeDataLayout* texture_runtime_data_layout = nullptr;
 	TextureDescriptorAllocation* texture_descriptor_allocation = nullptr;
+	
+	MaterialTextureData* material_texture_data = nullptr;
 };

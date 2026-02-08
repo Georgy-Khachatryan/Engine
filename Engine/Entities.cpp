@@ -38,6 +38,7 @@ static void UpdateEntityAliveMasks(StackAllocator* alloc, RecordContext* record_
 void UpdateEntityGpuComponents(StackAllocator* alloc, RecordContext* record_context, WorldEntitySystem& world_system, AssetEntitySystem& asset_system, Array<GpuComponentUploadBuffer>& gpu_uploads) {
 	ProfilerScope("UpdateEntityGpuComponents");
 	
+	auto mesh_asset_streams = ExtractComponentStreams<MeshAssetType>(QueryEntityTypeArray<MeshAssetType>(asset_system));
 	for (auto* entity_array : QueryEntities<MeshEntityType>(alloc, world_system)) {
 		ProfilerScope("MeshEntityGpuComponentUpdate");
 		auto streams = ExtractComponentStreams<MeshEntityType>(entity_array);
@@ -73,10 +74,19 @@ void UpdateEntityGpuComponents(StackAllocator* alloc, RecordContext* record_cont
 		if (dirty_entity_count != 0) {
 			auto gpu_mesh_entity_data = AllocateGpuComponentUploadBuffer(record_context, dirty_entity_count, streams.gpu_mesh_entity_data);
 			for (u64 i : BitArrayIt(entity_array->dirty_mask)) {
-				auto* element = HashTableFind(asset_system.entity_guid_to_entity_id, streams.mesh_asset[i].guid);
+				auto* mesh_asset = HashTableFind(asset_system.entity_guid_to_entity_id, streams.mesh_asset[i].guid);
 				
 				GpuMeshEntityData mesh_entity;
-				mesh_entity.mesh_asset_index = element ? element->value.entity_id.index : u32_max;
+				mesh_entity.mesh_asset_index = mesh_asset ? mesh_asset->value.entity_id.index : u32_max;
+				
+				u64 material_asset_guid = streams.material_asset[i].guid;
+				if (mesh_entity.mesh_asset_index != u32_max && material_asset_guid == 0) {
+					material_asset_guid = mesh_asset_streams.material_asset[mesh_entity.mesh_asset_index].guid;
+				}
+				
+				auto* material_asset = HashTableFind(asset_system.entity_guid_to_entity_id, material_asset_guid);
+				mesh_entity.material_asset_index = material_asset ? material_asset->value.entity_id.index : u32_max;
+				
 				AppendGpuTransferCommand(gpu_mesh_entity_data, i, mesh_entity);
 			}
 			ArrayAppend(gpu_uploads, alloc, gpu_mesh_entity_data);

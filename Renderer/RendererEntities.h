@@ -80,7 +80,8 @@ struct GpuTransform {
 
 NOTES(Meta::HlslFile{ "MeshData.hlsl"_sl })
 struct GpuMeshEntityData {
-	u32 mesh_asset_index = 0;
+	u32 mesh_asset_index     = 0;
+	u32 material_asset_index = 0;
 };
 
 

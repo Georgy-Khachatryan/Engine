@@ -110,6 +110,7 @@
     <ClInclude Include="GraphicsApi/TextureFormat.h" />
     
     <!-- Renderer. -->
+    <ClInclude Include="Renderer/MaterialAsset.h" />
     <ClInclude Include="Renderer/MeshAsset.h" />
     <ClInclude Include="Renderer/MeshletStreamingSystem.h" />
     <ClInclude Include="Renderer/MeshStreamingSystem.h" />

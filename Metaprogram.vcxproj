@@ -37,6 +37,7 @@
     <ReflectedFiles Include="EntitySystem/EntitySystem.h" />
     <ReflectedFiles Include="GraphicsApi/GraphicsApiTypes.h" />
     <ReflectedFiles Include="GraphicsApi/TextureFormat.h" />
+    <ReflectedFiles Include="Renderer/MaterialAsset.h" />
     <ReflectedFiles Include="Renderer/MeshAsset.h" />
     <ReflectedFiles Include="Renderer/RendererEntities.h" />
     <ReflectedFiles Include="Renderer/RenderPasses.h" />

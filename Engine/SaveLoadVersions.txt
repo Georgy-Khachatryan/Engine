@@ -12,6 +12,12 @@ struct TextureRuntimeDataLayout {
 	}
 }
 
+struct MaterialTextureData {
+	/*Version*/ 0 {
+		albedo TextureAssetGUID 0;
+	}
+}
+
 struct TextureSourceData {
 	/*Version*/ 0 {
 		filepath String 0;
@@ -96,6 +102,12 @@ struct PositionComponent {
 	}
 }
 
+struct TextureAssetGUID {
+	/*Version*/ 0 {
+		guid u64 0;
+	}
+}
+
 struct MeshRuntimeDataLayout {
 	/*Version*/ 0 {
 		file_guid u64 0;
@@ -130,6 +142,12 @@ enum CameraTransformType {
 	/*Version*/ 2 u32 {
 		Perspective 0;
 		Orthographic 1;
+	}
+}
+
+struct MaterialAssetGUID {
+	/*Version*/ 0 {
+		guid u64 0;
 	}
 }
 

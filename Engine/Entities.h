@@ -3,6 +3,7 @@
 #include "Basic/BasicString.h"
 #include "EntitySystem/EntitySystem.h"
 #include "EntitySystem/Components.h"
+#include "Renderer/MaterialAsset.h"
 #include "Renderer/MeshAsset.h"
 #include "Renderer/TextureAsset.h"
 #include "Renderer/RendererEntities.h"
@@ -38,6 +39,7 @@ struct MeshEntityType {
 	ECS::Component<ScaleComponent>    scale;
 	
 	ECS::Component<MeshAssetGUID> mesh_asset;
+	ECS::Component<MaterialAssetGUID> material_asset;
 	
 	NOTES(VirtualResourceID::MeshEntityGpuTransform)
 	ECS::GpuComponent<GpuTransform> gpu_transform;

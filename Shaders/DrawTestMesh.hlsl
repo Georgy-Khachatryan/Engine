@@ -10,7 +10,8 @@ struct InputPS {
 };
 
 struct InputPrimitivePS {
-	uint meshlet_index : MESHLET_INDEX;
+	uint meshlet_index  : MESHLET_INDEX;
+	uint material_index : MATERIAL_INDEX;
 };
 
 #if defined(MESH_SHADER)
@@ -27,10 +28,11 @@ void MainMS(
 	
 	uint mesh_entity_index = meshlet_instance.y;
 	uint meshlet_header_offset = meshlet_instance.x;
-	uint mesh_asset_index  = mesh_entity_data[mesh_entity_index].mesh_asset_index;
+	
+	GpuMeshEntityData mesh_entity = mesh_entity_data[mesh_entity_index];
 	
 	GpuTransform model_to_world = mesh_transforms[mesh_entity_index];
-	GpuMeshAssetData mesh_asset = mesh_asset_data[mesh_asset_index];
+	GpuMeshAssetData mesh_asset = mesh_asset_data[mesh_entity.mesh_asset_index];
 	GpuTransform prev_model_to_world = prev_mesh_transforms[mesh_entity_index];
 	
 	MeshletHeader meshlet = mesh_asset_buffer.Load<MeshletHeader>(meshlet_header_offset);
@@ -66,7 +68,8 @@ void MainMS(
 		
 		uint indices = uint((u64(packed_indices.x) | (u64(packed_indices.y) << 32)) >> ((load_offset & 0x3) * 8));
 		result_indices[thread_index] = uint3(indices >> 0, indices >> 8, indices >> 16) & 0xFF;
-		result_primitives[thread_index].meshlet_index = meshlet_header_offset >> 4;
+		result_primitives[thread_index].meshlet_index  = meshlet_header_offset >> 4;
+		result_primitives[thread_index].material_index = mesh_entity.material_asset_index;
 	}
 }
 #endif // defined(MESH_SHADER)
@@ -83,6 +86,15 @@ OutputPS MainPS(InputPS input, InputPrimitivePS primitive_input, float3 bary : S
 	
 	float3 meshlet_color = (primitive_input.meshlet_index & 0x1) ? normal_color : texcoord_color;
 	float  wireframe     = BarycentricWireframe(bary, ddx(bary), ddy(bary));
+	
+	if (primitive_input.material_index != u32_max) {
+		GpuMaterialTextureData material = material_texture_data[primitive_input.material_index];
+		if (material.albedo != u32_max) {
+			Texture2D<float3> texture = ResourceDescriptorHeap[material.albedo];
+			meshlet_color = texture.Sample(sampler_linear_clamp, input.texcoord);
+			wireframe = 1.0;
+		}
+	}
 	
 	OutputPS output;
 	output.color = float4(meshlet_color * wireframe, 1.0);

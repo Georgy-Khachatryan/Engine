@@ -3,6 +3,7 @@
 #include "EntitySystem/EntitySystem.h"
 #include "GraphicsApi/RecordContext.h"
 #include "GraphicsApi/AsyncTransferQueue.h"
+#include "MaterialAsset.h"
 #include "MeshAsset.h"
 #include "TextureAsset.h"
 #include "Renderer.h"
@@ -118,6 +119,30 @@ void UpdateRendererEntityGpuComponents(StackAllocator* alloc, AsyncTransferQueue
 			auto resource = streams.resource_allocation[i].resource;
 			if (resource.handle != nullptr) ReleaseTextureResource(graphics_context, resource, ResourceReleaseCondition::EndOfThisGpuFrame);
 		}
+	}
+	
+	auto texture_streams = ExtractComponentStreams<TextureAssetType>(QueryEntityTypeArray<TextureAssetType>(asset_system));
+	for (auto* entity_array : QueryEntities<MaterialAssetType>(alloc, asset_system)) {
+		ProfilerScope("MaterialAssetTypeGpuComponentUpdate");
+		
+		u32 dirty_entity_count = (u32)BitArrayCountSetBits(entity_array->dirty_mask);
+		if (dirty_entity_count == 0) continue;
+		
+		auto find_texture_index = [&](TextureAssetGUID texture_asset_guid)-> u32 {
+			auto* element = HashTableFind(asset_system.entity_guid_to_entity_id, texture_asset_guid.guid);
+			return element ? texture_streams.descriptor_allocation[element->value.entity_id.index].index : u32_max;
+		};
+		
+		auto streams = ExtractComponentStreams<MaterialAssetType>(entity_array);
+		auto gpu_texture_data = AllocateGpuComponentUploadBuffer(record_context, dirty_entity_count, streams.gpu_texture_data);
+		for (u64 i : BitArrayIt(entity_array->dirty_mask)) {
+			auto& texture_data = streams.texture_data[i];
+			
+			GpuMaterialTextureData gpu_data;
+			gpu_data.albedo = find_texture_index(texture_data.albedo);
+			AppendGpuTransferCommand(gpu_texture_data, i, gpu_data);
+		}
+		ArrayAppend(gpu_uploads, alloc, gpu_texture_data);
 	}
 }
 

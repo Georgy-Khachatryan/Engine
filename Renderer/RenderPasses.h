@@ -3,6 +3,7 @@
 #include "Basic/BasicMath.h"
 #include "Basic/BasicString.h"
 #include "GraphicsApi/GraphicsApiTypes.h"
+#include "MaterialAsset.h"
 #include "MeshAsset.h"
 #include "Renderer.h"
 #include "RendererEntities.h"
@@ -18,6 +19,7 @@ enum struct VirtualResourceID : u32 {
 	GpuMeshEntityData,
 	GpuMeshAssetData,
 	MeshAssetAliveMask,
+	MaterialAssetTextureData,
 	
 	// Streaming buffers:
 	MeshAssetBuffer,
@@ -548,6 +550,7 @@ struct BasicMeshRenderPass {
 		HLSL::RegularBuffer<GpuTransform>      mesh_transforms  = VirtualResourceID::MeshEntityGpuTransform;
 		HLSL::RegularBuffer<GpuMeshAssetData>  mesh_asset_data  = VirtualResourceID::GpuMeshAssetData;
 		HLSL::RegularBuffer<GpuMeshEntityData> mesh_entity_data = VirtualResourceID::GpuMeshEntityData;
+		HLSL::RegularBuffer<GpuMaterialTextureData> material_texture_data = VirtualResourceID::MaterialAssetTextureData;
 		HLSL::ByteBuffer           mesh_asset_buffer = VirtualResourceID::MeshAssetBuffer;
 		HLSL::RegularBuffer<uint2> visible_meshlets  = VirtualResourceID::VisibleMeshlets;
 	};

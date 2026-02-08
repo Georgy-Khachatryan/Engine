@@ -4,6 +4,7 @@
 #include "Basic/BasicString.h"
 #include "EntitySystem/EntitySystem.h"
 #include "EntitySystem/Components.h"
+#include "MaterialAsset.h"
 
 
 NOTES(Meta::HlslFile{ "MeshData.hlsl"_sl })
@@ -127,6 +128,7 @@ struct MeshAssetType {
 	ECS::Component<MeshRuntimeFile>       runtime_file;
 	ECS::Component<MeshRuntimeAllocation> allocation;
 	ECS::Component<AabbComponent>         aabb;
+	ECS::Component<MaterialAssetGUID>     material_asset;
 	
 	NOTES(VirtualResourceID::GpuMeshAssetData)
 	ECS::GpuComponent<GpuMeshAssetData> gpu_mesh_asset_data;
