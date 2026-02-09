@@ -676,6 +676,7 @@ static void AssetBrowserEntityView(StackAllocator* alloc, AssetEntitySystem& ass
 			"BC1_UNORM",
 			"BC4_UNORM",
 			"BC5_UNORM",
+			"BC5_NORMAL_MAP",
 		};
 		
 		if (ImGui::BeginTableItem("Encoding Format")) {
@@ -738,6 +739,7 @@ static void AssetBrowserEntityView(StackAllocator* alloc, AssetEntitySystem& ass
 	if (entity.material_texture_data) {
 		auto* texture_data = entity.material_texture_data;
 		ImGui::TableEntityComboBox("Albedo", &asset_system, &texture_data->albedo.guid, ECS::GetEntityTypeID<TextureAssetType>::id);
+		ImGui::TableEntityComboBox("Normal", &asset_system, &texture_data->normal.guid, ECS::GetEntityTypeID<TextureAssetType>::id);
 	}
 	
 	

@@ -13,6 +13,7 @@ enum struct TextureAssetTargetEncoding : u32 {
 	BC1_UNORM      = 1,
 	BC4_UNORM      = 2,
 	BC5_UNORM      = 3,
+	BC5_NORMAL_MAP = 4,
 	// TODO: BC6H, BC7
 	Count
 };

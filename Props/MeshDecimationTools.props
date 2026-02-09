@@ -4,7 +4,7 @@
   <ItemDefinitionGroup>
     <ClCompile>
       <PreprocessorDefinitions>
-        MDT_MAX_ATTRIBUTE_STRIDE_DWORDS=5;
+        MDT_MAX_ATTRIBUTE_STRIDE_DWORDS=8;
         %(PreprocessorDefinitions)
       </PreprocessorDefinitions>
     </ClCompile>

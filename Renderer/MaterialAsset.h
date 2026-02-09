@@ -11,11 +11,13 @@
 NOTES()
 struct MaterialTextureData {
 	TextureAssetGUID albedo;
+	TextureAssetGUID normal;
 };
 
 NOTES(Meta::HlslFile{ "MaterialData.hlsl"_sl })
 struct GpuMaterialTextureData {
 	u32 albedo = u32_max;
+	u32 normal = u32_max;
 };
 
 NOTES()

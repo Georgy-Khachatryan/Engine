@@ -3,7 +3,8 @@
 struct InputPS {
 	float4 position : SV_Position;
 	float2 texcoord : TEXCOORD;
-	float3 normal   : NORMAL;
+	float3 world_space_normal  : NORMAL;
+	float3 world_space_tangent : TANGENT;
 	
 	float3 curr_position : CURR_POSITION;
 	float3 prev_position : PREV_POSITION;
@@ -52,7 +53,8 @@ void MainMS(
 		InputPS output;
 		output.position = clip_space_position;
 		output.texcoord = vertex.texcoord;
-		output.normal   = QuatMul(model_to_world.rotation, DecodeOctahedralMap(DecodeR16G16_SNORM(vertex.normal)));
+		output.world_space_normal  = QuatMul(model_to_world.rotation, DecodeOctahedralMap(DecodeR16G16_SNORM(vertex.normal)));
+		output.world_space_tangent = QuatMul(model_to_world.rotation, DecodeOctahedralMap(DecodeR16G16_SNORM(vertex.tangent)));
 		output.curr_position = clip_space_position.xyw;
 		output.prev_position = prev_clip_space_position.xyw;
 		
@@ -81,7 +83,7 @@ struct OutputPS {
 };
 
 OutputPS MainPS(InputPS input, InputPrimitivePS primitive_input, float3 bary : SV_Barycentrics) {
-	float3 normal_color   = input.normal * 0.5 + 0.5;
+	float3 normal_color   = input.world_space_normal * 0.5 + 0.5;
 	float3 texcoord_color = float3(input.texcoord, 0.0);
 	
 	float3 meshlet_color = (primitive_input.meshlet_index & 0x1) ? normal_color : texcoord_color;
@@ -90,8 +92,17 @@ OutputPS MainPS(InputPS input, InputPrimitivePS primitive_input, float3 bary : S
 	if (primitive_input.material_index != u32_max) {
 		GpuMaterialTextureData material = material_texture_data[primitive_input.material_index];
 		if (material.albedo != u32_max) {
-			Texture2D<float3> texture = ResourceDescriptorHeap[material.albedo];
-			meshlet_color = texture.Sample(sampler_linear_wrap, input.texcoord);
+			Texture2D<float3> albedo_texture = ResourceDescriptorHeap[material.albedo];
+			float3 albedo = albedo_texture.Sample(sampler_linear_wrap, input.texcoord);
+			
+			Texture2D<float2> normal_texture = ResourceDescriptorHeap[material.normal];
+			float2 hemioct_normal = normal_texture.Sample(sampler_linear_wrap, input.texcoord);
+			
+			compile_const float bitangent_sign = -1.0; // TODO: Store per vertex/triangle?
+			float3x3 tangent_to_world = transpose(float3x3(input.world_space_tangent, bitangent_sign * cross(input.world_space_normal, input.world_space_tangent), input.world_space_normal));
+			float3 normal = mul(tangent_to_world, DecodeHemiOctahedralMap01(hemioct_normal));
+			
+			meshlet_color = albedo * max(normal.z * 0.5 + 0.5, 0.0);
 			wireframe = 1.0;
 		}
 	}

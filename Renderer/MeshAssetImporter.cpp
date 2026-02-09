@@ -40,6 +40,7 @@ struct MeshletGroupSortKey {
 struct SourceMeshVertex {
 	float3 position;
 	float3 normal;
+	float3 tangent;
 	float2 texcoord;
 };
 
@@ -94,6 +95,7 @@ MeshImportResult ImportFbxMeshFile(StackAllocator* alloc, String filepath, u64 r
 				SourceMeshVertex vertex;
 				vertex.position = float3(mesh->vertex_position[index]);
 				vertex.normal   = float3(mesh->vertex_normal[index]);
+				vertex.tangent  = mesh->vertex_tangent.exists ? float3(mesh->vertex_tangent[index]) : vertex.normal; // Fallback to normal so we have at least some sort of a valid vector.
 				vertex.texcoord = mesh->vertex_uv.exists ? float2(mesh->vertex_uv[index].x, 1.f - mesh->vertex_uv[index].y) : float2(0.f, 0.f);
 				ArrayAppend(mesh_vertices, vertex);
 			}
@@ -116,6 +118,7 @@ MeshImportResult ImportFbxMeshFile(StackAllocator* alloc, String filepath, u64 r
 				auto instance_vertex = vertex;
 				instance_vertex.position = geometry_to_world * float4(instance_vertex.position, 1.f);
 				instance_vertex.normal   = Math::Normalize(geometry_to_world_rotation * instance_vertex.normal);
+				instance_vertex.tangent  = Math::Normalize(geometry_to_world_rotation * instance_vertex.tangent);
 				ArrayAppend(source_vertices, instance_vertex);
 			}
 			
@@ -175,9 +178,14 @@ MeshImportResult ImportFbxMeshFile(StackAllocator* alloc, String filepath, u64 r
 	inputs.mesh.geometric_weight    = 0.f;
 	inputs.mesh.attribute_weights   = nullptr;
 	inputs.mesh.normalize_vertex_attributes = [](float* attributes) {
-		auto normal = *(float3*)attributes;
-		float length = Math::Length(normal);
-		if (length > 0.f) normal = normal * (1.f / length);
+		auto normal  = *(float3*)(attributes + 0);
+		auto tangent = *(float3*)(attributes + 3);
+		
+		float normal_length  = Math::Length(normal);
+		float tangent_length = Math::Length(tangent);
+		
+		if (normal_length  > 0.f) normal  = normal  * (1.f / normal_length);
+		if (tangent_length > 0.f) tangent = tangent * (1.f / tangent_length);
 	};
 	
 	inputs.meshlet_target_triangle_count = 128;
@@ -366,11 +374,13 @@ MeshImportResult ImportFbxMeshFile(StackAllocator* alloc, String filepath, u64 r
 			for (u32 i = src_meshlet.begin_vertex_indices_index; i < src_meshlet.end_vertex_indices_index; i += 1) {
 				auto& src_vertex = mdt_meshlet_vertices[mdt_meshlet_vertex_indices[i]];
 				
-				auto octahedral_normal = Math::EncodeOctahedralMap(src_vertex.normal);
+				auto octahedral_normal  = Math::EncodeOctahedralMap(src_vertex.normal);
+				auto octahedral_tangent = Math::EncodeOctahedralMap(src_vertex.tangent);
 				
 				MeshletVertex dst_vertex; 
 				dst_vertex.position = u16x3((src_vertex.position - position_offset) * quantization_scale);
 				dst_vertex.normal   = Math::EncodeR16G16_SNORM(octahedral_normal);
+				dst_vertex.tangent  = Math::EncodeR16G16_SNORM(octahedral_tangent); // TODO: Store tangent as an angle relative to a canonical tangent.
 				dst_vertex.texcoord = Math::EncodeR16G16_FLOAT(src_vertex.texcoord);
 				
 				memcpy(page.data + page_meshlet_data_offset, &dst_vertex, sizeof(dst_vertex));

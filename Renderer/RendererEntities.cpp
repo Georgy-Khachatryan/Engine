@@ -83,34 +83,38 @@ void UpdateRendererEntityGpuComponents(StackAllocator* alloc, AsyncTransferQueue
 			u32 descriptor_index = descriptor_allocation.index == u32_max ? AllocatePersistentSrvDescriptor(graphics_context) : descriptor_allocation.index;
 			descriptor_allocation.index = descriptor_index;
 			
-			auto resource = CreateTextureResource(graphics_context, layout.size);
-			resource_allocation.resource = resource;
-			
-			auto format = texture_format_info_map[(u32)layout.size.format];
-			
-			u64 offset = 0;
-			u64 file_read_wait_index = 0;
-			for (u32 mip_index = 0; mip_index < (u32)layout.size.mips; mip_index += 1) {
-				auto mip_size = Math::Max(uint2(layout.size) >> mip_index, uint2(1u));
-				auto mip_size_blocks = (mip_size + (uint2(1u) << format.block_size_log2) - 1) >> format.block_size_log2;
+			auto texture_id = VirtualResourceID::None;
+			if (runtime_file.file.handle != nullptr) {
+				auto resource = CreateTextureResource(graphics_context, layout.size);
+				texture_id = record_context->resource_table->AddTransient(resource, layout.size);
 				
-				AsyncTransferCommand command;
-				command.src_type = AsyncTransferSrcType::File;
-				command.dst_type = AsyncTransferDstType::Texture;
-				command.src.file.handle      = runtime_file.file;
-				command.src.file.offset      = offset;
-				command.src.file.size        = AlignUp(mip_size_blocks.x * format.block_size_bytes, texture_row_pitch_alignment) * mip_size_blocks.y;
-				command.dst.texture.resource = resource;
-				command.dst.texture.size     = TextureSize(layout.size.format, mip_size);
-				command.dst.texture.offset   = 0;
-				command.dst.texture.subresource_index = mip_index;
-				file_read_wait_index = AppendAsyncTransferCommand(async_transfer_queue, command);
+				auto format = texture_format_info_map[(u32)layout.size.format];
 				
-				offset += command.src.file.size;
+				u64 offset = 0;
+				u64 file_read_wait_index = 0;
+				for (u32 mip_index = 0; mip_index < (u32)layout.size.mips; mip_index += 1) {
+					auto mip_size = Math::Max(uint2(layout.size) >> mip_index, uint2(1u));
+					auto mip_size_blocks = (mip_size + (uint2(1u) << format.block_size_log2) - 1) >> format.block_size_log2;
+					
+					AsyncTransferCommand command;
+					command.src_type = AsyncTransferSrcType::File;
+					command.dst_type = AsyncTransferDstType::Texture;
+					command.src.file.handle      = runtime_file.file;
+					command.src.file.offset      = offset;
+					command.src.file.size        = AlignUp(mip_size_blocks.x * format.block_size_bytes, texture_row_pitch_alignment) * mip_size_blocks.y;
+					command.dst.texture.resource = resource;
+					command.dst.texture.size     = TextureSize(layout.size.format, mip_size);
+					command.dst.texture.offset   = 0;
+					command.dst.texture.subresource_index = mip_index;
+					file_read_wait_index = AppendAsyncTransferCommand(async_transfer_queue, command);
+					
+					offset += command.src.file.size;
+				}
+				
+				resource_allocation.resource = resource;
+				resource_allocation.file_read_wait_index = file_read_wait_index;
 			}
-			resource_allocation.file_read_wait_index = file_read_wait_index;
 			
-			auto texture_id = record_context->resource_table->AddTransient(resource, layout.size);
 			CreateResourceDescriptor(record_context, HLSL::Texture2D<float4>(texture_id), descriptor_index);
 		}
 		
@@ -142,6 +146,7 @@ void UpdateRendererEntityGpuComponents(StackAllocator* alloc, AsyncTransferQueue
 			
 			GpuMaterialTextureData gpu_data;
 			gpu_data.albedo = find_texture_index(texture_data.albedo);
+			gpu_data.normal = find_texture_index(texture_data.normal);
 			AppendGpuTransferCommand(gpu_texture_data, i, gpu_data);
 		}
 		ArrayAppend(gpu_uploads, alloc, gpu_texture_data);
