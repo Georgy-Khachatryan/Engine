@@ -151,5 +151,6 @@ struct CameraEntityQuery {
 struct RecordContext;
 struct RendererContext;
 struct AsyncTransferQueue;
-void UpdateRendererEntityGpuComponents(StackAllocator* alloc, AsyncTransferQueue* async_transfer_queue, RecordContext* record_context, AssetEntitySystem& asset_system, Array<GpuComponentUploadBuffer>& gpu_uploads);
+struct ThreadPool;
+void UpdateRendererEntityGpuComponents(StackAllocator* alloc, ThreadPool* thread_pool, AsyncTransferQueue* async_transfer_queue, RecordContext* record_context, AssetEntitySystem& asset_system, Array<GpuComponentUploadBuffer>& gpu_uploads);
 void ReleaseTextureAssets(StackAllocator* alloc, GraphicsContext* graphics_context, AssetEntitySystem& asset_system);

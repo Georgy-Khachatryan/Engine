@@ -1,5 +1,6 @@
 #include "Basic/Basic.h"
 #include "Basic/BasicMemory.h"
+#include "Basic/BasicThreads.h"
 #include "Editor/LevelEditor.h"
 #include "Entities.h"
 #include "EntitySystem/EntitySystem.h"
@@ -14,6 +15,9 @@
 s32 main() {
 	auto alloc = CreateStackAllocator(64 * 1024 * 1024, 512 * 1024);
 	defer{ ReleaseStackAllocator(alloc); };
+	
+	auto* thread_pool = CreateThreadPool(&alloc);
+	defer{ ReleaseThreadPool(thread_pool); };
 	
 	extern void BasicExamples(StackAllocator* alloc);
 	BasicExamples(&alloc);
@@ -86,7 +90,7 @@ s32 main() {
 		Array<GpuComponentUploadBuffer> gpu_uploads;
 		UpdateStreamingSystems(renderer_context, record_context, &world_system, &asset_system, world_entity_guid);
 		UpdateEntityGpuComponents(&alloc, record_context, world_system, asset_system, gpu_uploads);
-		UpdateRendererEntityGpuComponents(&alloc, renderer_context->async_transfer_queue, record_context, asset_system, gpu_uploads);
+		UpdateRendererEntityGpuComponents(&alloc, thread_pool, renderer_context->async_transfer_queue, record_context, asset_system, gpu_uploads);
 		UpdateAsyncTransferQueue(renderer_context->async_transfer_queue);
 		
 		world_entity.renderer_world->gpu_uploads = gpu_uploads;

@@ -10,7 +10,7 @@
 #include "RendererEntities.h"
 #include "RenderPasses.h"
 
-void UpdateRendererEntityGpuComponents(StackAllocator* alloc, AsyncTransferQueue* async_transfer_queue, RecordContext* record_context, AssetEntitySystem& asset_system, Array<GpuComponentUploadBuffer>& gpu_uploads) {
+void UpdateRendererEntityGpuComponents(StackAllocator* alloc, ThreadPool* thread_pool, AsyncTransferQueue* async_transfer_queue, RecordContext* record_context, AssetEntitySystem& asset_system, Array<GpuComponentUploadBuffer>& gpu_uploads) {
 	ProfilerScope("UpdateRendererEntityGpuComponents");
 	
 	for (auto* entity_array : QueryEntities<MeshAssetType>(alloc, asset_system)) {
@@ -40,7 +40,7 @@ void UpdateRendererEntityGpuComponents(StackAllocator* alloc, AsyncTransferQueue
 	}
 	
 	
-	extern TextureImportResult ImportTextureFile(StackAllocator* alloc, const TextureSourceData& source_data, u64 runtime_data_guid);
+	extern TextureImportResult ImportTextureFile(StackAllocator* alloc, ThreadPool* thread_pool, const TextureSourceData& source_data, u64 runtime_data_guid);
 	
 	u64 completed_file_read_index = CompletedGpuAsyncTransferIndex(async_transfer_queue);
 	auto* graphics_context = record_context->context;
@@ -71,7 +71,7 @@ void UpdateRendererEntityGpuComponents(StackAllocator* alloc, AsyncTransferQueue
 					resource_allocation = {};
 				}
 				
-				auto result = ImportTextureFile(alloc, streams.source_data[i], layout.file_guid);
+				auto result = ImportTextureFile(alloc, thread_pool, streams.source_data[i], layout.file_guid);
 				if (result.success) {
 					layout = result.layout;
 				}

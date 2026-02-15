@@ -37,6 +37,7 @@
     <ClCompile Include="Basic/BasicProfilerPIX.cpp" />
     <ClCompile Include="Basic/BasicSaveLoad.cpp" />
     <ClCompile Include="Basic/BasicString.cpp" />
+    <ClCompile Include="Basic/BasicThreadsWin32.cpp" />
     <ClCompile Include="Basic/HeapAllocator.cpp" />
     <ClCompile Include="Basic/StackAllocator.cpp" />
     <ClCompile Include="Basic/SystemWin32.cpp" />
@@ -53,6 +54,7 @@
     <ClInclude Include="Basic/BasicMemory.h" />
     <ClInclude Include="Basic/BasicSaveLoad.h" />
     <ClInclude Include="Basic/BasicString.h" />
+    <ClInclude Include="Basic/BasicThreads.h" />
   </ItemGroup>
   
   <ItemGroup>

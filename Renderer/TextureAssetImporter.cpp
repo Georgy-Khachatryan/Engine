@@ -3,12 +3,14 @@
 #include "Basic/BasicMemory.h"
 #include "Basic/BasicFiles.h"
 #include "Basic/BasicMath.h"
+#include "Basic/BasicThreads.h"
 #include "TextureAsset.h"
 
 #define STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_RESIZE_IMPLEMENTATION
 #define STB_DXT_IMPLEMENTATION
 #define STBI_NO_STDIO
+#define STBIR_FORCE_MINIMUM_SCANLINES_FOR_SPLITS 256
 
 #include <SDK/stb/stb_image.h>
 #include <SDK/stb/stb_image_resize2.h>
@@ -17,17 +19,21 @@
 compile_const u32 stb_image_texel_size_bytes = sizeof(u32);
 
 template<TextureFormat format>
-static void TextureEncodeBCx(u8* mip_data, u8* mip_data_blocks, uint2 mip_size_blocks, u32 mip_row_pitch, u32 mip_row_pitch_blocks) {
+static void TextureEncodeBCx(ThreadPool* thread_pool, u8* mip_data, u8* mip_data_blocks, uint2 mip_size_blocks, u32 mip_row_pitch, u32 mip_row_pitch_blocks) {
 	ProfilerScope("TextureEncodeBCx");
 	
 	compile_const u32 bcx_block_size_texels = 4;
 	compile_const u32 bcx_block_size_bytes  = format == TextureFormat::BC5_UNORM ? 16 : 8;
+	compile_const u32 blocks_per_thread     = 1024;
 	
-	alignas(64) u8 src_block_data[64];
-	for (u32 y = 0; y < mip_size_blocks.y; y += 1) {
+	u32 thread_count    = DivideAndRoundUp(mip_size_blocks.x * mip_size_blocks.y, blocks_per_thread);
+	u32 rows_per_thread = DivideAndRoundUp(mip_size_blocks.y, thread_count);
+	
+	ParallelFor(thread_pool, 0, mip_size_blocks.y, rows_per_thread, [&](u64 y, u32 thread_index) {
 		auto* src = mip_data + mip_row_pitch * y * bcx_block_size_texels;
 		auto* dst = mip_data_blocks + mip_row_pitch_blocks * y;
 		
+		alignas(64) u8 src_block_data[64];
 		for (u32 x = 0; x < mip_size_blocks.x; x += 1, src += bcx_block_size_texels * stb_image_texel_size_bytes, dst += bcx_block_size_bytes) {
 			memcpy(src_block_data + 0,  src + mip_row_pitch * 0, 16);
 			memcpy(src_block_data + 16, src + mip_row_pitch * 1, 16);
@@ -42,7 +48,7 @@ static void TextureEncodeBCx(u8* mip_data, u8* mip_data_blocks, uint2 mip_size_b
 				stb_compress_bc5_block(dst, src_block_data, 4);
 			}
 		}
-	}
+	});
 }
 
 // Base address and row pitch must be aligned to at least 64 bytes. See EncodeHemiOctahedralMap for reference.
@@ -162,7 +168,7 @@ static void TextureEncodeHemiOctahedralMap(u8* mip_data, uint2 mip_size, u32 mip
 }
 
 
-TextureImportResult ImportTextureFile(StackAllocator* alloc, const TextureSourceData& source_data, u64 runtime_data_guid) {
+TextureImportResult ImportTextureFile(StackAllocator* alloc, ThreadPool* thread_pool, const TextureSourceData& source_data, u64 runtime_data_guid) {
 	ProfilerScope("ImportTextureFile");
 	TempAllocationScope(alloc);
 	
@@ -203,7 +209,7 @@ TextureImportResult ImportTextureFile(StackAllocator* alloc, const TextureSource
 		ProfilerScope("PadMip0");
 		
 		for (s32 y = 0; y < stb_image_size.y; y += 1) {
-			memcpy(mip_0_data + (y + 0) * mip_0_row_pitch, stb_image_result + (y + 0) * stb_image_row_pitch, stb_image_row_pitch);
+			memcpy(mip_0_data + y * mip_0_row_pitch, stb_image_result + y * stb_image_row_pitch, stb_image_row_pitch);
 		}
 	}
 	
@@ -222,19 +228,22 @@ TextureImportResult ImportTextureFile(StackAllocator* alloc, const TextureSource
 		
 		auto* mip_data = (u8*)alloc->Allocate(mip_row_pitch * AlignUp(mip_size.y, 1u << format.block_size_log2.y), texture_row_pitch_alignment);
 		
-		if (output_format == TextureFormat::BC1_UNORM_SRGB) {
-			stbir_resize_uint8_srgb(
-				last_mip_data, last_mip_size.x, last_mip_size.y, last_mip_row_pitch,
-				mip_data,      mip_size.x,      mip_size.y,      mip_row_pitch,
-				STBIR_RGBA
-			);
-		} else {
-			stbir_resize_uint8_linear(
-				last_mip_data, last_mip_size.x, last_mip_size.y, last_mip_row_pitch,
-				mip_data,      mip_size.x,      mip_size.y,      mip_row_pitch,
-				STBIR_RGBA
-			);
-		}
+		STBIR_RESIZE resize_state = {};
+		
+		stbir_resize_init(
+			&resize_state,
+			last_mip_data, last_mip_size.x, last_mip_size.y, last_mip_row_pitch,
+			mip_data,      mip_size.x,      mip_size.y,      mip_row_pitch,
+			STBIR_RGBA,
+			output_format == TextureFormat::BC1_UNORM_SRGB ? STBIR_TYPE_UINT8_SRGB : STBIR_TYPE_UINT8
+		);
+		
+		s32 split_count = stbir_build_samplers_with_splits(&resize_state, 8);
+		
+		ParallelFor(thread_pool, 0, split_count, 1, [&](u64 split_index, u32 thread_index) {
+			stbir_resize_extended_split(&resize_state, (s32)split_index, 1);
+		});
+		
 		
 		last_mip_data      = mip_data;
 		last_mip_row_pitch = mip_row_pitch;
@@ -303,11 +312,11 @@ TextureImportResult ImportTextureFile(StackAllocator* alloc, const TextureSource
 		u8* mip_data_blocks = (u8*)alloc->Allocate(mip_row_pitch_blocks * mip_size_blocks.y, texture_row_pitch_alignment);
 		
 		if (output_format == TextureFormat::BC1_UNORM_SRGB || output_format == TextureFormat::BC1_UNORM) {
-			TextureEncodeBCx<TextureFormat::BC1_UNORM>(mip_data, mip_data_blocks, mip_size_blocks, mip_row_pitch, mip_row_pitch_blocks);
+			TextureEncodeBCx<TextureFormat::BC1_UNORM>(thread_pool, mip_data, mip_data_blocks, mip_size_blocks, mip_row_pitch, mip_row_pitch_blocks);
 		} else if (output_format == TextureFormat::BC4_UNORM) {
-			TextureEncodeBCx<TextureFormat::BC4_UNORM>(mip_data, mip_data_blocks, mip_size_blocks, mip_row_pitch, mip_row_pitch_blocks);
+			TextureEncodeBCx<TextureFormat::BC4_UNORM>(thread_pool, mip_data, mip_data_blocks, mip_size_blocks, mip_row_pitch, mip_row_pitch_blocks);
 		} else if (output_format == TextureFormat::BC5_UNORM) {
-			TextureEncodeBCx<TextureFormat::BC5_UNORM>(mip_data, mip_data_blocks, mip_size_blocks, mip_row_pitch, mip_row_pitch_blocks);
+			TextureEncodeBCx<TextureFormat::BC5_UNORM>(thread_pool, mip_data, mip_data_blocks, mip_size_blocks, mip_row_pitch, mip_row_pitch_blocks);
 		}
 		
 		ArrayAppend(block_compressed_mips, mip_data_blocks);
