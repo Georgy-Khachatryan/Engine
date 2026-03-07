@@ -166,6 +166,14 @@ struct MeshRuntimeDataLayout {
 		meshlet_group_count u32 0;
 		rcp_quantization_scale float32 0;
 	}
+	/*Version*/ 9 {
+		file_guid u64 0;
+		version u64 0;
+		page_count u32 0;
+		meshlet_group_count u32 0;
+		meshlet_count u32 0;
+		rcp_quantization_scale float32 0;
+	}
 }
 
 enum CameraTransformType {

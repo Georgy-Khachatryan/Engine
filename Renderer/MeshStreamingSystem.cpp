@@ -277,8 +277,8 @@ static void InvalidateMeshStreaming(MeshStreamingSystem* system, RecordContext* 
 	BitArraySetBit(entity_array->dirty_mask, mesh_asset_index);
 }
 
-void UpdateMeshStreamingFiles(MeshStreamingSystem* system, RecordContext* record_context, AssetEntitySystem* asset_system) {
-	extern MeshImportResult ImportFbxMeshFile(StackAllocator* alloc, String filepath, u64 runtime_data_guid);
+void UpdateMeshStreamingFiles(MeshStreamingSystem* system, ThreadPool* thread_pool, RecordContext* record_context, AssetEntitySystem* asset_system) {
+	extern MeshImportResult ImportMeshFile(StackAllocator* alloc, ThreadPool* thread_pool, const MeshSourceData& source_data, u64 runtime_data_guid);
 	
 	auto* alloc = record_context->alloc;
 	for (auto* entity_array : QueryEntities<MeshAssetType>(alloc, *asset_system)) {
@@ -300,7 +300,7 @@ void UpdateMeshStreamingFiles(MeshStreamingSystem* system, RecordContext* record
 					runtime_file = {};
 				}
 				
-				auto result = ImportFbxMeshFile(alloc, streams.source_data[i].filepath, layout.file_guid);
+				auto result = ImportMeshFile(alloc, thread_pool, streams.source_data[i], layout.file_guid);
 				if (result.success) {
 					layout = result.layout;
 					

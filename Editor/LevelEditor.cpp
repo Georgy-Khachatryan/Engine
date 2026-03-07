@@ -655,6 +655,11 @@ static void AssetBrowserEntityView(StackAllocator* alloc, AssetEntitySystem& ass
 			ImGui::Text("%llu", entity.mesh_runtime_data_layout->meshlet_group_count);
 			ImGui::EndTableItem();
 		}
+		
+		if (ImGui::BeginTableItem("Meshlet Count")) {
+			ImGui::Text("%llu", entity.mesh_runtime_data_layout->meshlet_count);
+			ImGui::EndTableItem();
+		}
 	}
 	
 	if (entity.mesh_runtime_data_layout) {

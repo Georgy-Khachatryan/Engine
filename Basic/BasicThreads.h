@@ -1,6 +1,16 @@
 #pragma once
 #include "Basic.h"
 
+struct RWLock {
+	u64 data = 0;
+	
+	void AcquireExclusive();
+	void ReleaseExclusive();
+};
+
+#define ScopedLock(lock) (lock).AcquireExclusive(); defer{ (lock).ReleaseExclusive(); }
+
+
 struct ThreadPool;
 
 ThreadPool* CreateThreadPool(StackAllocator* alloc);

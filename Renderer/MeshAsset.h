@@ -31,6 +31,7 @@ struct MeshletCullingData {
 	
 	u32 meshlet_header_offset = 0;
 	u32 current_level_meshlet_group_index = u32_max;
+	u32 level_of_detail_index = 0;
 };
 
 NOTES(Meta::HlslFile{ "MeshData.hlsl"_sl })
@@ -38,13 +39,14 @@ struct MeshletHeader {
 	float3 position_offset;
 	u16 triangle_count = 0;
 	u16 vertex_count   = 0;
+	u32 level_of_detail_index = 0;
 };
 
 NOTES(Meta::HlslFile{ "MeshData.hlsl"_sl })
 struct MeshletPageHeader {
-	compile_const u32 page_size = 64 * 1024; // TODO: Experiment with different page sizes.
-	compile_const u32 max_page_count = 256;
-	compile_const u32 runtime_page_count = 128;
+	compile_const u32 page_size = 128 * 1024; // TODO: Experiment with different page sizes.
+	compile_const u32 max_page_count = 2048;
+	compile_const u32 runtime_page_count = 1024;
 	
 	u32 meshlet_count = 0;
 };
@@ -85,13 +87,14 @@ struct MeshSourceData {
 
 NOTES()
 struct MeshRuntimeDataLayout {
-	compile_const u64 current_version = 28;
+	compile_const u64 current_version = 31;
 	
 	u64 file_guid = 0;
 	u64 version   = 0;
 	
 	u32 page_count = 0;
 	u32 meshlet_group_count = 0;
+	u32 meshlet_count = 0;
 	
 	float rcp_quantization_scale = 1.f;
 };

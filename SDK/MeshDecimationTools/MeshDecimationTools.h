@@ -27,6 +27,10 @@
 #define MDT_ENABLE_ATTRIBUTE_SUPPORT 1
 #endif // !defined(MDT_ENABLE_ATTRIBUTE_SUPPORT)
 
+#if !defined(MDT_PROFILER_SCOPE)
+#define MDT_PROFILER_SCOPE(name) do {} while (0)
+#endif // !defined(MDT_PROFILER_SCOPE)
+
 #define MDT_MAX_MESHLET_VERTEX_COUNT 254
 #define MDT_MAX_MESHLET_FACE_COUNT 128
 #define MDT_MAX_CLOD_LEVEL_COUNT 16
@@ -68,6 +72,21 @@ struct MdtAllocatorCallbacks {
 	void* user_data;
 };
 
+// MdtParallelForCallback should invoke MdtWorkItemCallback 'work_item_count' times with index and provided mdt_data.
+typedef void (*MdtWorkItemCallback)(void* mdt_data, uint32_t work_item_index);
+typedef void (*MdtParallelForCallback)(void* user_data, void* mdt_data, uint32_t work_item_count, MdtWorkItemCallback callback);
+
+// Optional parallel for callbacks. If they're not provided the system falls sequential execution.
+struct MdtParallelForCallbacks {
+	MdtParallelForCallback callback;
+	
+	// User defined parallel for state, passed to MdtParallelForCallback as user_data argument.
+	void* user_data;
+	
+	// The maximum number of threads that could run at the same time.
+	uint32_t thread_count;
+};
+
 // Optional memory allocation callbacks. If they're not provided the system falls back to C realloc().
 struct MdtSystemCallbacks {
 	//
@@ -81,6 +100,11 @@ struct MdtSystemCallbacks {
 	// Memory blocks are allocated and freed in arbitrary order.
 	//
 	struct MdtAllocatorCallbacks heap_allocator;
+	
+	//
+	// ParallelFor is used to decimate multiple independent sub meshes at the same time.
+	//
+	struct MdtParallelForCallbacks parallel_for;
 };
 
 

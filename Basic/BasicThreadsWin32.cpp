@@ -6,6 +6,17 @@
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 
+void RWLock::AcquireExclusive() {
+	AcquireSRWLockExclusive((PSRWLOCK)this);
+}
+
+void RWLock::ReleaseExclusive() {
+	ReleaseSRWLockExclusive((PSRWLOCK)this);
+}
+
+static_assert(sizeof(RWLock) == sizeof(SRWLOCK), "Mismatching SRWLOCK size.");
+
+
 compile_const u32 thread_pool_max_thread_count = 32;
 
 struct alignas(64) ThreadPoolWorkItem {
@@ -26,7 +37,7 @@ struct ThreadPoolMainUserData {
 struct ThreadPool {
 	alignas(64) bool thread_pool_active = true;
 	alignas(64) CONDITION_VARIABLE condition_variable = CONDITION_VARIABLE_INIT;
-	alignas(64) SRWLOCK work_item_lock = SRWLOCK_INIT;
+	alignas(64) RWLock work_item_lock;
 	alignas(64) ThreadPoolWorkItem work_item;
 	
 	FixedCapacityArray<HANDLE, thread_pool_max_thread_count> threads;
@@ -50,21 +61,22 @@ ThreadPool* CreateThreadPool(StackAllocator* alloc) {
 	}
 	
 	ArrayAppend(thread_pool->threads, GetCurrentThread());
-	SetThreadDescription(GetCurrentThread(), L"Main0");
+	SetThreadDescription(GetCurrentThread(), L"0: Main");
 	
 	for (u32 i = 1; i < thread_count; i += 1) {
 		auto handle = CreateThread(nullptr, 0, &ThreadPoolMain, (void*)&thread_pool->thread_user_data[i], 0, nullptr);
 		
-		SetThreadDescription(handle, (wchar_t*)StringUtf8ToUtf16(alloc, StringFormat(alloc, "Worker%"_sl, i)).data);
+		SetThreadDescription(handle, (wchar_t*)StringUtf8ToUtf16(alloc, StringFormat(alloc, "%: Worker"_sl, i)).data);
 		ArrayAppend(thread_pool->threads, handle);
 	}
 	return thread_pool;
 }
 
 void ReleaseThreadPool(ThreadPool* thread_pool) {
-	AcquireSRWLockExclusive(&thread_pool->work_item_lock);
-	thread_pool->thread_pool_active = false;
-	ReleaseSRWLockExclusive(&thread_pool->work_item_lock);
+	{
+		ScopedLock(thread_pool->work_item_lock);
+		thread_pool->thread_pool_active = false;
+	}
 	
 	WakeAllConditionVariable(&thread_pool->condition_variable);
 	
@@ -82,17 +94,15 @@ static DWORD ThreadPoolMain(void* user_data) {
 	while (thread_pool->thread_pool_active) {
 		ThreadPoolWorkItem work_item;
 		{
-			AcquireSRWLockExclusive(&thread_pool->work_item_lock);
+			ScopedLock(thread_pool->work_item_lock);
 			
 			if (thread_pool->work_item.begin_index < thread_pool->work_item.end_index) {
 				work_item = thread_pool->work_item;
 				thread_pool->work_item.begin_index  = work_item.begin_index + work_item.batch_size;
 				thread_pool->work_item.worker_count += 1;
 			} else {
-				SleepConditionVariableSRW(&thread_pool->condition_variable, &thread_pool->work_item_lock, INFINITE, 0);
+				SleepConditionVariableSRW(&thread_pool->condition_variable, (PSRWLOCK)&thread_pool->work_item_lock, INFINITE, 0);
 			}
-			
-			ReleaseSRWLockExclusive(&thread_pool->work_item_lock);
 		}
 		
 		if (work_item.callback != nullptr) {
@@ -102,9 +112,8 @@ static DWORD ThreadPoolMain(void* user_data) {
 				work_item.callback(work_item.user_data, i, thread_index);
 			}
 			
-			AcquireSRWLockExclusive(&thread_pool->work_item_lock);
+			ScopedLock(thread_pool->work_item_lock);
 			thread_pool->work_item.worker_count -= 1;
-			ReleaseSRWLockExclusive(&thread_pool->work_item_lock);
 		}
 	}
 	
@@ -120,25 +129,33 @@ void ParallelForWithCallback(ThreadPool* thread_pool, u64 begin_index, u64 end_i
 		return;
 	}
 	
-	thread_pool->work_item.begin_index = begin_index;
-	thread_pool->work_item.end_index   = end_index;
-	thread_pool->work_item.batch_size  = batch_size;
-	thread_pool->work_item.callback    = callback;
-	thread_pool->work_item.user_data   = user_data;
-	thread_pool->work_item.worker_count = 0;
+	{
+		ThreadPoolWorkItem work_item;
+		work_item.begin_index = begin_index + batch_size;
+		work_item.end_index   = end_index;
+		work_item.batch_size  = batch_size;
+		work_item.callback    = callback;
+		work_item.user_data   = user_data;
+		work_item.worker_count = 0;
+		thread_pool->work_item = work_item;
+		
+		WakeAllConditionVariable(&thread_pool->condition_variable);
+	}
 	
-	WakeAllConditionVariable(&thread_pool->condition_variable);
+	// Always consume the first work item on the calling thread.
+	end_index = Math::Min(end_index, begin_index + batch_size);
+	for (u64 i = begin_index; i < end_index; i += 1) {
+		callback(user_data, i, 0);
+	}
 	
 	bool parallel_for_active = true;
 	while (parallel_for_active) {
 		ThreadPoolWorkItem work_item;
 		{
-			AcquireSRWLockExclusive(&thread_pool->work_item_lock);
+			ScopedLock(thread_pool->work_item_lock);
 			
 			work_item = thread_pool->work_item;
 			thread_pool->work_item.begin_index = work_item.begin_index + work_item.batch_size;
-			
-			ReleaseSRWLockExclusive(&thread_pool->work_item_lock);
 		}
 		
 		work_item.end_index = Math::Min(work_item.end_index, work_item.begin_index + work_item.batch_size);

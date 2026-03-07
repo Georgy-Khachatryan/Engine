@@ -97,11 +97,11 @@ RecordContext* BeginRecordContext(StackAllocator* alloc, RendererContext* contex
 	return record_context;
 }
 
-void UpdateStreamingSystems(RendererContext* renderer_context, RecordContext* record_context, WorldEntitySystem* world_system, AssetEntitySystem* asset_system, u64 world_entity_guid) {
+void UpdateStreamingSystems(RendererContext* renderer_context, ThreadPool* thread_pool, RecordContext* record_context, WorldEntitySystem* world_system, AssetEntitySystem* asset_system, u64 world_entity_guid) {
 	auto world_entity = QueryEntityByGUID<WorldEntityQuery>(*world_system, world_entity_guid);
 	auto& renderer_world = *world_entity.renderer_world;
 	
-	UpdateMeshStreamingFiles(renderer_context->mesh_streaming_system, record_context, asset_system);
+	UpdateMeshStreamingFiles(renderer_context->mesh_streaming_system, thread_pool, record_context, asset_system);
 	
 	UpdateMeshStreamingSystem(renderer_context->mesh_streaming_system, renderer_context->async_transfer_queue, record_context, asset_system, &renderer_world.mesh_streaming_feedback_queue);
 	UpdateMeshletStreamingSystem(renderer_context->meshlet_streaming_system, renderer_context->async_transfer_queue, record_context, asset_system, &renderer_world.meshlet_streaming_feedback_queue);

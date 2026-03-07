@@ -88,7 +88,7 @@ s32 main() {
 		LevelEditorUpdate(editor_context, &alloc, record_context, world_system, asset_system, world_entity_guid);
 		
 		Array<GpuComponentUploadBuffer> gpu_uploads;
-		UpdateStreamingSystems(renderer_context, record_context, &world_system, &asset_system, world_entity_guid);
+		UpdateStreamingSystems(renderer_context, thread_pool, record_context, &world_system, &asset_system, world_entity_guid);
 		UpdateEntityGpuComponents(&alloc, record_context, world_system, asset_system, gpu_uploads);
 		UpdateRendererEntityGpuComponents(&alloc, thread_pool, renderer_context->async_transfer_queue, record_context, asset_system, gpu_uploads);
 		UpdateAsyncTransferQueue(renderer_context->async_transfer_queue);

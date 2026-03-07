@@ -17,12 +17,12 @@ void MainCS(uint2 thread_id : SV_DispatchThreadID) {
 	if (thread_id.x < page_residency_mask_size) {
 		gs_page_residency_mask[thread_id.x] = mesh_asset_buffer.Load(page_residency_mask_offset + thread_id.x * sizeof(uint));
 	}
+	_Static_assert(page_residency_mask_size <= thread_group_size, "Page residency mask size is too large to be loaded using a single thread group.");
 	
 	GroupMemoryBarrierWithGroupSync();
 	
-	if (thread_id.x < command.page_list_count) {
-		uint page_command = page_list[command.page_list_offset + thread_id.x];
-		_Static_assert(MeshletPageHeader::max_page_count <= thread_group_size, "Thread group might not process the whole page list.");
+	for (uint command_index = thread_id.x; command_index < command.page_list_count; command_index += thread_group_size) {
+		uint page_command = page_list[command.page_list_offset + command_index];
 		
 		uint asset_page_index   = (page_command & 0xFFFF);
 		uint runtime_page_index = (page_command >> 16) & 0x7FFF;

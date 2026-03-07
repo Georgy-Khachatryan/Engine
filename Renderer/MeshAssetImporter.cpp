@@ -3,6 +3,7 @@
 #include "Basic/BasicMemory.h"
 #include "Basic/BasicFiles.h"
 #include "Basic/BasicMath.h"
+#include "Basic/BasicThreads.h"
 #include "MeshAsset.h"
 
 #include <SDK/ufbx/ufbx.h>
@@ -44,11 +45,11 @@ struct SourceMeshVertex {
 	float2 texcoord;
 };
 
-MeshImportResult ImportFbxMeshFile(StackAllocator* alloc, String filepath, u64 runtime_data_guid) {
-	ProfilerScope("ImportFbxMeshFile");
+MeshImportResult ImportMeshFile(StackAllocator* alloc, ThreadPool* thread_pool, const MeshSourceData& source_data, u64 runtime_data_guid) {
+	ProfilerScope("ImportMeshFile");
 	TempAllocationScope(alloc);
 	
-	auto file_data = SystemReadFileToString(alloc, filepath);
+	auto file_data = SystemReadFileToString(alloc, source_data.filepath);
 	if (file_data.data == nullptr) return {};
 	
 	ufbx_load_opts options = {};
@@ -127,42 +128,37 @@ MeshImportResult ImportFbxMeshFile(StackAllocator* alloc, String filepath, u64 r
 			}
 		}
 	}
+	ufbx_free_scene(scene);
+	
+	
+	struct MdtHeapAllocatorUserData {
+		RWLock lock;
+		HeapAllocator heap;
+	};
+	
+	MdtHeapAllocatorUserData allocator_user_data;
+	allocator_user_data.heap = CreateHeapAllocator(512 * 1024 * 1024); // TODO: Set a more reasonable size?
+	defer{ ReleaseHeapAllocator(allocator_user_data.heap); };
 	
 	
 	MdtSystemCallbacks callbacks = {};
 	callbacks.temp_allocator.reallocate = [](void* old_memory_block, u64 size_bytes, void* user_data)-> void* {
-		auto* alloc = (StackAllocator*)user_data;
-		compile_const u64 minimum_alignment = 16;
+		auto& allocator_user_data = *(MdtHeapAllocatorUserData*)user_data;
 		
-		// Store the old memory block size at the beginning of the allocation.
-		compile_const u64 header_size_qwords = minimum_alignment / sizeof(u64);
-		old_memory_block = old_memory_block ? ((u64*)old_memory_block - header_size_qwords) : nullptr;
-		
-		auto* memory_block = alloc->Reallocate(
-			old_memory_block,
-			old_memory_block ? *(u64*)old_memory_block : 0,
-			size_bytes ? (size_bytes + header_size_qwords * sizeof(u64)) : 0,
-			minimum_alignment
-		);
-		
-		if (memory_block != nullptr) {
-			*(u64*)memory_block = (size_bytes + header_size_qwords * sizeof(u64));
-		}
-		
-		return memory_block ? ((u64*)memory_block + header_size_qwords) : nullptr;
+		ScopedLock(allocator_user_data.lock);
+		return allocator_user_data.heap.Reallocate(old_memory_block, 0, size_bytes, 64);
 	};
-	callbacks.temp_allocator.user_data = alloc;
+	callbacks.temp_allocator.user_data = &allocator_user_data;
+	callbacks.heap_allocator = callbacks.temp_allocator;
 	
-	callbacks.heap_allocator.reallocate = [](void* old_memory_block, u64 size_bytes, void*) {
-		void* result = nullptr;
-		if (size_bytes == 0) {
-			free(old_memory_block);
-		} else {
-			result = realloc(old_memory_block, size_bytes);
-		}
-		return result;
+	
+	callbacks.parallel_for.callback = [](void* user_data, void* mdt_data, u32 work_item_count, MdtWorkItemCallback callback) {
+		ParallelFor((ThreadPool*)user_data, 0, work_item_count, 1, [&](u64 work_item_index, u32 thread_index) {
+			callback(mdt_data, (u32)work_item_index);
+		});
 	};
-	callbacks.heap_allocator.user_data = nullptr;
+	callbacks.parallel_for.user_data = thread_pool;
+	callbacks.parallel_for.thread_count = 32;
 	
 	
 	MdtTriangleGeometryDesc geometry_descs[1] = {};
@@ -343,6 +339,8 @@ MeshImportResult ImportFbxMeshFile(StackAllocator* alloc, String filepath, u64 r
 			position_offset.y = floorf(src_meshlet.aabb_min.y * quantization_scale) * rcp_quantization_scale;
 			position_offset.z = floorf(src_meshlet.aabb_min.z * quantization_scale) * rcp_quantization_scale;
 			
+			u32 level_of_detail_index = mdt_meshlet_groups[src_meshlet.coarser_level_meshlet_group_index].level_of_detail_index;
+			
 			// Write culling data:
 			{
 				MeshletCullingData culling_data;
@@ -350,6 +348,7 @@ MeshImportResult ImportFbxMeshFile(StackAllocator* alloc, String filepath, u64 r
 				culling_data.meshlet_header_offset      = (u32)(page_meshlet_data_offset - page_culling_data_offset);
 				culling_data.aabb_center                = (float3(src_meshlet.aabb_max) + float3(src_meshlet.aabb_min)) * 0.5f;
 				culling_data.aabb_radius                = (float3(src_meshlet.aabb_max) - float3(src_meshlet.aabb_min)) * 0.5f;
+				culling_data.level_of_detail_index      = level_of_detail_index;
 				
 				if (src_meshlet.current_level_meshlet_group_index != u32_max) {
 					culling_data.current_level_meshlet_group_index = mdt_to_result_meshlet_group_index[src_meshlet.current_level_meshlet_group_index];
@@ -365,6 +364,7 @@ MeshImportResult ImportFbxMeshFile(StackAllocator* alloc, String filepath, u64 r
 				meshlet_header.triangle_count  = triangle_count;
 				meshlet_header.vertex_count    = vertex_count;
 				meshlet_header.position_offset = position_offset;
+				meshlet_header.level_of_detail_index = level_of_detail_index;
 				
 				memcpy(page.data + page_meshlet_data_offset, &meshlet_header, sizeof(meshlet_header));
 				page_meshlet_data_offset += sizeof(meshlet_header);
@@ -406,7 +406,6 @@ MeshImportResult ImportFbxMeshFile(StackAllocator* alloc, String filepath, u64 r
 	
 	MdtFreeContinuousLodBuildResult(&result, &callbacks);
 	
-	
 	auto runtime_filepath = StringFormat(alloc, "./Assets/Runtime/%x..mrd"_sl, runtime_data_guid);
 	
 	auto runtime_file = SystemOpenFile(alloc, runtime_filepath, OpenFileFlags::Write);
@@ -418,6 +417,7 @@ MeshImportResult ImportFbxMeshFile(StackAllocator* alloc, String filepath, u64 r
 	runtime_data_layout.version    = MeshRuntimeDataLayout::current_version;
 	runtime_data_layout.page_count = (u32)result_pages.count;
 	runtime_data_layout.meshlet_group_count = (u32)result_meshlet_groups.count;
+	runtime_data_layout.meshlet_count = (u32)mdt_meshlets.count;
 	runtime_data_layout.rcp_quantization_scale = rcp_quantization_scale;
 	
 	u64 write_offset = 0;

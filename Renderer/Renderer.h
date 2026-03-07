@@ -7,6 +7,7 @@ struct AsyncTransferQueue;
 struct GraphicsContext;
 struct MeshletStreamingSystem;
 struct MeshStreamingSystem;
+struct ThreadPool;
 struct VirtualResourceTable;
 struct WindowSwapChain;
 struct WorldEntitySystem;
@@ -57,4 +58,4 @@ void ReleaseResourceTable(GraphicsContext* graphics_context, VirtualResourceTabl
 RecordContext* BeginRecordContext(StackAllocator* alloc, RendererContext* context, WindowSwapChain* swap_chain, VirtualResourceTable* resource_table);
 void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext* record_context, WorldEntitySystem* world_system, AssetEntitySystem* asset_system, u64 world_entity_guid);
 
-void UpdateStreamingSystems(RendererContext* renderer_context, RecordContext* record_context, WorldEntitySystem* world_system, AssetEntitySystem* asset_system, u64 world_entity_guid);
+void UpdateStreamingSystems(RendererContext* renderer_context, ThreadPool* thread_pool, RecordContext* record_context, WorldEntitySystem* world_system, AssetEntitySystem* asset_system, u64 world_entity_guid);

@@ -4,7 +4,7 @@
   <ItemDefinitionGroup>
     <ClCompile>
       <PreprocessorDefinitions>
-        MDT_MAX_ATTRIBUTE_STRIDE_DWORDS=8;
+        MDT_CONFIGURATION_FILE="MdtConfigurationFile.h";
         %(PreprocessorDefinitions)
       </PreprocessorDefinitions>
     </ClCompile>
