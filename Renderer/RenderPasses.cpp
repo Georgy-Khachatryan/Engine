@@ -19,7 +19,8 @@ static void BuildResourceTable(RecordContext* record_context, WorldEntitySystem*
 	table.Set(ID::MeshletCullingCommands, MeshletConstants::meshlet_culling_command_count * sizeof(uint2));
 	table.Set(ID::MeshletIndirectArguments, (u32)MeshletCullingIndirectArgumentsLayout::Count * sizeof(uint4));
 	table.Set(ID::MeshletStreamingFeedback, 64u * 1024u);
-	table.Set(ID::MeshStreamingFeedback, mesh_assets->capacity * sizeof(u32) + sizeof(u32));
+	table.Set(ID::MeshStreamingFeedback,    mesh_assets->capacity * sizeof(u32) + sizeof(u32));
+	table.Set(ID::TextureStreamingFeedback, persistent_srv_descriptor_count * sizeof(u32));
 	
 	table.Set(ID::SceneRadiance, TextureSize(TextureFormat::R16G16B16A16_FLOAT, render_target_size));
 	table.Set(ID::DepthStencil,  TextureSize(TextureFormat::D32_FLOAT, render_target_size));
@@ -170,30 +171,27 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	
 	render_passes.Add<MeshEntityCullingRenderPass>().world_system = world_system;
 	render_passes.Add<MeshletGroupCullingRenderPass>();
-	auto& main_meshlet_culling = render_passes.Add<MeshletCullingRenderPass>();
-	main_meshlet_culling.meshlet_streaming_feedback_queue = &renderer_world.meshlet_streaming_feedback_queue;
-	main_meshlet_culling.mesh_streaming_feedback_queue    = &renderer_world.mesh_streaming_feedback_queue;
+	render_passes.Add<MeshletCullingRenderPass>();
 	render_passes.Add<BasicMeshRenderPass>();
 	
 	
 	if (renderer_world.debug_freeze_culling_camera.enabled == false) {
 		render_passes.Add<BuildHzbRenderPass>();
 		
-		auto& disocclusion_entity_culling        = render_passes.Add<MeshEntityCullingRenderPass>("DisocclusionMeshEntityCulling"_sl);
-		auto& disocclusion_mehslet_group_culling = render_passes.Add<MeshletGroupCullingRenderPass>("DisocclusionMeshletGroupCulling"_sl);
-		auto& disocclusion_meshlet_culling       = render_passes.Add<MeshletCullingRenderPass>("DisocclusionMeshletCulling"_sl);
-		
-		disocclusion_entity_culling.pass                              = MeshletCullingPass::Disocclusion;
-		disocclusion_mehslet_group_culling.pass                       = MeshletCullingPass::Disocclusion;
-		disocclusion_meshlet_culling.pass                             = MeshletCullingPass::Disocclusion;
-		disocclusion_meshlet_culling.meshlet_streaming_feedback_queue = &renderer_world.meshlet_streaming_feedback_queue;
-		disocclusion_meshlet_culling.mesh_streaming_feedback_queue    = &renderer_world.mesh_streaming_feedback_queue;
-		
-		auto& disocclusion_mesh_pass = render_passes.Add<BasicMeshRenderPass>("DisocclusionBasicMesh"_sl);
-		disocclusion_mesh_pass.pass = MeshletCullingPass::Disocclusion;
+		render_passes.Add<MeshEntityCullingRenderPass>("DisocclusionMeshEntityCulling"_sl).pass = MeshletCullingPass::Disocclusion;
+		render_passes.Add<MeshletGroupCullingRenderPass>("DisocclusionMeshletGroupCulling"_sl).pass = MeshletCullingPass::Disocclusion;
+		render_passes.Add<MeshletCullingRenderPass>("DisocclusionMeshletCulling"_sl).pass = MeshletCullingPass::Disocclusion;
+		render_passes.Add<BasicMeshRenderPass>("DisocclusionBasicMesh"_sl).pass = MeshletCullingPass::Disocclusion;
 		
 		render_passes.Add<BuildHzbRenderPass>();
 	}
+	
+	
+	auto& copy_streaming_feedback = render_passes.Add<CopyStreamingFeedbackRenderPass>();
+	copy_streaming_feedback.meshlet_streaming_feedback_queue = &renderer_world.meshlet_streaming_feedback_queue;
+	copy_streaming_feedback.mesh_streaming_feedback_queue    = &renderer_world.mesh_streaming_feedback_queue;
+	copy_streaming_feedback.texture_streaming_feedback_queue = &renderer_world.texture_streaming_feedback_queue;
+	
 	
 	auto& debug_geometry = render_passes.Add<DebugGeometryRenderPass>();
 	debug_geometry.debug_mesh_instance_arrays = renderer_world.debug_mesh_instance_arrays;

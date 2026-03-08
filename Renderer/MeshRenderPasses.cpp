@@ -18,13 +18,15 @@ void MeshletClearBuffersRenderPass::RecordPass(RecordContext* record_context) {
 	
 	auto& meshlet_streaming_feedback = GetVirtualResource(record_context, VirtualResourceID::MeshletStreamingFeedback);
 	auto& mesh_streaming_feedback    = GetVirtualResource(record_context, VirtualResourceID::MeshStreamingFeedback);
+	auto& texture_streaming_feedback = GetVirtualResource(record_context, VirtualResourceID::TextureStreamingFeedback);
 	
 	RootSignature::PushConstants constants;
 	constants.meshlet_streaming_feedback_size = meshlet_streaming_feedback.buffer.size / sizeof(u32);
 	constants.mesh_streaming_feedback_size    = mesh_streaming_feedback.buffer.size    / sizeof(u32);
+	constants.texture_streaming_feedback_size = texture_streaming_feedback.buffer.size / sizeof(u32);
 	CmdSetRootArgument(record_context, root_signature.constants, constants);
 	
-	u32 largest_buffer_size = Math::Max(constants.meshlet_streaming_feedback_size, constants.mesh_streaming_feedback_size);
+	u32 largest_buffer_size = Math::Max(Math::Max(constants.meshlet_streaming_feedback_size, constants.mesh_streaming_feedback_size), constants.texture_streaming_feedback_size);
 	CmdDispatch(record_context, DivideAndRoundUp(largest_buffer_size, MeshletConstants::meshlet_culling_thread_group_size));
 }
 
@@ -126,21 +128,26 @@ void MeshletCullingRenderPass::RecordPass(RecordContext* record_context) {
 		CmdSetRootArgument(record_context, root_signature.constants, { i });
 		CmdDispatchIndirect(record_context, GpuAddress(VirtualResourceID::MeshletIndirectArguments, (i + indirect_arguments_offset) * sizeof(uint4)));
 	}
+}
+
+void CopyStreamingFeedbackRenderPass::RecordPass(RecordContext* record_context) {
+	struct StreamingFeedbackBuffer {
+		VirtualResourceID resource_id    = VirtualResourceID::None;
+		GpuReadbackQueue* readback_queue = nullptr;
+	};
 	
-	if (pass == MeshletCullingPass::Disocclusion) {
-		auto& meshlet_streaming_feedback = GetVirtualResource(record_context, VirtualResourceID::MeshletStreamingFeedback);
-		auto [readback_gpu_address, readback_cpu_address] = AllocateTransientReadbackBuffer(record_context, meshlet_streaming_feedback.buffer.size);
-		
-		CmdCopyBufferToBuffer(record_context, VirtualResourceID::MeshletStreamingFeedback, readback_gpu_address, meshlet_streaming_feedback.buffer.size);
-		meshlet_streaming_feedback_queue->Store(readback_cpu_address, record_context->frame_index);
-	}
+	StreamingFeedbackBuffer feedback_buffers[] = {
+		{ VirtualResourceID::MeshletStreamingFeedback, meshlet_streaming_feedback_queue },
+		{ VirtualResourceID::MeshStreamingFeedback,    mesh_streaming_feedback_queue    },
+		{ VirtualResourceID::TextureStreamingFeedback, texture_streaming_feedback_queue },
+	};
 	
-	if (pass == MeshletCullingPass::Disocclusion) {
-		auto& mesh_streaming_feedback = GetVirtualResource(record_context, VirtualResourceID::MeshStreamingFeedback);
-		auto [readback_gpu_address, readback_cpu_address] = AllocateTransientReadbackBuffer(record_context, mesh_streaming_feedback.buffer.size);
+	for (auto& [resource_id, readback_queue] : feedback_buffers) {
+		auto& readback_buffer = GetVirtualResource(record_context, resource_id);
+		auto [readback_gpu_address, readback_cpu_address] = AllocateTransientReadbackBuffer(record_context, readback_buffer.buffer.size);
 		
-		CmdCopyBufferToBuffer(record_context, VirtualResourceID::MeshStreamingFeedback, readback_gpu_address, mesh_streaming_feedback.buffer.size);
-		mesh_streaming_feedback_queue->Store(readback_cpu_address, record_context->frame_index);
+		CmdCopyBufferToBuffer(record_context, resource_id, readback_gpu_address, readback_buffer.buffer.size);
+		readback_queue->Store(readback_cpu_address, record_context->frame_index);
 	}
 }
 

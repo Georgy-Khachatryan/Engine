@@ -7,6 +7,7 @@ struct AsyncTransferQueue;
 struct GraphicsContext;
 struct MeshletStreamingSystem;
 struct MeshStreamingSystem;
+struct TextureStreamingSystem;
 struct ThreadPool;
 struct VirtualResourceTable;
 struct WindowSwapChain;
@@ -41,7 +42,8 @@ struct RendererContext {
 	u64 transient_buffer_index = 0;
 	
 	MeshletStreamingSystem* meshlet_streaming_system = nullptr;
-	MeshStreamingSystem* mesh_streaming_system = nullptr;
+	MeshStreamingSystem*    mesh_streaming_system    = nullptr;
+	TextureStreamingSystem* texture_streaming_system = nullptr;
 	
 	NativeBufferResource mesh_asset_buffer;
 	u64 mesh_asset_buffer_size = 0;

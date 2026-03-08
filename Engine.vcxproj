@@ -77,6 +77,7 @@
     <ClCompile Include="Renderer/RendererEntities.cpp" />
     <ClCompile Include="Renderer/RenderPasses.cpp" />
     <ClCompile Include="Renderer/TextureAssetImporter.cpp" />
+    <ClCompile Include="Renderer/TextureStreamingSystem.cpp" />
     
     <!-- Generated code. -->
     <ClCompile Include="Engine/Generated/EntitySystemMetadata.cpp" />
@@ -118,6 +119,7 @@
     <ClInclude Include="Renderer/RendererEntities.h" />
     <ClInclude Include="Renderer/RenderPasses.h" />
     <ClInclude Include="Renderer/TextureAsset.h" />
+    <ClInclude Include="Renderer/TextureStreamingSystem.h" />
   </ItemGroup>
   
   <Target Name="PreBuild" AfterTargets="PreBuildEvent">

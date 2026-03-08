@@ -60,6 +60,7 @@ struct RendererWorld {
 	
 	GpuReadbackQueue meshlet_streaming_feedback_queue;
 	GpuReadbackQueue mesh_streaming_feedback_queue;
+	GpuReadbackQueue texture_streaming_feedback_queue;
 	
 	Array<GpuComponentUploadBuffer> gpu_uploads;
 	

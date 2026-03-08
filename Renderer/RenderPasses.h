@@ -44,8 +44,11 @@ enum struct VirtualResourceID : u32 {
 	MeshletGroupCullingCommands,
 	MeshletCullingCommands,
 	MeshletIndirectArguments,
+	
+	// Streaming feedback:
 	MeshletStreamingFeedback,
 	MeshStreamingFeedback,
+	TextureStreamingFeedback,
 	
 	// Atmosphere resources:
 	TransmittanceLut,
@@ -360,16 +363,18 @@ struct MeshletClearBuffersRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
-		HLSL::RWRegularBuffer<uint4> indirect_arguments = VirtualResourceID::MeshletIndirectArguments;
+		HLSL::RWRegularBuffer<uint4> indirect_arguments       = VirtualResourceID::MeshletIndirectArguments;
 		HLSL::RWRegularBuffer<u32> meshlet_streaming_feedback = VirtualResourceID::MeshletStreamingFeedback;
-		HLSL::RWRegularBuffer<u32> mesh_streaming_feedback = VirtualResourceID::MeshStreamingFeedback;
-		HLSL::RWRegularBuffer<u32> culling_hzb_build_state = VirtualResourceID::CullingHzbBuildState;
+		HLSL::RWRegularBuffer<u32> mesh_streaming_feedback    = VirtualResourceID::MeshStreamingFeedback;
+		HLSL::RWRegularBuffer<u32> texture_streaming_feedback = VirtualResourceID::TextureStreamingFeedback;
+		HLSL::RWRegularBuffer<u32> culling_hzb_build_state    = VirtualResourceID::CullingHzbBuildState;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {
 		struct PushConstants {
 			u32 meshlet_streaming_feedback_size = 0;
 			u32 mesh_streaming_feedback_size    = 0;
+			u32 texture_streaming_feedback_size = 0;
 		};
 		
 		HLSL::PushConstantBuffer<PushConstants> constants;
@@ -471,6 +476,7 @@ struct MeshletCullingRenderPass {
 	
 	GpuReadbackQueue* meshlet_streaming_feedback_queue = nullptr;
 	GpuReadbackQueue* mesh_streaming_feedback_queue    = nullptr;
+	GpuReadbackQueue* texture_streaming_feedback_queue = nullptr;
 	MeshletCullingPass pass = MeshletCullingPass::Main;
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
@@ -499,6 +505,15 @@ struct MeshletCullingRenderPass {
 	
 	inline static PipelineID main_pipeline_id;
 	inline static PipelineID disocclusion_pipeline_id;
+};
+
+NOTES(Meta::RenderPass{})
+struct CopyStreamingFeedbackRenderPass {
+	RENDER_PASS_GENERATED_CODE();
+	
+	GpuReadbackQueue* meshlet_streaming_feedback_queue = nullptr;
+	GpuReadbackQueue* mesh_streaming_feedback_queue    = nullptr;
+	GpuReadbackQueue* texture_streaming_feedback_queue = nullptr;
 };
 
 
@@ -551,8 +566,9 @@ struct BasicMeshRenderPass {
 		HLSL::RegularBuffer<GpuMeshAssetData>  mesh_asset_data  = VirtualResourceID::GpuMeshAssetData;
 		HLSL::RegularBuffer<GpuMeshEntityData> mesh_entity_data = VirtualResourceID::GpuMeshEntityData;
 		HLSL::RegularBuffer<GpuMaterialTextureData> material_texture_data = VirtualResourceID::MaterialAssetTextureData;
-		HLSL::ByteBuffer           mesh_asset_buffer = VirtualResourceID::MeshAssetBuffer;
-		HLSL::RegularBuffer<uint2> visible_meshlets  = VirtualResourceID::VisibleMeshlets;
+		HLSL::RWRegularBuffer<u32>             texture_streaming_feedback = VirtualResourceID::TextureStreamingFeedback;
+		HLSL::ByteBuffer          mesh_asset_buffer = VirtualResourceID::MeshAssetBuffer;
+		HLSL::RegularBuffer<uint2> visible_meshlets = VirtualResourceID::VisibleMeshlets;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {

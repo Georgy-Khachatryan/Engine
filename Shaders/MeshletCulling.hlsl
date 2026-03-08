@@ -46,6 +46,10 @@ void MainCS(uint thread_id : SV_DispatchThreadID) {
 	if (thread_id < constants.mesh_streaming_feedback_size) {
 		mesh_streaming_feedback[thread_id] = thread_id == 0 ? constants.mesh_streaming_feedback_size : u32_max;
 	}
+	
+	if (thread_id < constants.texture_streaming_feedback_size) {
+		texture_streaming_feedback[thread_id] = u32_max;
+	}
 }
 #endif // defined(CLEAR_BUFFERS)
 

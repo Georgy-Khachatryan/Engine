@@ -5,11 +5,13 @@
 #include "MeshStreamingSystem.h"
 #include "Renderer.h"
 #include "RenderPasses.h"
+#include "TextureStreamingSystem.h"
 
 compile_const u32 upload_buffer_size     = 8 * 1024 * 1024;
 compile_const u32 readback_buffer_size   = 1 * 1024 * 1024;
 compile_const u32 mesh_asset_buffer_size = MeshletPageHeader::page_size * MeshletPageHeader::runtime_page_count + (2 * 1024 * 1024);
 compile_const u32 max_transient_resource_table_entries = 16;
+compile_const u32 texture_heap_size      = 64 * 1024 * 1024;
 
 RendererContext* CreateRendererContext(StackAllocator* alloc) {
 	auto* context = NewFromAlloc(alloc, RendererContext);
@@ -28,6 +30,7 @@ RendererContext* CreateRendererContext(StackAllocator* alloc) {
 	context->debug_geometry_buffer  = DebugGeometryRenderPass::CreateDebugGeometryBuffer(alloc, graphics_context, context->async_transfer_queue);
 	context->meshlet_streaming_system = CreateMeshletStreamingSystem(alloc);
 	context->mesh_streaming_system    = CreateMeshStreamingSystem(alloc, mesh_asset_buffer_size - MeshletPageHeader::page_size * MeshletPageHeader::runtime_page_count);
+	context->texture_streaming_system = CreateTextureStreamingSystem(alloc, texture_heap_size);
 	
 	return context;
 }
@@ -102,8 +105,10 @@ void UpdateStreamingSystems(RendererContext* renderer_context, ThreadPool* threa
 	auto& renderer_world = *world_entity.renderer_world;
 	
 	UpdateMeshStreamingFiles(renderer_context->mesh_streaming_system, thread_pool, record_context, asset_system);
+	UpdateTextureStreamingFiles(renderer_context->texture_streaming_system, thread_pool, renderer_context->async_transfer_queue, record_context, asset_system);
 	
 	UpdateMeshStreamingSystem(renderer_context->mesh_streaming_system, renderer_context->async_transfer_queue, record_context, asset_system, &renderer_world.mesh_streaming_feedback_queue);
 	UpdateMeshletStreamingSystem(renderer_context->meshlet_streaming_system, renderer_context->async_transfer_queue, record_context, asset_system, &renderer_world.meshlet_streaming_feedback_queue);
+	UpdateTextureStreamingSystem(renderer_context->texture_streaming_system, renderer_context->async_transfer_queue, record_context, asset_system, &renderer_world.texture_streaming_feedback_queue);
 }
 
