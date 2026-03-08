@@ -53,7 +53,10 @@ float GroupDownSample4096x6(uint2 thread_id, uint2 group_id, uint thread_index, 
 void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	uint2 thread_id = group_id * 32 + MortonDecode(thread_index);
 	
-	float4 sample_rect = float4(thread_id + 0.25, thread_id + 0.75) * scene.inv_culling_hzb_size.xyxy;
+	float2 hzb_to_screen_pixels = scene.inv_culling_hzb_size * scene.render_target_size;
+	float2 sample_min  = round((thread_id + 0) * hzb_to_screen_pixels);
+	float2 sample_max  = round((thread_id + 1) * hzb_to_screen_pixels);
+	float4 sample_rect = float4(sample_min + 1.0, sample_max - 1.0) * scene.inv_render_target_size.xyxy;
 	
 	float sample0 = depth_stencil.SampleLevel(sampler_min_clamp, sample_rect.xy, 0);
 	float sample1 = depth_stencil.SampleLevel(sampler_min_clamp, sample_rect.xw, 0);

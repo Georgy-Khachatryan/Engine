@@ -156,12 +156,36 @@ bool OcclusionCullClipSpaceBox(ClipSpaceBoxInfo clip_space_box) {
 	float2 uv_min = saturate(NdcToScreenUv(float2(clip_space_box.ndc_min.x, clip_space_box.ndc_max.y)));
 	float2 uv_max = saturate(NdcToScreenUv(float2(clip_space_box.ndc_max.x, clip_space_box.ndc_min.y)));
 	
-	// Scale by 0.5 because we're sampling a 2x2 rect.
-	float2 rect_size_pixels = scene.culling_hzb_size * (uv_max - uv_min) * 0.5;
+	// Shrink wrap UV bounds around pixel centers.
+	uv_min = (round(uv_min * scene.render_target_size) + 0.5) * scene.inv_render_target_size;
+	uv_max = (round(uv_max * scene.render_target_size) - 0.5) * scene.inv_render_target_size;
+	if (any(uv_min >= uv_max)) return false;
+	
+	// Scale by 0.25 because we're sampling a 4x4 rect.
+	float2 rect_size_pixels = scene.culling_hzb_size * (uv_max - uv_min) * 0.25;
 	float mip_level = ceil(log2(max(rect_size_pixels.x, rect_size_pixels.y)));
 	
-	float depth = culling_hzb.SampleLevel(sampler_min_clamp, (uv_max + uv_min) * 0.5, mip_level);
-	return clip_space_box.closest_depth >= depth;
+	float2 hzb_mip_size  = scene.culling_hzb_size * exp2(-mip_level);
+	float2 hzb_pixel_min = floor(uv_min * hzb_mip_size);
+	float2 hzb_pixel_max = ceil( uv_max * hzb_mip_size);
+	
+	// Sample a higher MIP level if the footprint is larger than 4x4 pixels.
+	if (any((hzb_pixel_max - hzb_pixel_min) > 4.0)) {
+		mip_level    += 1.0;
+		hzb_pixel_min = floor(hzb_pixel_min * 0.5);
+		hzb_pixel_max = ceil( hzb_pixel_max * 0.5);
+	}
+	
+	float2 inv_hzb_mip_size = scene.inv_culling_hzb_size * exp2(mip_level);
+	float4 sample_rect = float4(hzb_pixel_min + 1.0, hzb_pixel_max - 1.0) * inv_hzb_mip_size.xyxy;
+	
+	float sample0 = culling_hzb.SampleLevel(sampler_min_clamp, sample_rect.xy, mip_level);
+	float sample1 = culling_hzb.SampleLevel(sampler_min_clamp, sample_rect.xw, mip_level);
+	float sample2 = culling_hzb.SampleLevel(sampler_min_clamp, sample_rect.zy, mip_level);
+	float sample3 = culling_hzb.SampleLevel(sampler_min_clamp, sample_rect.zw, mip_level);
+	
+	float farthest_depth = min(min(sample0, sample1), min(sample2, sample3));
+	return clip_space_box.closest_depth >= farthest_depth;
 }
 
 enum struct VisibilityStatus : uint {
