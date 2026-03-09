@@ -212,8 +212,16 @@ float3 QuatMul(quat q, float3 v) {
 }
 
 #if defined(GENERATED_MESHDATA_HLSL)
+float3 TransformModelToWorldSpace(float3 model_space_position, GpuTransform model_to_world) {
+	return QuatMul(model_to_world.rotation, model_space_position * model_to_world.scale) + model_to_world.position;
+}
+
+float3 TransformModelToWorldSpaceDirection(float3 model_space_position, GpuTransform model_to_world) {
+	return QuatMul(model_to_world.rotation, model_space_position * model_to_world.scale);
+}
+
 float4 TransformModelToClipSpace(float3 model_space_position, GpuTransform model_to_world, float3x4 world_to_view, float4 view_to_clip_coef) {
-	float3 world_space_position = QuatMul(model_to_world.rotation, model_space_position * model_to_world.scale) + model_to_world.position;
+	float3 world_space_position = TransformModelToWorldSpace(model_space_position, model_to_world);
 	float3 view_space_position  = mul(world_to_view, float4(world_space_position, 1.0));
 	float4 clip_space_position  = TransformViewToClipSpace(view_space_position, view_to_clip_coef);
 	
@@ -221,7 +229,7 @@ float4 TransformModelToClipSpace(float3 model_space_position, GpuTransform model
 }
 
 float4 TransformModelToClipSpaceDirection(float3 model_space_direction, GpuTransform model_to_world, float3x4 world_to_view, float4 view_to_clip_coef) {
-	float3 world_space_direction = QuatMul(model_to_world.rotation, model_space_direction * model_to_world.scale);
+	float3 world_space_direction = TransformModelToWorldSpaceDirection(model_space_direction, model_to_world);
 	float3 view_space_direction  = mul((float3x3)world_to_view, world_space_direction);
 	float4 clip_space_direction  = TransformViewToClipSpaceDirection(view_space_direction, view_to_clip_coef);
 	

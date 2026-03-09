@@ -115,8 +115,8 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 		
 		scene.culling_world_to_view     = scene.world_to_view;
 		scene.culling_view_to_clip_coef = scene.view_to_clip_coef;
-		scene.world_to_pixel_scale      = scene.view_to_clip_coef.x * scene.render_target_size.x * 0.5f / Math::Max(renderer_world.meshlet_target_error_pixels, 1.f);
-		scene.world_space_camera_position = world_space_camera_position;
+		scene.meshlet_world_to_pixel_scale = scene.view_to_clip_coef.x * scene.render_target_size.x * 0.5f / Math::Max(renderer_world.meshlet_target_error_pixels, 1.f);
+		scene.world_space_camera_position  = world_space_camera_position;
 		
 		auto culling_hzb_size = GetTextureSize(record_context, VirtualResourceID::CullingHZB);
 		scene.culling_hzb_size     = float2(culling_hzb_size);
@@ -124,6 +124,8 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 		
 		renderer_world.debug_freeze_culling_camera.view_to_world_rotation = camera_entity.rotation->rotation;
 	}
+	
+	scene.texture_world_to_pixel_scale = scene.view_to_clip_coef.x * scene.render_target_size.x * 0.5f;
 	
 	u32 jitter_frame_index = renderer_world.jitter_frame_index;
 	renderer_world.jitter_frame_index = (jitter_frame_index + 1) % 8;

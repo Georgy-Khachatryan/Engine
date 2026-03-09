@@ -485,9 +485,11 @@ struct MeshletCullingRenderPass {
 		HLSL::RegularBuffer<GpuMeshAssetData>  mesh_asset_data   = VirtualResourceID::GpuMeshAssetData;
 		HLSL::RegularBuffer<GpuMeshEntityData> mesh_entity_data  = VirtualResourceID::GpuMeshEntityData;
 		HLSL::ByteBuffer                       mesh_asset_buffer = VirtualResourceID::MeshAssetBuffer;
+		HLSL::RegularBuffer<GpuMaterialTextureData> material_texture_data = VirtualResourceID::MaterialAssetTextureData;
 		
 		HLSL::Texture2D<float> culling_hzb = VirtualResourceID::CullingHZB;
 		
+		HLSL::RWRegularBuffer<u32> texture_streaming_feedback = VirtualResourceID::TextureStreamingFeedback;
 		HLSL::RWRegularBuffer<uint2> meshlet_culling_commands = VirtualResourceID::MeshletCullingCommands;
 		HLSL::RWRegularBuffer<uint2> visible_meshlets   = VirtualResourceID::VisibleMeshlets;
 		HLSL::RWRegularBuffer<uint4> indirect_arguments = VirtualResourceID::MeshletIndirectArguments;
@@ -566,7 +568,6 @@ struct BasicMeshRenderPass {
 		HLSL::RegularBuffer<GpuMeshAssetData>  mesh_asset_data  = VirtualResourceID::GpuMeshAssetData;
 		HLSL::RegularBuffer<GpuMeshEntityData> mesh_entity_data = VirtualResourceID::GpuMeshEntityData;
 		HLSL::RegularBuffer<GpuMaterialTextureData> material_texture_data = VirtualResourceID::MaterialAssetTextureData;
-		HLSL::RWRegularBuffer<u32>             texture_streaming_feedback = VirtualResourceID::TextureStreamingFeedback;
 		HLSL::ByteBuffer          mesh_asset_buffer = VirtualResourceID::MeshAssetBuffer;
 		HLSL::RegularBuffer<uint2> visible_meshlets = VirtualResourceID::VisibleMeshlets;
 	};

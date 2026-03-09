@@ -32,6 +32,7 @@ struct MeshletCullingData {
 	u32 meshlet_header_offset = 0;
 	u32 current_level_meshlet_group_index = u32_max;
 	u32 level_of_detail_index = 0;
+	float world_to_uv_scale = 0.f;
 };
 
 NOTES(Meta::HlslFile{ "MeshData.hlsl"_sl })
@@ -87,7 +88,7 @@ struct MeshSourceData {
 
 NOTES()
 struct MeshRuntimeDataLayout {
-	compile_const u64 current_version = 31;
+	compile_const u64 current_version = 32;
 	
 	u64 file_guid = 0;
 	u64 version   = 0;

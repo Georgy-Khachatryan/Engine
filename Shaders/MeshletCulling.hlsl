@@ -86,10 +86,10 @@ void MainCS(uint thread_id : SV_DispatchThreadID) {
 #if defined(MESH_ENTITY_CULLING) || defined(MESHLET_GROUP_CULLING) || defined(MESHLET_CULLING)
 float2 EvaluateMeshletErrorMetric(MeshletErrorMetric error_metric, GpuTransform model_to_world) {
 	float2 result;
-	result.x = model_to_world.scale * error_metric.error * scene.world_to_pixel_scale;
+	result.x = model_to_world.scale * error_metric.error * scene.meshlet_world_to_pixel_scale;
 	
 	if (IsPerspectiveMatrix(scene.culling_view_to_clip_coef)) {
-		float3 center_world_space = QuatMul(model_to_world.rotation, error_metric.center * model_to_world.scale) + model_to_world.position;
+		float3 center_world_space = TransformModelToWorldSpace(error_metric.center, model_to_world);
 		float  radius_world_space = error_metric.radius * model_to_world.scale;
 		
 		result.y = max(length(center_world_space - scene.world_space_camera_position) - radius_world_space, 0.0);
@@ -439,9 +439,8 @@ void MainCS(uint thread_id : SV_DispatchThreadID, uint thread_index : SV_GroupIn
 	uint meshlet_culling_data_offset = meshlet_culling_command.x;
 	uint mesh_entity_index = meshlet_culling_command.y;
 	
-	uint mesh_asset_index = mesh_entity_data[mesh_entity_index].mesh_asset_index;
-	
-	GpuMeshAssetData mesh_asset = mesh_asset_data[mesh_asset_index];
+	GpuMeshEntityData mesh_entity = mesh_entity_data[mesh_entity_index];
+	GpuMeshAssetData mesh_asset = mesh_asset_data[mesh_entity.mesh_asset_index];
 	GpuTransform model_to_world = mesh_transforms[mesh_entity_index];
 	GpuTransform prev_model_to_world = prev_mesh_transforms[mesh_entity_index];
 	
@@ -463,6 +462,26 @@ void MainCS(uint thread_id : SV_DispatchThreadID, uint thread_index : SV_GroupIn
 		AppendOccludedMeshlet(mesh_entity_index, meshlet_culling_data_offset);
 	}
 	if (meshlet_visibility_status != VisibilityStatus::Visible) return;
+	
+	// Write streaming feedback for textures.
+	if (mesh_entity.material_asset_index != u32_max) {
+		compile_const float texture_size_mip_0 = 4096.0;
+		GpuMaterialTextureData material = material_texture_data[mesh_entity.material_asset_index];
+		
+		float world_to_pixel_scale = scene.view_to_clip_coef.x * scene.render_target_size.x * 0.5;
+		float3 center_world_space  = TransformModelToWorldSpace(meshlet.aabb_center, model_to_world);
+		
+		float numerator    = length(center_world_space - scene.world_space_camera_position);
+		float denominator  = model_to_world.scale * scene.texture_world_to_pixel_scale;
+		float pixel_to_uv_scale    = meshlet.world_to_uv_scale * (numerator / denominator);
+		float pixel_to_texel_scale = pixel_to_uv_scale * texture_size_mip_0;
+		
+		// pixel_to_texel_scale is approximately the same as max(length(ddx(uv)), length(ddy(uv))) * texture_size_mip_0.
+		float target_mip_level = max(log2(pixel_to_texel_scale), 0.0);
+		
+		InterlockedMin(texture_streaming_feedback[material.albedo], asuint(target_mip_level));
+		InterlockedMin(texture_streaming_feedback[material.normal], asuint(target_mip_level));
+	}
 	
 	uint visible_meshlet_index = 0;
 	InterlockedAdd(indirect_arguments[IndirectArgumentsLayout::DispatchMesh].x, 1u, visible_meshlet_index);

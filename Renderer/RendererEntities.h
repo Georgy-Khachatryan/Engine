@@ -36,8 +36,11 @@ struct SceneConstants {
 	float2 jitter_offset_pixels;
 	float2 jitter_offset_ndc;
 	
-	float world_to_pixel_scale;
+	float meshlet_world_to_pixel_scale; // Used for meshlet LOD error computation.
 	float3 world_space_camera_position;
+	
+	float texture_world_to_pixel_scale; // Used for texture streaming feedback.
+	uint3 padding;
 };
 
 struct DebugFreezeCullingCamera {

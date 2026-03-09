@@ -92,18 +92,6 @@ OutputPS MainPS(InputPS input, InputPrimitivePS primitive_input, float3 bary : S
 	if (primitive_input.material_index != u32_max) {
 		GpuMaterialTextureData material = material_texture_data[primitive_input.material_index];
 		if (material.albedo != u32_max) {
-			float2 duvdx = ddx(input.texcoord);
-			float2 duvdy = ddy(input.texcoord);
-			
-			compile_const float texture_size_mip_0 = 4096.0;
-			float target_mip_level      = max(log2(max(length(duvdx), length(duvdx)) * texture_size_mip_0), 0.0);
-			float wave_target_mip_level = WaveActiveMin(target_mip_level);
-			
-			if (WaveIsFirstLane()) {
-				InterlockedMin(texture_streaming_feedback[material.albedo], asuint(wave_target_mip_level));
-				InterlockedMin(texture_streaming_feedback[material.normal], asuint(wave_target_mip_level));
-			}
-			
 			Texture2D<float3> albedo_texture = ResourceDescriptorHeap[material.albedo];
 			float3 albedo = albedo_texture.Sample(sampler_linear_wrap, input.texcoord);
 			

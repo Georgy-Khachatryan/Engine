@@ -184,8 +184,11 @@ MeshImportResult ImportMeshFile(StackAllocator* alloc, ThreadPool* thread_pool, 
 		if (tangent_length > 0.f) tangent = tangent * (1.f / tangent_length);
 	};
 	
-	inputs.meshlet_target_triangle_count = 128;
-	inputs.meshlet_target_vertex_count   = 128;
+	compile_const u32 max_triangles_per_meshlet = 128;
+	compile_const u32 max_vertices_per_meshlet  = 128;
+	
+	inputs.meshlet_target_triangle_count = max_triangles_per_meshlet;
+	inputs.meshlet_target_vertex_count   = max_vertices_per_meshlet;
 	
 	MdtContinuousLodBuildResult result = {};
 	MdtBuildContinuousLod(&inputs, &result, &callbacks);
@@ -291,6 +294,45 @@ MeshImportResult ImportMeshFile(StackAllocator* alloc, ThreadPool* thread_pool, 
 		ArrayAppend(page_meshlet_prefix_sum, alloc, (u32)page_meshlet_indices.count);
 	}
 	
+	// TODO: This is quite an expensive way to compute world_to_uv_scale, maybe we could use a histogram instead of sorting?
+	auto meshlet_world_to_uv_scale = ArrayViewAllocate<float>(alloc, mdt_meshlets.count);
+	ParallelFor(thread_pool, 0, mdt_meshlets.count, 32, [&](u64 meshlet_index, u32 thread_index) {
+		ProfilerScope("ComputeMeshletUvPerMeter");
+		
+		auto& src_meshlet = mdt_meshlets[meshlet_index];
+		
+		FixedCapacityArray<float, max_triangles_per_meshlet * 3> edge_world_to_uv_scale;
+		for (u32 i = src_meshlet.begin_meshlet_triangles_index; i < src_meshlet.end_meshlet_triangles_index; i += 1) {
+			auto triangle = mdt_meshlet_triangles[i];
+			
+			u32 i0 = mdt_meshlet_vertex_indices[src_meshlet.begin_vertex_indices_index + triangle.i0];
+			u32 i1 = mdt_meshlet_vertex_indices[src_meshlet.begin_vertex_indices_index + triangle.i1];
+			u32 i2 = mdt_meshlet_vertex_indices[src_meshlet.begin_vertex_indices_index + triangle.i2];
+			
+			auto& v0 = mdt_meshlet_vertices[i0];
+			auto& v1 = mdt_meshlet_vertices[i1];
+			auto& v2 = mdt_meshlet_vertices[i2];
+			
+			auto position_delta_e0 = Math::Length(v1.position - v0.position);
+			auto position_delta_e1 = Math::Length(v2.position - v1.position);
+			auto position_delta_e2 = Math::Length(v0.position - v2.position);
+			
+			auto texcoord_delta_e0 = Math::Length(v1.texcoord - v0.texcoord);
+			auto texcoord_delta_e1 = Math::Length(v2.texcoord - v1.texcoord);
+			auto texcoord_delta_e2 = Math::Length(v0.texcoord - v2.texcoord);
+			
+			if (position_delta_e0 > FLT_MIN) ArrayAppend(edge_world_to_uv_scale, texcoord_delta_e0 / position_delta_e0);
+			if (position_delta_e1 > FLT_MIN) ArrayAppend(edge_world_to_uv_scale, texcoord_delta_e1 / position_delta_e1);
+			if (position_delta_e2 > FLT_MIN) ArrayAppend(edge_world_to_uv_scale, texcoord_delta_e2 / position_delta_e2);
+		}
+		
+		HeapSort<float>(edge_world_to_uv_scale);
+		
+		// Compute median of the upper 50% of samples.
+		float median = edge_world_to_uv_scale.count ? edge_world_to_uv_scale[edge_world_to_uv_scale.count * 3 / 4] : 1.f;
+		
+		meshlet_world_to_uv_scale[meshlet_index] = median;
+	});
 	
 	float max_meshlet_extent = 0.f;
 	for (auto& meshlet : mdt_meshlets) {
@@ -349,6 +391,7 @@ MeshImportResult ImportMeshFile(StackAllocator* alloc, ThreadPool* thread_pool, 
 				culling_data.aabb_center                = (float3(src_meshlet.aabb_max) + float3(src_meshlet.aabb_min)) * 0.5f;
 				culling_data.aabb_radius                = (float3(src_meshlet.aabb_max) - float3(src_meshlet.aabb_min)) * 0.5f;
 				culling_data.level_of_detail_index      = level_of_detail_index;
+				culling_data.world_to_uv_scale          = meshlet_world_to_uv_scale[meshlet_index];
 				
 				if (src_meshlet.current_level_meshlet_group_index != u32_max) {
 					culling_data.current_level_meshlet_group_index = mdt_to_result_meshlet_group_index[src_meshlet.current_level_meshlet_group_index];
