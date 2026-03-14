@@ -202,7 +202,7 @@ DebugGeometryBuffer DebugGeometryRenderPass::CreateDebugGeometryBuffer(StackAllo
 	}
 	
 	u64 mesh_buffer_size = result.vertex_count * sizeof(float4) + result.index_count * sizeof(u32);
-	auto mesh_buffer = CreateBufferResource(graphics_context, (u32)mesh_buffer_size);
+	auto mesh_buffer = CreateBufferResource(graphics_context, (u32)mesh_buffer_size, CreateResourceFlags::None);
 	
 	u64 vertex_buffer_offset = 0;
 	u64 index_buffer_offset  = result.vertex_count * sizeof(float4);

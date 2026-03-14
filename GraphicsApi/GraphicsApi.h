@@ -24,8 +24,8 @@ GraphicsContext* CreateGraphicsContext(StackAllocator* alloc);
 void ReleaseGraphicsContext(GraphicsContext* context, StackAllocator* alloc);
 void WaitForInFlightSubmits(GraphicsContext* context);
 
-NativeTextureResource CreateTextureResource(GraphicsContext* context, TextureSize size);
-NativeBufferResource CreateBufferResource(GraphicsContext* context, u32 size, GpuMemoryAccessType memory_access_type = GpuMemoryAccessType::Default, u8** cpu_address = nullptr);
+NativeTextureResource CreateTextureResource(GraphicsContext* context, TextureSize size, CreateResourceFlags flags);
+NativeBufferResource CreateBufferResource(GraphicsContext* context, u32 size, CreateResourceFlags flags, u8** cpu_address = nullptr);
 void ReleaseTextureResource(GraphicsContext* context, NativeTextureResource resource, ResourceReleaseCondition condition = ResourceReleaseCondition::None);
 void ReleaseBufferResource(GraphicsContext* context, NativeBufferResource resource, ResourceReleaseCondition condition = ResourceReleaseCondition::None);
 
@@ -75,21 +75,24 @@ PipelineID CreateGraphicsPipeline(PipelineLibrary* lib, PipelineStateDescription
 struct VirtualResourceTable {
 	Array<VirtualResource> virtual_resources;
 	
-	void Set(VirtualResourceID resource_id, TextureSize size) {
+	void Set(VirtualResourceID resource_id, TextureSize size, CreateResourceFlags flags = CreateResourceFlags::UAV) {
 		auto& resource = virtual_resources[(u32)resource_id];
-		resource.type = VirtualResource::Type::VirtualTexture;
+		resource.type  = VirtualResource::Type::VirtualTexture;
+		resource.flags = flags;
 		resource.texture.size = size;
 	}
 	
-	void Set(VirtualResourceID resource_id, u32 size) {
+	void Set(VirtualResourceID resource_id, u32 size, CreateResourceFlags flags = CreateResourceFlags::UAV) {
 		auto& resource = virtual_resources[(u32)resource_id];
-		resource.type = VirtualResource::Type::VirtualBuffer;
+		resource.type  = VirtualResource::Type::VirtualBuffer;
+		resource.flags = flags;
 		resource.buffer.size = size;
 	}
 	
 	void Set(VirtualResourceID resource_id, NativeTextureResource native_resource, TextureSize size) {
 		auto& resource = virtual_resources[(u32)resource_id];
-		resource.type = VirtualResource::Type::NativeTexture;
+		resource.type  = VirtualResource::Type::NativeTexture;
+		resource.flags = CreateResourceFlags::None;
 		resource.texture.resource       = native_resource;
 		resource.texture.size           = size;
 		resource.texture.allocated_size = size;
@@ -97,7 +100,8 @@ struct VirtualResourceTable {
 	
 	void Set(VirtualResourceID resource_id, NativeBufferResource native_resource, u32 size, u8* cpu_address = nullptr) {
 		auto& resource = virtual_resources[(u32)resource_id];
-		resource.type = VirtualResource::Type::NativeBuffer;
+		resource.type  = VirtualResource::Type::NativeBuffer;
+		resource.flags = CreateResourceFlags::None;
 		resource.buffer.resource       = native_resource;
 		resource.buffer.size           = size;
 		resource.buffer.allocated_size = size;
@@ -108,7 +112,8 @@ struct VirtualResourceTable {
 		auto resource_id = (VirtualResourceID)virtual_resources.count;
 		
 		auto& resource = ArrayEmplace(virtual_resources);
-		resource.type = VirtualResource::Type::NativeTexture;
+		resource.type  = VirtualResource::Type::NativeTexture;
+		resource.flags = CreateResourceFlags::None;
 		resource.texture.resource       = native_resource;
 		resource.texture.size           = size;
 		resource.texture.allocated_size = size;
@@ -120,7 +125,8 @@ struct VirtualResourceTable {
 		auto resource_id = (VirtualResourceID)virtual_resources.count;
 		
 		auto& resource = ArrayEmplace(virtual_resources);
-		resource.type = VirtualResource::Type::NativeBuffer;
+		resource.type  = VirtualResource::Type::NativeBuffer;
+		resource.flags = CreateResourceFlags::None;
 		resource.buffer.resource       = native_resource;
 		resource.buffer.size           = size;
 		resource.buffer.allocated_size = size;

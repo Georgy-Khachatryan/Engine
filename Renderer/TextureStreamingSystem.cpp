@@ -80,7 +80,7 @@ void UpdateTextureStreamingFiles(TextureStreamingSystem* system, ThreadPool* thr
 			
 			auto texture_id = (VirtualResourceID)0;
 			if (runtime_file.file.handle != nullptr) {
-				auto resource = CreateTextureResource(graphics_context, layout.size);
+				auto resource = CreateTextureResource(graphics_context, layout.size, CreateResourceFlags::None);
 				texture_id = record_context->resource_table->AddTransient(resource, layout.size);
 				
 				auto format = texture_format_info_map[(u32)layout.size.format];

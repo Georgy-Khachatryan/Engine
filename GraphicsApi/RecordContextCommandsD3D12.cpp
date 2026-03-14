@@ -826,14 +826,14 @@ void ReplayRecordContext(GraphicsContext* api_context, RecordContext* record_con
 				ReleaseTextureResource(context, resource.texture.resource, ResourceReleaseCondition::EndOfThisGpuFrame);
 			}
 			
-			resource.texture.resource = CreateTextureResource(context, resource.texture.size);
+			resource.texture.resource = CreateTextureResource(context, resource.texture.size, resource.flags);
 			resource.texture.allocated_size = resource.texture.size;
 		} else if (resource.type == VirtualResource::Type::VirtualBuffer && resource.buffer.size != resource.buffer.allocated_size) {
 			if (resource.buffer.resource.handle != nullptr) {
 				ReleaseBufferResource(context, resource.buffer.resource, ResourceReleaseCondition::EndOfThisGpuFrame);
 			}
 			
-			resource.buffer.resource = CreateBufferResource(context, resource.buffer.size);
+			resource.buffer.resource = CreateBufferResource(context, resource.buffer.size, resource.flags);
 			resource.buffer.allocated_size = resource.buffer.size;
 		}
 	}

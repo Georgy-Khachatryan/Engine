@@ -607,7 +607,17 @@ void ReleaseGraphicsContext(GraphicsContext* api_context, StackAllocator* alloc)
 	}
 }
 
-NativeTextureResource CreateTextureResource(GraphicsContext* api_context, TextureSize size) {
+static D3D12_RESOURCE_FLAGS TranslateCreateResourceFlags(CreateResourceFlags flags) {
+	auto result = D3D12_RESOURCE_FLAG_NONE;
+	
+	if (HasAnyFlags(flags, CreateResourceFlags::DSV)) result |= D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
+	if (HasAnyFlags(flags, CreateResourceFlags::RTV)) result |= D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+	if (HasAnyFlags(flags, CreateResourceFlags::UAV)) result |= D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+	
+	return result;
+}
+
+NativeTextureResource CreateTextureResource(GraphicsContext* api_context, TextureSize size, CreateResourceFlags flags) {
 	ProfilerScope("CreateTextureResource");
 	
 	auto* context = (GraphicsContextD3D12*)api_context;
@@ -619,9 +629,6 @@ NativeTextureResource CreateTextureResource(GraphicsContext* api_context, Textur
 	heap_properties.CreationNodeMask     = 0;
 	heap_properties.VisibleNodeMask      = 0;
 	
-	auto format_info = texture_format_info_map[(u32)size.format];
-	bool is_depth_stencil = HasAnyFlags(format_info.flags, TextureFormatFlags::DepthStencil);
-	
 	D3D12_RESOURCE_DESC1 resource_desc = {};
 	resource_desc.Dimension        = size.type == TextureSize::Type::Texture3D ? D3D12_RESOURCE_DIMENSION_TEXTURE3D : D3D12_RESOURCE_DIMENSION_TEXTURE2D;
 	resource_desc.Alignment        = 0;
@@ -632,12 +639,12 @@ NativeTextureResource CreateTextureResource(GraphicsContext* api_context, Textur
 	resource_desc.Format           = dxgi_texture_format_map[(u32)size.format];
 	resource_desc.SampleDesc       = { 1, 0 };
 	resource_desc.Layout           = D3D12_TEXTURE_LAYOUT_UNKNOWN;
-	resource_desc.Flags            = (is_depth_stencil ? D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL : (size.format == TextureFormat::BC1_UNORM || size.format == TextureFormat::BC1_UNORM_SRGB || size.format == TextureFormat::BC4_UNORM || size.format == TextureFormat::BC5_UNORM ? D3D12_RESOURCE_FLAG_NONE : D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS | D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET)); // TODO: Explicitly pass required access flags.
+	resource_desc.Flags            = TranslateCreateResourceFlags(flags);
 	resource_desc.SamplerFeedbackMipRegion = { 0, 0, 0 };
 	
 	D3D12_CLEAR_VALUE clear_value = {};
 	clear_value.Format = resource_desc.Format;
-	bool set_clear_value = (resource_desc.Flags & (D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET | D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL)) != 0;
+	bool set_clear_value = HasAnyFlags(flags, CreateResourceFlags::RTV | CreateResourceFlags::DSV);
 	
 	NativeTextureResource resource = {};
 	auto result = context->device->CreateCommittedResource3(
@@ -656,19 +663,17 @@ NativeTextureResource CreateTextureResource(GraphicsContext* api_context, Textur
 	return resource;
 }
 
-NativeBufferResource CreateBufferResource(GraphicsContext* api_context, u32 size, GpuMemoryAccessType memory_access_type, u8** cpu_address) {
+NativeBufferResource CreateBufferResource(GraphicsContext* api_context, u32 size, CreateResourceFlags flags, u8** cpu_address) {
 	ProfilerScope("CreateBufferResource");
 	
 	auto* context = (GraphicsContextD3D12*)api_context;
 	
-	compile_const D3D12_HEAP_TYPE memory_access_type_map[(u32)GpuMemoryAccessType::Count] = {
-		D3D12_HEAP_TYPE_DEFAULT,
-		D3D12_HEAP_TYPE_UPLOAD,
-		D3D12_HEAP_TYPE_READBACK,
-	};
+	auto heap_type = D3D12_HEAP_TYPE_DEFAULT;
+	if (HasAnyFlags(flags, CreateResourceFlags::Upload))   heap_type = D3D12_HEAP_TYPE_UPLOAD;
+	if (HasAnyFlags(flags, CreateResourceFlags::Readback)) heap_type = D3D12_HEAP_TYPE_READBACK;
 	
 	D3D12_HEAP_PROPERTIES heap_properties = {};
-	heap_properties.Type                 = memory_access_type_map[(u32)memory_access_type];
+	heap_properties.Type                 = heap_type;
 	heap_properties.CPUPageProperty      = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
 	heap_properties.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
 	heap_properties.CreationNodeMask     = 0;
@@ -684,7 +689,7 @@ NativeBufferResource CreateBufferResource(GraphicsContext* api_context, u32 size
 	resource_desc.Format           = DXGI_FORMAT_UNKNOWN;
 	resource_desc.SampleDesc       = { 1, 0 };
 	resource_desc.Layout           = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
-	resource_desc.Flags            = memory_access_type == GpuMemoryAccessType::Default ? D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS : D3D12_RESOURCE_FLAG_NONE;
+	resource_desc.Flags            = TranslateCreateResourceFlags(flags);
 	resource_desc.SamplerFeedbackMipRegion = { 0, 0, 0 };
 	
 	NativeBufferResource resource = {};
@@ -701,7 +706,7 @@ NativeBufferResource CreateBufferResource(GraphicsContext* api_context, u32 size
 	);
 	DebugAssert(SUCCEEDED(result), "Failed to create buffer resource.");
 	
-	if (cpu_address) {
+	if (cpu_address && HasAnyFlags(flags, CreateResourceFlags::Upload | CreateResourceFlags::Readback)) {
 		resource.d3d12->Map(0, nullptr, (void**)cpu_address);
 	}
 	

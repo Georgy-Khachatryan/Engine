@@ -26,7 +26,7 @@ static void AllocateGpuComponentStreams(RecordContext* record_context, EntitySys
 			u32 old_size = virtual_resource.buffer.size;
 			if (new_size <= old_size) continue;
 			
-			auto new_resource = CreateBufferResource(record_context->context, new_size);
+			auto new_resource = CreateBufferResource(record_context->context, new_size, CreateResourceFlags::UAV);
 			auto old_resource = virtual_resource.buffer.resource;
 			
 			resource_table->Set(resource_id, new_resource, new_size);

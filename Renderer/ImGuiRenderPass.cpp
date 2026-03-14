@@ -11,7 +11,7 @@ static void ImGuiUpdateTextures(RecordContext* record_context, ImVector<ImTextur
 		
 		if (texture->Status == ImTextureStatus_WantCreate) {
 			texture->SetTexID(AllocatePersistentSrvDescriptor(record_context->context));
-			texture->BackendUserData = CreateTextureResource(record_context->context, size).handle;
+			texture->BackendUserData = CreateTextureResource(record_context->context, size, CreateResourceFlags::None).handle;
 		}
 		
 		if (texture->Status == ImTextureStatus_WantCreate || texture->Status == ImTextureStatus_WantUpdates) {

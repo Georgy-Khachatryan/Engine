@@ -19,13 +19,13 @@ RendererContext* CreateRendererContext(StackAllocator* alloc) {
 	auto* graphics_context = CreateGraphicsContext(alloc);
 	
 	for (u32 i = 0; i < number_of_frames_in_flight; i += 1) {
-		context->upload_buffers[i] = CreateBufferResource(graphics_context, upload_buffer_size, GpuMemoryAccessType::Upload, &context->upload_buffer_cpu_addresses[i]);
-		context->readback_buffers[i] = CreateBufferResource(graphics_context, readback_buffer_size, GpuMemoryAccessType::Readback, &context->readback_buffer_cpu_addresses[i]);
+		context->upload_buffers[i] = CreateBufferResource(graphics_context, upload_buffer_size, CreateResourceFlags::Upload, &context->upload_buffer_cpu_addresses[i]);
+		context->readback_buffers[i] = CreateBufferResource(graphics_context, readback_buffer_size, CreateResourceFlags::Readback, &context->readback_buffer_cpu_addresses[i]);
 	}
 	
 	context->graphics_context       = graphics_context;
 	context->async_transfer_queue   = CreateAsyncTransferQueue(alloc, graphics_context);
-	context->mesh_asset_buffer      = CreateBufferResource(graphics_context, mesh_asset_buffer_size);
+	context->mesh_asset_buffer      = CreateBufferResource(graphics_context, mesh_asset_buffer_size, CreateResourceFlags::UAV);
 	context->mesh_asset_buffer_size = mesh_asset_buffer_size;
 	context->debug_geometry_buffer  = DebugGeometryRenderPass::CreateDebugGeometryBuffer(alloc, graphics_context, context->async_transfer_queue);
 	context->meshlet_streaming_system = CreateMeshletStreamingSystem(alloc);

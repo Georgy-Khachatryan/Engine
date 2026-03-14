@@ -22,14 +22,6 @@ struct PipelineLibrary;
 struct GraphicsContext;
 
 
-enum struct GpuMemoryAccessType : u32 {
-	Default  = 0,
-	Upload   = 1,
-	Readback = 2,
-	
-	Count
-};
-
 enum struct ShaderType : u32 {
 	ComputeShader = 0,
 	VertexShader  = 1,
@@ -164,6 +156,16 @@ struct GpuAddress {
 	GpuAddress(const GpuAddress& other) = default;
 };
 
+enum struct CreateResourceFlags : u32 {
+	None     = 0,
+	Upload   = 1u << 0,
+	Readback = 1u << 1,
+	DSV      = 1u << 2,
+	RTV      = 1u << 3,
+	UAV      = 1u << 4,
+};
+ENUM_FLAGS_OPERATORS(CreateResourceFlags);
+
 struct VirtualResource {
 	enum struct Type : u32 {
 		None           = 0,
@@ -175,7 +177,7 @@ struct VirtualResource {
 	};
 	
 	Type type = Type::None;
-	u32 padding_0 = 0;
+	CreateResourceFlags flags = CreateResourceFlags::None;
 	
 	union {
 		struct {

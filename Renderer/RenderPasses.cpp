@@ -5,7 +5,8 @@
 #include "RenderPasses.h"
 
 static void BuildResourceTable(RecordContext* record_context, WorldEntitySystem* world_system, AssetEntitySystem* asset_system, RendererWorld* renderer_world, uint2 render_target_size) {
-	using ID = VirtualResourceID;
+	using ID    = VirtualResourceID;
+	using Flags = CreateResourceFlags;
 	auto& table = *record_context->resource_table;
 	
 	table.Set(ID::TransmittanceLut,      TextureSize(TextureFormat::R16G16B16A16_FLOAT, AtmosphereParameters::transmittance_lut_size));
@@ -22,14 +23,15 @@ static void BuildResourceTable(RecordContext* record_context, WorldEntitySystem*
 	table.Set(ID::MeshStreamingFeedback,    mesh_assets->capacity * sizeof(u32) + sizeof(u32));
 	table.Set(ID::TextureStreamingFeedback, persistent_srv_descriptor_count * sizeof(u32));
 	
-	table.Set(ID::SceneRadiance, TextureSize(TextureFormat::R16G16B16A16_FLOAT, render_target_size));
-	table.Set(ID::DepthStencil,  TextureSize(TextureFormat::D32_FLOAT, render_target_size));
-	table.Set(ID::MotionVectors, TextureSize(TextureFormat::R16G16_FLOAT, render_target_size));
-	table.Set(ID::SceneRadianceResult, TextureSize(TextureFormat::R16G16B16A16_FLOAT, render_target_size));
+	table.Set(ID::SceneRadiance,       TextureSize(TextureFormat::R16G16B16A16_FLOAT, render_target_size), Flags::UAV | Flags::RTV);
+	table.Set(ID::DepthStencil,        TextureSize(TextureFormat::D32_FLOAT,          render_target_size), Flags::DSV);
+	table.Set(ID::MotionVectors,       TextureSize(TextureFormat::R16G16_FLOAT,       render_target_size), Flags::RTV);
+	table.Set(ID::SceneRadianceResult, TextureSize(TextureFormat::R16G16B16A16_FLOAT, render_target_size), Flags::UAV);
+	
 	table.Set(ID::CullingHZB, BuildHzbRenderPass::ComputeCullingHzbSize(render_target_size));
 	table.Set(ID::CullingHzbBuildState, BuildHzbRenderPass::culling_hzb_build_state_size);
 	
-	table.Set(ID::DebugGeometryDepthStencil, TextureSize(TextureFormat::D32_FLOAT, render_target_size));
+	table.Set(ID::DebugGeometryDepthStencil, TextureSize(TextureFormat::D32_FLOAT, render_target_size), Flags::DSV);
 }
 
 using RecordPassCallback = void(*)(void*, RecordContext*);

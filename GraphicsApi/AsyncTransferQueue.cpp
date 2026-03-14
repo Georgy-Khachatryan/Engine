@@ -92,7 +92,7 @@ AsyncTransferQueue* CreateAsyncTransferQueue(StackAllocator* alloc, GraphicsCont
 	ArrayReserve(queue->copy_buffer_to_texture_commands, alloc, max_async_transfer_command_count);
 	
 	u8* upload_buffer_cpu_address = nullptr;
-	queue->upload_ring_buffer.resource = CreateBufferResource(graphics_context, async_upload_buffer_capacity, GpuMemoryAccessType::Upload, &upload_buffer_cpu_address);
+	queue->upload_ring_buffer.resource = CreateBufferResource(graphics_context, async_upload_buffer_capacity, CreateResourceFlags::Upload, &upload_buffer_cpu_address);
 	queue->upload_ring_buffer.cpu_address = upload_buffer_cpu_address;
 	
 	queue->file_io_queue = SystemCreateFileIoQueue(alloc, 64, upload_buffer_cpu_address, async_upload_buffer_capacity);
@@ -286,7 +286,7 @@ void UpdateAsyncTransferQueue(AsyncTransferQueue* queue) {
 				copy_command.size         = ComputeTransferCommandSize(command);
 				ArrayAppend(copy_buffer_to_buffer_commands, copy_command);
 			} else if (command.dst_type == AsyncTransferDstType::Texture) {
-				DebugAssert(command.dst.texture.size.type == TextureSize::Type::Texture2D, "TODO: Implement support texture types other than Texture2D.");
+				DebugAssert(command.dst.texture.size.type == TextureSize::Type::Texture2D, "TODO: Implement support for texture types other than Texture2D.");
 				
 				auto format = texture_format_info_map[(u32)command.dst.texture.size.format];
 				
