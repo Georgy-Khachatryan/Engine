@@ -37,7 +37,7 @@ struct GraphicsContextD3D12 : GraphicsContext {
 	ID3D12Device10* device = nullptr;
 	
 	CommandQueueContextD3D12 graphics_context;
-	CommandQueueContextD3D12 copy_context;
+	CommandQueueContextD3D12 async_copy_context;
 	
 	FixedCountArray<ID3D12DescriptorHeap*,       (u32)DescriptorHeapType::Count> descriptor_heaps;
 	FixedCountArray<u32,                         (u32)DescriptorHeapType::Count> descriptor_sizes;
@@ -50,7 +50,6 @@ struct GraphicsContextD3D12 : GraphicsContext {
 	ID3D12CommandSignature* draw_indexed_instanced_command_signature = nullptr;
 	
 	ID3D12Fence* async_copy_fence = nullptr;
-	u64 async_copy_index = 0;
 	
 	Array<u16> srv_heap_free_indices;
 	u32 srv_heap_offset = 0;

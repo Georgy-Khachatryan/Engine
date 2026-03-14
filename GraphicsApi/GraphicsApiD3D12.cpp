@@ -17,28 +17,6 @@ static void SafeRelease(ResourceT*& resource) {
 	resource = nullptr;
 }
 
-void WaitForLastFrame(GraphicsContext* api_context) {
-	ProfilerScope("WaitForLastFrame");
-	
-	auto* context = (GraphicsContextD3D12*)api_context;
-	if (context->frame_sync_index <= 1) return;
-	
-	u64 wait_index = context->frame_sync_index - 1;
-	context->graphics_context.fence->SetEventOnCompletion(wait_index, nullptr);
-	context->copy_context.    fence->SetEventOnCompletion(wait_index, nullptr);
-}
-
-void WaitForNextFrame(GraphicsContext* api_context) {
-	ProfilerScope("WaitForNextFrame");
-	
-	auto* context = (GraphicsContextD3D12*)api_context;
-	if (context->frame_sync_index <= number_of_frames_in_flight) return;
-	
-	u64 wait_index = context->frame_sync_index - number_of_frames_in_flight;
-	context->graphics_context.fence->SetEventOnCompletion(wait_index, nullptr);
-	context->copy_context.    fence->SetEventOnCompletion(wait_index, nullptr);
-}
-
 static void BuildPipelineStates(GraphicsContextD3D12* context, StackAllocator* alloc, bool build_only_dirty_pipelines = true);
 static void BuildRootSignatures(GraphicsContextD3D12* context, StackAllocator* alloc, ArrayView<ArrayView<u32>> root_signature_streams);
 static ID3D12CommandSignature* CreateCommandSignature(ID3D12Device10* device, D3D12_INDIRECT_ARGUMENT_TYPE type, u32 byte_stride);
@@ -139,7 +117,9 @@ GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
 	
 	
 	context->graphics_context = CreateCommandQueueContext(device, D3D12_COMMAND_LIST_TYPE_DIRECT);
-	context->copy_context     = CreateCommandQueueContext(device, D3D12_COMMAND_LIST_TYPE_COPY);
+	context->async_copy_context = CreateCommandQueueContext(device, D3D12_COMMAND_LIST_TYPE_COPY);
+	context->frame_submit_index = 1;
+	context->async_submit_index = 1;
 	
 	
 	{
@@ -614,7 +594,8 @@ void ReleaseGraphicsContext(GraphicsContext* api_context, StackAllocator* alloc)
 	SafeRelease(context->draw_instanced_command_signature);
 	SafeRelease(context->draw_indexed_instanced_command_signature);
 	
-	ReleaseCommandQueueContext(&context->copy_context);
+	SafeRelease(context->async_copy_fence);
+	ReleaseCommandQueueContext(&context->async_copy_context);
 	ReleaseCommandQueueContext(&context->graphics_context);
 	for (auto& descriptor_heap : context->descriptor_heaps) SafeRelease(descriptor_heap);
 	SafeRelease(context->device);
@@ -782,6 +763,28 @@ void DeallocatePersistentSrvDescriptor(GraphicsContext* api_context, u32 heap_in
 	ArrayAppend(context->srv_heap_free_indices, heap_index);
 }
 
+
+static void WaitForLastSubmit(CommandQueueContextD3D12* context, u64 submit_index) {
+	if (submit_index <= 1) return;
+	context->fence->SetEventOnCompletion(submit_index - 1, nullptr);
+}
+
+static void WaitForNextSubmit(CommandQueueContextD3D12* context, u64 submit_index) {
+	if (submit_index <= number_of_frames_in_flight) return;
+	context->fence->SetEventOnCompletion(submit_index - number_of_frames_in_flight, nullptr);
+}
+
+static void WaitForLastFrame(GraphicsContextD3D12* context) {
+	ProfilerScope("WaitForLastFrame");
+	WaitForLastSubmit(&context->graphics_context, context->frame_submit_index);
+}
+
+static void WaitForNextFrame(GraphicsContextD3D12* context) {
+	ProfilerScope("WaitForNextFrame");
+	WaitForNextSubmit(&context->graphics_context, context->frame_submit_index);
+}
+
+
 static void CreateSwapChainBackBuffers(WindowSwapChainD3D12* swap_chain, GraphicsContextD3D12* context) {
 	auto* dxgi_swap_chain = swap_chain->dxgi_swap_chain;
 	
@@ -896,8 +899,10 @@ NativeTextureResource WindowSwapGetCurrentBackBuffer(WindowSwapChain* api_swap_c
 	return swap_chain->back_buffers[swap_chain->dxgi_swap_chain->GetCurrentBackBufferIndex()];
 }
 
-static void ResetCommandQueueContext(GraphicsContextD3D12* context, CommandQueueContextD3D12* queue_context, D3D12_COMMAND_LIST_TYPE type) {
-	auto* command_allocator = queue_context->command_allocators[context->frame_sync_index % number_of_frames_in_flight];
+static void ResetCommandQueueContext(GraphicsContextD3D12* context, CommandQueueContextD3D12* queue_context, u64 submit_index, D3D12_COMMAND_LIST_TYPE type) {
+	ProfilerScope("ResetCommandQueueContext");
+	
+	auto* command_allocator = queue_context->command_allocators[submit_index % number_of_frames_in_flight];
 	auto* command_list      = queue_context->command_list;
 	
 	command_allocator->Reset();
@@ -930,8 +935,7 @@ void WindowSwapChainBeginFrame(WindowSwapChain* api_swap_chain, GraphicsContext*
 		BuildPipelineStates(context, alloc);
 	}
 	
-	ResetCommandQueueContext(context, &context->graphics_context, D3D12_COMMAND_LIST_TYPE_DIRECT);
-	ResetCommandQueueContext(context, &context->copy_context,     D3D12_COMMAND_LIST_TYPE_COPY);
+	ResetCommandQueueContext(context, &context->graphics_context, context->frame_submit_index, D3D12_COMMAND_LIST_TYPE_DIRECT);
 }
 
 void WindowSwapChainEndFrame(WindowSwapChain* api_swap_chain, GraphicsContext* api_context, StackAllocator* alloc, RecordContext* record_context) {
@@ -940,35 +944,35 @@ void WindowSwapChainEndFrame(WindowSwapChain* api_swap_chain, GraphicsContext* a
 	auto* swap_chain = (WindowSwapChainD3D12*)api_swap_chain;
 	auto* context    = (GraphicsContextD3D12*)api_context;
 	
-	{
-		SubmitCommandQueueContext(&context->copy_context);
-		auto* command_queue = context->copy_context.queue;
-		command_queue->Signal(context->copy_context.fence, context->frame_sync_index);
-		command_queue->Signal(context->async_copy_fence,   context->async_copy_index);
-	}
-	
 	ReplayRecordContext(context, record_context);
+	SubmitCommandQueueContext(&context->graphics_context);
 	
-	{
-		SubmitCommandQueueContext(&context->graphics_context);
-		
-		u32 sync_interval = 1;
-		if (FAILED(swap_chain->dxgi_swap_chain->Present(sync_interval, 0))) {
-			DebugAssertAlways("Present failed.");
-		}
-		
-		auto* command_queue = context->graphics_context.queue;
-		command_queue->Signal(context->graphics_context.fence, context->frame_sync_index);
+	u32 sync_interval = 1;
+	if (FAILED(swap_chain->dxgi_swap_chain->Present(sync_interval, 0))) {
+		DebugAssertAlways("Present failed.");
 	}
 	
-	context->frame_sync_index += 1;
+	auto* command_queue = context->graphics_context.queue;
+	command_queue->Signal(context->graphics_context.fence, context->frame_submit_index);
+	
+	context->frame_submit_index += 1;
 }
 
+void WaitForInFlightSubmits(GraphicsContext* api_context) {
+	auto* context = (GraphicsContextD3D12*)api_context;
+	
+	WaitForLastFrame(context);
+	WaitForLastSubmit(&context->async_copy_context, context->async_submit_index);
+}
 
 void SubmitAsyncCopyCommands(GraphicsContext* api_context, ArrayView<AsyncCopyBufferToBufferCommand> copy_buffer_to_buffer_commands, ArrayView<AsyncCopyBufferToTextureCommand> copy_buffer_to_texture_commands, u64 async_copy_signal_index) {
-	auto* context = (GraphicsContextD3D12*)api_context;
-	auto* command_list = context->copy_context.command_list;
+	auto* context      = (GraphicsContextD3D12*)api_context;
+	auto* command_list = context->async_copy_context.command_list;
 	
+	WaitForNextSubmit(&context->async_copy_context, context->async_submit_index);
+	ResetCommandQueueContext(context, &context->async_copy_context, context->async_submit_index, D3D12_COMMAND_LIST_TYPE_COPY);
+	
+	ProfilerBeginScope("SubmitAsyncCopyCommands", command_list);
 	for (auto& command : copy_buffer_to_buffer_commands) {
 		command_list->CopyBufferRegion(command.dst_resource.d3d12, command.dst_offset, command.src_resource.d3d12, command.src_offset, command.size);
 	}
@@ -991,9 +995,15 @@ void SubmitAsyncCopyCommands(GraphicsContext* api_context, ArrayView<AsyncCopyBu
 		
 		command_list->CopyTextureRegion(&dst, command.dst_offset.x, command.dst_offset.y, command.dst_offset.z, &src, nullptr);
 	}
+	ProfilerEndScope(command_list);
 	
-	DebugAssert(async_copy_signal_index > context->async_copy_index, "Async copy index '%' is already signalled.", async_copy_signal_index);
-	context->async_copy_index = async_copy_signal_index;
+	SubmitCommandQueueContext(&context->async_copy_context);
+	
+	auto* command_queue = context->async_copy_context.queue;
+	command_queue->Signal(context->async_copy_context.fence, context->async_submit_index);
+	command_queue->Signal(context->async_copy_fence,         async_copy_signal_index);
+	
+	context->async_submit_index += 1;
 }
 
 u64 GetCompletedAsyncCopyCommandValue(GraphicsContext* api_context) {

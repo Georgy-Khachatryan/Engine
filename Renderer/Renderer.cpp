@@ -85,7 +85,7 @@ RecordContext* BeginRecordContext(StackAllocator* alloc, RendererContext* contex
 	record_context->alloc          = alloc;
 	record_context->context        = context->graphics_context;
 	record_context->resource_table = resource_table;
-	record_context->frame_index    = context->graphics_context->frame_sync_index;
+	record_context->frame_index    = context->graphics_context->frame_submit_index;
 	
 	resource_table->virtual_resources.count = (u64)VirtualResourceID::Count;
 	resource_table->Set(VirtualResourceID::CurrentBackBuffer, WindowSwapGetCurrentBackBuffer(swap_chain), swap_chain->size);

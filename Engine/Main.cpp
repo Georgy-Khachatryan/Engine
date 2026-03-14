@@ -106,7 +106,7 @@ s32 main() {
 		frame_allocation_size = (alloc.total_allocated_size - frame_initial_size);
 		transient_upload_allocation_size = record_context->upload_buffer_offset;
 	}
-	WaitForLastFrame(graphics_context);
+	WaitForInFlightSubmits(graphics_context);
 	
 	ReleaseTextureAssets(&alloc, graphics_context, asset_system);
 	

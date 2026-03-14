@@ -11,8 +11,8 @@ compile_const u32 transient_srv_descriptor_count  = 1024;
 struct RecordContext;
 
 struct GraphicsContext {
-	// At the end of each frame we signal this index on the internal frame_sync_fence, then it's incremented. Might not actually start from 0.
-	u64 frame_sync_index = 0;
+	u64 frame_submit_index = 0; // Signaled each frame after submitting work to frame queues and then incremented.
+	u64 async_submit_index = 0; // Signaled in SubmitAsyncCopyCommands after submitting work and then incremented.
 };
 
 struct WindowSwapChain {
@@ -22,8 +22,7 @@ struct WindowSwapChain {
 
 GraphicsContext* CreateGraphicsContext(StackAllocator* alloc);
 void ReleaseGraphicsContext(GraphicsContext* context, StackAllocator* alloc);
-void WaitForLastFrame(GraphicsContext* context);
-void WaitForNextFrame(GraphicsContext* context);
+void WaitForInFlightSubmits(GraphicsContext* context);
 
 NativeTextureResource CreateTextureResource(GraphicsContext* context, TextureSize size);
 NativeBufferResource CreateBufferResource(GraphicsContext* context, u32 size, GpuMemoryAccessType memory_access_type = GpuMemoryAccessType::Default, u8** cpu_address = nullptr);
