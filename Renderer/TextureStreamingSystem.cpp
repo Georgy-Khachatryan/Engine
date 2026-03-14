@@ -8,12 +8,18 @@
 #include "TextureStreamingSystem.h"
 
 struct TextureStreamingSystem {
+	Array<EntityID> descriptor_index_to_texture_entity_id;
+	Array<u8>       streamed_mip_level;
+	
 	u64 heap_size = 0;
 };
 
 TextureStreamingSystem* CreateTextureStreamingSystem(StackAllocator* alloc, u64 heap_size) {
 	auto* system = NewFromAlloc(alloc, TextureStreamingSystem);
 	system->heap_size = heap_size;
+	
+	ArrayResizeMemset(system->descriptor_index_to_texture_entity_id, alloc, persistent_srv_descriptor_count, 0xFF);
+	ArrayResizeMemset(system->streamed_mip_level,                    alloc, persistent_srv_descriptor_count, 0xFF);
 	
 	return system;
 }
@@ -22,34 +28,73 @@ void UpdateTextureStreamingSystem(TextureStreamingSystem* system, AsyncTransferQ
 	auto element = texture_streaming_feedback_queue->Load(record_context->frame_index);
 	if (element.data == nullptr) return;
 	
-#if 0
+	auto streams = ExtractComponentStreams<TextureAssetType>(QueryEntityTypeArray<TextureAssetType>(*asset_system));
+	
 	u32* texture_streaming_feedback_data = (u32*)element.data;
-	for (u32 i = 0; i < persistent_srv_descriptor_count; i += 1) {
-		u32 mip_level = texture_streaming_feedback_data[i];
-		if (mip_level == u32_max) continue;
+	for (u32 descriptor_index = 0; descriptor_index < persistent_srv_descriptor_count; descriptor_index += 1) {
+		u32 packed_feedback = texture_streaming_feedback_data[descriptor_index];
+		if (packed_feedback == u32_max) continue;
 		
-		SystemWriteToConsole(record_context->alloc, "Texture: %, MipLevel: %\n"_sl, i, *(float*)&mip_level);
+		u32 target_mip_level = (u32)*(float*)&packed_feedback;
+		auto entity_id = system->descriptor_index_to_texture_entity_id[descriptor_index];
+		
+		auto& layout = streams.runtime_data_layout[entity_id.index];
+		auto& runtime_file = streams.runtime_file[entity_id.index];
+		auto& resource_allocation = streams.resource_allocation[entity_id.index];
+		
+		if (runtime_file.file.handle == nullptr) continue;
+		
+		
+		u32 streamed_mip_level = system->streamed_mip_level[descriptor_index];
+		if (target_mip_level >= streamed_mip_level) continue;
+		
+		// SystemWriteToConsole(record_context->alloc, "Texture: %:%, MipLevel: %\n"_sl, streams.name[entity_id.index].name, descriptor_index, target_mip_level);
+		system->streamed_mip_level[descriptor_index] = target_mip_level;
+		
+		auto format = texture_format_info_map[(u32)layout.size.format];
+		
+		u64 offset = 0;
+		for (u32 mip_index = 0; mip_index < Math::Min(streamed_mip_level, (u32)layout.size.mips); mip_index += 1) {
+			auto mip_size = Math::Max(uint2(layout.size) >> mip_index, uint2(1u));
+			auto mip_size_blocks = (mip_size + (uint2(1u) << format.block_size_log2) - 1) >> format.block_size_log2;
+			
+			AsyncTransferCommand command;
+			command.src_type = AsyncTransferSrcType::File;
+			command.dst_type = AsyncTransferDstType::Texture;
+			command.src.file.handle      = runtime_file.file;
+			command.src.file.offset      = offset;
+			command.src.file.size        = AlignUp(mip_size_blocks.x * format.block_size_bytes, texture_row_pitch_alignment) * mip_size_blocks.y;
+			command.dst.texture.resource = resource_allocation.resource;
+			command.dst.texture.size     = TextureSize(layout.size.format, mip_size);
+			command.dst.texture.offset   = 0;
+			command.dst.texture.subresource_index = mip_index;
+			
+			if (mip_index >= target_mip_level) {
+				// SystemWriteToConsole(record_context->alloc, " - MipLevel: %\n"_sl, mip_index);
+				AppendAsyncTransferCommand(async_transfer_queue, command);
+			}
+			
+			offset += command.src.file.size;
+		}
+		
+		auto texture_id = record_context->resource_table->AddTransient(resource_allocation.resource, layout.size);
+		CreateResourceDescriptor(record_context, HLSL::Texture2D<float4>(texture_id, target_mip_level), descriptor_index);
 	}
-#endif
 }
 
 void UpdateTextureStreamingFiles(TextureStreamingSystem* system, ThreadPool* thread_pool, AsyncTransferQueue* async_transfer_queue, RecordContext* record_context, AssetEntitySystem* asset_system) {
-	auto* alloc = record_context->alloc;
 	extern TextureImportResult ImportTextureFile(StackAllocator* alloc, ThreadPool* thread_pool, const TextureSourceData& source_data, u64 runtime_data_guid);
 	
-	u64 completed_file_read_index = CompletedGpuAsyncTransferIndex(async_transfer_queue);
+	auto* alloc = record_context->alloc;
 	auto* graphics_context = record_context->context;
 	for (auto* entity_array : QueryEntities<TextureAssetType>(alloc, *asset_system)) {
-		ProfilerScope("TextureAssetTypeGpuComponentUpdate");
-		
 		auto streams = ExtractComponentStreams<TextureAssetType>(entity_array);
+		
 		for (u64 i : BitArrayIt(entity_array->created_mask)) {
-			auto& layout = streams.runtime_data_layout[i];
-			auto& runtime_file = streams.runtime_file[i];
-			auto& resource_allocation = streams.resource_allocation[i];
+			auto& layout                = streams.runtime_data_layout[i];
+			auto& runtime_file          = streams.runtime_file[i];
+			auto& resource_allocation   = streams.resource_allocation[i];
 			auto& descriptor_allocation = streams.descriptor_allocation[i];
-			
-			if (completed_file_read_index < resource_allocation.file_read_wait_index) continue;
 			
 			if (layout.version != TextureRuntimeDataLayout::current_version) {
 				if (layout.file_guid == 0) {
@@ -66,59 +111,25 @@ void UpdateTextureStreamingFiles(TextureStreamingSystem* system, ThreadPool* thr
 					resource_allocation = {};
 				}
 				
-				auto result = ImportTextureFile(alloc, thread_pool, streams.source_data[i], layout.file_guid);
-				if (result.success) {
-					layout = result.layout;
+				if (descriptor_allocation.index != u32_max) {
+					system->descriptor_index_to_texture_entity_id[descriptor_allocation.index] = EntityID{ u32_max };
+					system->streamed_mip_level[descriptor_allocation.index] = 0xFF;
+					DeallocatePersistentSrvDescriptor(graphics_context, descriptor_allocation.index);
+					descriptor_allocation = {};
 				}
+				
+				auto result = ImportTextureFile(alloc, thread_pool, streams.source_data[i], layout.file_guid);
+				if (result.success) layout = result.layout;
 			}
 			
 			// TODO: Add support for unaligned async reads.
 			runtime_file.file = SystemOpenFile(alloc, StringFormat(alloc, "./Assets/Runtime/%x..trd"_sl, layout.file_guid), OpenFileFlags::Read /*| OpenFileFlags::Async*/);
 			
-			u32 descriptor_index = descriptor_allocation.index == u32_max ? AllocatePersistentSrvDescriptor(graphics_context) : descriptor_allocation.index;
-			descriptor_allocation.index = descriptor_index;
+			descriptor_allocation.index  = AllocatePersistentSrvDescriptor(graphics_context);
+			resource_allocation.resource = CreateTextureResource(graphics_context, layout.size, CreateResourceFlags::None);
 			
-			auto texture_id = (VirtualResourceID)0;
-			if (runtime_file.file.handle != nullptr) {
-				auto resource = CreateTextureResource(graphics_context, layout.size, CreateResourceFlags::None);
-				texture_id = record_context->resource_table->AddTransient(resource, layout.size);
-				
-				auto format = texture_format_info_map[(u32)layout.size.format];
-				
-				u64 offset = 0;
-				u64 file_read_wait_index = 0;
-				for (u32 mip_index = 0; mip_index < (u32)layout.size.mips; mip_index += 1) {
-					auto mip_size = Math::Max(uint2(layout.size) >> mip_index, uint2(1u));
-					auto mip_size_blocks = (mip_size + (uint2(1u) << format.block_size_log2) - 1) >> format.block_size_log2;
-					
-					AsyncTransferCommand command;
-					command.src_type = AsyncTransferSrcType::File;
-					command.dst_type = AsyncTransferDstType::Texture;
-					command.src.file.handle      = runtime_file.file;
-					command.src.file.offset      = offset;
-					command.src.file.size        = AlignUp(mip_size_blocks.x * format.block_size_bytes, texture_row_pitch_alignment) * mip_size_blocks.y;
-					command.dst.texture.resource = resource;
-					command.dst.texture.size     = TextureSize(layout.size.format, mip_size);
-					command.dst.texture.offset   = 0;
-					command.dst.texture.subresource_index = mip_index;
-					file_read_wait_index = AppendAsyncTransferCommand(async_transfer_queue, command);
-					
-					offset += command.src.file.size;
-				}
-				
-				resource_allocation.resource = resource;
-				resource_allocation.file_read_wait_index = file_read_wait_index;
-			}
-			
-			CreateResourceDescriptor(record_context, HLSL::Texture2D<float4>(texture_id), descriptor_index);
-		}
-		
-		for (u64 i : BitArrayIt(entity_array->removed_mask)) {
-			u32 index = streams.descriptor_allocation[i].index;
-			if (index != u32_max) DeallocatePersistentSrvDescriptor(graphics_context, index);
-			
-			auto resource = streams.resource_allocation[i].resource;
-			if (resource.handle != nullptr) ReleaseTextureResource(graphics_context, resource, ResourceReleaseCondition::EndOfThisGpuFrame);
+			CreateResourceDescriptor(record_context, HLSL::Texture2D<float4>((VirtualResourceID)0), descriptor_allocation.index);
+			system->descriptor_index_to_texture_entity_id[descriptor_allocation.index] = EntityID{ (u32)i };
 		}
 	}
 }

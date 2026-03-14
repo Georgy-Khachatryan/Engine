@@ -465,7 +465,7 @@ namespace HLSL {
 	NOTES(ResourceDescriptorType::Texture2D)
 	template<typename T>
 	struct Texture2D : ResourceDescriptor {
-		Texture2D(VirtualResourceID resource = (VirtualResourceID)0) { Bind(resource); }
+		Texture2D(VirtualResourceID resource = (VirtualResourceID)0, u32 mip_offset = 0, u32 mip_count = u32_max) { Bind(resource, mip_offset, mip_count); }
 		
 		void Bind(VirtualResourceID resource, u32 mip_offset = 0, u32 mip_count = u32_max) {
 			resource_id = resource;
@@ -476,7 +476,7 @@ namespace HLSL {
 	NOTES(ResourceDescriptorType::RWTexture2D)
 	template<typename T>
 	struct RWTexture2D : ResourceDescriptor {
-		RWTexture2D(VirtualResourceID resource = (VirtualResourceID)0) { Bind(resource); }
+		RWTexture2D(VirtualResourceID resource = (VirtualResourceID)0, u32 mip_index = 0) { Bind(resource, mip_index); }
 		
 		void Bind(VirtualResourceID resource, u32 mip_index = 0) {
 			resource_id = resource;
@@ -487,7 +487,7 @@ namespace HLSL {
 	NOTES(ResourceDescriptorType::RegularBuffer)
 	template<typename T>
 	struct RegularBuffer : ResourceDescriptor {
-		RegularBuffer(VirtualResourceID resource = (VirtualResourceID)0) { Bind(resource); }
+		RegularBuffer(VirtualResourceID resource = (VirtualResourceID)0, u32 size = u32_max) { Bind(resource, size); }
 		
 		void Bind(GpuAddress gpu_address, u32 size = u32_max) {
 			resource_id = gpu_address.resource_id;
@@ -498,7 +498,7 @@ namespace HLSL {
 	NOTES(ResourceDescriptorType::RWRegularBuffer)
 	template<typename T>
 	struct RWRegularBuffer : ResourceDescriptor {
-		RWRegularBuffer(VirtualResourceID resource = (VirtualResourceID)0) { Bind(resource); }
+		RWRegularBuffer(VirtualResourceID resource = (VirtualResourceID)0, u32 size = u32_max) { Bind(resource, size); }
 		
 		void Bind(GpuAddress gpu_address, u32 size = u32_max) {
 			resource_id = gpu_address.resource_id;
@@ -508,7 +508,7 @@ namespace HLSL {
 	
 	NOTES(ResourceDescriptorType::ByteBuffer)
 	struct ByteBuffer : ResourceDescriptor {
-		ByteBuffer(VirtualResourceID resource = (VirtualResourceID)0) { Bind(resource); }
+		ByteBuffer(VirtualResourceID resource = (VirtualResourceID)0, u32 size = u32_max) { Bind(resource, size); }
 		
 		void Bind(GpuAddress gpu_address, u32 size = u32_max) {
 			resource_id = gpu_address.resource_id;
@@ -518,7 +518,7 @@ namespace HLSL {
 	
 	NOTES(ResourceDescriptorType::RWByteBuffer)
 	struct RWByteBuffer : ResourceDescriptor {
-		RWByteBuffer(VirtualResourceID resource = (VirtualResourceID)0) { Bind(resource); }
+		RWByteBuffer(VirtualResourceID resource = (VirtualResourceID)0, u32 size = u32_max) { Bind(resource, size); }
 		
 		void Bind(GpuAddress gpu_address, u32 size = u32_max) {
 			resource_id = gpu_address.resource_id;
