@@ -25,10 +25,19 @@ struct WindowSwapChainD3D12 : WindowSwapChain {
 	FixedCountArray<NativeTextureResource, number_of_back_buffers> back_buffers = {};
 };
 
-struct GraphicsContextD3D12 : GraphicsContext {
-	ID3D12Device10*     device                 = nullptr;
-	ID3D12CommandQueue* graphics_command_queue = nullptr;
+struct CommandQueueContextD3D12 {
+	ID3D12CommandQueue* queue = nullptr;
+	ID3D12Fence*        fence = nullptr;
 	
+	ID3D12GraphicsCommandList7* command_list = nullptr;
+	FixedCountArray<ID3D12CommandAllocator*, number_of_frames_in_flight> command_allocators = {};
+};
+
+struct GraphicsContextD3D12 : GraphicsContext {
+	ID3D12Device10* device = nullptr;
+	
+	CommandQueueContextD3D12 graphics_context;
+	CommandQueueContextD3D12 copy_context;
 	
 	FixedCountArray<ID3D12DescriptorHeap*,       (u32)DescriptorHeapType::Count> descriptor_heaps;
 	FixedCountArray<u32,                         (u32)DescriptorHeapType::Count> descriptor_sizes;
@@ -42,11 +51,6 @@ struct GraphicsContextD3D12 : GraphicsContext {
 	
 	ID3D12Fence* async_copy_fence = nullptr;
 	u64 async_copy_index = 0;
-	
-	ID3D12Fence* frame_sync_fence = nullptr;
-	
-	ID3D12GraphicsCommandList7* command_list = nullptr;
-	FixedCountArray<ID3D12CommandAllocator*, number_of_frames_in_flight> command_allocators = {};
 	
 	Array<u16> srv_heap_free_indices;
 	u32 srv_heap_offset = 0;

@@ -22,7 +22,10 @@ void WaitForLastFrame(GraphicsContext* api_context) {
 	
 	auto* context = (GraphicsContextD3D12*)api_context;
 	if (context->frame_sync_index <= 1) return;
-	context->frame_sync_fence->SetEventOnCompletion(context->frame_sync_index - 1, nullptr);
+	
+	u64 wait_index = context->frame_sync_index - 1;
+	context->graphics_context.fence->SetEventOnCompletion(wait_index, nullptr);
+	context->copy_context.    fence->SetEventOnCompletion(wait_index, nullptr);
 }
 
 void WaitForNextFrame(GraphicsContext* api_context) {
@@ -30,12 +33,16 @@ void WaitForNextFrame(GraphicsContext* api_context) {
 	
 	auto* context = (GraphicsContextD3D12*)api_context;
 	if (context->frame_sync_index <= number_of_frames_in_flight) return;
-	context->frame_sync_fence->SetEventOnCompletion(context->frame_sync_index - number_of_frames_in_flight, nullptr);
+	
+	u64 wait_index = context->frame_sync_index - number_of_frames_in_flight;
+	context->graphics_context.fence->SetEventOnCompletion(wait_index, nullptr);
+	context->copy_context.    fence->SetEventOnCompletion(wait_index, nullptr);
 }
 
 static void BuildPipelineStates(GraphicsContextD3D12* context, StackAllocator* alloc, bool build_only_dirty_pipelines = true);
 static void BuildRootSignatures(GraphicsContextD3D12* context, StackAllocator* alloc, ArrayView<ArrayView<u32>> root_signature_streams);
 static ID3D12CommandSignature* CreateCommandSignature(ID3D12Device10* device, D3D12_INDIRECT_ARGUMENT_TYPE type, u32 byte_stride);
+static CommandQueueContextD3D12 CreateCommandQueueContext(ID3D12Device10* device, D3D12_COMMAND_LIST_TYPE type);
 
 GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
 	ProfilerScope("CreateGraphicsContext");
@@ -67,9 +74,18 @@ GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
 	if (debug != nullptr) {
 		ID3D12InfoQueue* info_queue = nullptr;
 		if (SUCCEEDED(device->QueryInterface(IID_PPV_ARGS(&info_queue)))) {
-			info_queue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR, true);
+			D3D12_MESSAGE_ID deny_list[] = {
+				D3D12_MESSAGE_ID_OBJECT_ACCESSED_WHILE_STILL_IN_USE,
+			};
+			
+			D3D12_INFO_QUEUE_FILTER filter = {};
+			filter.DenyList.pIDList = deny_list;
+			filter.DenyList.NumIDs  = ArraySize(deny_list);
+			info_queue->AddStorageFilterEntries(&filter);
+			
+			info_queue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR,      true);
 			info_queue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_CORRUPTION, true);
-			info_queue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_WARNING, true);
+			info_queue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_WARNING,    true);
 			info_queue->Release();
 		}
 		debug->Release();
@@ -122,33 +138,8 @@ GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
 	}
 	
 	
-	{
-		ProfilerScope("CreateCommandQueue");
-		
-		D3D12_COMMAND_QUEUE_DESC queue_desc = {};
-		queue_desc.Type     = D3D12_COMMAND_LIST_TYPE_DIRECT;
-		queue_desc.Priority = D3D12_COMMAND_QUEUE_PRIORITY_NORMAL;
-		queue_desc.Flags    = D3D12_COMMAND_QUEUE_FLAG_NONE;
-		queue_desc.NodeMask = 0;
-		
-		ID3D12CommandQueue* queue = nullptr;
-		if (FAILED(device->CreateCommandQueue(&queue_desc, IID_PPV_ARGS(&queue)))) {
-			DebugAssertAlways("CreateCommandQueue failed.");
-			return nullptr;
-		}
-		context->graphics_command_queue = queue;
-	}
-	
-	
-	{
-		ID3D12Fence* fence = nullptr;
-		if (FAILED(device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence)))) {
-			DebugAssertAlways("CreateFence failed.");
-			return nullptr;
-		}
-		context->frame_sync_fence = fence;
-		context->frame_sync_index = 1;
-	}
+	context->graphics_context = CreateCommandQueueContext(device, D3D12_COMMAND_LIST_TYPE_DIRECT);
+	context->copy_context     = CreateCommandQueueContext(device, D3D12_COMMAND_LIST_TYPE_COPY);
 	
 	
 	{
@@ -161,34 +152,14 @@ GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
 	}
 	
 	
-	for (auto& command_allocator : context->command_allocators) {
-		ProfilerScope("CreateCommandAllocator");
-		
-		if (FAILED(device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&command_allocator)))) {
-			DebugAssertAlways("CreateCommandAllocator failed.");
-			return nullptr;
-		}
-	}
-	
 	{
 		ProfilerScope("CreateCommandSignatures");
-		context->dispatch_command_signature = CreateCommandSignature(device, D3D12_INDIRECT_ARGUMENT_TYPE_DISPATCH, 16);
-		context->dispatch_mesh_command_signature = CreateCommandSignature(device, D3D12_INDIRECT_ARGUMENT_TYPE_DISPATCH_MESH, 16);
-		context->draw_instanced_command_signature = CreateCommandSignature(device, D3D12_INDIRECT_ARGUMENT_TYPE_DRAW, 16);
-		context->draw_indexed_instanced_command_signature = CreateCommandSignature(device, D3D12_INDIRECT_ARGUMENT_TYPE_DRAW_INDEXED, 20);
+		context->dispatch_command_signature               = CreateCommandSignature(device, D3D12_INDIRECT_ARGUMENT_TYPE_DISPATCH,      16);
+		context->dispatch_mesh_command_signature          = CreateCommandSignature(device, D3D12_INDIRECT_ARGUMENT_TYPE_DISPATCH_MESH, 16);
+		context->draw_instanced_command_signature         = CreateCommandSignature(device, D3D12_INDIRECT_ARGUMENT_TYPE_DRAW,          16);
+		context->draw_indexed_instanced_command_signature = CreateCommandSignature(device, D3D12_INDIRECT_ARGUMENT_TYPE_DRAW_INDEXED,  20);
 	}
 	
-	
-	{
-		ProfilerScope("CreateCommandList");
-		
-		ID3D12GraphicsCommandList7* command_list = nullptr;
-		if (FAILED(device->CreateCommandList1(0, D3D12_COMMAND_LIST_TYPE_DIRECT, D3D12_COMMAND_LIST_FLAG_NONE, IID_PPV_ARGS(&command_list)))) {
-			DebugAssertAlways("CreateCommandList failed.");
-			return nullptr;
-		}
-		context->command_list = command_list;
-	}
 	
 	{
 		extern ArrayView<ShaderDefinition> shader_definition_table;
@@ -226,10 +197,10 @@ static ID3D12CommandSignature* CreateCommandSignature(ID3D12Device10* device, D3
 	argument_desc.Type = type;
 	
 	D3D12_COMMAND_SIGNATURE_DESC desc = {};
-	desc.ByteStride = byte_stride;
+	desc.ByteStride       = byte_stride;
 	desc.NumArgumentDescs = 1;
-	desc.pArgumentDescs = &argument_desc;
-	desc.NodeMask = 0;
+	desc.pArgumentDescs   = &argument_desc;
+	desc.NodeMask         = 0;
 	
 	ID3D12CommandSignature* command_signature = nullptr;
 	if (FAILED(device->CreateCommandSignature(&desc, nullptr, IID_PPV_ARGS(&command_signature)))) {
@@ -237,6 +208,53 @@ static ID3D12CommandSignature* CreateCommandSignature(ID3D12Device10* device, D3
 	}
 	
 	return command_signature;
+}
+
+static CommandQueueContextD3D12 CreateCommandQueueContext(ID3D12Device10* device, D3D12_COMMAND_LIST_TYPE type) {
+	ProfilerScope("CreateCommandQueueContext");
+	
+	CommandQueueContextD3D12 context;
+	
+	{
+		D3D12_COMMAND_QUEUE_DESC queue_desc = {};
+		queue_desc.Type     = type;
+		queue_desc.Priority = D3D12_COMMAND_QUEUE_PRIORITY_NORMAL;
+		queue_desc.Flags    = D3D12_COMMAND_QUEUE_FLAG_NONE;
+		queue_desc.NodeMask = 0;
+		
+		if (FAILED(device->CreateCommandQueue(&queue_desc, IID_PPV_ARGS(&context.queue)))) {
+			DebugAssertAlways("CreateCommandQueue failed.");
+			return {};
+		}
+	}
+	
+	if (FAILED(device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&context.fence)))) {
+		DebugAssertAlways("CreateFence failed.");
+		return {};
+	}
+	
+	for (auto& command_allocator : context.command_allocators) {
+		ProfilerScope("CreateCommandAllocator");
+		
+		if (FAILED(device->CreateCommandAllocator(type, IID_PPV_ARGS(&command_allocator)))) {
+			DebugAssertAlways("CreateCommandAllocator failed.");
+			return {};
+		}
+	}
+	
+	if (FAILED(device->CreateCommandList1(0, type, D3D12_COMMAND_LIST_FLAG_NONE, IID_PPV_ARGS(&context.command_list)))) {
+		DebugAssertAlways("CreateCommandList failed.");
+		return {};
+	}
+	
+	return context;
+}
+
+static void ReleaseCommandQueueContext(CommandQueueContextD3D12* context) {
+	SafeRelease(context->command_list);
+	for (auto& command_allocator : context->command_allocators) SafeRelease(command_allocator);
+	SafeRelease(context->fence);
+	SafeRelease(context->queue);
 }
 
 template<typename T>
@@ -596,12 +614,9 @@ void ReleaseGraphicsContext(GraphicsContext* api_context, StackAllocator* alloc)
 	SafeRelease(context->draw_instanced_command_signature);
 	SafeRelease(context->draw_indexed_instanced_command_signature);
 	
-	SafeRelease(context->command_list);
-	for (auto& command_allocator : context->command_allocators) SafeRelease(command_allocator);
-	SafeRelease(context->async_copy_fence);
-	SafeRelease(context->frame_sync_fence);
+	ReleaseCommandQueueContext(&context->copy_context);
+	ReleaseCommandQueueContext(&context->graphics_context);
 	for (auto& descriptor_heap : context->descriptor_heaps) SafeRelease(descriptor_heap);
-	SafeRelease(context->graphics_command_queue);
 	SafeRelease(context->device);
 	
 	IDXGIDebug1* debug = nullptr;
@@ -636,7 +651,7 @@ NativeTextureResource CreateTextureResource(GraphicsContext* api_context, Textur
 	resource_desc.Format           = dxgi_texture_format_map[(u32)size.format];
 	resource_desc.SampleDesc       = { 1, 0 };
 	resource_desc.Layout           = D3D12_TEXTURE_LAYOUT_UNKNOWN;
-	resource_desc.Flags            = (is_depth_stencil ? D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL : (size.format == TextureFormat::BC1_UNORM || size.format == TextureFormat::BC1_UNORM_SRGB || size.format == TextureFormat::BC4_UNORM || size.format == TextureFormat::BC5_UNORM ? D3D12_RESOURCE_FLAG_NONE : D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS | D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET)); // TODO: Explicitelly pass required access flags.
+	resource_desc.Flags            = (is_depth_stencil ? D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL : (size.format == TextureFormat::BC1_UNORM || size.format == TextureFormat::BC1_UNORM_SRGB || size.format == TextureFormat::BC4_UNORM || size.format == TextureFormat::BC5_UNORM ? D3D12_RESOURCE_FLAG_NONE : D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS | D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET)); // TODO: Explicitly pass required access flags.
 	resource_desc.SamplerFeedbackMipRegion = { 0, 0, 0 };
 	
 	D3D12_CLEAR_VALUE clear_value = {};
@@ -826,7 +841,7 @@ WindowSwapChain* CreateWindowSwapChain(StackAllocator* alloc, GraphicsContext* a
 	swap_chain_desc.Flags       = 0;
 	
 	IDXGISwapChain1* dxgi_swap_chain_1 = nullptr;
-	if (FAILED(dxgi_factory_4->CreateSwapChainForHwnd(context->graphics_command_queue, (HWND)hwnd, &swap_chain_desc, nullptr, nullptr, &dxgi_swap_chain_1))) {
+	if (FAILED(dxgi_factory_4->CreateSwapChainForHwnd(context->graphics_context.queue, (HWND)hwnd, &swap_chain_desc, nullptr, nullptr, &dxgi_swap_chain_1))) {
 		DebugAssertAlways("CreateSwapChainForHwnd failed.");
 		return nullptr;
 	}
@@ -881,6 +896,27 @@ NativeTextureResource WindowSwapGetCurrentBackBuffer(WindowSwapChain* api_swap_c
 	return swap_chain->back_buffers[swap_chain->dxgi_swap_chain->GetCurrentBackBufferIndex()];
 }
 
+static void ResetCommandQueueContext(GraphicsContextD3D12* context, CommandQueueContextD3D12* queue_context, D3D12_COMMAND_LIST_TYPE type) {
+	auto* command_allocator = queue_context->command_allocators[context->frame_sync_index % number_of_frames_in_flight];
+	auto* command_list      = queue_context->command_list;
+	
+	command_allocator->Reset();
+	command_list->Reset(command_allocator, nullptr);
+	
+	if (type != D3D12_COMMAND_LIST_TYPE_COPY) {
+		command_list->SetDescriptorHeaps(1, &context->descriptor_heaps[(u32)DescriptorHeapType::SRV]);
+		command_list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	}
+}
+
+static void SubmitCommandQueueContext(CommandQueueContextD3D12* context) {
+	auto* command_list  = context->command_list;
+	auto* command_queue = context->queue;
+	
+	command_list->Close();
+	command_queue->ExecuteCommandLists(1, (ID3D12CommandList**)&command_list);
+}
+
 void WindowSwapChainBeginFrame(WindowSwapChain* api_swap_chain, GraphicsContext* api_context, StackAllocator* alloc) {
 	ProfilerScope("WindowSwapChainBeginFrame");
 	
@@ -894,37 +930,36 @@ void WindowSwapChainBeginFrame(WindowSwapChain* api_swap_chain, GraphicsContext*
 		BuildPipelineStates(context, alloc);
 	}
 	
-	auto* command_allocator = context->command_allocators[context->frame_sync_index % number_of_frames_in_flight];
-	auto* command_list = context->command_list;
-	
-	command_allocator->Reset();
-	command_list->Reset(command_allocator, nullptr);
-	command_list->SetDescriptorHeaps(1, &context->descriptor_heaps[(u32)DescriptorHeapType::SRV]);
-	command_list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	ResetCommandQueueContext(context, &context->graphics_context, D3D12_COMMAND_LIST_TYPE_DIRECT);
+	ResetCommandQueueContext(context, &context->copy_context,     D3D12_COMMAND_LIST_TYPE_COPY);
 }
 
 void WindowSwapChainEndFrame(WindowSwapChain* api_swap_chain, GraphicsContext* api_context, StackAllocator* alloc, RecordContext* record_context) {
 	ProfilerScope("WindowSwapChainEndFrame");
 	
 	auto* swap_chain = (WindowSwapChainD3D12*)api_swap_chain;
-	auto* context = (GraphicsContextD3D12*)api_context;
+	auto* context    = (GraphicsContextD3D12*)api_context;
 	
-	auto& back_buffer = swap_chain->back_buffers[swap_chain->dxgi_swap_chain->GetCurrentBackBufferIndex()];
-	auto* command_list = context->command_list;
+	{
+		SubmitCommandQueueContext(&context->copy_context);
+		auto* command_queue = context->copy_context.queue;
+		command_queue->Signal(context->copy_context.fence, context->frame_sync_index);
+		command_queue->Signal(context->async_copy_fence,   context->async_copy_index);
+	}
 	
 	ReplayRecordContext(context, record_context);
 	
-	command_list->Close();
-	
-	auto* command_queue = context->graphics_command_queue;
-	command_queue->ExecuteCommandLists(1, (ID3D12CommandList**)&command_list);
-	
-	u32 sync_interval = 1;
-	if (FAILED(swap_chain->dxgi_swap_chain->Present(sync_interval, 0))) {
-		DebugAssertAlways("Present failed.");
+	{
+		SubmitCommandQueueContext(&context->graphics_context);
+		
+		u32 sync_interval = 1;
+		if (FAILED(swap_chain->dxgi_swap_chain->Present(sync_interval, 0))) {
+			DebugAssertAlways("Present failed.");
+		}
+		
+		auto* command_queue = context->graphics_context.queue;
+		command_queue->Signal(context->graphics_context.fence, context->frame_sync_index);
 	}
-	command_queue->Signal(context->frame_sync_fence, context->frame_sync_index);
-	command_queue->Signal(context->async_copy_fence, context->async_copy_index);
 	
 	context->frame_sync_index += 1;
 }
@@ -932,9 +967,8 @@ void WindowSwapChainEndFrame(WindowSwapChain* api_swap_chain, GraphicsContext* a
 
 void SubmitAsyncCopyCommands(GraphicsContext* api_context, ArrayView<AsyncCopyBufferToBufferCommand> copy_buffer_to_buffer_commands, ArrayView<AsyncCopyBufferToTextureCommand> copy_buffer_to_texture_commands, u64 async_copy_signal_index) {
 	auto* context = (GraphicsContextD3D12*)api_context;
-	auto* command_list = context->command_list;
+	auto* command_list = context->copy_context.command_list;
 	
-	// TODO: Record and submit these commands to an async copy command queue.
 	for (auto& command : copy_buffer_to_buffer_commands) {
 		command_list->CopyBufferRegion(command.dst_resource.d3d12, command.dst_offset, command.src_resource.d3d12, command.src_offset, command.size);
 	}

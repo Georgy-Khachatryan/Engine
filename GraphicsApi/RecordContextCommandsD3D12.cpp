@@ -842,7 +842,7 @@ void ReplayRecordContext(GraphicsContext* api_context, RecordContext* record_con
 	
 	auto [first_resource_access, last_resource_access] = ResolveResourceAccesses(alloc, record_context->resource_accesses, resources);
 	
-	auto* command_list = context->command_list;
+	auto* command_list = context->graphics_context.command_list;
 	
 	u32 command_count  = record_context->command_count;
 	u8* command_memory = record_context->command_memory_base;
