@@ -16,6 +16,11 @@ union NativeTextureResource {
 	struct ID3D12Resource* d3d12;
 };
 
+union NativeMemoryResource {
+	void* handle = nullptr;
+	struct ID3D12Heap* d3d12;
+};
+
 enum struct VirtualResourceID : u32;
 struct RecordContext;
 struct PipelineLibrary;
@@ -163,6 +168,7 @@ enum struct CreateResourceFlags : u32 {
 	DSV      = 1u << 2,
 	RTV      = 1u << 3,
 	UAV      = 1u << 4,
+	Sparse   = 1u << 5,
 };
 ENUM_FLAGS_OPERATORS(CreateResourceFlags);
 

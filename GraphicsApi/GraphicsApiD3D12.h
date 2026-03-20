@@ -60,9 +60,9 @@ struct GraphicsContextD3D12 : GraphicsContext {
 	Array<ID3D12PipelineState*> pipeline_state_table;
 	ArrayView<PipelineDefinition> pipeline_definitions;
 	
-	Array<ID3D12Resource*> release_queue_last_frame;
-	Array<ID3D12Resource*> release_queue_this_frame;
-	Array<ID3D12Resource*> release_queue_next_frame;
+	Array<ID3D12Pageable*> release_queue_last_frame;
+	Array<ID3D12Pageable*> release_queue_this_frame;
+	Array<ID3D12Pageable*> release_queue_next_frame;
 };
 
 extern void ProfilerBeginScope(const char* label, ID3D12GraphicsCommandList* command_list);

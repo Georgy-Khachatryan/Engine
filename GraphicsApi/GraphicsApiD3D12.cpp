@@ -622,13 +622,6 @@ NativeTextureResource CreateTextureResource(GraphicsContext* api_context, Textur
 	
 	auto* context = (GraphicsContextD3D12*)api_context;
 	
-	D3D12_HEAP_PROPERTIES heap_properties = {};
-	heap_properties.Type                 = D3D12_HEAP_TYPE_DEFAULT;
-	heap_properties.CPUPageProperty      = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
-	heap_properties.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
-	heap_properties.CreationNodeMask     = 0;
-	heap_properties.VisibleNodeMask      = 0;
-	
 	D3D12_RESOURCE_DESC1 resource_desc = {};
 	resource_desc.Dimension        = size.type == TextureSize::Type::Texture3D ? D3D12_RESOURCE_DIMENSION_TEXTURE3D : D3D12_RESOURCE_DIMENSION_TEXTURE2D;
 	resource_desc.Alignment        = 0;
@@ -638,7 +631,7 @@ NativeTextureResource CreateTextureResource(GraphicsContext* api_context, Textur
 	resource_desc.MipLevels        = size.mips;
 	resource_desc.Format           = dxgi_texture_format_map[(u32)size.format];
 	resource_desc.SampleDesc       = { 1, 0 };
-	resource_desc.Layout           = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+	resource_desc.Layout           = HasAnyFlags(flags, CreateResourceFlags::Sparse) ? D3D12_TEXTURE_LAYOUT_64KB_UNDEFINED_SWIZZLE : D3D12_TEXTURE_LAYOUT_UNKNOWN;
 	resource_desc.Flags            = TranslateCreateResourceFlags(flags);
 	resource_desc.SamplerFeedbackMipRegion = { 0, 0, 0 };
 	
@@ -647,18 +640,38 @@ NativeTextureResource CreateTextureResource(GraphicsContext* api_context, Textur
 	bool set_clear_value = HasAnyFlags(flags, CreateResourceFlags::RTV | CreateResourceFlags::DSV);
 	
 	NativeTextureResource resource = {};
-	auto result = context->device->CreateCommittedResource3(
-		&heap_properties,
-		D3D12_HEAP_FLAG_NONE,
-		&resource_desc,
-		D3D12_BARRIER_LAYOUT_COMMON,
-		set_clear_value ? &clear_value : nullptr,
-		nullptr,
-		0,
-		nullptr,
-		IID_PPV_ARGS(&resource.d3d12)
-	);
-	DebugAssert(SUCCEEDED(result), "Failed to create texture resource.");
+	if (HasAnyFlags(flags, CreateResourceFlags::Sparse) == false) {
+		D3D12_HEAP_PROPERTIES heap_properties = {};
+		heap_properties.Type                 = D3D12_HEAP_TYPE_DEFAULT;
+		heap_properties.CPUPageProperty      = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
+		heap_properties.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
+		heap_properties.CreationNodeMask     = 0;
+		heap_properties.VisibleNodeMask      = 0;
+		
+		auto result = context->device->CreateCommittedResource3(
+			&heap_properties,
+			D3D12_HEAP_FLAG_NONE,
+			&resource_desc,
+			D3D12_BARRIER_LAYOUT_COMMON,
+			set_clear_value ? &clear_value : nullptr,
+			nullptr,
+			0,
+			nullptr,
+			IID_PPV_ARGS(&resource.d3d12)
+		);
+		DebugAssert(SUCCEEDED(result), "Failed to create texture resource.");
+	} else {
+		auto result = context->device->CreateReservedResource2(
+			(D3D12_RESOURCE_DESC*)&resource_desc,
+			D3D12_BARRIER_LAYOUT_COMMON,
+			set_clear_value ? &clear_value : nullptr,
+			nullptr,
+			0,
+			nullptr,
+			IID_PPV_ARGS(&resource.d3d12)
+		);
+		DebugAssert(SUCCEEDED(result), "Failed to create texture resource.");
+	}
 	
 	return resource;
 }
@@ -713,7 +726,53 @@ NativeBufferResource CreateBufferResource(GraphicsContext* api_context, u32 size
 	return resource;
 }
 
-static void ReleaseResource(GraphicsContextD3D12* context, ID3D12Resource* resource, ResourceReleaseCondition condition) {
+NativeMemoryResource CreateMemoryResource(GraphicsContext* api_context, u64 size) {
+	ProfilerScope("CreateMemoryResource");
+	
+	auto* context = (GraphicsContextD3D12*)api_context;
+	
+	D3D12_HEAP_PROPERTIES heap_properties = {};
+	heap_properties.Type                 = D3D12_HEAP_TYPE_DEFAULT;
+	heap_properties.CPUPageProperty      = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
+	heap_properties.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
+	heap_properties.CreationNodeMask     = 0;
+	heap_properties.VisibleNodeMask      = 0;
+	
+	D3D12_HEAP_DESC heap_desc = {};
+	heap_desc.SizeInBytes                     = size;
+	heap_desc.Properties.Type                 = D3D12_HEAP_TYPE_DEFAULT;
+	heap_desc.Properties.CPUPageProperty      = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
+	heap_desc.Properties.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
+	heap_desc.Properties.CreationNodeMask     = 0;
+	heap_desc.Properties.VisibleNodeMask      = 0;
+	heap_desc.Alignment                       = 0;
+	heap_desc.Flags                           = D3D12_HEAP_FLAG_DENY_BUFFERS | D3D12_HEAP_FLAG_DENY_RT_DS_TEXTURES | D3D12_HEAP_FLAG_CREATE_NOT_ZEROED;
+	
+	NativeMemoryResource resource = {};
+	auto result = context->device->CreateHeap(&heap_desc, IID_PPV_ARGS(&resource.d3d12));
+	DebugAssert(SUCCEEDED(result), "Failed to create memory resource.");
+	
+	return resource;
+}
+
+SparseTextureLayout GetSparseTextureLayout(GraphicsContext* api_context, NativeTextureResource resource) {
+	auto* context = (GraphicsContextD3D12*)api_context;
+	
+	u32 tile_count = 0;
+	D3D12_PACKED_MIP_INFO packed_mip_info = {};
+	D3D12_TILE_SHAPE tile_shape = {};
+	context->device->GetResourceTiling(resource.d3d12, &tile_count, &packed_mip_info, &tile_shape, nullptr, 0, nullptr);
+	
+	SparseTextureLayout result;
+	result.tile_shape        = u16x2(tile_shape.WidthInTexels, tile_shape.HeightInTexels);
+	result.packed_tile_count = (u16)packed_mip_info.NumTilesForPackedMips;
+	result.packed_mip_count  = packed_mip_info.NumPackedMips;
+	result.regular_mip_count = packed_mip_info.NumStandardMips;
+	
+	return result;
+}
+
+static void ReleaseResource(GraphicsContextD3D12* context, ID3D12Pageable* resource, ResourceReleaseCondition condition) {
 	if (resource == nullptr) return;
 	
 	ProfilerScope("ReleaseResource");
@@ -744,6 +803,10 @@ void ReleaseTextureResource(GraphicsContext* context, NativeTextureResource reso
 }
 
 void ReleaseBufferResource(GraphicsContext* context, NativeBufferResource resource, ResourceReleaseCondition condition) {
+	ReleaseResource((GraphicsContextD3D12*)context, resource.d3d12, condition);
+}
+
+void ReleaseMemoryResource(GraphicsContext* context, NativeMemoryResource resource, ResourceReleaseCondition condition) {
 	ReleaseResource((GraphicsContextD3D12*)context, resource.d3d12, condition);
 }
 
@@ -971,6 +1034,8 @@ void WaitForInFlightSubmits(GraphicsContext* api_context) {
 }
 
 void SubmitAsyncCopyCommands(GraphicsContext* api_context, ArrayView<AsyncCopyBufferToBufferCommand> copy_buffer_to_buffer_commands, ArrayView<AsyncCopyBufferToTextureCommand> copy_buffer_to_texture_commands, u64 async_copy_signal_index) {
+	ProfilerScope("SubmitAsyncCopyCommands");
+	
 	auto* context      = (GraphicsContextD3D12*)api_context;
 	auto* command_list = context->async_copy_context.command_list;
 	
@@ -1009,6 +1074,42 @@ void SubmitAsyncCopyCommands(GraphicsContext* api_context, ArrayView<AsyncCopyBu
 	command_queue->Signal(context->async_copy_fence,         async_copy_signal_index);
 	
 	context->async_submit_index += 1;
+}
+
+void AsyncUpdateMemoryMappings(GraphicsContext* api_context, StackAllocator* alloc, ArrayView<u32> tile_indices, u32 subresource_index, NativeTextureResource resource, NativeMemoryResource memory) {
+	ProfilerScope("AsyncUpdateMemoryMappings");
+	
+	auto* context = (GraphicsContextD3D12*)api_context;
+	auto* command_queue = context->async_copy_context.queue;
+	
+	D3D12_TILED_RESOURCE_COORDINATE subresource_coordinates = {};
+	subresource_coordinates.Subresource = subresource_index;
+	
+	D3D12_TILE_REGION_SIZE tile_region_size = {};
+	tile_region_size.NumTiles = (u32)tile_indices.count;
+	
+	TempAllocationScope(alloc);
+	
+	auto tile_counts = ArrayViewAllocate<u32>(alloc, tile_indices.count);
+	auto tile_flags  = ArrayViewAllocate<D3D12_TILE_RANGE_FLAGS>(alloc, tile_indices.count);
+	
+	for (u32 i = 0; i < tile_indices.count; i += 1) {
+		tile_counts[i] = 1;
+		tile_flags[i]  = D3D12_TILE_RANGE_FLAG_NONE;
+	}
+	
+	command_queue->UpdateTileMappings(
+		resource.d3d12,
+		1,
+		&subresource_coordinates,
+		&tile_region_size,
+		memory.d3d12,
+		(u32)tile_indices.count,
+		tile_flags.data,
+		tile_indices.data,
+		tile_counts.data,
+		D3D12_TILE_MAPPING_FLAG_NONE
+	);
 }
 
 u64 GetCompletedAsyncCopyCommandValue(GraphicsContext* api_context) {

@@ -170,3 +170,10 @@ struct TextureSize {
 };
 static_assert(sizeof(TextureSize) == 8, "Layout of TextureSize is not valid.");
 
+struct alignas(u64) SparseTextureLayout {
+	u16x2 tile_shape       = 0;
+	u16 packed_tile_count  = 0;
+	u8  packed_mip_count   = 0;
+	u8  regular_mip_count  = 0;
+};
+static_assert(sizeof(SparseTextureLayout) == 8, "Layout of SparseTextureLayout is not valid.");

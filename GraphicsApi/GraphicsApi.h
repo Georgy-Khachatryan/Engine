@@ -26,10 +26,15 @@ void WaitForInFlightSubmits(GraphicsContext* context);
 
 NativeTextureResource CreateTextureResource(GraphicsContext* context, TextureSize size, CreateResourceFlags flags);
 NativeBufferResource CreateBufferResource(GraphicsContext* context, u32 size, CreateResourceFlags flags, u8** cpu_address = nullptr);
+NativeMemoryResource CreateMemoryResource(GraphicsContext* context, u64 size);
 void ReleaseTextureResource(GraphicsContext* context, NativeTextureResource resource, ResourceReleaseCondition condition = ResourceReleaseCondition::None);
 void ReleaseBufferResource(GraphicsContext* context, NativeBufferResource resource, ResourceReleaseCondition condition = ResourceReleaseCondition::None);
+void ReleaseMemoryResource(GraphicsContext* context, NativeMemoryResource resource, ResourceReleaseCondition condition = ResourceReleaseCondition::None);
+
+SparseTextureLayout GetSparseTextureLayout(GraphicsContext* context, NativeTextureResource resource);
 
 void SubmitAsyncCopyCommands(GraphicsContext* context, ArrayView<AsyncCopyBufferToBufferCommand> copy_buffer_to_buffer_commands, ArrayView<AsyncCopyBufferToTextureCommand> copy_buffer_to_texture_commands, u64 async_copy_signal_index);
+void AsyncUpdateMemoryMappings(GraphicsContext* context, StackAllocator* alloc, ArrayView<u32> tile_indices, u32 subresource_index, NativeTextureResource resource, NativeMemoryResource memory);
 u64 GetCompletedAsyncCopyCommandValue(GraphicsContext* context);
 
 WindowSwapChain* CreateWindowSwapChain(StackAllocator* alloc, GraphicsContext* context, void* hwnd, TextureFormat format);

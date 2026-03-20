@@ -148,6 +148,9 @@ compile_const u64 DivideAndRoundUp(u64 numerator, u64 denominator) { return (num
 inline uint2 DivideAndRoundUp(uint2 numerator, u32 denominator) { return (numerator + (denominator - 1)) / denominator; }
 inline uint3 DivideAndRoundUp(uint3 numerator, u32 denominator) { return (numerator + (denominator - 1)) / denominator; }
 inline uint4 DivideAndRoundUp(uint4 numerator, u32 denominator) { return (numerator + (denominator - 1)) / denominator; }
+inline uint2 DivideAndRoundUp(uint2 numerator, uint2 denominator) { return (numerator + (denominator - 1)) / denominator; }
+inline uint3 DivideAndRoundUp(uint3 numerator, uint3 denominator) { return (numerator + (denominator - 1)) / denominator; }
+inline uint4 DivideAndRoundUp(uint4 numerator, uint4 denominator) { return (numerator + (denominator - 1)) / denominator; }
 
 
 namespace Math {

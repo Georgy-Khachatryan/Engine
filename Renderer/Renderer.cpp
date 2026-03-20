@@ -30,7 +30,7 @@ RendererContext* CreateRendererContext(StackAllocator* alloc) {
 	context->debug_geometry_buffer  = DebugGeometryRenderPass::CreateDebugGeometryBuffer(alloc, graphics_context, context->async_transfer_queue);
 	context->meshlet_streaming_system = CreateMeshletStreamingSystem(alloc);
 	context->mesh_streaming_system    = CreateMeshStreamingSystem(alloc, mesh_asset_buffer_size - MeshletPageHeader::page_size * MeshletPageHeader::runtime_page_count);
-	context->texture_streaming_system = CreateTextureStreamingSystem(alloc, texture_heap_size);
+	context->texture_streaming_system = CreateTextureStreamingSystem(graphics_context, alloc, texture_heap_size);
 	
 	return context;
 }
@@ -47,6 +47,8 @@ void ReleaseRendererContext(RendererContext* context, StackAllocator* alloc) {
 	for (auto& buffer : context->readback_buffers) {
 		ReleaseBufferResource(context->graphics_context, buffer);
 	}
+	
+	ReleaseTextureStreamingSystem(context->graphics_context, context->texture_streaming_system);
 	
 	ReleaseGraphicsContext(context->graphics_context, alloc);
 }
