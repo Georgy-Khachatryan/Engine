@@ -53,7 +53,7 @@ struct TextureDescriptorAllocation {
 NOTES(Meta::NoSaveLoad{})
 struct TextureRuntimeAllocation {
 	NativeTextureResource resource;
-	u64 file_read_wait_index = 0;
+	SparseTextureLayout sparse_layout;
 };
 
 NOTES()
