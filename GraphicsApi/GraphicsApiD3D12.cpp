@@ -111,7 +111,7 @@ GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
 		static_assert(persistent_srv_descriptor_count - 1 <= u16_max, "Persistent SRV indices are too large.");
 		
 		for (u32 i = 0; i < persistent_srv_descriptor_count; i += 1) {
-			context->srv_heap_free_indices[i] = (u16)i;
+			context->srv_heap_free_indices[i] = (u16)(persistent_srv_descriptor_count - i - 1);
 		}
 	}
 	

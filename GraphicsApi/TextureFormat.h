@@ -126,6 +126,7 @@ struct TextureFormatInfo {
 };
 
 compile_const u32 texture_row_pitch_alignment = 256u;
+compile_const u32 texture_max_mip_level_count = 16u;
 
 TextureFormat ToNonSrgbFormat(TextureFormat format);
 TextureFormat ToSrvFormat(TextureFormat format);

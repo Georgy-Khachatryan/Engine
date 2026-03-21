@@ -186,8 +186,7 @@ TextureImportResult ImportTextureFile(StackAllocator* alloc, ThreadPool* thread_
 	u32 max_image_size = (u32)Math::Max(Math::Max(stb_image_size.x, stb_image_size.y), 1);
 	u32 mip_count = FirstBitHigh32(max_image_size) + 1;
 	
-	compile_const u32 max_mip_count = 16;
-	if (mip_count > max_mip_count) return {};
+	if (mip_count > texture_max_mip_level_count) return {};
 	
 	
 	auto output_format = TextureFormat::BC1_UNORM_SRGB;
@@ -214,7 +213,7 @@ TextureImportResult ImportTextureFile(StackAllocator* alloc, ThreadPool* thread_
 	}
 	
 	
-	FixedCapacityArray<u8*, max_mip_count> mips;
+	FixedCapacityArray<u8*, texture_max_mip_level_count> mips;
 	ArrayAppend(mips, mip_0_data);
 	
 	u8* last_mip_data      = mip_0_data;
@@ -298,7 +297,7 @@ TextureImportResult ImportTextureFile(StackAllocator* alloc, ThreadPool* thread_
 	}
 	
 	
-	FixedCapacityArray<u8*, max_mip_count> block_compressed_mips;
+	FixedCapacityArray<u8*, texture_max_mip_level_count> block_compressed_mips;
 	for (u32 mip_index = 0; mip_index < mips.count; mip_index += 1) {
 		ProfilerScope("CompressMipBlocks");
 		

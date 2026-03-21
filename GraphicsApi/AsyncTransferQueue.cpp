@@ -365,6 +365,20 @@ u64 AsyncCopyFileToBuffer(AsyncTransferQueue* async_transfer_queue, NativeBuffer
 	return AppendAsyncTransferCommand(async_transfer_queue, command);
 }
 
+u64 AsyncCopyFileToTexture(AsyncTransferQueue* async_transfer_queue, NativeTextureResource dst_texture, u32 dst_subresource_index, TextureSize dst_texture_size, FileHandle src_file, u64 src_file_offset, u64 copy_size) {
+	AsyncTransferCommand command;
+	command.src_type = AsyncTransferSrcType::File;
+	command.dst_type = AsyncTransferDstType::Texture;
+	command.src.file.handle               = src_file;
+	command.src.file.offset               = src_file_offset;
+	command.src.file.size                 = copy_size;
+	command.dst.texture.resource          = dst_texture;
+	command.dst.texture.size              = dst_texture_size;
+	command.dst.texture.offset            = 0;
+	command.dst.texture.subresource_index = dst_subresource_index;
+	return AppendAsyncTransferCommand(async_transfer_queue, command);
+}
+
 u64 CompletedGpuAsyncTransferIndex(AsyncTransferQueue* async_transfer_queue) {
 	return GetCompletedAsyncCopyCommandValue(async_transfer_queue->graphics_context);
 }

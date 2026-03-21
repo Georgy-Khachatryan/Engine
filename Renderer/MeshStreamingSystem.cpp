@@ -165,13 +165,13 @@ void UpdateMeshStreamingSystem(MeshStreamingSystem* system, AsyncTransferQueue* 
 	if (requests.count != 0) {
 		TempAllocationScope(alloc);
 		
-		HashTable<u32, u32> mesh_asset_id_to_index;
-		HashTableReserve(mesh_asset_id_to_index, alloc, max_runtime_mesh_asset_count);
+		HashTable<u32, u32> mesh_asset_id_to_runtime_mesh_index;
+		HashTableReserve(mesh_asset_id_to_runtime_mesh_index, alloc, max_runtime_mesh_asset_count);
 		
 		for (u32 runtime_mesh_index = 0; runtime_mesh_index < runtime_meshes.count; runtime_mesh_index += 1) {
 			auto& mesh = runtime_meshes[runtime_mesh_index];
 			if (mesh.state != MeshRuntimeState::Free) {
-				HashTableAddOrFind(mesh_asset_id_to_index, mesh.mesh_asset_index, runtime_mesh_index);
+				HashTableAddOrFind(mesh_asset_id_to_runtime_mesh_index, mesh.mesh_asset_index, runtime_mesh_index);
 			}
 		}
 		
@@ -183,7 +183,7 @@ void UpdateMeshStreamingSystem(MeshStreamingSystem* system, AsyncTransferQueue* 
 		u64 allocate_memory_size = 0;
 		for (u64 packed_request : requests) {
 			u32 mesh_asset_index = (u32)packed_request;
-			auto* element = HashTableFind(mesh_asset_id_to_index, mesh_asset_index);
+			auto* element = HashTableFind(mesh_asset_id_to_runtime_mesh_index, mesh_asset_index);
 			
 			u32 runtime_mesh_index = 0;
 			if (element != nullptr) {
