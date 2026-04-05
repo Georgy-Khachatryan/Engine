@@ -46,7 +46,7 @@ struct MeshletHeader {
 NOTES(Meta::HlslFile{ "MeshData.hlsl"_sl })
 struct MeshletPageHeader {
 	compile_const u32 page_size = 128 * 1024; // TODO: Experiment with different page sizes.
-	compile_const u32 max_page_count = 2048;
+	compile_const u32 max_page_count = 4096;
 	compile_const u32 runtime_page_count = 1024;
 	
 	u32 meshlet_count = 0;
@@ -88,7 +88,7 @@ struct MeshSourceData {
 
 NOTES()
 struct MeshRuntimeDataLayout {
-	compile_const u64 current_version = 32;
+	compile_const u64 current_version = 34;
 	
 	u64 file_guid = 0;
 	u64 version   = 0;

@@ -23,17 +23,22 @@
 #define MDT_MESHLET_GROUP_SIZE 32
 #endif // !defined(MDT_MESHLET_GROUP_SIZE)
 
-#if !defined(MDT_ENABLE_ATTRIBUTE_SUPPORT)
-#define MDT_ENABLE_ATTRIBUTE_SUPPORT 1
-#endif // !defined(MDT_ENABLE_ATTRIBUTE_SUPPORT)
-
 #if !defined(MDT_PROFILER_SCOPE)
 #define MDT_PROFILER_SCOPE(name) do {} while (0)
 #endif // !defined(MDT_PROFILER_SCOPE)
 
+#if !defined(MDT_MAX_MESHLET_VERTEX_COUNT)
 #define MDT_MAX_MESHLET_VERTEX_COUNT 254
+#endif // !defined(MDT_MAX_MESHLET_VERTEX_COUNT)
+
+#if !defined(MDT_MAX_MESHLET_FACE_COUNT)
 #define MDT_MAX_MESHLET_FACE_COUNT 128
+#endif // !defined(MDT_MAX_MESHLET_FACE_COUNT)
+
+#if !defined(MDT_MAX_CLOD_LEVEL_COUNT)
 #define MDT_MAX_CLOD_LEVEL_COUNT 16
+#endif // !defined(MDT_MAX_CLOD_LEVEL_COUNT)
+
 
 #if defined(__cplusplus)
 extern "C" {
@@ -89,12 +94,6 @@ struct MdtParallelForCallbacks {
 
 // Optional memory allocation callbacks. If they're not provided the system falls back to C realloc().
 struct MdtSystemCallbacks {
-	//
-	// Temporary allocator that is used as a stack. Falls back to C realloc() if not provided.
-	// Memory blocks are allocated and freed from the end.
-	//
-	struct MdtAllocatorCallbacks temp_allocator;
-	
 	//
 	// Heap allocator used for small number of growable arrays and all output allocations. Falls back to C realloc() if not provided.
 	// Memory blocks are allocated and freed in arbitrary order.

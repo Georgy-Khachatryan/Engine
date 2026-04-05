@@ -33,6 +33,11 @@ static MeshletErrorMetric LoadMdtErrorMetric(const MdtErrorMetric& metric) {
 	return result;
 }
 
+struct MdtHeapAllocatorUserData {
+	RWLock lock;
+	HeapAllocator heap;
+};
+
 struct MeshletGroupSortKey {
 	u64 key = 0;
 	u32 mdt_group_index = 0;
@@ -52,12 +57,44 @@ MeshImportResult ImportMeshFile(StackAllocator* alloc, ThreadPool* thread_pool, 
 	auto file_data = SystemReadFileToString(alloc, source_data.filepath);
 	if (file_data.data == nullptr) return {};
 	
+	MdtHeapAllocatorUserData allocator_user_data;
+	allocator_user_data.heap = CreateHeapAllocator(64 * 1024 * 1024);
+	defer{ ReleaseHeapAllocator(allocator_user_data.heap); };
+	
 	ufbx_load_opts options = {};
 	options.ignore_animation = true;
 	options.ignore_embedded  = true;
 	options.target_axes      = ufbx_axes_right_handed_z_up;
 	options.target_unit_meters = 1.f;
 	options.generate_missing_normals = true;
+	
+	options.thread_opts.pool.run_fn = [](void* user_data, ufbx_thread_pool_context context, u32 group_index, u32 start_index, u32 count)-> void {
+		ParallelFor((ThreadPool*)user_data, start_index, start_index + count, 1, [&](u64 work_item_index, u32 thread_index) {
+			ufbx_thread_pool_run_task(context, (u32)work_item_index);
+		});
+	};
+	options.thread_opts.pool.wait_fn = [](void* user_data, ufbx_thread_pool_context context, u32 group_index, u32 max_index)-> void {
+		// ParallelFor waits by default.
+	};
+	options.thread_opts.pool.user = thread_pool;
+	
+	options.temp_allocator.allocator.alloc_fn = [](void* user_data, u64 size_bytes)-> void* {
+		auto& allocator_user_data = *(MdtHeapAllocatorUserData*)user_data;
+		ScopedLock(allocator_user_data.lock);
+		return allocator_user_data.heap.Allocate(size_bytes);
+	};
+	options.temp_allocator.allocator.realloc_fn = [](void* user_data, void* old_memory_block, u64 old_size_bytes, u64 new_size_bytes)-> void* {
+		auto& allocator_user_data = *(MdtHeapAllocatorUserData*)user_data;
+		ScopedLock(allocator_user_data.lock);
+		return allocator_user_data.heap.Reallocate(old_memory_block, old_size_bytes, new_size_bytes);
+	};
+	options.temp_allocator.allocator.free_fn = [](void* user_data, void* old_memory_block, u64 old_size_bytes)-> void {
+		auto& allocator_user_data = *(MdtHeapAllocatorUserData*)user_data;
+		ScopedLock(allocator_user_data.lock);
+		allocator_user_data.heap.Deallocate(old_memory_block, old_size_bytes);
+	};
+	options.temp_allocator.allocator.user = &allocator_user_data;
+	options.result_allocator = options.temp_allocator;
 	
 	ufbx_error error = {};
 	auto* scene = ufbx_load_memory(file_data.data, file_data.count, &options, &error);
@@ -108,7 +145,7 @@ MeshImportResult ImportMeshFile(StackAllocator* alloc, ThreadPool* thread_pool, 
 		stream.vertex_size  = sizeof(SourceMeshVertex);
 		
 		mesh_indices.count  = mesh_vertices.count;
-		mesh_vertices.count = ufbx_generate_indices(&stream, 1, mesh_indices.data, mesh_indices.count, nullptr, nullptr);
+		mesh_vertices.count = ufbx_generate_indices(&stream, 1, mesh_indices.data, mesh_indices.count, &options.temp_allocator, nullptr);
 		
 		for (auto* instance : mesh->instances) {
 			auto geometry_to_world          = LoadUfbxMatrix3x4(instance->geometry_to_world);
@@ -130,29 +167,18 @@ MeshImportResult ImportMeshFile(StackAllocator* alloc, ThreadPool* thread_pool, 
 	}
 	ufbx_free_scene(scene);
 	
-	
-	struct MdtHeapAllocatorUserData {
-		RWLock lock;
-		HeapAllocator heap;
-	};
-	
-	MdtHeapAllocatorUserData allocator_user_data;
-	allocator_user_data.heap = CreateHeapAllocator(512 * 1024 * 1024); // TODO: Set a more reasonable size?
-	defer{ ReleaseHeapAllocator(allocator_user_data.heap); };
-	
-	
 	MdtSystemCallbacks callbacks = {};
-	callbacks.temp_allocator.reallocate = [](void* old_memory_block, u64 size_bytes, void* user_data)-> void* {
+	callbacks.heap_allocator.reallocate = [](void* old_memory_block, u64 size_bytes, void* user_data)-> void* {
 		auto& allocator_user_data = *(MdtHeapAllocatorUserData*)user_data;
+		u64 old_size_bytes = HeapAllocator::GetMemoryBlockSize(old_memory_block);
 		
 		ScopedLock(allocator_user_data.lock);
-		return allocator_user_data.heap.Reallocate(old_memory_block, 0, size_bytes, 64);
+		return allocator_user_data.heap.Reallocate(old_memory_block, old_size_bytes, size_bytes, 64);
 	};
-	callbacks.temp_allocator.user_data = &allocator_user_data;
-	callbacks.heap_allocator = callbacks.temp_allocator;
+	callbacks.heap_allocator.user_data = &allocator_user_data;
 	
 	
-	callbacks.parallel_for.callback = [](void* user_data, void* mdt_data, u32 work_item_count, MdtWorkItemCallback callback) {
+	callbacks.parallel_for.callback = [](void* user_data, void* mdt_data, u32 work_item_count, MdtWorkItemCallback callback)-> void {
 		ParallelFor((ThreadPool*)user_data, 0, work_item_count, 1, [&](u64 work_item_index, u32 thread_index) {
 			callback(mdt_data, (u32)work_item_index);
 		});
@@ -167,12 +193,17 @@ MeshImportResult ImportMeshFile(StackAllocator* alloc, ThreadPool* thread_pool, 
 	geometry_descs[0].index_count  = (u32)source_indices.count;
 	geometry_descs[0].vertex_count = (u32)source_vertices.count;
 	
+	float attribute_weights[MDT_MAX_ATTRIBUTE_STRIDE_DWORDS] = {};
+	attribute_weights[0] = attribute_weights[1] = attribute_weights[2] = 0.25f; // Normal
+	attribute_weights[3] = attribute_weights[4] = attribute_weights[5] = 0.05f; // Tangent
+	attribute_weights[6] = attribute_weights[7] = 0.25f;                        // Texcoord
+	
 	MdtContinuousLodBuildInputs inputs = {};
 	inputs.mesh.geometry_descs      = geometry_descs;
 	inputs.mesh.geometry_desc_count = 1;
 	inputs.mesh.vertex_stride_bytes = sizeof(SourceMeshVertex);
 	inputs.mesh.geometric_weight    = 0.f;
-	inputs.mesh.attribute_weights   = nullptr;
+	inputs.mesh.attribute_weights   = attribute_weights;
 	inputs.mesh.normalize_vertex_attributes = [](float* attributes) {
 		auto normal  = *(float3*)(attributes + 0);
 		auto tangent = *(float3*)(attributes + 3);

@@ -40,7 +40,7 @@ static u64 RingBufferTryAppendMultiple(RingBuffer<T>& buffer, u64 count) {
 }
 
 
-compile_const u64 max_async_transfer_command_count  = 512;
+compile_const u64 max_async_transfer_command_count  = 2048;
 compile_const u64 async_upload_buffer_capacity      = 32 * 1024 * 1024;
 compile_const u64 max_upload_buffer_allocation_size = async_upload_buffer_capacity / 4;
 compile_const u64 sub_command_max_count = 256;

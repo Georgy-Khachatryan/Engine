@@ -3,11 +3,10 @@
 //
 // References:
 // - Michael Garland, Paul S. Heckbert. 1997. Surface Simplification Using Quadric Error Metrics.
-// - Thomas Wang. 1997. Integer Hash Function.
 // - Hugues Hoppe. 1999. New Quadric Metric for Simplifying Meshes with Appearance Attributes.
 // - Hugues Hoppe, Steve Marschner. 2000. Efficient Minimization of New Quadric Metric for Simplifying Meshes with Appearance Attributes.
-// - Matthias Teschner, Bruno Heidelberger, Matthias Muller, Danat Pomeranets, Markus Gross. 2003. Optimized Spatial Hashing for Collision Detection of Deformable Objects.
 // - Brian Karis, Rune Stubbe, Graham Wihlidal. 2021. Nanite A Deep Dive.
+// - Wang Yi. 2021. wyhash32 https://github.com/wangyi-fudan/wyhash/blob/master/wyhash32.h (public domain).
 // - HSUEH-TI DEREK LIU, XIAOTING ZHANG, CEM YUKSEL. 2024. Simplifying Triangle Meshes in the Wild.
 // - Arseny Kapoulkine. 2025. Meshoptimizer library. https://github.com/zeux/meshoptimizer. See license in THIRD_PARTY_LICENSES.md.
 //
@@ -86,41 +85,42 @@ compile_const float default_attribute_error_weight = 1.f;
 compile_const u32 edge_collapse_candidate_position_count = 3;
 compile_const u32 max_edge_collapse_validation_face_count = 32;
 
+// Larger groups generally give higher quality results, but since there are less
+// of them they don't get distrubuted across threads as well as smaller groups.
+compile_const u32 target_initial_group_size = meshlet_group_max_meshlet_count * meshlet_max_face_count;
 
-// Based on [Kapoulkine 2025] and [Teschner 2003].
-static u32 ComputePositionHash(const Vector3& v) {
-	const u32* key = (const u32*)&v;
-	
-	u32 x = key[0];
-	u32 y = key[1];
-	u32 z = key[2];
-	
-	// Replace negative zero with zero.
-	x = (x == 0x80000000) ? 0 : x;
-	y = (y == 0x80000000) ? 0 : y;
-	z = (z == 0x80000000) ? 0 : z;
-	
-	// Scramble bits to make sure that integer coordinates have entropy in lower bits.
-	x ^= x >> 17;
-	y ^= y >> 17;
-	z ^= z >> 17;
-	
-	// Optimized Spatial Hashing for Collision Detection of Deformable Objects.
-	return (x * 73856093) ^ (y * 19349663) ^ (z * 83492791);
+compile_const u32 vertex_group_index_locked = u32_max - 1;
+compile_const u32 invalid_geometry_index    = u32_max;
+
+compile_const u32 hash_table_max_occupancy_percent = 75;
+
+
+//
+// Based on wyhash32 by Wang Yi (public domain).
+// https://github.com/wangyi-fudan/wyhash/blob/master/wyhash32.h
+//
+always_inline_function static void WyMix32(u32& a, u32& b) {
+	u64 c = (u64)(a ^ 0x53C5CA59u) * (u64)(b ^ 0x74743C1Bu);
+	a = (u32)(c >>  0);
+	b = (u32)(c >> 32);
 }
 
-// Based on [Wang 1997]. 64 bit to 32 bit Hash Functions.
-static u32 ComputeEdgeKeyHash(u64 key) {
-	key = (~key) + (key << 18); // key = (key << 18) - key - 1;
-	key = key ^ (key >> 31);
-	key = key * 21; // key = (key + (key << 2)) + (key << 4);
-	key = key ^ (key >> 11);
-	key = key + (key << 6);
-	key = key ^ (key >> 22);
-	
-	return (u32)key;
+// Unrolled version of wyhash32 has two mixes at the end, but for speed there is only one.
+// During testing both versions were competitive on hash collisions with real world meshes.
+always_inline_function static u32 WyHash32x3(u32 a, u32 b, u32 c) {
+	WyMix32(a, b);
+	a ^= c;
+	b ^= c;
+	WyMix32(a, b);
+	// WyMix32(a, b);
+	return a ^ b;
 }
 
+always_inline_function static u32 WyHash32x2(u32 a, u32 b = 0) {
+	WyMix32(a, b);
+	WyMix32(a, b);
+	return a ^ b;
+}
 
 enum struct ElementType : u32 {
 	Vertex = 0,
@@ -231,6 +231,7 @@ struct alignas(MDT_CACHE_LINE_SIZE) IndexedMeshView {
 };
 static_assert(sizeof(IndexedMeshView) == 64, "Invalid IndexedMeshView size.");
 
+
 static u64 PackEdgeKey(VertexID vertex_id_0, VertexID vertex_id_1) {
 	// Always pack VertexIDs in ascending order to ensure that PackEdgeKey(A, B) == PackEdgeKey(B, A) and they hash to the same value.
 	return vertex_id_1.index > vertex_id_0.index ?
@@ -238,9 +239,28 @@ static u64 PackEdgeKey(VertexID vertex_id_0, VertexID vertex_id_1) {
 		((u64)vertex_id_0.index << 32) | (u64)vertex_id_1.index;
 }
 
-static u64 LoadEdgeKey(const Edge& edge) {
-	return (u64)edge.vertex_0.index | ((u64)edge.vertex_1.index << 32);
+static bool operator==(const Vector3& lh, const Vector3& rh) { return lh.x == rh.x && lh.y == rh.y && lh.z == rh.z; }
+static bool operator==(const Vertex& lh, const Vertex& rh)   { return lh.position == rh.position; }
+static bool operator==(const Edge& lh, const Edge& rh)       { return lh.vertex_0.index == rh.vertex_0.index && lh.vertex_1.index == rh.vertex_1.index; }
+static bool operator==(VertexID lh, VertexID rh)             { return lh.index == rh.index; }
+static bool operator==(AttributesID lh, AttributesID rh)     { return lh.index == rh.index; }
+static bool IsValidKey(u64 v)                                { return v != u64_max; }
+
+static u32 ComputeHash(const Vector3& v) {
+	u32* components = (u32*)&v;
+	u32 x = components[0];
+	u32 y = components[1];
+	u32 z = components[2];
+	
+	compile_const u32 minus_zero = 1u << 31;
+	return WyHash32x3(x == minus_zero ? 0 : x, y == minus_zero ? 0 : y, z == minus_zero ? 0 : z);
 }
+static u32 ComputeHash(const Vertex& v) { return ComputeHash(v.position); }
+static u32 ComputeHash(const Edge& v)   { return WyHash32x2(v.vertex_0.index, v.vertex_1.index); }
+static u32 ComputeHash(VertexID v)      { return WyHash32x2(v.index); }
+static u32 ComputeHash(AttributesID v)  { return WyHash32x2(v.index); }
+static u32 ComputeHash(u64 v)           { return WyHash32x2((u32)v, (u32)(v >> 32u)); }
+
 
 template<typename ElementID> ElementID GetElementID(const Corner& corner);
 template<> always_inline_function VertexID GetElementID<VertexID>(const Corner& corner) { return corner.vertex_id; }
@@ -368,13 +388,25 @@ static ElementID CornerListMerge(const EditableMeshView& mesh, ElementID element
 }
 
 struct Allocator {
-	compile_const u32 max_memory_block_count = 64;
+	compile_const u32 max_memory_block_count = 24;
 	
 	MdtAllocatorCallbacks callbacks;
 	
 	u32 memory_block_count = 0;
 	void* memory_blocks[max_memory_block_count] = {};
+	
+	~Allocator() {
+		for (u32 i = memory_block_count; i > 0; i -= 1) {
+			callbacks.reallocate(memory_blocks[i - 1], 0, callbacks.user_data);
+		}
+	}
 };
+
+static Allocator CopyAllocator(Allocator& allocator) {
+	Allocator new_allocator;
+	new_allocator.callbacks = allocator.callbacks;
+	return new_allocator;
+}
 
 static void* AllocateMemoryBlock(Allocator& allocator, void* old_memory_block, u64 size_bytes) {
 	MDT_ASSERT(old_memory_block != nullptr || allocator.memory_block_count < Allocator::max_memory_block_count);
@@ -389,9 +421,11 @@ static void* AllocateMemoryBlock(Allocator& allocator, void* old_memory_block, u
 	return memory_block;
 }
 
-static void InitializeAllocator(Allocator& allocator, const MdtAllocatorCallbacks* callbacks) {
-	if (callbacks && callbacks->reallocate) {
-		allocator.callbacks = *callbacks;
+static Allocator InitializeAllocator(const MdtSystemCallbacks* callbacks) {
+	Allocator allocator;
+	
+	if (callbacks && callbacks->heap_allocator.reallocate) {
+		allocator.callbacks = callbacks->heap_allocator;
 	} else {
 		allocator.callbacks.reallocate = [](void* old_memory_block, u64 size_bytes, void*) {
 			void* result = nullptr;
@@ -403,13 +437,8 @@ static void InitializeAllocator(Allocator& allocator, const MdtAllocatorCallback
 			return result;
 		};
 	}
-}
-
-static void AllocatorFreeMemoryBlocks(Allocator& allocator, u32 last_memory_block_index = 0) {
-	for (u32 i = allocator.memory_block_count; i > last_memory_block_index; i -= 1) {
-		allocator.callbacks.reallocate(allocator.memory_blocks[i - 1], 0, allocator.callbacks.user_data);
-	}
-	allocator.memory_block_count = last_memory_block_index;
+	
+	return allocator;
 }
 
 static u32 AllocatorFindMemoryBlock(Allocator& allocator, void* old_memory_block) {
@@ -491,7 +520,7 @@ struct FixedSizeArray {
 	
 	T data[capacity] = {};
 	u32 count = 0;
-
+	
 	DECLARE_ARRAY_OPERATORS()
 };
 static_assert(sizeof(FixedSizeArray<u32, 1>) == 8, "Invalid FixedSizeArray<T, c> size.");
@@ -508,6 +537,157 @@ struct ArrayView {
 static_assert(sizeof(ArrayView<u32>) == 16, "Invalid ArrayView<T> size.");
 
 #undef DECLARE_ARRAY_OPERATORS
+
+template<typename ElementID, typename ValueT>
+struct ReindexingHashTable {
+	ElementID* element_ids = nullptr;
+	ValueT*    values      = nullptr;
+	u32 capacity = 0;
+	u32 count    = 0;
+};
+
+template<typename KeyT, typename ValueT>
+struct KeyValuePair {
+	KeyT   key;
+	ValueT value;
+};
+
+template<typename KeyT, typename ValueT>
+struct HashTable {
+	KeyValuePair<KeyT, ValueT>* elements = nullptr;
+	u32 capacity = 0;
+	u32 count    = 0;
+	
+	KeyValuePair<KeyT, ValueT>* begin() { return elements; }
+	KeyValuePair<KeyT, ValueT>* end()   { return elements + capacity; }
+};
+
+//
+// Based on "Bit Twiddling Hacks" By Sean Eron Anderson
+// https://graphics.stanford.edu/~seander/bithacks.html
+//
+static u32 RoundUpToPowerOf2(u32 v) {
+	v -= 1u;
+	v |= v >> 1u;
+	v |= v >> 2u;
+	v |= v >> 4u;
+	v |= v >> 8u;
+	v |= v >> 16u;
+	return v + 1u;
+}
+
+template<typename ElementID, typename ValueT>
+static void HashTableReserve(ReindexingHashTable<ElementID, ValueT>& table, Allocator& allocator, Array<ValueT> values) {
+	u32 capacity = RoundUpToPowerOf2(values.capacity * 100u / hash_table_max_occupancy_percent);
+	table.element_ids = (ElementID*)AllocateMemoryBlock(allocator, nullptr, capacity * sizeof(ElementID));
+	table.values      = values.data;
+	table.capacity    = capacity;
+	table.count       = 0;
+}
+
+template<typename ElementID, typename ValueT>
+static void HashTableClear(ReindexingHashTable<ElementID, ValueT>& table) {
+	memset(table.element_ids, 0xFF, table.capacity * sizeof(ElementID));
+	table.count = 0;
+}
+
+template<typename ElementID, typename ValueT>
+static ElementID HashTableAddOrFindID(ReindexingHashTable<ElementID, ValueT>& table, const ValueT& value) {
+	MDT_ASSERT(table.count < table.capacity);
+	
+	u32 mask = table.capacity - 1;
+	u32 hash = ComputeHash(value);
+	
+	for (u32 probe_sequence_length = 0, index = (hash & mask); probe_sequence_length <= mask;) {
+		auto old_id = table.element_ids[index];
+		if (old_id.index == u32_max) {
+			auto new_id = ElementID{ table.count++ } ;
+			table.values[new_id.index] = value;
+			table.element_ids[index]   = new_id;
+			return new_id;
+		}
+		
+		if (table.values[old_id.index] == value) {
+			return old_id;
+		}
+		
+		probe_sequence_length += 1;
+		index = (probe_sequence_length + index) & mask;
+	}
+	
+	return ElementID{ u32_max };
+}
+
+
+template<typename KeyT, typename ValueT>
+static void HashTableReserve(HashTable<KeyT, ValueT>& table, Allocator& allocator, u32 max_count) {
+	u32 capacity = RoundUpToPowerOf2(max_count * 100u / hash_table_max_occupancy_percent);
+	table.elements = (KeyValuePair<KeyT, ValueT>*)AllocateMemoryBlock(allocator, nullptr, capacity * sizeof(KeyValuePair<KeyT, ValueT>));
+	table.capacity = capacity;
+	table.count    = 0;
+}
+
+template<typename KeyT, typename ValueT>
+static void HashTableClear(HashTable<KeyT, ValueT>& table) {
+	memset(table.elements, 0xFF, table.capacity * sizeof(KeyValuePair<KeyT, ValueT>));
+	table.count = 0;
+}
+
+template<typename KeyT, typename ValueT>
+static ValueT* HashTableAddOrFind(HashTable<KeyT, ValueT>& table, const KeyT& key, const ValueT& value) {
+	MDT_ASSERT(table.count < table.capacity);
+	
+	u32 mask = table.capacity - 1;
+	u32 hash = ComputeHash(key);
+	
+	for (u32 probe_sequence_length = 0, index = (hash & mask); probe_sequence_length <= mask;) {
+		auto& element = table.elements[index];
+		if (IsValidKey(element.key) == false) {
+			element.key   = key;
+			element.value = value;
+			table.count += 1;
+			return &element.value;
+		}
+		
+		if (element.key == key) {
+			return &element.value;
+		}
+		
+		probe_sequence_length += 1;
+		index = (probe_sequence_length + index) & mask;
+	}
+	
+	return nullptr;
+}
+
+template<typename KeyT, typename ValueT>
+static void HashTableGrow(HashTable<KeyT, ValueT>& table, Allocator& allocator) {
+	u32 old_memory_block_index = AllocatorFindMemoryBlock(allocator, table.elements);
+	
+	HashTable<KeyT, ValueT> new_table;
+	new_table.capacity = table.capacity * 2;
+	new_table.elements = (KeyValuePair<KeyT, ValueT>*)allocator.callbacks.reallocate(nullptr, new_table.capacity * sizeof(KeyValuePair<KeyT, ValueT>), allocator.callbacks.user_data);
+	HashTableClear(new_table);
+	
+	for (auto& element : table) {
+		if (IsValidKey(element.key)) {
+			HashTableAddOrFind(new_table, element.key, element.value);
+		}
+	}
+	allocator.callbacks.reallocate(table.elements, 0, allocator.callbacks.user_data);
+	allocator.memory_blocks[old_memory_block_index] = new_table.elements;
+	
+	table = new_table;
+}
+
+template<typename KeyT, typename ValueT>
+static ValueT* HashTableAddOrFind(HashTable<KeyT, ValueT>& table, Allocator& allocator, const KeyT& key, const ValueT& value) {
+	if ((table.count + 1) * 100 > (table.capacity * hash_table_max_occupancy_percent)) {
+		HashTableGrow(table, allocator);
+	}
+	return HashTableAddOrFind(table, key, value);
+}
+
 
 static u32 ArrayComputeNewCapacity(u32 old_capacity, u32 required_capacity = 0) {
 	u32 new_capacity = old_capacity ? (old_capacity + old_capacity / 2) : 16;
@@ -543,6 +723,7 @@ always_inline_function static void ArrayAppend(ArrayT& array, const typename Arr
 template<typename T>
 never_inline_function static void ArrayGrow(Array<T>& array, Allocator& allocator, u32 new_capacity) {
 	u32 old_memory_block_index = AllocatorFindMemoryBlock(allocator, array.data);
+	MDT_ASSERT(old_memory_block_index != u32_max || allocator.memory_block_count < Allocator::max_memory_block_count);
 	
 	void* memory_block = allocator.callbacks.reallocate(array.data, new_capacity * sizeof(T), allocator.callbacks.user_data);
 	u32 memory_block_index = old_memory_block_index != u32_max ? old_memory_block_index : allocator.memory_block_count++;
@@ -584,198 +765,47 @@ static ArrayView<typename ArrayT::ValueType> CreateArrayView(ArrayT& array) {
 	return { array.data, array.count };
 }
 
-//
-// Based on [Kapoulkine 2025].
-// See also https://fgiesen.wordpress.com/2015/02/22/triangular-numbers-mod-2n/
-//
-struct VertexHashTable {
-	Array<VertexID> vertex_ids;
+struct InputMeshDesc {
+	u32 vertex_stride_dwords    = 0;
+	u32 attribute_stride_dwords = 0;
+	u32 vertices_count = 0;
+	u32 indices_count  = 0;
+	u32 triangle_count = 0;
 };
 
-static VertexID HashTableAddOrFind(VertexHashTable& table, Array<Vector3>& vertices, const Vector3& position) {
-	u32 table_size = table.vertex_ids.count;
-	u32 mod_mask   = table_size - 1u;
+static InputMeshDesc ComputeInputMeshDesc(const MdtTriangleGeometryDesc* geometry_descs, u32 geometry_desc_count, u32 vertex_stride_bytes) {
+	InputMeshDesc input_desc;
+	input_desc.vertex_stride_dwords    = vertex_stride_bytes / sizeof(u32);
+	input_desc.attribute_stride_dwords = input_desc.vertex_stride_dwords - 3;
 	
-	u32 hash  = ComputePositionHash(position);
-	u32 index = (hash & mod_mask);
+	if (input_desc.vertex_stride_dwords < 3 || input_desc.attribute_stride_dwords > MDT_MAX_ATTRIBUTE_STRIDE_DWORDS) return {};
 	
-	for (u32 i = 0; i <= mod_mask; i += 1) {
-		auto vertex_id = table.vertex_ids[index];
-		
-		if (vertex_id.index == u32_max) {
-			auto new_vertex_id = VertexID{ vertices.count };
-			table.vertex_ids[index] = new_vertex_id;
-			
-			ArrayAppend(vertices, position);
-			
-			return new_vertex_id;
-		}
-		
-		auto existing_position = vertices[vertex_id.index];
-		if (existing_position.x == position.x && existing_position.y == position.y && existing_position.z == position.z) {
-			return vertex_id;
-		}
-		
-		index = (index + i + 1) & mod_mask;
+	for (u32 geometry_index = 0; geometry_index < geometry_desc_count; geometry_index += 1) {
+		auto& desc = geometry_descs[geometry_index];
+		input_desc.vertices_count += desc.vertex_count;
+		input_desc.indices_count  += desc.index_count;
 	}
+	input_desc.triangle_count = (input_desc.indices_count / 3);
 	
-	return VertexID{ u32_max };
-}
-
-struct EdgeHashTable {
-	Array<EdgeID> edge_ids;
-};
-
-static EdgeID HashTableAddOrFind(EdgeHashTable& table, Array<Edge>& edges, u64 edge_key) {
-	u32 table_size = table.edge_ids.count;
-	u32 mod_mask   = table_size - 1u;
-	
-	u32 hash  = ComputeEdgeKeyHash(edge_key);
-	u32 index = (hash & mod_mask);
-	
-	for (u32 i = 0; i <= mod_mask; i += 1) {
-		auto edge_id = table.edge_ids[index];
-		
-		if (edge_id.index == u32_max) {
-			auto new_edge_id = EdgeID{ edges.count };
-			table.edge_ids[index] = new_edge_id;
-			
-			Edge edge;
-			edge.vertex_0.index = (u32)(edge_key >> 0);
-			edge.vertex_1.index = (u32)(edge_key >> 32);
-			edge.corner_list_base.index = u32_max;
-			ArrayAppend(edges, edge);
-			
-			return new_edge_id;
-		}
-		
-		if (LoadEdgeKey(edges[edge_id.index]) == edge_key) {
-			return edge_id;
-		}
-		
-		index = (index + i + 1) & mod_mask;
-	}
-	
-	return EdgeID{ u32_max };
-}
-
-struct EdgeDuplicateMap {
-	struct KeyValue {
-		u64 edge_key;
-		EdgeID edge_id;
-	};
-	
-	KeyValue* keys_values = nullptr;
-	u32 capacity = 0;
-	u32 count    = 0;
-	
-	KeyValue* begin() { return keys_values; }
-	KeyValue* end()   { return keys_values + capacity; }
-};
-
-
-static void HashTableClear(EdgeDuplicateMap& table) {
-	memset(table.keys_values, 0xFF, table.capacity * sizeof(EdgeDuplicateMap::KeyValue));
-	table.count = 0;
-}
-
-static EdgeID HashTableAddOrFind(EdgeDuplicateMap& table, Allocator& heap_allocator, u64 edge_key, EdgeID edge_id);
-
-never_inline_function static void HashTableGrow(EdgeDuplicateMap& table, Allocator& heap_allocator, u32 new_capacity) {
-	auto* old_keys_values = table.keys_values;
-	u32 old_memory_block_index = AllocatorFindMemoryBlock(heap_allocator, old_keys_values);
-	
-	u32 old_capacity = table.capacity;
-	void* memory_block = heap_allocator.callbacks.reallocate(nullptr, new_capacity * sizeof(EdgeDuplicateMap::KeyValue), heap_allocator.callbacks.user_data);
-	u32 memory_block_index = old_memory_block_index != u32_max ? old_memory_block_index : heap_allocator.memory_block_count++;
-	
-	heap_allocator.memory_blocks[memory_block_index] = memory_block;
-	
-	table.keys_values = (EdgeDuplicateMap::KeyValue*)memory_block;
-	table.capacity    = new_capacity;
-	
-	HashTableClear(table);
-	
-	for (auto key_value: ArrayView<EdgeDuplicateMap::KeyValue>{ old_keys_values, old_capacity }) {
-		if (key_value.edge_key != u64_max) HashTableAddOrFind(table, heap_allocator, key_value.edge_key, key_value.edge_id);
-	}
-	
-	heap_allocator.callbacks.reallocate(old_keys_values, 0, heap_allocator.callbacks.user_data);
-}
-
-static EdgeID HashTableAddOrFind(EdgeDuplicateMap& table, Allocator& heap_allocator, u64 edge_key, EdgeID edge_id) {
-	u32 table_size = table.capacity;
-
-	compile_const u32 load_factor_percent = 85;
-	if ((table.count + 1) * 100 >= table_size * load_factor_percent) {
-		HashTableGrow(table, heap_allocator, table.capacity * 2);
-		table_size = table.capacity;
-	}
-	
-	u32 mod_mask = table_size - 1u;
-	
-	u32 hash  = ComputeEdgeKeyHash(edge_key);
-	u32 index = (hash & mod_mask);
-	
-	for (u32 i = 0; i <= mod_mask; i += 1) {
-		auto key_value = table.keys_values[index];
-		
-		if (key_value.edge_key == u64_max) {
-			table.count += 1;
-			table.keys_values[index] = { edge_key, edge_id };
-			return edge_id;
-		}
-		
-		if (key_value.edge_key == edge_key) {
-			return key_value.edge_id;
-		}
-		
-		index = (index + i + 1) & mod_mask;
-	}
-	
-	return EdgeID{ u32_max };
-}
-
-static u32 ComputeHashTableSize(u32 max_element_count) {
-	u32 hash_table_size = 1;
-	
-	while (hash_table_size < max_element_count + max_element_count / 4) {
-		hash_table_size = hash_table_size * 2;
-	}
-	
-	return hash_table_size;
+	return input_desc;
 }
 
 static IndexedMeshView BuildIndexedMesh(Allocator& allocator, const MdtTriangleGeometryDesc* geometry_descs, u32 geometry_desc_count, u32 vertex_stride_bytes) {
 	MDT_PROFILER_SCOPE("BuildIndexedMesh");
 	
-	u32 vertex_stride_dwords    = vertex_stride_bytes / sizeof(u32);
-	u32 attribute_stride_dwords = vertex_stride_dwords - 3;
+	auto input_desc = ComputeInputMeshDesc(geometry_descs, geometry_desc_count, vertex_stride_bytes);
+	if (input_desc.triangle_count == 0) return {};
 	
-	if (vertex_stride_dwords < 3 || attribute_stride_dwords > MDT_MAX_ATTRIBUTE_STRIDE_DWORDS) return {};
-	
-	
-	u32 vertices_count = 0;
-	u32 indices_count  = 0;
-	
-	for (u32 geometry_index = 0; geometry_index < geometry_desc_count; geometry_index += 1) {
-		auto& desc = geometry_descs[geometry_index];
-		vertices_count += desc.vertex_count;
-		indices_count  += desc.index_count;
-	}
-	u32 triangle_count = (indices_count / 3);
-	
-	
-	Array<VertexID>     face_vertex_ids;
+	Array<VertexID> face_vertex_ids;
 	Array<AttributesID> face_attribute_ids;
-	Array<u32>          face_geometry_indices;
-	Array<Vector3>      vertices;
-	Array<float>        attributes;
-	ArrayResize(face_vertex_ids, allocator, triangle_count * 3);
-	ArrayResize(face_attribute_ids, allocator, triangle_count * 3);
-	ArrayReserve(face_geometry_indices, allocator, triangle_count);
-	ArrayReserve(vertices, allocator, vertices_count);
-	ArrayResize(attributes, allocator, vertices_count * attribute_stride_dwords);
+	Array<u32> face_geometry_indices;
+	Array<Vector3> vertices;
+	Array<float> attributes;
+	ArrayResize<VertexID>(face_vertex_ids,        allocator, input_desc.indices_count);
+	ArrayResize<AttributesID>(face_attribute_ids, allocator, input_desc.indices_count);
+	ArrayReserve<u32>(face_geometry_indices,      allocator, input_desc.triangle_count);
+	ArrayReserve<Vector3>(vertices,               allocator, input_desc.vertices_count);
+	ArrayReserve<float>(attributes,               allocator, input_desc.vertices_count * input_desc.attribute_stride_dwords);
 	
 	IndexedMeshView mesh;
 	mesh.face_vertex_ids       = face_vertex_ids.data;
@@ -783,31 +813,37 @@ static IndexedMeshView BuildIndexedMesh(Allocator& allocator, const MdtTriangleG
 	mesh.face_geometry_indices = face_geometry_indices.data;
 	mesh.vertices              = vertices.data;
 	mesh.attributes            = attributes.data;
-	mesh.attribute_count       = vertices_count;
-	mesh.attribute_stride_dwords = attribute_stride_dwords;
+	mesh.attribute_count       = input_desc.vertices_count;
+	mesh.attribute_stride_dwords = input_desc.attribute_stride_dwords;
 	
-	u32 allocator_high_water = allocator.memory_block_count;
+	auto temp_allocator = CopyAllocator(allocator);
 	
 	Array<VertexID> src_vertex_index_to_vertex_id;
-	ArrayResize(src_vertex_index_to_vertex_id, allocator, vertices_count);
+	ArrayResize<VertexID>(src_vertex_index_to_vertex_id, temp_allocator, input_desc.vertices_count);
 	
-	VertexHashTable vertex_table;
-	ArrayResizeMemset(vertex_table.vertex_ids, allocator, ComputeHashTableSize(vertices_count), 0xFF);
+	ReindexingHashTable<VertexID, Vector3> vertex_table;
+	HashTableReserve(vertex_table, temp_allocator, vertices);
+	HashTableClear(vertex_table);
 	
-	for (u32 geometry_index = 0, base_vertex_index = 0; geometry_index < geometry_desc_count; geometry_index += 1) {
-		auto& desc = geometry_descs[geometry_index];
+	{
+		MDT_PROFILER_SCOPE("DeduplicateVertices");
 		
-		for (u32 geometry_vertex_index = 0; geometry_vertex_index < desc.vertex_count; geometry_vertex_index += 1) {
-			u32 vertex_index = base_vertex_index + geometry_vertex_index;
+		for (u32 geometry_index = 0, base_vertex_index = 0; geometry_index < geometry_desc_count; geometry_index += 1) {
+			auto& desc = geometry_descs[geometry_index];
 			
-			auto* vertex = &desc.vertices[geometry_vertex_index * vertex_stride_dwords];
-			memcpy(mesh[AttributesID{ vertex_index }], vertex + 3, attribute_stride_dwords * sizeof(u32));
-			
-			auto vertex_id = HashTableAddOrFind(vertex_table, vertices, *(Vector3*)vertex);
-			src_vertex_index_to_vertex_id[vertex_index] = vertex_id;
+			for (u32 geometry_vertex_index = 0; geometry_vertex_index < desc.vertex_count; geometry_vertex_index += 1) {
+				u32 vertex_index = base_vertex_index + geometry_vertex_index;
+				
+				auto* vertex = &desc.vertices[geometry_vertex_index * input_desc.vertex_stride_dwords];
+				memcpy(mesh[AttributesID{ vertex_index }], vertex + 3, input_desc.attribute_stride_dwords * sizeof(u32));
+				
+				auto vertex_id = HashTableAddOrFindID(vertex_table, *(Vector3*)vertex);
+				src_vertex_index_to_vertex_id[vertex_index] = vertex_id;
+			}
+			base_vertex_index += desc.vertex_count;
 		}
-		base_vertex_index += desc.vertex_count;
 	}
+	vertices.count = vertex_table.count;
 	mesh.vertex_count = vertices.count;
 	
 	for (u32 geometry_index = 0, base_vertex_index = 0; geometry_index < geometry_desc_count; geometry_index += 1) {
@@ -848,9 +884,265 @@ static IndexedMeshView BuildIndexedMesh(Allocator& allocator, const MdtTriangleG
 	}
 	mesh.face_count = face_geometry_indices.count;
 	
-	AllocatorFreeMemoryBlocks(allocator, allocator_high_water);
+	return mesh;
+}
+
+static EditableMeshView BuildEditableMesh(Allocator& allocator, const MdtTriangleGeometryDesc* geometry_descs, u32 geometry_desc_count, u32 vertex_stride_bytes) {
+	MDT_PROFILER_SCOPE("BuildEditableMesh");
+	
+	auto input_desc = ComputeInputMeshDesc(geometry_descs, geometry_desc_count, vertex_stride_bytes);
+	if (input_desc.triangle_count == 0) return {};
+	
+	Array<Face> faces;
+	Array<Edge> edges;
+	Array<Vertex> vertices;
+	Array<Corner> corners;
+	Array<float> attributes;
+	ArrayReserve<Face>(faces,       allocator, input_desc.triangle_count);
+	ArrayReserve<Edge>(edges,       allocator, input_desc.indices_count);
+	ArrayReserve<Vertex>(vertices,  allocator, input_desc.triangle_count);
+	ArrayResize<Corner>(corners,    allocator, input_desc.indices_count);
+	ArrayReserve<float>(attributes, allocator, input_desc.vertices_count * input_desc.attribute_stride_dwords);
+	
+	EditableMeshView mesh;
+	mesh.faces           = faces.data;
+	mesh.edges           = edges.data;
+	mesh.vertices        = vertices.data;
+	mesh.corners         = corners.data;
+	mesh.attributes      = attributes.data;
+	mesh.attribute_count = input_desc.vertices_count;
+	mesh.attribute_stride_dwords = input_desc.attribute_stride_dwords;
+	
+	auto temp_allocator = CopyAllocator(allocator);
+	
+	Array<VertexID> src_vertex_index_to_vertex_id;
+	ArrayResize<VertexID>(src_vertex_index_to_vertex_id, temp_allocator, input_desc.vertices_count);
+	
+	ReindexingHashTable<VertexID, Vertex> vertex_table;
+	HashTableReserve(vertex_table, temp_allocator, vertices);
+	HashTableClear(vertex_table);
+	
+	{
+		MDT_PROFILER_SCOPE("DeduplicateVertices");
+		
+		for (u32 geometry_index = 0, base_vertex_index = 0; geometry_index < geometry_desc_count; geometry_index += 1) {
+			auto& desc = geometry_descs[geometry_index];
+			
+			for (u32 geometry_vertex_index = 0; geometry_vertex_index < desc.vertex_count; geometry_vertex_index += 1) {
+				u32 vertex_index = base_vertex_index + geometry_vertex_index;
+				
+				auto* vertex = &desc.vertices[geometry_vertex_index * input_desc.vertex_stride_dwords];
+				memcpy(mesh[AttributesID{ vertex_index }], vertex + 3, input_desc.attribute_stride_dwords * sizeof(u32));
+				
+				auto vertex_id = HashTableAddOrFindID(vertex_table, Vertex{ *(Vector3*)vertex, CornerID{ u32_max } });
+				src_vertex_index_to_vertex_id[vertex_index] = vertex_id;
+			}
+			base_vertex_index += desc.vertex_count;
+		}
+	}
+	vertices.count = vertex_table.count;
+	mesh.vertex_count = vertices.count;
+	
+	ReindexingHashTable<EdgeID, Edge> edge_table;
+	HashTableReserve(edge_table, temp_allocator, edges);
+	HashTableClear(edge_table);
+	
+	for (u32 geometry_index = 0, base_vertex_index = 0; geometry_index < geometry_desc_count; geometry_index += 1) {
+		auto& desc = geometry_descs[geometry_index];
+		u32 geometry_triangle_count = (desc.index_count / 3);
+		
+		for (u32 triangle_index = 0; triangle_index < geometry_triangle_count; triangle_index += 1) {
+			u32 indices[3] = {
+				base_vertex_index + desc.indices[triangle_index * 3 + 0],
+				base_vertex_index + desc.indices[triangle_index * 3 + 1],
+				base_vertex_index + desc.indices[triangle_index * 3 + 2],
+			};
+			
+			VertexID vertex_ids[3] = {
+				src_vertex_index_to_vertex_id[indices[0]],
+				src_vertex_index_to_vertex_id[indices[1]],
+				src_vertex_index_to_vertex_id[indices[2]],
+			};
+			
+			bool has_duplicate_vertices = 
+				vertex_ids[0].index == vertex_ids[1].index ||
+				vertex_ids[0].index == vertex_ids[2].index ||
+				vertex_ids[1].index == vertex_ids[2].index;
+			
+			// Skip primitives that reduce to a single line or a point. PerformEdgeCollapse(...) can't reliably handle them.
+			if (has_duplicate_vertices) continue;
+			
+			u64 edge_keys[3] = {
+				PackEdgeKey(vertex_ids[0], vertex_ids[1]),
+				PackEdgeKey(vertex_ids[1], vertex_ids[2]),
+				PackEdgeKey(vertex_ids[2], vertex_ids[0]),
+			};
+			
+			auto face = Face{ CornerID{ u32_max }, geometry_index };
+			auto face_id = FaceID{ faces.count };
+			
+			ArrayAppend(faces, face);
+			
+			for (u32 corner_index = 0; corner_index < 3; corner_index += 1) {
+				auto corner_id = CornerID{ face_id.index * 3 + corner_index };
+				
+				auto edge = Edge{ { (u32)edge_keys[corner_index] }, { (u32)(edge_keys[corner_index] >> 32) }, { u32_max } };
+				auto edge_id = HashTableAddOrFindID(edge_table, edge);
+				
+				auto& corner = corners[corner_id.index];
+				corner.face_id       = face_id;
+				corner.edge_id       = edge_id;
+				corner.vertex_id     = vertex_ids[corner_index];
+				corner.attributes_id = AttributesID{ indices[corner_index] };
+				
+				CornerListInsert<VertexID>(mesh, corner.vertex_id, corner_id);
+				CornerListInsert<EdgeID>(mesh, corner.edge_id, corner_id);
+				CornerListInsert<FaceID>(mesh, corner.face_id, corner_id);
+			}
+		}
+		base_vertex_index += desc.vertex_count;
+	}
+	mesh.face_count = faces.count;
+	mesh.edge_count = edge_table.count;
+	mesh.corner_count = faces.count * 3;
 	
 	return mesh;
+}
+
+struct EditableMeshBuildContext {
+	Array<Face>   sub_mesh_faces;
+	Array<Edge>   sub_mesh_edges;
+	Array<Vertex> sub_mesh_vertices;
+	Array<Corner> sub_mesh_corners;
+	Array<float>  sub_mesh_attributes;
+	
+	ReindexingHashTable<EdgeID, Edge> edge_table;
+	
+	ReindexingHashTable<VertexID, VertexID> vertex_id_to_sub_mesh_vertex_id;
+	Array<VertexID>                         sub_mesh_vertex_id_to_vertex_id;
+	
+	ReindexingHashTable<AttributesID, AttributesID> attributes_id_to_sub_mesh_attributes_id;
+	Array<AttributesID>                             sub_mesh_attributes_id_to_attributes_id;
+};
+
+static EditableMeshView BuildEditableMesh(const IndexedMeshView& mesh, EditableMeshBuildContext context, ArrayView<u32> vertex_group_indices, ArrayView<u8> sub_mesh_vertex_is_locked, u32 begin_face_index, u32 end_face_index) {
+	MDT_PROFILER_SCOPE("BuildEditableMesh");
+	
+	EditableMeshView sub_mesh;
+	sub_mesh.faces      = context.sub_mesh_faces.data;
+	sub_mesh.edges      = context.sub_mesh_edges.data;
+	sub_mesh.vertices   = context.sub_mesh_vertices.data;
+	sub_mesh.corners    = context.sub_mesh_corners.data;
+	sub_mesh.attributes = context.sub_mesh_attributes.data;
+	sub_mesh.attribute_stride_dwords = mesh.attribute_stride_dwords;
+	
+	HashTableClear(context.edge_table);
+	HashTableClear(context.vertex_id_to_sub_mesh_vertex_id);
+	HashTableClear(context.attributes_id_to_sub_mesh_attributes_id);
+	context.sub_mesh_vertex_id_to_vertex_id.count         = 0;
+	context.sub_mesh_attributes_id_to_attributes_id.count = 0;
+	
+	for (u32 face_index = begin_face_index; face_index < end_face_index; face_index += 1) {
+		auto source_face_id = FaceID{ face_index };
+		
+		VertexID vertex_ids[3];
+		AttributesID attributes_ids[3];
+		
+		for (u32 i = 0; i < 3; i += 1) {
+			auto vertex_id     = mesh.face_vertex_ids[source_face_id.index * 3 + i];
+			auto attributes_id = mesh.face_attribute_ids[source_face_id.index * 3 + i];
+			
+			auto sub_mesh_vertex_id     = HashTableAddOrFindID(context.vertex_id_to_sub_mesh_vertex_id,         vertex_id);
+			auto sub_mesh_attributes_id = HashTableAddOrFindID(context.attributes_id_to_sub_mesh_attributes_id, attributes_id);
+			
+			if (sub_mesh_vertex_id.index >= context.sub_mesh_vertex_id_to_vertex_id.count) {
+				context.sub_mesh_vertex_id_to_vertex_id.count = sub_mesh_vertex_id.index + 1;
+				sub_mesh[sub_mesh_vertex_id] = Vertex{ mesh[vertex_id], CornerID{ u32_max } };
+				sub_mesh_vertex_is_locked[sub_mesh_vertex_id.index] = vertex_group_indices[vertex_id.index] == vertex_group_index_locked ? 1 : 0;
+			}
+			
+			if (sub_mesh_attributes_id.index >= context.sub_mesh_attributes_id_to_attributes_id.count) {
+				context.sub_mesh_attributes_id_to_attributes_id.count = sub_mesh_attributes_id.index + 1;
+				memcpy(sub_mesh[sub_mesh_attributes_id], mesh[attributes_id], sub_mesh.attribute_stride_dwords * sizeof(u32));
+			}
+			
+			vertex_ids[i]     = sub_mesh_vertex_id;
+			attributes_ids[i] = sub_mesh_attributes_id;
+		}
+		
+		u64 edge_keys[3] = {
+			PackEdgeKey(vertex_ids[0], vertex_ids[1]),
+			PackEdgeKey(vertex_ids[1], vertex_ids[2]),
+			PackEdgeKey(vertex_ids[2], vertex_ids[0]),
+		};
+		
+		auto face_id = FaceID{ face_index - begin_face_index };
+		sub_mesh[face_id] = Face{ CornerID{ u32_max }, mesh.face_geometry_indices[source_face_id.index] };
+		
+		for (u32 corner_index = 0; corner_index < 3; corner_index += 1) {
+			auto corner_id = CornerID{ face_id.index * 3 + corner_index };
+			
+			auto edge = Edge{ { (u32)edge_keys[corner_index] }, { (u32)(edge_keys[corner_index] >> 32) }, { u32_max } };
+			auto edge_id = HashTableAddOrFindID(context.edge_table, edge);
+			
+			auto& corner = sub_mesh[corner_id];
+			corner.face_id       = face_id;
+			corner.edge_id       = edge_id;
+			corner.vertex_id     = vertex_ids[corner_index];
+			corner.attributes_id = attributes_ids[corner_index];
+			
+			CornerListInsert<VertexID>(sub_mesh, corner.vertex_id, corner_id);
+			CornerListInsert<EdgeID>(sub_mesh, corner.edge_id, corner_id);
+			CornerListInsert<FaceID>(sub_mesh, corner.face_id, corner_id);
+		}
+	}
+	
+	sub_mesh.face_count      = end_face_index - begin_face_index;
+	sub_mesh.edge_count      = context.edge_table.count;
+	sub_mesh.vertex_count    = context.vertex_id_to_sub_mesh_vertex_id.count;
+	sub_mesh.corner_count    = sub_mesh.face_count * 3;
+	sub_mesh.attribute_count = context.attributes_id_to_sub_mesh_attributes_id.count;
+	
+	return sub_mesh;
+}
+
+static void ApplyEditableMeshChangesToIndexedMesh(const IndexedMeshView& mesh, const EditableMeshView& sub_mesh, EditableMeshBuildContext& context, u32 begin_face_index, ArrayView<u8> sub_mesh_changed_vertex_mask, ArrayView<u8> changed_vertex_mask) {
+	MDT_PROFILER_SCOPE("ApplyEditableMeshChangesToIndexedMesh");
+	
+	for (VertexID vertex_id = { 0 }; vertex_id.index < sub_mesh.vertex_count; vertex_id.index += 1) {
+		if (sub_mesh_changed_vertex_mask[vertex_id.index] == 0) continue;
+		sub_mesh_changed_vertex_mask[vertex_id.index] = 0;
+		
+		auto source_vertex_id = context.sub_mesh_vertex_id_to_vertex_id[vertex_id.index];
+		mesh[source_vertex_id] = sub_mesh[vertex_id].position;
+		
+		changed_vertex_mask[source_vertex_id.index] = 0xFF;
+	}
+	
+	for (AttributesID attributes_id = { 0 }; attributes_id.index < sub_mesh.attribute_count; attributes_id.index += 1) {
+		auto source_attributes_id = context.sub_mesh_attributes_id_to_attributes_id[attributes_id.index];
+		memcpy(mesh[source_attributes_id], sub_mesh[attributes_id], sub_mesh.attribute_stride_dwords * sizeof(float));
+	}
+	
+	for (FaceID face_id = { 0 }; face_id.index < sub_mesh.face_count; face_id.index += 1) {
+		auto source_face_id = FaceID{ face_id.index + begin_face_index };
+		auto& face = sub_mesh[face_id];
+		
+		if (face.corner_list_base.index != u32_max) {
+			u32 corner_index = 0;
+			IterateCornerList<FaceID>(sub_mesh, face.corner_list_base, [&](CornerID corner_id) {
+				auto& corner = sub_mesh[corner_id];
+				mesh.face_vertex_ids[source_face_id.index * 3 + corner_index] = context.sub_mesh_vertex_id_to_vertex_id[corner.vertex_id.index];
+				mesh.face_attribute_ids[source_face_id.index * 3 + corner_index] = context.sub_mesh_attributes_id_to_attributes_id[corner.attributes_id.index];
+				corner_index += 1;
+			});
+		} else {
+			for (u32 corner_index = 0; corner_index < 3; corner_index += 1) {
+				mesh.face_vertex_ids[source_face_id.index * 3 + corner_index].index = u32_max;
+				mesh.face_attribute_ids[source_face_id.index * 3 + corner_index].index = u32_max;
+			}
+		}
+	}
 }
 
 
@@ -859,7 +1151,7 @@ struct EdgeCollapseResult {
 	u32 removed_face_count = 0;
 };
 
-static EdgeCollapseResult PerformEdgeCollapse(const EditableMeshView& mesh, EdgeID edge_id, Allocator& heap_allocator, EdgeDuplicateMap& edge_duplicate_map, Array<EdgeID>& removed_edge_array) {
+static EdgeCollapseResult PerformEdgeCollapse(const EditableMeshView& mesh, EdgeID edge_id, Allocator& heap_allocator, HashTable<u64, EdgeID>& edge_hash_table, Array<EdgeID>& removed_edge_ids) {
 	auto& edge = mesh[edge_id];
 	
 	MDT_ASSERT(edge.vertex_0.index != edge.vertex_1.index);
@@ -868,7 +1160,7 @@ static EdgeCollapseResult PerformEdgeCollapse(const EditableMeshView& mesh, Edge
 	MDT_ASSERT(mesh[edge.vertex_1].corner_list_base.index != u32_max);
 	MDT_ASSERT(mesh[edge.vertex_0].corner_list_base.index != mesh[edge.vertex_1].corner_list_base.index);
 	
-	removed_edge_array.count = 0;
+	removed_edge_ids.count = 0;
 	u32 removed_face_count = 0;
 	IterateCornerList<EdgeID>(mesh, edge.corner_list_base, [&](CornerID corner_id) {
 		auto& corner = mesh[corner_id];
@@ -879,13 +1171,13 @@ static EdgeCollapseResult PerformEdgeCollapse(const EditableMeshView& mesh, Edge
 			bool edge_removed = CornerListRemove<EdgeID>(mesh, corner_id);
 			bool face_removed = CornerListRemove<FaceID>(mesh, corner_id);
 			
-			if (edge_removed) ArrayAppendMaybeGrow(removed_edge_array, heap_allocator, mesh[corner_id].edge_id);
+			if (edge_removed) ArrayAppendMaybeGrow(removed_edge_ids, heap_allocator, mesh[corner_id].edge_id);
 			removed_face_count += (u32)face_removed;
 		});
 	});
 	
 	auto remaining_vertex_id = CornerListMerge<VertexID>(mesh, edge.vertex_0, edge.vertex_1);
-
+	
 	if (remaining_vertex_id.index != u32_max) {
 		auto remaining_base_id = mesh[remaining_vertex_id].corner_list_base;
 		
@@ -894,10 +1186,10 @@ static EdgeCollapseResult PerformEdgeCollapse(const EditableMeshView& mesh, Edge
 				auto edge_id_1 = mesh[corner_id].edge_id;
 				auto& edge_1 = mesh[edge_id_1];
 				
-				auto edge_id_0 = HashTableAddOrFind(edge_duplicate_map, heap_allocator, PackEdgeKey(edge_1.vertex_0, edge_1.vertex_1), edge_id_1);
+				auto edge_id_0 = *HashTableAddOrFind(edge_hash_table, heap_allocator, PackEdgeKey(edge_1.vertex_0, edge_1.vertex_1), edge_id_1);
 				if (edge_id_0.index != edge_id_1.index) {
 					CornerListMerge<EdgeID>(mesh, edge_id_0, edge_id_1);
-					ArrayAppendMaybeGrow(removed_edge_array, heap_allocator, edge_id_1);
+					ArrayAppendMaybeGrow(removed_edge_ids, heap_allocator, edge_id_1);
 				}
 			});
 		});
@@ -913,7 +1205,7 @@ static EdgeCollapseResult PerformEdgeCollapse(const EditableMeshView& mesh, Edge
 						auto edge_id = mesh[corner_id].edge_id;
 						auto& edge = mesh[edge_id];
 						
-						HashTableAddOrFind(edge_duplicate_map, heap_allocator, PackEdgeKey(edge.vertex_0, edge.vertex_1), edge_id);
+						HashTableAddOrFind(edge_hash_table, heap_allocator, PackEdgeKey(edge.vertex_0, edge.vertex_1), edge_id);
 					});
 				});
 			});
@@ -923,7 +1215,7 @@ static EdgeCollapseResult PerformEdgeCollapse(const EditableMeshView& mesh, Edge
 	
 	EdgeCollapseResult result;
 	result.remaining_vertex_id = remaining_vertex_id;
-	result.removed_face_count = removed_face_count;
+	result.removed_face_count  = removed_face_count;
 	
 	return result;
 }
@@ -962,7 +1254,6 @@ struct QuadricAttributeGradient {
 };
 
 struct QuadricWithAttributes : Quadric {
-#if MDT_ENABLE_ATTRIBUTE_SUPPORT
 	QuadricAttributeGradient attributes[MDT_MAX_ATTRIBUTE_STRIDE_DWORDS]; // Note that this array is used as a 'flexible array'.
 	
 	// Quadric with attributes cannot be copied by value as it's variable size (i.e. it might be missing trailing attributes).
@@ -970,7 +1261,6 @@ struct QuadricWithAttributes : Quadric {
 	QuadricWithAttributes(const QuadricWithAttributes&) = delete;
 	QuadricWithAttributes& operator= (const QuadricWithAttributes&) = delete;
 	QuadricWithAttributes& operator= (QuadricWithAttributes&&) = delete;
-#endif // MDT_ENABLE_ATTRIBUTE_SUPPORT
 };
 static_assert(sizeof(QuadricWithAttributes) == sizeof(Quadric) + sizeof(QuadricAttributeGradient) * MDT_MAX_ATTRIBUTE_STRIDE_DWORDS, "Invalid QuadricWithAttributes size.");
 
@@ -1024,6 +1314,11 @@ always_inline_function T Clamp(T value, T min, T max) {
 template<typename T>
 always_inline_function T Min(T value, T min) {
 	return value < min ? value : min;
+}
+
+template<typename T>
+always_inline_function T Max(T value, T max) {
+	return value > max ? value : max;
 }
 
 
@@ -1105,17 +1400,15 @@ static void AccumulateQuadric(Quadric& accumulator, const Quadric& quadric) {
 static void AccumulateQuadricWithAttributes(QuadricWithAttributes& accumulator, const QuadricWithAttributes& quadric, u32 attribute_stride_dwords) {
 	AccumulateQuadric(accumulator, quadric);
 	
-#if MDT_ENABLE_ATTRIBUTE_SUPPORT
 	for (u32 i = 0; i < attribute_stride_dwords; i += 1) {
 		auto& attribute_accumulator = accumulator.attributes[i];
 		auto& attribute_quadric     = quadric.attributes[i];
-
+		
 		attribute_accumulator.g.x += attribute_quadric.g.x;
 		attribute_accumulator.g.y += attribute_quadric.g.y;
 		attribute_accumulator.g.z += attribute_quadric.g.z;
 		attribute_accumulator.d   += attribute_quadric.d;
 	}
-#endif // MDT_ENABLE_ATTRIBUTE_SUPPORT
 }
 
 static void ComputePlanarQuadric(Quadric& quadric, const Vector3& n, float d, float weight) {
@@ -1171,7 +1464,6 @@ static void ComputeFaceQuadricWithAttributes(QuadricWithAttributes& quadric, con
 	ComputePlanarQuadric(quadric, n, -DotProduct(n, p0), weight);
 	
 	
-#if MDT_ENABLE_ATTRIBUTE_SUPPORT
 	//
 	// For reference see [Hugues Hoppe 1999] Section 4 New Quadric Error Metric.
 	//
@@ -1243,7 +1535,6 @@ static void ComputeFaceQuadricWithAttributes(QuadricWithAttributes& quadric, con
 		quadric.attributes[i].g = g * weight;
 		quadric.attributes[i].d = d * weight;
 	}
-#endif // MDT_ENABLE_ATTRIBUTE_SUPPORT
 }
 
 static float ComputeQuadricError(const Quadric& q, const Vector3& p) {
@@ -1276,7 +1567,6 @@ static float ComputeQuadricErrorWithAttributes(const QuadricWithAttributes& q, c
 	// 
 	float weighted_error = ComputeQuadricError(q, p);
 	
-#if MDT_ENABLE_ATTRIBUTE_SUPPORT
 	if (q.weight < FLT_EPSILON) return weighted_error;
 	
 	float rcp_weight = 1.f / q.weight;
@@ -1300,12 +1590,10 @@ static float ComputeQuadricErrorWithAttributes(const QuadricWithAttributes& q, c
 		
 		weighted_error += weighted_attribute_error;
 	}
-#endif // MDT_ENABLE_ATTRIBUTE_SUPPORT
 	
 	return fabsf(weighted_error);
 }
 
-#if MDT_ENABLE_ATTRIBUTE_SUPPORT
 // Attribute computation for zero weight quadrics should be handled by the caller.
 static bool ComputeWedgeAttributes(const QuadricWithAttributes& q, const Vector3& p, float* attributes, float* rcp_attribute_weights, u32 attribute_stride_dwords) {
 	if (q.weight < FLT_EPSILON) return false;
@@ -1322,7 +1610,6 @@ static bool ComputeWedgeAttributes(const QuadricWithAttributes& q, const Vector3
 	
 	return true;
 }
-#endif // MDT_ENABLE_ATTRIBUTE_SUPPORT
 
 static bool ComputeOptimalVertexPosition(const QuadricWithAttributes& quadric, Vector3& optimal_position, u32 attribute_stride_dwords) {
 	//
@@ -1347,7 +1634,6 @@ static bool ComputeOptimalVertexPosition(const QuadricWithAttributes& quadric, V
 	float h1 = 0.f;
 	float h2 = 0.f;
 	
-#if MDT_ENABLE_ATTRIBUTE_SUPPORT
 	for (u32 i = 0; i < attribute_stride_dwords; i += 1) {
 		auto g = quadric.attributes[i].g;
 		auto d = quadric.attributes[i].d;
@@ -1365,7 +1651,6 @@ static bool ComputeOptimalVertexPosition(const QuadricWithAttributes& quadric, V
 		h1 += (g.y * d);
 		h2 += (g.z * d);
 	}
-#endif // MDT_ENABLE_ATTRIBUTE_SUPPORT
 	
 	// M = C - B * B^T * (1.0 / alpha)
 	float rcp_weight = 1.f / quadric.weight;
@@ -1519,6 +1804,7 @@ struct QuadricWithAttributesArray {
 // TODO: Reuse existing array functions.
 never_inline_function static void ArrayGrow(QuadricWithAttributesArray& array, Allocator& allocator, u32 new_capacity) {
 	u32 old_memory_block_index = AllocatorFindMemoryBlock(allocator, array.data);
+	MDT_ASSERT(old_memory_block_index != u32_max || allocator.memory_block_count < Allocator::max_memory_block_count);
 	
 	void* memory_block = allocator.callbacks.reallocate(array.data, new_capacity * array.data_stride_bytes + sizeof(QuadricWithAttributes), allocator.callbacks.user_data);
 	u32 memory_block_index = old_memory_block_index != u32_max ? old_memory_block_index : allocator.memory_block_count++;
@@ -1551,8 +1837,8 @@ struct alignas(MDT_CACHE_LINE_SIZE) MeshDecimationState {
 	// Face quadrics accumulated on attributes.
 	QuadricWithAttributesArray attribute_face_quadrics;
 	
-	EdgeDuplicateMap edge_duplicate_map;
-	Array<EdgeID>    removed_edge_array;
+	HashTable<u64, EdgeID> edge_hash_table;
+	Array<EdgeID> removed_edge_ids;
 	
 	QuadricWithAttributesArray wedge_quadrics;
 	Array<AttributesID> wedge_attributes_ids;
@@ -1626,7 +1912,7 @@ static EdgeCollapseError ComputeEdgeCollapseError(const EditableMeshView& mesh, 
 			(v0.index == edge.vertex_0.index || v0.index == edge.vertex_1.index) ||
 			(v2.index == edge.vertex_0.index || v2.index == edge.vertex_1.index);
 		
-		if (is_collapsed_face == false && face_index < 32) {
+		if (is_collapsed_face == false && face_index < max_edge_collapse_validation_face_count) {
 			auto p0 = mesh[v0].position;
 			auto p1 = mesh[v1].position;
 			auto p2 = mesh[v2].position;
@@ -1680,7 +1966,6 @@ static EdgeCollapseError ComputeEdgeCollapseError(const EditableMeshView& mesh, 
 			candidate_positions[2] = optimal_position * state.rcp_position_weight;
 		}
 		
-		// ~30% of the execution time.
 		u32 valid_position_mask = ValidateEdgeCollapsePositions(candidate_positions, face_vertex_positions, face_index);
 		
 		for (u32 i = 0; i < edge_collapse_candidate_position_count; i += 1) {
@@ -1763,13 +2048,13 @@ static EdgeID EdgeCollapseHeapPop(EdgeCollapseHeap& heap) {
 	MDT_ASSERT(heap.edge_collapse_errors.count != 0);
 	
 	auto edge_id = heap.heap_index_to_edge_id[0];
-
+	
 	heap.edge_collapse_errors[0]  = ArrayLastElement(heap.edge_collapse_errors);
 	heap.heap_index_to_edge_id[0] = ArrayLastElement(heap.heap_index_to_edge_id);
 	
 	heap.edge_id_to_heap_index[heap.heap_index_to_edge_id[0].index] = 0;
 	heap.edge_id_to_heap_index[edge_id.index] = u32_max;
-
+	
 	heap.edge_collapse_errors.count  -= 1;
 	heap.heap_index_to_edge_id.count -= 1;
 	
@@ -1784,17 +2069,17 @@ static void EdgeCollapseHeapRemove(EdgeCollapseHeap& heap, u32 heap_index) {
 	bool sift_up = true;
 	if (heap.edge_collapse_errors.count > heap_index) {
 		float prev_error = heap.edge_collapse_errors[heap_index];
-
+		
 		heap.edge_collapse_errors[heap_index]  = ArrayLastElement(heap.edge_collapse_errors);
 		heap.heap_index_to_edge_id[heap_index] = ArrayLastElement(heap.heap_index_to_edge_id);
-
+		
 		float new_error = heap.edge_collapse_errors[heap_index];
 		sift_up = new_error < prev_error;
 	}
 	
 	heap.edge_id_to_heap_index[heap.heap_index_to_edge_id[heap_index].index] = heap_index;
 	heap.edge_id_to_heap_index[edge_id.index] = u32_max;
-
+	
 	heap.edge_collapse_errors.count  -= 1;
 	heap.heap_index_to_edge_id.count -= 1;
 	
@@ -1830,14 +2115,15 @@ static void EdgeCollapseHeapInitialize(EdgeCollapseHeap& heap) {
 	EdgeCollapseHeapSiftDown(heap, 0);
 }
 
-static void AllocateMeshDecimationState(u32 vertex_count, u32 attribute_count, u32 attribute_stride_dwords, Allocator& allocator, Allocator& heap_allocator, MeshDecimationState& state) {
+static void AllocateMeshDecimationState(u32 vertex_count, u32 attribute_count, u32 attribute_stride_dwords, Allocator& allocator, MeshDecimationState& state) {
 	ArrayReserve(state.vertex_edge_quadrics, allocator, vertex_count);
 	ArrayReserve(state.attribute_face_quadrics, allocator, attribute_count, attribute_stride_dwords);
 	
-	ArrayReserve(state.wedge_quadrics,       heap_allocator, 64, attribute_stride_dwords);
-	ArrayReserve(state.wedge_attributes_ids, heap_allocator, 64);
-	ArrayReserve(state.removed_edge_array,   heap_allocator, 64);
-	HashTableGrow(state.edge_duplicate_map,  heap_allocator, ComputeHashTableSize(128u));
+	ArrayReserve(state.wedge_quadrics,       allocator, 64, attribute_stride_dwords);
+	ArrayReserve(state.wedge_attributes_ids, allocator, 64);
+	ArrayReserve(state.removed_edge_ids,     allocator, 64);
+	HashTableReserve(state.edge_hash_table,  allocator, 64);
+	HashTableClear(state.edge_hash_table);
 }
 
 static void InitializeMeshDecimationState(const EditableMeshView& mesh, const MdtTriangleMeshDesc& mesh_desc, MeshDecimationState& state) {
@@ -1990,33 +2276,30 @@ static float DecimateMeshFaceGroup(
 	
 	float max_error = 0.f;
 	while (active_face_count > target_face_count && edge_collapse_heap.edge_collapse_errors.count) {
-		// ~80% of the execution time.
-		for (auto& key_value : state.edge_duplicate_map) {
-			if (key_value.edge_key == u64_max) continue;
+		for (auto& element : state.edge_hash_table) {
+			if (IsValidKey(element.key) == false) continue;
 			
-			u32 heap_index = edge_collapse_heap.edge_id_to_heap_index[key_value.edge_id.index];
+			u32 heap_index = edge_collapse_heap.edge_id_to_heap_index[element.value.index];
 			if (heap_index == u32_max) continue;
 			
-			auto collapse_error = ComputeEdgeCollapseError(mesh, heap_allocator, state, key_value.edge_id);
+			auto collapse_error = ComputeEdgeCollapseError(mesh, heap_allocator, state, element.value);
 			
 			EdgeCollapseHeapUpdate(edge_collapse_heap, heap_index, collapse_error.min_error);
 		}
-		HashTableClear(state.edge_duplicate_map);
+		HashTableClear(state.edge_hash_table);
 		
 		
 		auto edge_id = EdgeCollapseHeapPop(edge_collapse_heap);
 		
-		// 2% of the execution time
 		auto collapse_error = ComputeEdgeCollapseError(mesh, heap_allocator, state, edge_id);
 		if (collapse_error.min_error > target_error_limit) break;
 		
 		max_error = max_error < collapse_error.min_error ? collapse_error.min_error : max_error;
 		
-		// 15% of the execution time
-		auto collapse_result = PerformEdgeCollapse(mesh, edge_id, heap_allocator, state.edge_duplicate_map, state.removed_edge_array);
+		auto collapse_result = PerformEdgeCollapse(mesh, edge_id, heap_allocator, state.edge_hash_table, state.removed_edge_ids);
 		active_face_count -= collapse_result.removed_face_count;
 		
-		for (auto removed_edge_id : state.removed_edge_array) {
+		for (auto removed_edge_id : state.removed_edge_ids) {
 			u32 heap_index = edge_collapse_heap.edge_id_to_heap_index[removed_edge_id.index];
 			if (heap_index != u32_max) EdgeCollapseHeapRemove(edge_collapse_heap, heap_index);
 		}
@@ -2034,7 +2317,6 @@ static float DecimateMeshFaceGroup(
 			state.vertex_edge_quadrics[edge.vertex_1.index] = quadric;
 		}
 		
-#if MDT_ENABLE_ATTRIBUTE_SUPPORT
 		// Update attributes.
 		if (collapse_result.remaining_vertex_id.index != u32_max) {
 			u32 wedge_count = state.wedge_quadrics.count;
@@ -2051,7 +2333,7 @@ static float DecimateMeshFaceGroup(
 					normalize_vertex_attributes(attributes);
 				}
 			}
-				
+			
 			if (changed_vertex_mask) {
 				changed_vertex_mask[collapse_result.remaining_vertex_id.index] = 0xFF;
 			}
@@ -2061,106 +2343,73 @@ static float DecimateMeshFaceGroup(
 				if (index != u32_max) mesh[corner_id].attributes_id = state.wedge_attributes_ids[index];
 			});
 		}
-#endif // MDT_ENABLE_ATTRIBUTE_SUPPORT
 	}
 	
-	HashTableClear(state.edge_duplicate_map);
-	state.removed_edge_array.count = 0;
+	HashTableClear(state.edge_hash_table);
+	state.removed_edge_ids.count = 0;
 	
 	return sqrtf(max_error) * state.rcp_position_weight;
 }
 
 struct DecimationThreadContext {
-	EditableMeshView sub_mesh;
 	MeshDecimationState state;
 	
-	Allocator heap_allocator;
 	Allocator allocator;
 	
-	Array<Face>   sub_mesh_faces;
-	Array<Edge>   sub_mesh_edges;
-	Array<Vertex> sub_mesh_vertices;
-	Array<Corner> sub_mesh_corners;
-	Array<float>  sub_mesh_attributes;
-	
+	EditableMeshBuildContext build_context;
 	EdgeCollapseHeap edge_collapse_heap;
-	
-	EdgeHashTable edge_table;
-	
-	Array<VertexID> vertex_id_to_sub_mesh_vertex_id;
-	Array<VertexID> sub_mesh_vertex_id_to_vertex_id;
-	
-	Array<AttributesID> attributes_id_to_sub_mesh_attributes_id;
-	Array<AttributesID> sub_mesh_attributes_id_to_attributes_id;
 	
 	Array<u8> sub_mesh_vertex_is_locked;
 	Array<u8> sub_mesh_changed_vertex_mask;
 };
 
-static void AllocateDecimationThreadContext(DecimationThreadContext& context, const IndexedMeshView& mesh, Allocator& allocator, Allocator& heap_allocator) {
+static void AllocateDecimationThreadContext(DecimationThreadContext& context, const IndexedMeshView& mesh, Allocator& allocator) {
 	compile_const u32 max_vertex_count = meshlet_group_max_meshlet_count * meshlet_max_vertex_count;
 	compile_const u32 max_face_count = meshlet_group_max_meshlet_count * meshlet_max_face_count;
 	compile_const u32 max_corner_count = max_face_count * meshlet_max_face_degree;
 	compile_const u32 max_edge_count = max_face_count * meshlet_max_face_degree;
 	
-	context.heap_allocator.callbacks = heap_allocator.callbacks;
-	context.allocator.callbacks = allocator.callbacks;
+	context.allocator = CopyAllocator(allocator);
 	
-	ArrayReserve(context.sub_mesh_vertices, context.allocator, max_vertex_count);
-	ArrayReserve(context.sub_mesh_corners, context.allocator, max_corner_count);
-	ArrayReserve(context.sub_mesh_faces, context.allocator, max_face_count);
-	ArrayReserve(context.sub_mesh_edges, context.allocator, max_edge_count);
-	ArrayReserve(context.sub_mesh_attributes, context.allocator, max_corner_count * mesh.attribute_stride_dwords);
-	
-	context.sub_mesh.faces      = context.sub_mesh_faces.data;
-	context.sub_mesh.edges      = context.sub_mesh_edges.data;
-	context.sub_mesh.vertices   = context.sub_mesh_vertices.data;
-	context.sub_mesh.corners    = context.sub_mesh_corners.data;
-	context.sub_mesh.attributes = context.sub_mesh_attributes.data;
-	context.sub_mesh.attribute_stride_dwords = mesh.attribute_stride_dwords;
+	ArrayResize(context.build_context.sub_mesh_vertices,    context.allocator, max_vertex_count);
+	ArrayResize(context.build_context.sub_mesh_corners,     context.allocator, max_corner_count);
+	ArrayReserve(context.build_context.sub_mesh_faces,      context.allocator, max_face_count);
+	ArrayReserve(context.build_context.sub_mesh_edges,      context.allocator, max_edge_count);
+	ArrayReserve(context.build_context.sub_mesh_attributes, context.allocator, max_corner_count * mesh.attribute_stride_dwords);
 	
 	ArrayResize(context.edge_collapse_heap.edge_collapse_errors,  context.allocator, max_edge_count);
 	ArrayResize(context.edge_collapse_heap.edge_id_to_heap_index, context.allocator, max_edge_count);
 	ArrayResize(context.edge_collapse_heap.heap_index_to_edge_id, context.allocator, max_edge_count);
 	
-	ArrayResize(context.edge_table.edge_ids, context.allocator, ComputeHashTableSize(max_edge_count));
+	HashTableReserve(context.build_context.edge_table, context.allocator, context.build_context.sub_mesh_edges);
 	
-	ArrayResizeMemset(context.vertex_id_to_sub_mesh_vertex_id, context.allocator, mesh.vertex_count, 0xFF);
-	ArrayResize(context.sub_mesh_vertex_id_to_vertex_id, context.allocator, max_vertex_count);
+	ArrayResize(context.build_context.sub_mesh_vertex_id_to_vertex_id, context.allocator, max_vertex_count);
+	HashTableReserve(context.build_context.vertex_id_to_sub_mesh_vertex_id, context.allocator, context.build_context.sub_mesh_vertex_id_to_vertex_id);
 	
-	ArrayResizeMemset(context.attributes_id_to_sub_mesh_attributes_id, context.allocator, mesh.attribute_count, 0xFF);
-	ArrayResize(context.sub_mesh_attributes_id_to_attributes_id, context.allocator, max_corner_count);
+	ArrayResize(context.build_context.sub_mesh_attributes_id_to_attributes_id, context.allocator, max_corner_count);
+	HashTableReserve(context.build_context.attributes_id_to_sub_mesh_attributes_id, context.allocator, context.build_context.sub_mesh_attributes_id_to_attributes_id);
 	
 	ArrayResize(context.sub_mesh_vertex_is_locked, context.allocator, max_vertex_count);
 	ArrayResizeMemset(context.sub_mesh_changed_vertex_mask, context.allocator, max_vertex_count, 0);
 	
-	AllocateMeshDecimationState(max_vertex_count, max_corner_count, mesh.attribute_stride_dwords, context.allocator, context.heap_allocator, context.state);
-}
-
-static void DeallocateDecimationThreadContext(DecimationThreadContext& context) {
-	AllocatorFreeMemoryBlocks(context.allocator, 0);
-	AllocatorFreeMemoryBlocks(context.heap_allocator, 0);
+	AllocateMeshDecimationState(max_vertex_count, max_corner_count, mesh.attribute_stride_dwords, context.allocator, context.state);
 }
 
 static void DecimateMeshFaceGroups(
 	const IndexedMeshView& mesh,
 	Allocator& allocator,
-	Allocator& heap_allocator,
 	const MdtTriangleMeshDesc& mesh_desc,
 	const MdtParallelForCallbacks* parallel_for,
 	Array<u32> meshlet_group_face_prefix_sum,
 	Array<MdtErrorMetric> meshlet_group_error_metrics,
-	Array<u8> changed_vertex_mask) {
+	ArrayView<u8> changed_vertex_mask) {
 	
 	MDT_PROFILER_SCOPE("DecimateMeshFaceGroups");
 	
-	u32 allocator_high_water = allocator.memory_block_count;
-	u32 heap_allocator_high_water = heap_allocator.memory_block_count;
-	
-	compile_const u32 vertex_group_index_locked = u32_max - 1;
+	auto temp_allocator = CopyAllocator(allocator);
 	
 	Array<u32> vertex_group_indices;
-	ArrayResizeMemset(vertex_group_indices, allocator, mesh.vertex_count, 0xFF);
+	ArrayResizeMemset(vertex_group_indices, temp_allocator, mesh.vertex_count, 0xFF);
 	
 	{
 		MDT_PROFILER_SCOPE("FindSharedVertices");
@@ -2192,7 +2441,7 @@ static void DecimateMeshFaceGroups(
 	
 	ParallelFor(parallel_for, work_item_count, [&](u32 work_item_index) {
 		DecimationThreadContext context;
-		AllocateDecimationThreadContext(context, mesh, allocator, heap_allocator);
+		AllocateDecimationThreadContext(context, mesh, temp_allocator);
 		
 		u32 begin_group_index = work_item_index * face_groups_per_thread;
 		u32 end_group_index   = Min(begin_group_index + face_groups_per_thread, meshlet_group_face_prefix_sum.count);
@@ -2202,122 +2451,26 @@ static void DecimateMeshFaceGroups(
 			MDT_PROFILER_SCOPE("ProcessFaceGroup");
 			
 			u32 end_face_index = meshlet_group_face_prefix_sum[group_index];
-			
 			u32 face_count = end_face_index - begin_face_index;
 			
-			memset(context.edge_table.edge_ids.data, 0xFF, context.edge_table.edge_ids.count * sizeof(EdgeID));
-			context.sub_mesh_faces.count = 0;
-			context.sub_mesh_edges.count = 0;
-			context.sub_mesh_vertices.count = 0;
-			context.sub_mesh_corners.count = face_count * 3;
-			context.sub_mesh_attributes.count = 0;
-			context.sub_mesh_vertex_is_locked.count = 0;
-			context.sub_mesh_vertex_id_to_vertex_id.count = 0;
-			context.sub_mesh_attributes_id_to_attributes_id.count = 0;
+			auto sub_mesh = BuildEditableMesh(mesh, context.build_context, CreateArrayView(vertex_group_indices), CreateArrayView(context.sub_mesh_vertex_is_locked), begin_face_index, end_face_index);
 			
-			for (u32 face_index = begin_face_index; face_index < end_face_index; face_index += 1) {
-				auto source_face_id = FaceID{ face_index };
-				
-				for (u32 i = 0; i < 3; i += 1) {
-					auto vertex_id = mesh.face_vertex_ids[source_face_id.index * 3 + i];
-					auto attributes_id = mesh.face_attribute_ids[source_face_id.index * 3 + i];
-					
-					auto sub_mesh_corner_id = CornerID{ (face_index - begin_face_index) * 3 + i };
-					auto& sub_mesh_vertex_id = context.vertex_id_to_sub_mesh_vertex_id[vertex_id.index];
-					auto& sub_mesh_attributes_id = context.attributes_id_to_sub_mesh_attributes_id[attributes_id.index];
-					
-					if (sub_mesh_vertex_id.index == u32_max) {
-						sub_mesh_vertex_id.index = context.sub_mesh_vertices.count;
-						
-						Vertex vertex;
-						vertex.position = mesh[vertex_id];
-						vertex.corner_list_base.index = u32_max;
-						
-						ArrayAppend(context.sub_mesh_vertices, vertex);
-						ArrayAppend(context.sub_mesh_vertex_id_to_vertex_id, vertex_id);
-						ArrayAppend(context.sub_mesh_vertex_is_locked, vertex_group_indices[vertex_id.index] == vertex_group_index_locked ? 1 : 0);
-					}
-					
-					if (sub_mesh_attributes_id.index == u32_max) {
-						sub_mesh_attributes_id.index = context.sub_mesh_attributes.count / context.sub_mesh.attribute_stride_dwords;
-						
-						auto* attributes = mesh[attributes_id];
-						memcpy(context.sub_mesh_attributes.end(), attributes, context.sub_mesh.attribute_stride_dwords * sizeof(u32));
-						context.sub_mesh_attributes.count += context.sub_mesh.attribute_stride_dwords;
-						
-						ArrayAppend(context.sub_mesh_attributes_id_to_attributes_id, attributes_id);
-					}
-				}
-			}
-			
-			for (u32 face_index = begin_face_index; face_index < end_face_index; face_index += 1) {
-				auto source_face_id = FaceID{ face_index };
-				
-				VertexID vertex_ids[3] = {
-					context.vertex_id_to_sub_mesh_vertex_id[mesh.face_vertex_ids[source_face_id.index * 3 + 0].index],
-					context.vertex_id_to_sub_mesh_vertex_id[mesh.face_vertex_ids[source_face_id.index * 3 + 1].index],
-					context.vertex_id_to_sub_mesh_vertex_id[mesh.face_vertex_ids[source_face_id.index * 3 + 2].index],
-				};
-				
-				AttributesID attributes_ids[3] = {
-					context.attributes_id_to_sub_mesh_attributes_id[mesh.face_attribute_ids[source_face_id.index * 3 + 0].index],
-					context.attributes_id_to_sub_mesh_attributes_id[mesh.face_attribute_ids[source_face_id.index * 3 + 1].index],
-					context.attributes_id_to_sub_mesh_attributes_id[mesh.face_attribute_ids[source_face_id.index * 3 + 2].index],
-				};
-				
-				u64 edge_keys[3] = {
-					PackEdgeKey(vertex_ids[0], vertex_ids[1]),
-					PackEdgeKey(vertex_ids[1], vertex_ids[2]),
-					PackEdgeKey(vertex_ids[2], vertex_ids[0]),
-				};
-				
-				auto face_id = FaceID{ context.sub_mesh_faces.count };
-				
-				Face face;
-				face.corner_list_base.index = u32_max;
-				face.geometry_index = mesh.face_geometry_indices[source_face_id.index];
-				ArrayAppend(context.sub_mesh_faces, face);
-				
-				for (u32 corner_index = 0; corner_index < 3; corner_index += 1) {
-					auto corner_id = CornerID{ face_id.index * 3 + corner_index };
-					
-					auto edge_id = HashTableAddOrFind(context.edge_table, context.sub_mesh_edges, edge_keys[corner_index]);
-					
-					auto& corner = context.sub_mesh_corners[corner_id.index];
-					corner.face_id       = face_id;
-					corner.edge_id       = edge_id;
-					corner.vertex_id     = vertex_ids[corner_index];
-					corner.attributes_id = attributes_ids[corner_index];
-					
-					CornerListInsert<VertexID>(context.sub_mesh, corner.vertex_id, corner_id);
-					CornerListInsert<EdgeID>(context.sub_mesh, corner.edge_id, corner_id);
-					CornerListInsert<FaceID>(context.sub_mesh, corner.face_id, corner_id);
-				}
-			}
-			
-			context.sub_mesh.face_count = context.sub_mesh_faces.count;
-			context.sub_mesh.edge_count = context.sub_mesh_edges.count;
-			context.sub_mesh.vertex_count = context.sub_mesh_vertices.count;
-			context.sub_mesh.corner_count = context.sub_mesh_corners.count;
-			context.sub_mesh.attribute_count = context.sub_mesh_attributes.count / context.sub_mesh.attribute_stride_dwords;
-			
-			u32 edge_count = context.sub_mesh_edges.count;
-			context.edge_collapse_heap.edge_collapse_errors.count  = edge_count;
-			context.edge_collapse_heap.edge_id_to_heap_index.count = edge_count;
-			context.edge_collapse_heap.heap_index_to_edge_id.count = edge_count;
-			
-			InitializeMeshDecimationState(context.sub_mesh, mesh_desc, context.state);
+			InitializeMeshDecimationState(sub_mesh, mesh_desc, context.state);
 			
 			{
-				MDT_PROFILER_SCOPE("BuildEdgeHeap");
+				MDT_PROFILER_SCOPE("BuildEdgeCollapseHeap");
+				
+				context.edge_collapse_heap.edge_collapse_errors.count  = sub_mesh.edge_count;
+				context.edge_collapse_heap.edge_id_to_heap_index.count = sub_mesh.edge_count;
+				context.edge_collapse_heap.heap_index_to_edge_id.count = sub_mesh.edge_count;
 				
 				u32 local_edge_index = 0;
-				for (EdgeID edge_id = { 0 }; edge_id.index < context.sub_mesh_edges.count; edge_id.index += 1) {
-					auto& edge = context.sub_mesh[edge_id];
+				for (EdgeID edge_id = { 0 }; edge_id.index < sub_mesh.edge_count; edge_id.index += 1) {
+					auto& edge = sub_mesh[edge_id];
 					bool edge_is_locked = context.sub_mesh_vertex_is_locked[edge.vertex_0.index] || context.sub_mesh_vertex_is_locked[edge.vertex_1.index];
 					
 					if (edge_is_locked == false) {
-						auto collapse_error = ComputeEdgeCollapseError(context.sub_mesh, context.heap_allocator, context.state, edge_id);
+						auto collapse_error = ComputeEdgeCollapseError(sub_mesh, context.allocator, context.state, edge_id);
 						
 						context.edge_collapse_heap.edge_collapse_errors[local_edge_index]  = collapse_error.min_error;
 						context.edge_collapse_heap.edge_id_to_heap_index[edge_id.index]    = local_edge_index;
@@ -2333,14 +2486,14 @@ static void DecimateMeshFaceGroups(
 				EdgeCollapseHeapInitialize(context.edge_collapse_heap);
 			}
 			
-			context.sub_mesh_changed_vertex_mask.count = context.sub_mesh.vertex_count;
+			context.sub_mesh_changed_vertex_mask.count = sub_mesh.vertex_count;
 			
 			
 			u32 target_face_count = face_count / 2;
 			u32 active_face_count = face_count;
 			float decimation_error = DecimateMeshFaceGroup(
-				context.sub_mesh,
-				context.heap_allocator,
+				sub_mesh,
+				context.allocator,
 				context.state,
 				context.edge_collapse_heap,
 				mesh_desc.normalize_vertex_attributes,
@@ -2352,65 +2505,11 @@ static void DecimateMeshFaceGroups(
 			auto& error_metric = meshlet_group_error_metrics[group_index];
 			error_metric.error = error_metric.error > decimation_error ? error_metric.error : decimation_error;
 			
-			for (auto& vertex_id : context.sub_mesh_vertex_id_to_vertex_id) {
-				context.vertex_id_to_sub_mesh_vertex_id[vertex_id.index].index = u32_max;
-			}
-			
-			for (auto& attributes_id : context.sub_mesh_attributes_id_to_attributes_id) {
-				context.attributes_id_to_sub_mesh_attributes_id[attributes_id.index].index = u32_max;
-			}
-			
-			for (VertexID vertex_id = { 0 }; vertex_id.index < context.sub_mesh.vertex_count; vertex_id.index += 1) {
-				if (context.sub_mesh_changed_vertex_mask[vertex_id.index] == 0) continue;
-				context.sub_mesh_changed_vertex_mask[vertex_id.index] = 0;
-				
-				auto& vertex = context.sub_mesh[vertex_id];
-				
-				auto source_vertex_id = context.sub_mesh_vertex_id_to_vertex_id[vertex_id.index];
-				mesh[source_vertex_id] = vertex.position;
-				
-				if (vertex.corner_list_base.index == u32_max) {
-					context.sub_mesh_vertex_id_to_vertex_id[vertex_id.index].index = u32_max;
-				}
-				
-				changed_vertex_mask[source_vertex_id.index] = 0xFF;
-			}
-			
-			for (AttributesID attributes_id = { 0 }; attributes_id.index < context.sub_mesh.attribute_count; attributes_id.index += 1) {
-				auto source_attributes_id = context.sub_mesh_attributes_id_to_attributes_id[attributes_id.index];
-				auto* attributes = context.sub_mesh[attributes_id];
-				
-				memcpy(mesh[source_attributes_id], attributes, context.sub_mesh.attribute_stride_dwords * sizeof(float));
-			}
-			
-			for (FaceID face_id = { 0 }; face_id.index < context.sub_mesh.face_count; face_id.index += 1) {
-				auto source_face_id = FaceID{ face_id.index + begin_face_index };
-				auto& face = context.sub_mesh[face_id];
-				
-				if (face.corner_list_base.index != u32_max) {
-					u32 corner_index = 0;
-					IterateCornerList<FaceID>(context.sub_mesh, face.corner_list_base, [&](CornerID corner_id) {
-						auto& corner = context.sub_mesh[corner_id];
-						mesh.face_vertex_ids[source_face_id.index * 3 + corner_index] = context.sub_mesh_vertex_id_to_vertex_id[corner.vertex_id.index];
-						mesh.face_attribute_ids[source_face_id.index * 3 + corner_index] = context.sub_mesh_attributes_id_to_attributes_id[corner.attributes_id.index];
-						corner_index += 1;
-					});
-				} else {
-					for (u32 corner_index = 0; corner_index < 3; corner_index += 1) {
-						mesh.face_vertex_ids[source_face_id.index * 3 + corner_index].index = u32_max;
-						mesh.face_attribute_ids[source_face_id.index * 3 + corner_index].index = u32_max;
-					}
-				}
-			}
+			ApplyEditableMeshChangesToIndexedMesh(mesh, sub_mesh, context.build_context, begin_face_index, CreateArrayView(context.sub_mesh_changed_vertex_mask), CreateArrayView(changed_vertex_mask));
 			
 			begin_face_index = end_face_index;
 		}
-		
-		DeallocateDecimationThreadContext(context);
 	});
-	
-	AllocatorFreeMemoryBlocks(allocator, allocator_high_water);
-	AllocatorFreeMemoryBlocks(heap_allocator, heap_allocator_high_water);
 }
 
 //
@@ -2478,11 +2577,11 @@ static u32 KdTreeSplit(const ArrayView<KdTreeElement>& elements, ArrayView<u32> 
 	for (u32 i = 0; i < indices.count; i += 1) {
 		u32 index = indices[i];
 		float position = LoadElementByIndex(elements[index].position, split_axis);
-
+		
 		// Swap(indices[i], indices[split_index]);
 		indices[i] = indices[split_index];
 		indices[split_index] = index;
-
+		
 		if (position < split_position) split_index += 1;
 	}
 	
@@ -2923,10 +3022,10 @@ static MeshletBuildResult BuildMeshletsForFaceGroups(
 	
 	MDT_PROFILER_SCOPE("BuildMeshletsForFaceGroups");
 	
-	KdTree kd_tree_allocations;
-	ArrayResize(kd_tree_allocations.elements, allocator, mesh.face_count);
-	ArrayReserve(kd_tree_allocations.nodes, allocator, kd_tree_allocations.elements.count * 2);
-	ArrayResize(kd_tree_allocations.element_indices, allocator, kd_tree_allocations.elements.count);
+	auto temp_allocator = CopyAllocator(allocator);
+	
+	Array<KdTreeElement> kd_tree_elements;
+	ArrayResize(kd_tree_elements, temp_allocator, mesh.face_count);
 	
 	Array<u32> corner_list_around_vertex_prefix_sum;
 	Array<u32> corner_list_around_vertex;
@@ -2934,8 +3033,8 @@ static MeshletBuildResult BuildMeshletsForFaceGroups(
 	{
 		MDT_PROFILER_SCOPE("BuildVertexCornerLists");
 		
-		ArrayResizeMemset(corner_list_around_vertex_prefix_sum, allocator, mesh.vertex_count + 1, 0);
-		ArrayResize(corner_list_around_vertex, allocator, mesh.face_count * 3);
+		ArrayResizeMemset(corner_list_around_vertex_prefix_sum, temp_allocator, mesh.vertex_count + 1, 0);
+		ArrayResize(corner_list_around_vertex, temp_allocator, mesh.face_count * 3);
 		
 		for (u32 corner_index = 0; corner_index < mesh.face_count * 3; corner_index += 1) {
 			auto vertex_id = mesh.face_vertex_ids[corner_index];
@@ -2977,24 +3076,34 @@ static MeshletBuildResult BuildMeshletsForFaceGroups(
 	ParallelFor(parallel_for, meshlet_work_item_count, [&](u32 work_item_index) {
 		MDT_PROFILER_SCOPE("BuildMeshletsForFaceGroup");
 		
-		Allocator thread_allocator;
-		thread_allocator.callbacks = allocator.callbacks;
-		
-		Array<u8> vertex_usage_map;
-		ArrayResizeMemset(vertex_usage_map, thread_allocator, mesh.attribute_count, 0xFF);
-		
 		u32 begin_group_index = work_item_index * face_groups_per_thread;
 		u32 end_group_index   = Min(begin_group_index + face_groups_per_thread, meshlet_group_face_prefix_sum.count);
 		
+		u32 max_element_count = 0;
 		u32 begin_element_index = begin_group_index ? meshlet_group_face_prefix_sum[begin_group_index - 1] : 0;
+		for (u32 group_index = begin_group_index; group_index < end_group_index; group_index += 1) {
+			u32 end_element_index = meshlet_group_face_prefix_sum[group_index];
+			max_element_count = Max(max_element_count, end_element_index - begin_element_index);
+			begin_element_index = end_element_index;
+		}
+		
+		auto temp_allocator = CopyAllocator(allocator);
+		
+		Array<u8> vertex_usage_map;
+		ArrayResizeMemset(vertex_usage_map, temp_allocator, mesh.attribute_count, 0xFF);
+		
+		KdTree kd_tree;
+		ArrayReserve(kd_tree.nodes, temp_allocator, max_element_count * 2);
+		ArrayResize(kd_tree.element_indices, temp_allocator, max_element_count);
+		
+		begin_element_index = begin_group_index ? meshlet_group_face_prefix_sum[begin_group_index - 1] : 0;
 		for (u32 group_index = begin_group_index; group_index < end_group_index; group_index += 1) {
 			u32 end_element_index = meshlet_group_face_prefix_sum[group_index];
 			u32 element_count     = end_element_index - begin_element_index;
 			
-			KdTree kd_tree;
-			kd_tree.elements        = { kd_tree_allocations.elements.data        + begin_element_index, element_count, element_count };
-			kd_tree.element_indices = { kd_tree_allocations.element_indices.data + begin_element_index, element_count, element_count };
-			kd_tree.nodes           = { kd_tree_allocations.nodes.data           + begin_element_index * 2, 0, element_count * 2 };
+			kd_tree.elements = { kd_tree_elements.data + begin_element_index, element_count, element_count };
+			kd_tree.element_indices.count = element_count;
+			kd_tree.nodes.count = 0;
 			
 			KdTreeBuildElementsForFaces(mesh, kd_tree, begin_element_index, end_element_index);
 			KdTreeBuildNode(kd_tree.nodes, CreateArrayView(kd_tree.elements), CreateArrayView(kd_tree.element_indices));
@@ -3005,7 +3114,7 @@ static MeshletBuildResult BuildMeshletsForFaceGroups(
 			Array<u32>       group_meshlet_face_prefix_sum   = { meshlet_face_prefix_sum.data   + begin_element_index,     0, element_count };
 			Array<u32>       group_meshlet_corner_prefix_sum = { meshlet_corner_prefix_sum.data + begin_element_index,     0, element_count };
 			
-			BuildMeshletsForFaceGroup(
+			if (element_count != 0) BuildMeshletsForFaceGroup(
 				mesh,
 				kd_tree,
 				begin_element_index,
@@ -3026,8 +3135,6 @@ static MeshletBuildResult BuildMeshletsForFaceGroups(
 			meshlet_group_meshlet_prefix_sum[group_index] = group_meshlet_face_prefix_sum.count;
 			begin_element_index = end_element_index;
 		}
-		
-		AllocatorFreeMemoryBlocks(thread_allocator, 0);
 	});
 	
 	MDT_ASSERT(meshlet_faces.count == mesh.face_count);
@@ -3037,6 +3144,8 @@ static MeshletBuildResult BuildMeshletsForFaceGroups(
 	u32 corner_prefix_sum  = 0;
 	for (u32 group_index = 0; group_index < meshlet_group_face_prefix_sum.count; group_index += 1) {
 		u32 meshlet_count = meshlet_group_meshlet_prefix_sum[group_index];
+		meshlet_group_meshlet_prefix_sum[group_index] = meshlet_prefix_sum + meshlet_count;
+		if (meshlet_count == 0) continue;
 		
 		u32 begin_element_index = group_index ? meshlet_group_face_prefix_sum[group_index - 1] : 0;
 		u32 end_element_index   = meshlet_group_face_prefix_sum[group_index];
@@ -3053,21 +3162,21 @@ static MeshletBuildResult BuildMeshletsForFaceGroups(
 		
 		u32 corner_count = group_meshlet_corner_prefix_sum[meshlet_count - 1];
 		
-		for (u32 i = begin_element_index; i < end_element_index; i += 1) {
+		for (u32 element_index = begin_element_index; element_index < end_element_index; element_index += 1) {
 			// Translate meshlet index within the group to a global meshlet index.
-			kd_tree_allocations.elements[i].partition_index += meshlet_prefix_sum;
+			kd_tree_elements[element_index].partition_index += meshlet_prefix_sum;
 		}
 		
-		for (u32 i = 0; i < meshlet_count; i += 1, meshlet_prefix_sum += 1) {
-			meshlet_face_prefix_sum[meshlet_prefix_sum]   = group_meshlet_face_prefix_sum[i]   + face_prefix_sum;
-			meshlet_corner_prefix_sum[meshlet_prefix_sum] = group_meshlet_corner_prefix_sum[i] + corner_prefix_sum;
+		for (u32 meshlet_index = 0; meshlet_index < meshlet_count; meshlet_index += 1) {
+			meshlet_face_prefix_sum[meshlet_prefix_sum   + meshlet_index] = group_meshlet_face_prefix_sum[meshlet_index]   + face_prefix_sum;
+			meshlet_corner_prefix_sum[meshlet_prefix_sum + meshlet_index] = group_meshlet_corner_prefix_sum[meshlet_index] + corner_prefix_sum;
 		}
-		meshlet_group_meshlet_prefix_sum[group_index] = meshlet_prefix_sum;
 		
 		memmove(meshlet_corners.data + corner_prefix_sum, group_meshlet_corners.data, corner_count * sizeof(CornerID));
 		
-		face_prefix_sum   += face_count;
-		corner_prefix_sum += corner_count;
+		face_prefix_sum    += face_count;
+		corner_prefix_sum  += corner_count;
+		meshlet_prefix_sum += meshlet_count;
 	}
 	meshlet_face_prefix_sum.count   = meshlet_prefix_sum;
 	meshlet_corner_prefix_sum.count = meshlet_prefix_sum;
@@ -3149,7 +3258,7 @@ static MeshletBuildResult BuildMeshletsForFaceGroups(
 		CreateArrayView(corner_list_around_vertex_prefix_sum),
 		result.meshlet_corners,
 		result.meshlet_corner_prefix_sum,
-		CreateArrayView(kd_tree_allocations.elements)
+		CreateArrayView(kd_tree_elements)
 	);
 	
 	return result;
@@ -3166,13 +3275,15 @@ static MeshletAdjacency BuildMeshletAdjacency(
 	
 	MDT_PROFILER_SCOPE("BuildMeshletAdjacency");
 	
+	auto temp_allocator = CopyAllocator(allocator);
+	
 	FixedSizeArray<VertexID, meshlet_max_vertex_count> counted_vertex_ids;
 	
 	Array<u8> is_vertex_counted;
-	ArrayResizeMemset(is_vertex_counted, allocator, mesh.vertex_count, 0);
+	ArrayResizeMemset(is_vertex_counted, temp_allocator, mesh.vertex_count, 0);
 	
 	Array<u32> meshlet_adjacency_info_indices;
-	ArrayResizeMemset(meshlet_adjacency_info_indices, allocator, meshlet_corner_prefix_sum.count, 0xFF);
+	ArrayResizeMemset(meshlet_adjacency_info_indices, temp_allocator, meshlet_corner_prefix_sum.count, 0xFF);
 	
 	Array<u32> meshlet_adjacency_prefix_sum;
 	ArrayReserve(meshlet_adjacency_prefix_sum, allocator, meshlet_corner_prefix_sum.count);
@@ -3187,7 +3298,7 @@ static MeshletAdjacency BuildMeshletAdjacency(
 		// At least reserve one meshlet per face edge. Do this upfront instead of adding code in the inner loop to improve performance.
 		compile_const u32 reserve_size = meshlet_max_face_count * meshlet_max_face_degree;
 		if (meshlet_adjacency_infos.count + reserve_size >= meshlet_adjacency_infos.capacity) {
-			ArrayReserve(meshlet_adjacency_infos, allocator, ArrayComputeNewCapacity(meshlet_adjacency_infos.capacity, meshlet_adjacency_infos.capacity + reserve_size));
+			ArrayGrow(meshlet_adjacency_infos, allocator, ArrayComputeNewCapacity(meshlet_adjacency_infos.capacity, meshlet_adjacency_infos.capacity + reserve_size));
 		}
 		
 		u32 begin_adjacency_info_index = meshlet_adjacency_infos.count;
@@ -3297,9 +3408,11 @@ struct MeshletGroupBuildResult {
 static MeshletGroupBuildResult BuildMeshletGroups(Allocator& allocator, ArrayView<MdtMeshlet> meshlets, MeshletAdjacency meshlet_adjacency) {
 	MDT_PROFILER_SCOPE("BuildMeshletGroups");
 	
+	auto temp_allocator = CopyAllocator(allocator);
+	
 	KdTree kd_tree;
-	KdTreeBuildElementsForMeshlets(meshlets, allocator, kd_tree.elements);
-	KdTreeBuild(kd_tree, allocator);
+	KdTreeBuildElementsForMeshlets(meshlets, temp_allocator, kd_tree.elements);
+	KdTreeBuild(kd_tree, temp_allocator);
 	
 	FixedSizeArray<u32, meshlet_group_max_meshlet_count> meshlet_group;
 	
@@ -3417,17 +3530,13 @@ static MeshletGroupBuildResult BuildMeshletGroups(Allocator& allocator, ArrayVie
 	return result;
 }
 
-static void BuildInitialFaceGroupsRecursive(Array<u32>& meshlet_group_face_prefix_sum, ArrayView<u32> face_morton_codes, u32 current_bit, u32 begin_index, u32 end_index) {
+static void BuildInitialFaceGroupsRecursive(Array<u32>& meshlet_group_face_prefix_sum, Allocator& allocator, ArrayView<u32> face_morton_codes, u32 current_bit, u32 begin_index, u32 end_index) {
 	MDT_PROFILER_SCOPE("BuildInitialFaceGroupsRecursive");
 	
-	// Larger groups generally give higher quality results, but since there are less
-	// of them they don't get distrubuted across threads as well as smaller groups.
-	compile_const u32 max_initial_group_size = meshlet_group_max_meshlet_count * meshlet_max_face_count;
-	
-	if (end_index - begin_index <= max_initial_group_size || current_bit == 0) {
-		ArrayAppend(meshlet_group_face_prefix_sum, end_index);
+	if (end_index - begin_index <= target_initial_group_size || current_bit == 0) {
+		ArrayAppendMaybeGrow(meshlet_group_face_prefix_sum, allocator, end_index);
 	} else if ((face_morton_codes[begin_index] & current_bit) == (face_morton_codes[end_index - 1] & current_bit)) {
-		BuildInitialFaceGroupsRecursive(meshlet_group_face_prefix_sum, face_morton_codes, current_bit >> 1, begin_index, end_index);
+		BuildInitialFaceGroupsRecursive(meshlet_group_face_prefix_sum, allocator, face_morton_codes, current_bit >> 1, begin_index, end_index);
 	} else {
 		u32 l0 = begin_index;
 		u32 l1 = end_index - 1;
@@ -3443,24 +3552,25 @@ static void BuildInitialFaceGroupsRecursive(Array<u32>& meshlet_group_face_prefi
 			}
 		}
 		
-		BuildInitialFaceGroupsRecursive(meshlet_group_face_prefix_sum, face_morton_codes, current_bit >> 1, begin_index, l0);
-		BuildInitialFaceGroupsRecursive(meshlet_group_face_prefix_sum, face_morton_codes, current_bit >> 1, l0, end_index);
+		BuildInitialFaceGroupsRecursive(meshlet_group_face_prefix_sum, allocator, face_morton_codes, current_bit >> 1, begin_index, l0);
+		BuildInitialFaceGroupsRecursive(meshlet_group_face_prefix_sum, allocator, face_morton_codes, current_bit >> 1, l0, end_index);
 	}
 }
 
 static void BuildInitialFaceGroups(const IndexedMeshView& mesh, Array<u32>& meshlet_group_face_prefix_sum, Allocator& allocator) {
 	MDT_PROFILER_SCOPE("BuildInitialFaceGroups");
-	u32 allocator_high_water = allocator.memory_block_count;
+	
+	auto temp_allocator = CopyAllocator(allocator);
 	
 	Array<u32> face_morton_codes;
 	Array<u32> face_morton_codes_swap;
 	Array<u32> face_indices;
 	Array<u32> face_indices_swap;
 	
-	ArrayResize(face_indices, allocator, mesh.face_count);
-	ArrayResize(face_indices_swap, allocator, mesh.face_count);
-	ArrayResize(face_morton_codes, allocator, mesh.face_count);
-	ArrayResize(face_morton_codes_swap, allocator, mesh.face_count);
+	ArrayResize(face_indices, temp_allocator, mesh.face_count);
+	ArrayResize(face_indices_swap, temp_allocator, mesh.face_count);
+	ArrayResize(face_morton_codes, temp_allocator, mesh.face_count);
+	ArrayResize(face_morton_codes_swap, temp_allocator, mesh.face_count);
 	
 	auto aabb_min = Vector3{ +FLT_MAX, +FLT_MAX, +FLT_MAX };
 	auto aabb_max = Vector3{ -FLT_MAX, -FLT_MAX, -FLT_MAX };
@@ -3549,7 +3659,7 @@ static void BuildInitialFaceGroups(const IndexedMeshView& mesh, Array<u32>& mesh
 		face_morton_codes.data = face_morton_codes_swap_data;
 	}
 	
-	BuildInitialFaceGroupsRecursive(meshlet_group_face_prefix_sum, CreateArrayView(face_morton_codes), 1u << (morton_code_bit_count - 1), 0, face_morton_codes.count);
+	BuildInitialFaceGroupsRecursive(meshlet_group_face_prefix_sum, allocator, CreateArrayView(face_morton_codes), 1u << (morton_code_bit_count - 1), 0, face_morton_codes.count);
 	
 	{
 		MDT_PROFILER_SCOPE("ReorderFaces");
@@ -3557,9 +3667,9 @@ static void BuildInitialFaceGroups(const IndexedMeshView& mesh, Array<u32>& mesh
 		Array<VertexID> face_vertex_ids;
 		Array<AttributesID> face_attribute_ids;
 		Array<u32> face_geometry_indices;
-		ArrayResize(face_vertex_ids, allocator, face_indices.count * 3);
-		ArrayResize(face_attribute_ids, allocator, face_indices.count * 3);
-		ArrayResize(face_geometry_indices, allocator, face_indices.count);
+		ArrayResize(face_vertex_ids, temp_allocator, face_indices.count * 3);
+		ArrayResize(face_attribute_ids, temp_allocator, face_indices.count * 3);
+		ArrayResize(face_geometry_indices, temp_allocator, face_indices.count);
 		
 		for (u32 output_face_index = 0; output_face_index < face_indices.count; output_face_index += 1) {
 			u32 src_face_index = face_indices[output_face_index];
@@ -3573,8 +3683,6 @@ static void BuildInitialFaceGroups(const IndexedMeshView& mesh, Array<u32>& mesh
 		memcpy(mesh.face_attribute_ids, face_attribute_ids.data, face_attribute_ids.count * sizeof(AttributesID));
 		memcpy(mesh.face_geometry_indices, face_geometry_indices.data, face_geometry_indices.count * sizeof(u32));
 	}
-	
-	AllocatorFreeMemoryBlocks(allocator, allocator_high_water);
 }
 
 static void ConvertMeshletGroupsToFaceGroups(
@@ -3587,23 +3695,28 @@ static void ConvertMeshletGroupsToFaceGroups(
 	
 	MDT_PROFILER_SCOPE("ConvertMeshletGroupsToFaceGroups");
 	
-	MDT_ASSERT(meshlet_group_face_prefix_sum.capacity >= meshlet_build_result.meshlet_faces.count);
-	MDT_ASSERT(meshlet_group_error_metrics.capacity   >= meshlet_build_result.meshlet_faces.count);
-	
 	meshlet_group_face_prefix_sum.count = 0;
 	meshlet_group_error_metrics.count   = 0;
 	
-	u32 allocator_high_water = allocator.memory_block_count;
+	if (meshlet_group_face_prefix_sum.capacity < meshlet_build_result.meshlet_faces.count) {
+		ArrayGrow(meshlet_group_face_prefix_sum, allocator, meshlet_build_result.meshlet_faces.count);
+	}
+	
+	if (meshlet_group_error_metrics.capacity < meshlet_build_result.meshlet_faces.count) {
+		ArrayGrow(meshlet_group_error_metrics, allocator, meshlet_build_result.meshlet_faces.count);
+	}
 	
 	{
 		MDT_PROFILER_SCOPE("ReorderFaces");
 		
+		auto temp_allocator = CopyAllocator(allocator);
+		
 		Array<VertexID> face_vertex_ids;
 		Array<AttributesID> face_attribute_ids;
 		Array<u32> face_geometry_indices;
-		ArrayResize(face_vertex_ids, allocator, meshlet_build_result.meshlet_faces.count * 3);
-		ArrayResize(face_attribute_ids, allocator, meshlet_build_result.meshlet_faces.count * 3);
-		ArrayResize(face_geometry_indices, allocator, meshlet_build_result.meshlet_faces.count);
+		ArrayResize(face_vertex_ids, temp_allocator, meshlet_build_result.meshlet_faces.count * 3);
+		ArrayResize(face_attribute_ids, temp_allocator, meshlet_build_result.meshlet_faces.count * 3);
+		ArrayResize(face_geometry_indices, temp_allocator, meshlet_build_result.meshlet_faces.count);
 		
 		u32 group_meshlet_begin_index = 0;
 		for (u32 group_index = 0, output_face_index = 0; group_index < meshlet_group_build_result.prefix_sum.count; group_index += 1) {
@@ -3631,8 +3744,6 @@ static void ConvertMeshletGroupsToFaceGroups(
 		memcpy(mesh.face_attribute_ids, face_attribute_ids.data, face_attribute_ids.count * sizeof(AttributesID));
 		memcpy(mesh.face_geometry_indices, face_geometry_indices.data, face_geometry_indices.count * sizeof(u32));
 	}
-	
-	AllocatorFreeMemoryBlocks(allocator, allocator_high_water);
 	
 	
 	u32 group_meshlet_begin_index = 0;
@@ -3672,15 +3783,23 @@ static void ConvertMeshletGroupsToFaceGroups(
 	}
 }
 
-static void AppendNewMeshletsAndMeshletGroups(Allocator& heap_allocator, MeshletBuildResult meshlet_build_result, MeshletGroupBuildResult meshlet_group_build_result, Array<MdtErrorMetric> meshlet_group_error_metrics, Array<MdtMeshletGroup>& meshlet_groups, Array<MdtMeshlet>& meshlets, u32 level_index) {
+static void AppendNewMeshletsAndMeshletGroups(
+	Allocator& output_allocator,
+	MeshletBuildResult meshlet_build_result,
+	MeshletGroupBuildResult meshlet_group_build_result,
+	Array<MdtErrorMetric> meshlet_group_error_metrics,
+	Array<MdtMeshletGroup>& meshlet_groups,
+	Array<MdtMeshlet>& meshlets,
+	u32 level_index) {
+	
 	MDT_PROFILER_SCOPE("AppendNewMeshletsAndMeshletGroups");
 	
 	if (meshlet_groups.capacity == 0) {
-		ArrayReserve(meshlet_groups, heap_allocator, meshlet_group_build_result.prefix_sum.count * 4);
+		ArrayReserve(meshlet_groups, output_allocator, meshlet_group_build_result.prefix_sum.count * 4);
 	}
 	
 	if (meshlets.capacity == 0) {
-		ArrayReserve(meshlets, heap_allocator, meshlet_build_result.meshlets.count * 4);
+		ArrayReserve(meshlets, output_allocator, meshlet_build_result.meshlets.count * 4);
 	}
 	
 	u32 meshlet_group_base_index = meshlet_groups.count;
@@ -3708,7 +3827,7 @@ static void AppendNewMeshletsAndMeshletGroups(Allocator& heap_allocator, Meshlet
 			
 			ArrayAppend(meshlet_sphere_bounds, meshlet.geometric_sphere_bounds);
 			
-			ArrayAppendMaybeGrow(meshlets, heap_allocator, meshlet);
+			ArrayAppendMaybeGrow(meshlets, output_allocator, meshlet);
 		}
 		u32 end_meshlet_index = meshlets.count;
 		
@@ -3722,18 +3841,20 @@ static void AppendNewMeshletsAndMeshletGroups(Allocator& heap_allocator, Meshlet
 		meshlet_group.end_meshlet_index       = end_meshlet_index;
 		meshlet_group.level_of_detail_index   = level_index;
 		
-		ArrayAppendMaybeGrow(meshlet_groups, heap_allocator, meshlet_group);
+		ArrayAppendMaybeGrow(meshlet_groups, output_allocator, meshlet_group);
 		
 		group_meshlet_begin_index = group_meshlet_end_index;
 	}
 }
 
 
-static ArrayView<FaceID> CreateMeshFaceRemap(IndexedMeshView& mesh, Allocator& allocator) {
-	MDT_PROFILER_SCOPE("CreateMeshFaceRemap");
+static void CompactMeshletGroupFaces(IndexedMeshView& mesh, Allocator& allocator, Array<u32>& meshlet_group_face_prefix_sum) {
+	MDT_PROFILER_SCOPE("CompactMeshletGroupFaces");
+	
+	auto temp_allocator = CopyAllocator(allocator);
 	
 	Array<FaceID> old_face_id_to_new_face_id;
-	ArrayResize(old_face_id_to_new_face_id, allocator, mesh.face_count);
+	ArrayResize(old_face_id_to_new_face_id, temp_allocator, mesh.face_count);
 	
 	u32 old_face_count = old_face_id_to_new_face_id.count;
 	u32 new_face_count = 0;
@@ -3754,14 +3875,7 @@ static ArrayView<FaceID> CreateMeshFaceRemap(IndexedMeshView& mesh, Allocator& a
 	}
 	mesh.face_count = new_face_count;
 	
-	return CreateArrayView(old_face_id_to_new_face_id);
-}
-
-static void CompactMeshletGroupFaces(ArrayView<FaceID> old_face_id_to_new_face_id, Array<u32>& meshlet_group_face_prefix_sum) {
-	MDT_PROFILER_SCOPE("CompactMeshletGroupFaces");
-	
 	u32 new_prefix_sum = 0;
-	
 	u32 begin_face_index = 0;
 	for (u32 group_index = 0; group_index < meshlet_group_face_prefix_sum.count; group_index += 1) {
 		u32 end_face_index = meshlet_group_face_prefix_sum[group_index];
@@ -3779,7 +3893,7 @@ static void CompactMeshletGroupFaces(ArrayView<FaceID> old_face_id_to_new_face_i
 // TODO: We could write this data directly into the output buffers from BuildMeshletsForFaceGroups.
 static void BuildMeshletVertexAndIndexBuffers(
 	const IndexedMeshView& mesh,
-	Allocator& heap_allocator,
+	Allocator& output_allocator,
 	MeshletBuildResult meshlet_build_result,
 	Array<u32> attributes_id_to_vertex_index,
 	Array<u32>& meshlet_vertex_indices,
@@ -3789,12 +3903,12 @@ static void BuildMeshletVertexAndIndexBuffers(
 	auto meshlet_corner_prefix_sum = meshlet_build_result.meshlet_corner_prefix_sum;
 	
 	if (meshlet_vertex_indices.count + meshlet_build_result.meshlet_corners.count > meshlet_vertex_indices.capacity) {
-		ArrayGrow(meshlet_vertex_indices, heap_allocator, ArrayComputeNewCapacity(meshlet_vertex_indices.capacity, meshlet_vertex_indices.count + meshlet_build_result.meshlet_corners.count));
+		ArrayGrow(meshlet_vertex_indices, output_allocator, ArrayComputeNewCapacity(meshlet_vertex_indices.capacity, meshlet_vertex_indices.count + meshlet_build_result.meshlet_corners.count));
 	}
 	
 	u32 new_meshlets_triangle_count = (meshlet_build_result.meshlet_triangles.count / 3);
 	if (meshlet_triangles.count + new_meshlets_triangle_count > meshlet_triangles.capacity) {
-		ArrayGrow(meshlet_triangles, heap_allocator, ArrayComputeNewCapacity(meshlet_triangles.capacity, meshlet_triangles.count + new_meshlets_triangle_count));
+		ArrayGrow(meshlet_triangles, output_allocator, ArrayComputeNewCapacity(meshlet_triangles.capacity, meshlet_triangles.count + new_meshlets_triangle_count));
 	}
 	
 	u32 begin_corner_index = 0;
@@ -3810,7 +3924,7 @@ static void BuildMeshletVertexAndIndexBuffers(
 			ArrayAppend(meshlet_vertex_indices, vertex_index);
 		}
 		u32 end_vertex_indices_index = meshlet_vertex_indices.count;
-
+		
 		auto& meshlet = meshlet_build_result.meshlets[meshlet_index];
 		meshlet.begin_vertex_indices_index = begin_vertex_indices_index;
 		meshlet.end_vertex_indices_index   = end_vertex_indices_index;
@@ -3830,7 +3944,7 @@ static void BuildMeshletVertexAndIndexBuffers(
 			triangle.i0 = meshlet_build_result.meshlet_triangles[face_index * 3 + 0];
 			triangle.i1 = meshlet_build_result.meshlet_triangles[face_index * 3 + 1];
 			triangle.i2 = meshlet_build_result.meshlet_triangles[face_index * 3 + 2];
-
+			
 			ArrayAppend(meshlet_triangles, triangle);
 		}
 		u32 end_meshlet_triangles_index = meshlet_triangles.count;
@@ -3843,27 +3957,46 @@ static void BuildMeshletVertexAndIndexBuffers(
 	}
 }
 
+static void CreateAttributeToVertexMapping(const IndexedMeshView& mesh, Array<u8> changed_vertex_mask, Array<VertexID>& attributes_id_to_vertex_id) {
+	for (u32 corner_index = 0; corner_index < mesh.face_count * 3; corner_index += 1) {
+		auto vertex_id = mesh.face_vertex_ids[corner_index];
+		if (vertex_id.index == u32_max || changed_vertex_mask[vertex_id.index] == 0) continue;
+		
+		auto attributes_id = mesh.face_attribute_ids[corner_index];
+		attributes_id_to_vertex_id[attributes_id.index] = vertex_id;
+	}
+}
+
+static void CreateAttributeToVertexMapping(const EditableMeshView& mesh, Array<u8> changed_vertex_mask, Array<VertexID>& attributes_id_to_vertex_id) {
+	for (VertexID vertex_id = { 0 }; vertex_id.index < mesh.vertex_count; vertex_id.index += 1) {
+		auto& vertex = mesh[vertex_id];
+		if (vertex.corner_list_base.index == u32_max)  continue;
+		if (changed_vertex_mask[vertex_id.index] == 0) continue;
+		
+		IterateCornerList<VertexID>(mesh, vertex.corner_list_base, [&](CornerID corner_id) {
+			auto attributes_ids = mesh[corner_id].attributes_id;
+			attributes_id_to_vertex_id[attributes_ids.index] = vertex_id;
+		});
+	}
+}
+
+template<typename MeshViewT>
 static void AppendChangedVertices(
-	const IndexedMeshView& mesh,
-	Allocator& allocator,
-	Allocator& heap_allocator,
+	const MeshViewT& mesh,
+	Allocator& output_allocator,
 	Array<u8> changed_vertex_mask,
 	Array<u32> attributes_id_to_vertex_index,
 	Array<float>& vertices) {
 	MDT_PROFILER_SCOPE("AppendChangedVertices");
 	
+	auto temp_allocator = CopyAllocator(output_allocator);
+	
 	Array<VertexID> attributes_id_to_vertex_id;
-	ArrayResizeMemset(attributes_id_to_vertex_id, allocator, mesh.attribute_count, 0xFF);
-
-	for (u32 corner_index = 0; corner_index < mesh.face_count * 3; corner_index += 1) {
-		auto vertex_id = mesh.face_vertex_ids[corner_index];
-		if (vertex_id.index == u32_max || changed_vertex_mask[vertex_id.index] == 0) continue;
-
-		auto attributes_id = mesh.face_attribute_ids[corner_index];
-		attributes_id_to_vertex_id[attributes_id.index] = vertex_id;
-	}
+	ArrayResizeMemset(attributes_id_to_vertex_id, temp_allocator, mesh.attribute_count, 0xFF);
+	
+	CreateAttributeToVertexMapping(mesh, changed_vertex_mask, attributes_id_to_vertex_id);
 	memset(changed_vertex_mask.data, 0, changed_vertex_mask.count);
-
+	
 	u32 changed_vertex_count = 0;
 	for (AttributesID attributes_id = { 0 }; attributes_id.index < mesh.attribute_count; attributes_id.index += 1) {
 		auto vertex_id = attributes_id_to_vertex_id[attributes_id.index];
@@ -3875,7 +4008,7 @@ static void AppendChangedVertices(
 	u32 new_array_size          = vertices.count + changed_vertex_count * vertex_stride_dwords;
 	
 	if (new_array_size > vertices.capacity) {
-		ArrayGrow(vertices, heap_allocator, new_array_size * 3 / 2);
+		ArrayGrow(vertices, output_allocator, new_array_size * 3 / 2);
 	}
 	
 	u32 output_vertex_index = vertices.count / vertex_stride_dwords;
@@ -3892,8 +4025,54 @@ static void AppendChangedVertices(
 		memcpy(vertex + 3, mesh[attributes_id], attribute_stride_dwords * sizeof(u32));
 		output_vertex_index += 1;
 	}
-
+	
 	MDT_ASSERT(vertices.count == output_vertex_index * vertex_stride_dwords);
+}
+
+template<typename ElementID>
+static u32 CreateMeshElementRemap(const EditableMeshView& mesh, Array<ElementID> old_element_id_to_new_element_id) {
+	u32 old_element_count = old_element_id_to_new_element_id.count;
+	u32 new_element_count = 0;
+	
+	for (ElementID old_element_id = { 0 }; old_element_id.index < old_element_count; old_element_id.index += 1) {
+		auto element = mesh[old_element_id];
+		
+		ElementID new_element_id = { u32_max };
+		if (element.corner_list_base.index != u32_max) {
+			new_element_id = { new_element_count };
+			new_element_count += 1;
+			
+			mesh[new_element_id] = element;
+		}
+		old_element_id_to_new_element_id[old_element_id.index] = new_element_id;
+	}
+	
+	return new_element_count;
+}
+
+static void CompactMesh(EditableMeshView& mesh, Allocator& allocator) {
+	auto temp_allocator = CopyAllocator(allocator);
+	
+	Array<FaceID> old_face_id_to_new_face_id;
+	ArrayResize(old_face_id_to_new_face_id, temp_allocator, mesh.face_count);
+	
+	Array<EdgeID> old_edge_id_to_new_edge_id;
+	ArrayResize(old_edge_id_to_new_edge_id, temp_allocator, mesh.edge_count);
+	
+	mesh.face_count = CreateMeshElementRemap<FaceID>(mesh, old_face_id_to_new_face_id);
+	mesh.edge_count = CreateMeshElementRemap<EdgeID>(mesh, old_edge_id_to_new_edge_id);
+	
+	// Remap mesh corners.
+	for (u32 i = 0; i < mesh.corner_count; i += 1) {
+		auto& corner = mesh.corners[i];
+		if (corner.face_id.index != u32_max) {
+			corner.face_id = old_face_id_to_new_face_id[corner.face_id.index];
+		}
+		
+		if (corner.edge_id.index != u32_max) {
+			corner.edge_id = old_edge_id_to_new_edge_id[corner.edge_id.index];
+		}
+	}
 }
 
 } // namespace MeshDecimationTools
@@ -3906,11 +4085,8 @@ void MdtBuildContinuousLod(const MdtContinuousLodBuildInputs* inputs, MdtContinu
 	MDT_ASSERT(inputs);
 	MDT_ASSERT(result);
 	
-	Allocator allocator;
-	InitializeAllocator(allocator, callbacks ? &callbacks->temp_allocator : nullptr);
-
-	Allocator heap_allocator;
-	InitializeAllocator(heap_allocator, callbacks ? &callbacks->heap_allocator : nullptr);
+	auto allocator = InitializeAllocator(callbacks);
+	auto output_allocator = CopyAllocator(allocator);
 	
 	auto mesh = BuildIndexedMesh(allocator, inputs->mesh.geometry_descs, inputs->mesh.geometry_desc_count, inputs->mesh.vertex_stride_bytes);
 	
@@ -3919,8 +4095,8 @@ void MdtBuildContinuousLod(const MdtContinuousLodBuildInputs* inputs, MdtContinu
 	
 	Array<u32> meshlet_group_face_prefix_sum;
 	Array<MdtErrorMetric> meshlet_group_error_metrics;
-	ArrayReserve(meshlet_group_face_prefix_sum, allocator, mesh.face_count);
-	ArrayReserve(meshlet_group_error_metrics, allocator, mesh.face_count);
+	ArrayReserve(meshlet_group_face_prefix_sum, allocator, DivideAndRoundUp(mesh.face_count, target_initial_group_size));
+	ArrayReserve(meshlet_group_error_metrics,   allocator, DivideAndRoundUp(mesh.face_count, target_initial_group_size));
 	
 	// Note that we're not adding an initial error metric to meshlet_group_error_metrics.
 	// Meshlets built from the initial groups will use current_level_error_metric.bounds set to the geometric_sphere_bounds with zero error.
@@ -3943,10 +4119,10 @@ void MdtBuildContinuousLod(const MdtContinuousLodBuildInputs* inputs, MdtContinu
 	ArrayResizeMemset(changed_vertex_mask, allocator, mesh.attribute_count, 0xFF);
 	
 	Array<float> vertices;
-	AppendChangedVertices(mesh, allocator, heap_allocator, changed_vertex_mask, attributes_id_to_vertex_index, vertices);
+	AppendChangedVertices(mesh, output_allocator, changed_vertex_mask, attributes_id_to_vertex_index, vertices);
 	
 	Array<MdtContinuousLodLevel> levels;
-	ArrayReserve(levels, heap_allocator, continuous_lod_max_levels_of_details);
+	ArrayReserve(levels, output_allocator, continuous_lod_max_levels_of_details);
 	
 	Array<MdtMeshletGroup> meshlet_groups;
 	Array<MdtMeshlet>      meshlets;
@@ -3955,12 +4131,12 @@ void MdtBuildContinuousLod(const MdtContinuousLodBuildInputs* inputs, MdtContinu
 	Array<MdtMeshletTriangle> meshlet_triangles;
 	
 	for (u32 level_index = 0; level_index < continuous_lod_max_levels_of_details; level_index += 1) {
-		u32 allocator_high_water = allocator.memory_block_count;
+		auto temp_allocator = CopyAllocator(allocator);
 		
 		auto meshlet_build_result = BuildMeshletsForFaceGroups(
 			mesh,
 			callbacks ? &callbacks->parallel_for : nullptr,
-			allocator,
+			temp_allocator,
 			meshlet_group_face_prefix_sum,
 			meshlet_group_error_metrics,
 			meshlet_target_face_count,
@@ -3970,7 +4146,7 @@ void MdtBuildContinuousLod(const MdtContinuousLodBuildInputs* inputs, MdtContinu
 		
 		BuildMeshletVertexAndIndexBuffers(
 			mesh,
-			heap_allocator,
+			output_allocator,
 			meshlet_build_result,
 			attributes_id_to_vertex_index,
 			meshlet_vertex_indices,
@@ -3979,7 +4155,7 @@ void MdtBuildContinuousLod(const MdtContinuousLodBuildInputs* inputs, MdtContinu
 		
 		
 		auto meshlet_group_build_result = BuildMeshletGroups(
-			allocator,
+			temp_allocator,
 			meshlet_build_result.meshlets,
 			meshlet_build_result.meshlet_adjacency
 		);
@@ -4000,20 +4176,18 @@ void MdtBuildContinuousLod(const MdtContinuousLodBuildInputs* inputs, MdtContinu
 		if (is_last_level == false) {
 			DecimateMeshFaceGroups(
 				mesh,
-				allocator,
-				heap_allocator,
+				temp_allocator,
 				inputs->mesh,
 				callbacks ? &callbacks->parallel_for : nullptr,
 				meshlet_group_face_prefix_sum,
 				meshlet_group_error_metrics,
-				changed_vertex_mask
+				CreateArrayView(changed_vertex_mask)
 			);
 			
-			AppendChangedVertices(mesh, allocator, heap_allocator, changed_vertex_mask, attributes_id_to_vertex_index, vertices);
+			AppendChangedVertices(mesh, output_allocator, changed_vertex_mask, attributes_id_to_vertex_index, vertices);
 			
 			// Compact the mesh after decimation to remove unused faces and edges.
-			auto remap = CreateMeshFaceRemap(mesh, allocator);
-			CompactMeshletGroupFaces(remap, meshlet_group_face_prefix_sum);
+			CompactMeshletGroupFaces(mesh, temp_allocator, meshlet_group_face_prefix_sum);
 		} else {
 			// There is no coarser version of the mesh. Set meshlet group errors to FLT_MAX to make sure LOD
 			// culling test always succeeds for last level meshlets (i.e. coarser level is always too coarse).
@@ -4026,7 +4200,7 @@ void MdtBuildContinuousLod(const MdtContinuousLodBuildInputs* inputs, MdtContinu
 		
 		meshlet_group_base_index = meshlet_groups.count;
 		AppendNewMeshletsAndMeshletGroups(
-			heap_allocator,
+			output_allocator,
 			meshlet_build_result,
 			meshlet_group_build_result,
 			meshlet_group_error_metrics,
@@ -4038,8 +4212,6 @@ void MdtBuildContinuousLod(const MdtContinuousLodBuildInputs* inputs, MdtContinu
 		level.end_meshlet_groups_index = meshlet_groups.count;
 		level.end_meshlets_index  = meshlets.count;
 		ArrayAppend(levels, level);
-		
-		AllocatorFreeMemoryBlocks(allocator, allocator_high_water);
 		
 		if (is_last_level) break;
 	}
@@ -4056,47 +4228,41 @@ void MdtBuildContinuousLod(const MdtContinuousLodBuildInputs* inputs, MdtContinu
 	result->meshlet_triangle_count = meshlet_triangles.count;
 	result->vertex_count           = vertices.count / (inputs->mesh.vertex_stride_bytes / sizeof(u32));
 	result->level_count            = levels.count;
-	MDT_ASSERT(heap_allocator.memory_block_count == 6);
 	
-	AllocatorFreeMemoryBlocks(allocator);
+	MDT_ASSERT(output_allocator.memory_block_count == 6);
+	output_allocator.memory_block_count = 0;
 }
 
 void MdtFreeContinuousLodBuildResult(const MdtContinuousLodBuildResult* result, const MdtSystemCallbacks* callbacks) {
 	using namespace MeshDecimationTools;
 	
-	Allocator heap_allocator;
-	InitializeAllocator(heap_allocator, callbacks ? &callbacks->heap_allocator : nullptr);
-	
-	heap_allocator.memory_blocks[heap_allocator.memory_block_count++] = result->meshlet_groups;
-	heap_allocator.memory_blocks[heap_allocator.memory_block_count++] = result->meshlets;
-	heap_allocator.memory_blocks[heap_allocator.memory_block_count++] = result->meshlet_vertex_indices;
-	heap_allocator.memory_blocks[heap_allocator.memory_block_count++] = result->meshlet_triangles;
-	heap_allocator.memory_blocks[heap_allocator.memory_block_count++] = result->vertices;
-	heap_allocator.memory_blocks[heap_allocator.memory_block_count++] = result->levels;
-	AllocatorFreeMemoryBlocks(heap_allocator);
+	auto allocator = InitializeAllocator(callbacks);
+	allocator.memory_blocks[allocator.memory_block_count++] = result->meshlet_groups;
+	allocator.memory_blocks[allocator.memory_block_count++] = result->meshlets;
+	allocator.memory_blocks[allocator.memory_block_count++] = result->meshlet_vertex_indices;
+	allocator.memory_blocks[allocator.memory_block_count++] = result->meshlet_triangles;
+	allocator.memory_blocks[allocator.memory_block_count++] = result->vertices;
+	allocator.memory_blocks[allocator.memory_block_count++] = result->levels;
 }
 
 
-void MdtBuildDiscreteLod(const MdtDiscreteLodBuildInputs* /*inputs*/, MdtDiscreteLodBuildResult* /*result*/, const MdtSystemCallbacks* /*callbacks*/) {
+void MdtBuildDiscreteLod(const MdtDiscreteLodBuildInputs* inputs, MdtDiscreteLodBuildResult* result, const MdtSystemCallbacks* callbacks) {
 	using namespace MeshDecimationTools;
+	MDT_PROFILER_SCOPE("MdtBuildDiscreteLod");
 	
-#if 0
 	MDT_ASSERT(inputs);
 	MDT_ASSERT(result);
 	
-	Allocator allocator;
-	InitializeAllocator(allocator, callbacks ? &callbacks->temp_allocator : nullptr);
-
-	Allocator heap_allocator;
-	InitializeAllocator(heap_allocator, callbacks ? &callbacks->heap_allocator : nullptr);
+	auto allocator = InitializeAllocator(callbacks);
+	auto output_allocator = CopyAllocator(allocator);
 	
 	auto mesh = BuildEditableMesh(allocator, inputs->mesh.geometry_descs, inputs->mesh.geometry_desc_count, inputs->mesh.vertex_stride_bytes);
 	
 	Array<MdtDecimatedGeometryDesc> geometry_descs;
-	ArrayResize(geometry_descs, heap_allocator, inputs->mesh.geometry_desc_count * inputs->level_of_detail_count);
+	ArrayResize(geometry_descs, output_allocator, inputs->mesh.geometry_desc_count * inputs->level_of_detail_count);
 	
 	Array<MdtDiscreteLodLevel> level_of_detail_result_descs;
-	ArrayResize(level_of_detail_result_descs, heap_allocator, inputs->level_of_detail_count);
+	ArrayResize(level_of_detail_result_descs, output_allocator, inputs->level_of_detail_count);
 	
 	Array<u32> attributes_id_to_vertex_index;
 	ArrayResizeMemset(attributes_id_to_vertex_index, allocator, mesh.attribute_count, 0xFF);
@@ -4110,36 +4276,38 @@ void MdtBuildDiscreteLod(const MdtDiscreteLodBuildInputs* /*inputs*/, MdtDiscret
 	for (u32 level_index = 0; level_index < inputs->level_of_detail_count; level_index += 1) {
 		auto& level_of_detail_target = inputs->level_of_detail_descs[level_index];
 		
-		u32 allocator_high_water = allocator.memory_block_count;
+		// Level of detail 0 commonly has the same number of faces as the source mesh.
+		bool should_decimate_level = level_of_detail_target.target_face_count < mesh.face_count;
 		
 		float max_error = 0.f;
-		// Level of detail 0 commonly has the same number of faces as the source mesh.
-		if (level_of_detail_target.target_face_count < mesh.face_count) {
-			u32 heap_allocator_high_water = heap_allocator.memory_block_count;
+		if (should_decimate_level) {
+			auto temp_allocator = CopyAllocator(allocator);
 			
 			MeshDecimationState state;
-			InitializeMeshDecimationState(mesh, inputs->mesh, allocator, heap_allocator, state);
-			
+			AllocateMeshDecimationState(mesh.vertex_count, mesh.attribute_count, mesh.attribute_stride_dwords, temp_allocator, state);
+			InitializeMeshDecimationState(mesh, inputs->mesh, state);
 			
 			EdgeCollapseHeap edge_collapse_heap;
-			ArrayResize(edge_collapse_heap.edge_collapse_errors,  allocator, mesh.edge_count);
-			ArrayResize(edge_collapse_heap.edge_id_to_heap_index, allocator, mesh.edge_count);
-			ArrayResize(edge_collapse_heap.heap_index_to_edge_id, allocator, mesh.edge_count);
-			
-			for (EdgeID edge_id = { 0 }; edge_id.index < mesh.edge_count; edge_id.index += 1) {
-				auto collapse_error = ComputeEdgeCollapseError(mesh, heap_allocator, state, edge_id);
+			{
+				MDT_PROFILER_SCOPE("BuildEdgeCollapseHeap");
 				
-				edge_collapse_heap.edge_collapse_errors[edge_id.index]  = collapse_error.min_error;
-				edge_collapse_heap.edge_id_to_heap_index[edge_id.index] = edge_id.index;
-				edge_collapse_heap.heap_index_to_edge_id[edge_id.index] = edge_id;
+				ArrayResize(edge_collapse_heap.edge_collapse_errors,  temp_allocator, mesh.edge_count);
+				ArrayResize(edge_collapse_heap.edge_id_to_heap_index, temp_allocator, mesh.edge_count);
+				ArrayResize(edge_collapse_heap.heap_index_to_edge_id, temp_allocator, mesh.edge_count);
+				
+				for (EdgeID edge_id = { 0 }; edge_id.index < mesh.edge_count; edge_id.index += 1) {
+					auto collapse_error = ComputeEdgeCollapseError(mesh, temp_allocator, state, edge_id);
+					
+					edge_collapse_heap.edge_collapse_errors[edge_id.index]  = collapse_error.min_error;
+					edge_collapse_heap.edge_id_to_heap_index[edge_id.index] = edge_id.index;
+					edge_collapse_heap.heap_index_to_edge_id[edge_id.index] = edge_id;
+				}
+				EdgeCollapseHeapInitialize(edge_collapse_heap);
 			}
-			
-			EdgeCollapseHeapInitialize(edge_collapse_heap);
-			
 			
 			max_error = DecimateMeshFaceGroup(
 				mesh,
-				heap_allocator,
+				temp_allocator,
 				state,
 				edge_collapse_heap,
 				inputs->mesh.normalize_vertex_attributes,
@@ -4148,36 +4316,35 @@ void MdtBuildDiscreteLod(const MdtDiscreteLodBuildInputs* /*inputs*/, MdtDiscret
 				mesh.face_count,
 				level_of_detail_target.target_error_limit
 			);
-			
-			AllocatorFreeMemoryBlocks(heap_allocator, heap_allocator_high_water);
 		}
 		
-		AppendChangedVertices(mesh, allocator, heap_allocator, changed_vertex_mask, attributes_id_to_vertex_index, vertices);
+		if (should_decimate_level || level_index == 0) {
+			AppendChangedVertices(mesh, output_allocator, changed_vertex_mask, attributes_id_to_vertex_index, vertices);
+		}
 		
-		CompactMesh(mesh, allocator);
-		
-		AllocatorFreeMemoryBlocks(allocator, allocator_high_water);
-		
+		if (should_decimate_level) {
+			CompactMesh(mesh, allocator);
+		}
 		
 		if (indices.count + mesh.face_count * 3 > indices.capacity) {
-			ArrayGrow(indices, heap_allocator, ArrayComputeNewCapacity(indices.capacity, indices.count + mesh.face_count * 3));
+			ArrayGrow(indices, output_allocator, ArrayComputeNewCapacity(indices.capacity, indices.count + mesh.face_count * 3));
 		}
 		
 		auto& level_of_detail_result = level_of_detail_result_descs[level_index];
-		level_of_detail_result.max_error = max_error;
+		level_of_detail_result.max_error            = max_error;
 		level_of_detail_result.begin_geometry_index = level_index * inputs->mesh.geometry_desc_count;
 		level_of_detail_result.end_geometry_index   = level_of_detail_result.begin_geometry_index + inputs->mesh.geometry_desc_count;
 		
 		auto level_geometry_descs = CreateArrayView(geometry_descs, level_of_detail_result.begin_geometry_index, level_of_detail_result.end_geometry_index);
 		
-		u32 geometry_index = u32_max;
+		u32 geometry_index = invalid_geometry_index;
 		for (FaceID face_id = { 0 }; face_id.index < mesh.face_count; face_id.index += 1) {
 			auto& face = mesh[face_id];
 			
 			if (geometry_index != face.geometry_index) {
-				MDT_ASSERT(geometry_index == u32_max || geometry_index < face.geometry_index);
+				MDT_ASSERT(geometry_index == invalid_geometry_index || geometry_index < face.geometry_index);
 				
-				if (geometry_index != u32_max) {
+				if (geometry_index != invalid_geometry_index) {
 					auto& geometry_desc = level_geometry_descs[geometry_index];
 					geometry_desc.end_indices_index = indices.count;
 				}
@@ -4196,13 +4363,11 @@ void MdtBuildDiscreteLod(const MdtDiscreteLodBuildInputs* /*inputs*/, MdtDiscret
 			});
 		}
 		
-		if (geometry_index != u32_max) {
+		if (geometry_index != invalid_geometry_index) {
 			auto& geometry_desc = level_geometry_descs[geometry_index];
 			geometry_desc.end_indices_index = indices.count;
 		}
 	}
-
-	MDT_ASSERT(heap_allocator.memory_block_count == 4);
 	
 	u32 vertex_stride_dwords = (mesh.attribute_stride_dwords + 3);
 	
@@ -4214,22 +4379,18 @@ void MdtBuildDiscreteLod(const MdtDiscreteLodBuildInputs* /*inputs*/, MdtDiscret
 	result->geometry_desc_count   = geometry_descs.count;
 	result->index_count           = indices.count;
 	result->vertex_count          = vertices.count / vertex_stride_dwords;
-	
-	AllocatorFreeMemoryBlocks(allocator);
-#endif
+	MDT_ASSERT(output_allocator.memory_block_count == 4);
+	output_allocator.memory_block_count = 0;
 }
 
 void MdtFreeDiscreteLodBuildResult(const MdtDiscreteLodBuildResult* result, const MdtSystemCallbacks* callbacks) {
 	using namespace MeshDecimationTools;
 	
-	Allocator heap_allocator;
-	InitializeAllocator(heap_allocator, callbacks ? &callbacks->heap_allocator : nullptr);
-	
-	heap_allocator.memory_blocks[heap_allocator.memory_block_count++] = result->level_of_detail_descs;
-	heap_allocator.memory_blocks[heap_allocator.memory_block_count++] = result->geometry_descs;
-	heap_allocator.memory_blocks[heap_allocator.memory_block_count++] = result->indices;
-	heap_allocator.memory_blocks[heap_allocator.memory_block_count++] = result->vertices;
-	AllocatorFreeMemoryBlocks(heap_allocator);
+	auto allocator = InitializeAllocator(callbacks);
+	allocator.memory_blocks[allocator.memory_block_count++] = result->level_of_detail_descs;
+	allocator.memory_blocks[allocator.memory_block_count++] = result->geometry_descs;
+	allocator.memory_blocks[allocator.memory_block_count++] = result->indices;
+	allocator.memory_blocks[allocator.memory_block_count++] = result->vertices;
 }
 
 

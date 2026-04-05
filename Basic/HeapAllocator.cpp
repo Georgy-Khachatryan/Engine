@@ -355,7 +355,6 @@ void* HeapAllocator::Reallocate(void* old_memory, u64 old_size, u64 new_size, u6
 	u64 new_block_size = ComputeBlockSize(new_size, alignment);
 	
 	auto* block = AllocatorBlockFromMemory(old_memory);
-	old_size = block->size;
 	
 	auto* next_block = block->GetNextBlock();
 	if (next_block && next_block->is_free_block) {
