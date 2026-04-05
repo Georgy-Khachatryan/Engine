@@ -449,7 +449,7 @@ void MainCS(uint thread_id : SV_DispatchThreadID, uint thread_index : SV_GroupIn
 	bool has_higher_level_of_detail = false;
 	if (meshlet.current_level_meshlet_group_index != u32_max) {
 		uint higher_detail_group_offset = mesh_asset.meshlet_group_buffer_offset + meshlet.current_level_meshlet_group_index * sizeof(MeshletGroup);
-		has_higher_level_of_detail = mesh_asset_buffer.Load<MeshletGroup>(higher_detail_group_offset).is_resident != 0;
+		has_higher_level_of_detail = mesh_asset_buffer.Load<u16>(higher_detail_group_offset + MeshletGroup::offset_of_is_resident) != 0;
 	}
 	
 	float2 current_level_error_metric = EvaluateMeshletErrorMetric(meshlet.current_level_error_metric, model_to_world);

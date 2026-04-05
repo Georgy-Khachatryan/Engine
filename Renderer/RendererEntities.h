@@ -70,11 +70,6 @@ struct RendererWorld {
 	ArrayView<DebugMeshInstanceArray> debug_mesh_instance_arrays;
 };
 
-struct MeshletStreamingPage;
-struct MeshletStreamingPageOutCommand;
-struct MeshletStreamingPageFileReadCommand;
-struct MeshletStreamingPageInCommand;
-
 NOTES(Meta::HlslFile{ "MeshData.hlsl"_sl })
 struct GpuTransform {
 	float3 position;
@@ -153,7 +148,6 @@ struct CameraEntityQuery {
 };
 
 struct RecordContext;
-struct RendererContext;
 struct AsyncTransferQueue;
 struct ThreadPool;
 void UpdateRendererEntityGpuComponents(StackAllocator* alloc, ThreadPool* thread_pool, AsyncTransferQueue* async_transfer_queue, RecordContext* record_context, AssetEntitySystem& asset_system, Array<GpuComponentUploadBuffer>& gpu_uploads);

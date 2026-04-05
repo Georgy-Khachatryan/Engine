@@ -70,6 +70,20 @@ template<typename T>
 T WaveShuffleXor(T value, uint mask) { return WaveReadLaneAt(value, WaveGetLaneIndex() ^ mask); }
 
 
+// Based on wyhash32 by Wang Yi https://github.com/wangyi-fudan/wyhash/blob/master/wyhash32.h (public domain).
+void WyMix32(inout u32 A, inout u32 B) {
+	u64 c = (u64)(A ^ 0x53C5CA59u) * (u64)(B ^ 0x74743C1Bu);
+	A = (u32)(c >>  0);
+	B = (u32)(c >> 32);
+}
+
+u32 WyHash32(u32 a, u32 b) {
+	WyMix32(a, b);
+	WyMix32(a, b);
+	return a ^ b;
+}
+
+
 //
 // Based on https://fgiesen.wordpress.com/2022/09/09/morton-codes-addendum/
 // See EncodeMorton2_8b_better and DecodeMorton2_8b.
@@ -146,6 +160,48 @@ float BarycentricWireframe(float3 lambda, float3 lambda_ddx, float3 lambda_ddy, 
 	return min(min(wireframe.x, wireframe.y), wireframe.z);
 }
 
+// Based on matplotlib colormaps by mattz https://www.shadertoy.com/view/WlfXRN (public domain).
+float3 ViridisHeatMapSRGB(float t) {
+	float3 c0 = float3(0.2777273272234177, 0.005407344544966578, 0.3340998053353061);
+	float3 c1 = float3(0.1050930431085774, 1.404613529898575, 1.384590162594685);
+	float3 c2 = float3(-0.3308618287255563, 0.214847559468213, 0.09509516302823659);
+	float3 c3 = float3(-4.634230498983486, -5.799100973351585, -19.33244095627987);
+	float3 c4 = float3(6.228269936347081, 14.17993336680509, 56.69055260068105);
+	float3 c5 = float3(4.776384997670288, -13.74514537774601, -65.35303263337234);
+	float3 c6 = float3(-5.435455855934631, 4.645852612178535, 26.3124352495832);
+	return c0 + t * (c1 + t * (c2 + t * (c3 + t * (c4 + t * (c5 + t * c6)))));
+}
+
+float3 PlasmaHeatMapSRGB(float t) {
+	float3 c0 = float3(0.05873234392399702, 0.02333670892565664, 0.5433401826748754);
+	float3 c1 = float3(2.176514634195958, 0.2383834171260182, 0.7539604599784036);
+	float3 c2 = float3(-2.689460476458034, -7.455851135738909, 3.110799939717086);
+	float3 c3 = float3(6.130348345893603, 42.3461881477227, -28.51885465332158);
+	float3 c4 = float3(-11.10743619062271, -82.66631109428045, 60.13984767418263);
+	float3 c5 = float3(10.02306557647065, 71.41361770095349, -54.07218655560067);
+	float3 c6 = float3(-3.658713842777788, -22.93153465461149, 18.19190778539828);
+	return c0 + t * (c1 + t * (c2 + t * (c3 + t * (c4 + t * (c5 + t * c6)))));
+}
+
+float3 ViridisHeatMap(float t) {
+	return DecodeSRGB(ViridisHeatMapSRGB(t));
+}
+
+float3 PlasmaHeatMap(float t) {
+	return DecodeSRGB(PlasmaHeatMapSRGB(t));
+}
+
+// http://lolengine.net/blog/2013/07/27/rgb-to-hsv-in-glsl
+float3 ConvertHSVtoRGB(float3 hsv) {
+	float3 hue = abs(frac(hsv.x + float3(1.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0) - 1.0;
+	return lerp(1.0, saturate(hue), hsv.y) * hsv.z;
+}
+
+float3 RandomColor(uint seed_a, uint seed_b = 0) {
+	u32 hash = WyHash32(seed_a, seed_b);
+	return ConvertHSVtoRGB(float3((hash & 0xFF) * rcp(0xFF), 0.6, 0.7));
+}
+
 
 bool IsPerspectiveMatrix(float4 coefficients)  { return coefficients.w == 0.0; }
 bool IsOrthographicMatrix(float4 coefficients) { return coefficients.w != 0.0; }
@@ -216,8 +272,8 @@ float3 TransformModelToWorldSpace(float3 model_space_position, GpuTransform mode
 	return QuatMul(model_to_world.rotation, model_space_position * model_to_world.scale) + model_to_world.position;
 }
 
-float3 TransformModelToWorldSpaceDirection(float3 model_space_position, GpuTransform model_to_world) {
-	return QuatMul(model_to_world.rotation, model_space_position * model_to_world.scale);
+float3 TransformModelToWorldSpaceDirection(float3 model_space_direction, GpuTransform model_to_world) {
+	return QuatMul(model_to_world.rotation, model_space_direction * model_to_world.scale);
 }
 
 float4 TransformModelToClipSpace(float3 model_space_position, GpuTransform model_to_world, float3x4 world_to_view, float4 view_to_clip_coef) {

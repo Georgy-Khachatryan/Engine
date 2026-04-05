@@ -6,22 +6,22 @@ groupshared uint gs_page_residency_mask[page_residency_mask_size];
 compile_const uint thread_group_size = 256;
 
 [ThreadGroupSize(thread_group_size, 1, 1)]
-void MainCS(uint2 thread_id : SV_DispatchThreadID) {
-	MeshletPageTableUpdateCommand command = commands[thread_id.y];
+void MainCS(uint group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
+	MeshletPageTableUpdateCommand command = commands[group_id];
 	GpuMeshAssetData mesh_asset = mesh_asset_data[command.mesh_asset_index];
 	if (mesh_asset.meshlet_group_buffer_offset == u32_max) return;
 	
 	uint page_residency_mask_offset = mesh_asset.meshlet_group_buffer_offset + mesh_asset.meshlet_group_count * sizeof(MeshletGroup);
 	uint page_table_offset = mesh_asset.meshlet_group_buffer_offset + mesh_asset.meshlet_group_count * sizeof(MeshletGroup) + page_residency_mask_size * sizeof(uint);
 	
-	if (thread_id.x < page_residency_mask_size) {
-		gs_page_residency_mask[thread_id.x] = mesh_asset_buffer.Load(page_residency_mask_offset + thread_id.x * sizeof(uint));
+	if (thread_index < page_residency_mask_size) {
+		gs_page_residency_mask[thread_index] = mesh_asset_buffer.Load(page_residency_mask_offset + thread_index * sizeof(uint));
 	}
 	_Static_assert(page_residency_mask_size <= thread_group_size, "Page residency mask size is too large to be loaded using a single thread group.");
 	
 	GroupMemoryBarrierWithGroupSync();
 	
-	for (uint command_index = thread_id.x; command_index < command.page_list_count; command_index += thread_group_size) {
+	for (uint command_index = thread_index; command_index < command.page_list_count; command_index += thread_group_size) {
 		uint page_command = page_list[command.page_list_offset + command_index];
 		
 		uint asset_page_index   = (page_command & 0xFFFF);
@@ -39,11 +39,11 @@ void MainCS(uint2 thread_id : SV_DispatchThreadID) {
 	
 	GroupMemoryBarrierWithGroupSync();
 	
-	if (thread_id.x < page_residency_mask_size) {
-		mesh_asset_buffer.Store(page_residency_mask_offset + thread_id.x * sizeof(uint), gs_page_residency_mask[thread_id.x]);
+	if (thread_index < page_residency_mask_size) {
+		mesh_asset_buffer.Store(page_residency_mask_offset + thread_index * sizeof(uint), gs_page_residency_mask[thread_index]);
 	}
 	
-	for (uint meshlet_group_index = thread_id.x; meshlet_group_index < mesh_asset.meshlet_group_count; meshlet_group_index += thread_group_size) {
+	for (uint meshlet_group_index = thread_index; meshlet_group_index < mesh_asset.meshlet_group_count; meshlet_group_index += thread_group_size) {
 		uint meshlet_group_offset = mesh_asset.meshlet_group_buffer_offset + meshlet_group_index * sizeof(MeshletGroup);
 		MeshletGroup group = mesh_asset_buffer.Load<MeshletGroup>(meshlet_group_offset);
 		

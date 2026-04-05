@@ -377,7 +377,7 @@ void CmdSetConstantBuffer(RecordContext* record_context, u32 offset, GpuAddress 
 
 void CmdProfilerBeginScope(RecordContext* record_context, String label) {
 	auto& packet = AppendPacket<CmdBeginProfilerScopePacket>(record_context);
-	packet.label =  label;
+	packet.label = label;
 }
 
 void CmdProfilerEndScope(RecordContext* record_context) {

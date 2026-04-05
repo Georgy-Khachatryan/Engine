@@ -259,5 +259,5 @@ void UpdateMeshletPageTableRenderPass::RecordPass(RecordContext* record_context)
 	
 	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
 	
-	CmdDispatch(record_context, 1u, commands_offset);
+	CmdDispatch(record_context, commands_offset);
 }
