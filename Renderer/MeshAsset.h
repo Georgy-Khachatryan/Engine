@@ -49,7 +49,10 @@ struct MeshletPageHeader {
 	compile_const u32 max_page_count = 4096;
 	compile_const u32 runtime_page_count = 1024;
 	
-	u32 meshlet_count = 0;
+	u16 meshlet_count        = 0;
+	u16 total_triangle_count = 0; 
+	u16 total_vertex_count   = 0; 
+	u16 padding              = 0;
 };
 
 NOTES(Meta::HlslFile{ "MeshData.hlsl"_sl })
@@ -62,8 +65,8 @@ struct MeshletGroup {
 	u32 meshlet_offset = 0;
 	u16 meshlet_count  = 0;
 	u16 is_resident    = 0;
-	u32 page_index = 0;
-	u32 page_count = 0;
+	u32 page_index     = 0;
+	u32 page_count     = 0;
 	
 	compile_const u32 offset_of_is_resident = 50;
 };
@@ -88,7 +91,7 @@ struct MeshSourceData {
 
 NOTES()
 struct MeshRuntimeDataLayout {
-	compile_const u64 current_version = 34;
+	compile_const u64 current_version = 36;
 	
 	u64 file_guid = 0;
 	u64 version   = 0;

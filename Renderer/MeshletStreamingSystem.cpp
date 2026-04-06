@@ -14,12 +14,14 @@ enum struct MeshletRuntimePageState : u32 {
 };
 
 struct MeshletRuntimePage {
-	u32 mesh_asset_index = 0;
-	u32 asset_page_index = 0;
+	u32 mesh_asset_index  = 0;
+	u32 asset_page_index  = 0;
 	u32 cache_frame_index = 0;
 	
 	MeshletRuntimePageState state = MeshletRuntimePageState::Free;
 	u64 wait_index = 0;
+	
+	MeshletPageHeader* page_header_readback = nullptr;
 };
 
 struct MeshletPageOutCandidate {
@@ -31,7 +33,7 @@ struct MeshletStreamingSystem {
 	Array<MeshletRuntimePage> runtime_pages;
 	Array<u32> free_page_indices;
 	
-	ArrayView<MeshletRuntimePageUpdateCommand> page_table_update_commands;
+	MeshletStreamingUpdateCommands meshlet_streaming_update_commands;
 };
 
 MeshletStreamingSystem* CreateMeshletStreamingSystem(StackAllocator* alloc) {
@@ -126,15 +128,29 @@ void UpdateMeshletStreamingSystem(MeshletStreamingSystem* system, AsyncTransferQ
 				page.wait_index = current_frame_index + number_of_frames_in_flight;
 				
 				MeshletRuntimePageUpdateCommand page_table_update_command;
-				page_table_update_command.type               = MeshletPageTableUpdateCommandType::PageIn;
+				page_table_update_command.type               = MeshletPageUpdateCommandType::PageIn;
 				page_table_update_command.runtime_page_index = runtime_page_index;
 				page_table_update_command.mesh_asset_index   = page.mesh_asset_index;
 				page_table_update_command.asset_page_index   = page.asset_page_index;
+				page_table_update_command.readback_index     = (u32)page_table_update_commands.count;
 				ArrayAppend(page_table_update_commands, page_table_update_command);
 			}
 			break;
 		} case MeshletRuntimePageState::PageIn: {
 			if (page.wait_index <= current_frame_index) {
+#if 0
+				auto header = *page.page_header_readback;
+				page.page_header_readback = nullptr;
+				
+				BuildLimitsMeshletRTAS limits;
+				limits.max_meshlet_count        = header.meshlet_count;
+				limits.max_total_triangle_count = header.total_triangle_count;
+				limits.max_total_vertex_count   = header.total_vertex_count;
+				
+				auto requirements = GetMeshletRtasMemoryRequirements(record_context->context, limits);
+				SystemWriteToConsole(alloc, "Size: %, Scratch: %\n"_sl, requirements.rtas_max_size_bytes, requirements.scratch_size_bytes);
+#endif
+				
 				page.state      = MeshletRuntimePageState::Ready;
 				page.wait_index = 0;
 				page.cache_frame_index = (u32)current_frame_index;
@@ -150,6 +166,18 @@ void UpdateMeshletStreamingSystem(MeshletStreamingSystem* system, AsyncTransferQ
 			break;
 		}
 		}
+	}
+	
+	// Allocate page header readback buffer for page in commands.
+	if (page_table_update_commands.count != 0) {
+		auto [gpu_address, cpu_address] = AllocateTransientReadbackBuffer<MeshletPageHeader, 16u>(record_context, (u32)page_table_update_commands.count);
+		
+		for (auto& command : page_table_update_commands) {
+			runtime_pages[command.runtime_page_index].page_header_readback = cpu_address++;
+		}
+		
+		system->meshlet_streaming_update_commands.page_header_readback       = gpu_address;
+		system->meshlet_streaming_update_commands.page_header_readback_count = (u32)page_table_update_commands.count;
 	}
 	
 	
@@ -233,7 +261,7 @@ void UpdateMeshletStreamingSystem(MeshletStreamingSystem* system, AsyncTransferQ
 			page.wait_index = current_frame_index + number_of_frames_in_flight;
 			
 			MeshletRuntimePageUpdateCommand page_table_update_command;
-			page_table_update_command.type               = MeshletPageTableUpdateCommandType::PageOut;
+			page_table_update_command.type               = MeshletPageUpdateCommandType::PageOut;
 			page_table_update_command.runtime_page_index = candidate.runtime_page_index;
 			page_table_update_command.mesh_asset_index   = page.mesh_asset_index;
 			page_table_update_command.asset_page_index   = page.asset_page_index;
@@ -266,13 +294,12 @@ void UpdateMeshletStreamingSystem(MeshletStreamingSystem* system, AsyncTransferQ
 		page.wait_index       = wait_file_index;
 	}
 	
-	system->page_table_update_commands = page_table_update_commands;
+	system->meshlet_streaming_update_commands.page_table_update_commands = page_table_update_commands;
 }
 
-ArrayView<MeshletRuntimePageUpdateCommand> GetPageTableUpdateCommands(MeshletStreamingSystem* system) {
-	auto commands = system->page_table_update_commands;
-	system->page_table_update_commands = {};
-	
-	return commands;
+MeshletStreamingUpdateCommands GetMeshletStreamingUpdateCommands(MeshletStreamingSystem* system) {
+	auto result = system->meshlet_streaming_update_commands;
+	system->meshlet_streaming_update_commands = {};
+	return result;
 }
 

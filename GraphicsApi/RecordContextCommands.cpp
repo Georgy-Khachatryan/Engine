@@ -230,6 +230,19 @@ void CmdDrawIndexedInstancedIndirect(RecordContext* record_context, GpuAddress i
 	CmdExecuteIndirect(record_context, indirect_arguments, CommandType::DrawIndexedInstanced);
 }
 
+void CmdBuildMeshletRTAS(RecordContext* record_context, const BuildInputsMeshletRTAS& inputs) {
+	auto& packet = AppendPacket<CmdBuildMeshletRtasPacket>(record_context);
+	packet.inputs = inputs;
+	
+	FixedCountArray<ResourceAccessDefinition, 4> resource_accesses;
+	resource_accesses[0] = CreateBufferResourceAccess(inputs.meshlet_rtas.resource_id,       PipelineStagesMask::RtasBuild, ResourceAccessMask::RtasRW);
+	resource_accesses[1] = CreateBufferResourceAccess(inputs.meshlet_descs.resource_id,      PipelineStagesMask::RtasBuild, ResourceAccessMask::UAV);
+	resource_accesses[2] = CreateBufferResourceAccess(inputs.scratch_data.resource_id,       PipelineStagesMask::RtasBuild, ResourceAccessMask::UAV);
+	resource_accesses[3] = CreateBufferResourceAccess(inputs.indirect_arguments.resource_id, PipelineStagesMask::RtasBuild, ResourceAccessMask::SRV);
+	
+	AppendResourceAccesses(record_context, resource_accesses);
+}
+
 void CmdCopyBufferToTexture(RecordContext* record_context, GpuAddress src_buffer_gpu_address, VirtualResourceID dst_texture_resource_id, u32 src_row_pitch, uint3 src_size, uint3 dst_offset, u32 dst_subresource_index) {
 	auto& packet = AppendPacket<CmdCopyBufferToTexturePacket>(record_context);
 	packet.src_buffer_gpu_address  = src_buffer_gpu_address;

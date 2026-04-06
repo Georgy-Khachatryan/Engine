@@ -1,5 +1,6 @@
 #pragma once
 #include "Basic/Basic.h"
+#include "GraphicsApiTypes.h"
 
 enum struct CommandType : u16 {
 	None                  = 0,
@@ -9,23 +10,24 @@ enum struct CommandType : u16 {
 	DrawInstanced         = 4,
 	DrawIndexedInstanced  = 5,
 	ExecuteIndirect       = 6,
-	CopyBufferToTexture   = 7,
-	CopyBufferToBuffer    = 8,
-	ClearRenderTarget     = 9,
-	ClearDepthStencil     = 10,
-	SetRenderTargets      = 11,
-	SetViewport           = 12,
-	SetScissor            = 13,
-	SetIndexBufferView    = 14,
-	SetRootSignature      = 15,
-	SetPipelineState      = 16,
-	SetDescriptorTable    = 17,
-	SetPushConstants      = 18,
-	SetConstantBuffer     = 19,
-	BeginProfilerScope    = 20,
-	EndProfilerScope      = 21,
-	DispatchXeSS          = 22,
-	DispatchDLSS          = 23,
+	BuildMeshletRTAS      = 7,
+	CopyBufferToTexture   = 8,
+	CopyBufferToBuffer    = 9,
+	ClearRenderTarget     = 10,
+	ClearDepthStencil     = 11,
+	SetRenderTargets      = 12,
+	SetViewport           = 13,
+	SetScissor            = 14,
+	SetIndexBufferView    = 15,
+	SetRootSignature      = 16,
+	SetPipelineState      = 17,
+	SetDescriptorTable    = 18,
+	SetPushConstants      = 19,
+	SetConstantBuffer     = 20,
+	BeginProfilerScope    = 21,
+	EndProfilerScope      = 22,
+	DispatchXeSS          = 23,
+	DispatchDLSS          = 24,
 	
 	Count
 };
@@ -77,6 +79,12 @@ struct CmdExecuteIndirectPacket : RecordContextCommandPacket {
 	
 	CommandType indirect_command_type = CommandType::None;
 	GpuAddress indirect_arguments;
+};
+
+struct CmdBuildMeshletRtasPacket : RecordContextCommandPacket {
+	compile_const CommandType my_type = CommandType::BuildMeshletRTAS;
+	
+	BuildInputsMeshletRTAS inputs;
 };
 
 struct CmdCopyBufferToTexturePacket : RecordContextCommandPacket {

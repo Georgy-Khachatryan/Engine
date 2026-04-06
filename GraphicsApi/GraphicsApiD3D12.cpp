@@ -694,16 +694,22 @@ NativeBufferResource CreateBufferResource(GraphicsContext* api_context, u32 size
 	
 	auto* context = (GraphicsContextD3D12*)api_context;
 	
-	auto heap_type = D3D12_HEAP_TYPE_DEFAULT;
-	if (HasAnyFlags(flags, CreateResourceFlags::Upload))   heap_type = D3D12_HEAP_TYPE_UPLOAD;
-	if (HasAnyFlags(flags, CreateResourceFlags::Readback)) heap_type = D3D12_HEAP_TYPE_READBACK;
-	
 	D3D12_HEAP_PROPERTIES heap_properties = {};
-	heap_properties.Type                 = heap_type;
+	heap_properties.Type                 = D3D12_HEAP_TYPE_DEFAULT;
 	heap_properties.CPUPageProperty      = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
 	heap_properties.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
 	heap_properties.CreationNodeMask     = 0;
 	heap_properties.VisibleNodeMask      = 0;
+	
+	if (HasAllFlags(flags, CreateResourceFlags::Readback | CreateResourceFlags::UAV)) {
+		heap_properties.Type                 = D3D12_HEAP_TYPE_CUSTOM;
+		heap_properties.CPUPageProperty      = D3D12_CPU_PAGE_PROPERTY_WRITE_BACK;
+		heap_properties.MemoryPoolPreference = D3D12_MEMORY_POOL_L0;
+	} else if (HasAnyFlags(flags, CreateResourceFlags::Readback)) {
+		heap_properties.Type                 = D3D12_HEAP_TYPE_READBACK;
+	} else if (HasAnyFlags(flags, CreateResourceFlags::Upload)) {
+		heap_properties.Type                 = D3D12_HEAP_TYPE_UPLOAD;
+	}
 	
 	D3D12_RESOURCE_DESC1 resource_desc = {};
 	resource_desc.Dimension        = D3D12_RESOURCE_DIMENSION_BUFFER;

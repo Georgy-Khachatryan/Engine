@@ -6,6 +6,7 @@
 
 #include <SDK/DLSS/include/nvsdk_ngx_helpers.h>
 #include <SDK/XeSS/include/xess_d3d12.h>
+#include <SDK/NvApi/include/nvapi.h>
 
 static void CreateDescriptorTables(GraphicsContextD3D12* context, ArrayView<HLSL::BaseDescriptorTable*> descriptor_tables, ArrayView<VirtualResource> resources) {
 	ProfilerScope("CreateDescriptorTables");
@@ -109,6 +110,11 @@ static void CreateDescriptorTables(GraphicsContextD3D12* context, ArrayView<HLSL
 	
 }
 
+static u64 ComputeGpuVirtualAddress(GpuAddress gpu_address, ArrayView<VirtualResource> resources) {
+	auto& resource = resources[(u32)gpu_address.resource_id];
+	return resource.buffer.resource.d3d12->GetGPUVirtualAddress() + gpu_address.offset;
+}
+
 static void CreateRenderTargetView(GraphicsContextD3D12* context, VirtualResource& resource, D3D12_CPU_DESCRIPTOR_HANDLE descriptor_handle) {
 	DebugAssert(resource.texture.size.type == TextureSize::Type::Texture2D, "Only 2D texture render targets are implemented.");
 	
@@ -184,10 +190,8 @@ static void CmdSetScissorD3D12(CmdSetViewportAndScissorPacket* packet, ID3D12Gra
 }
 
 static void CmdSetIndexBufferViewD3D12(CmdSetIndexBufferViewPacket* packet, ID3D12GraphicsCommandList7* command_list, ArrayView<VirtualResource> resources) {
-	auto& resource = resources[(u32)packet->gpu_address.resource_id];
-	
 	D3D12_INDEX_BUFFER_VIEW index_buffer_view = {};
-	index_buffer_view.BufferLocation = resource.buffer.resource.d3d12->GetGPUVirtualAddress() + packet->gpu_address.offset;
+	index_buffer_view.BufferLocation = ComputeGpuVirtualAddress(packet->gpu_address, resources);
 	index_buffer_view.SizeInBytes    = packet->size;
 	index_buffer_view.Format         = dxgi_texture_format_map[(u32)packet->format];
 	command_list->IASetIndexBuffer(&index_buffer_view);
@@ -222,6 +226,68 @@ static void CmdExecuteIndirectD3D12(CmdExecuteIndirectPacket* packet, ID3D12Grap
 	
 	auto& indirect_arguments = resources[(u32)packet->indirect_arguments.resource_id];
 	command_list->ExecuteIndirect(command_signature, 1, indirect_arguments.buffer.resource.d3d12, packet->indirect_arguments.offset, nullptr, 0);
+}
+
+static NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_INPUTS TranslateBuildLimitsMeshletRTAS(const BuildLimitsMeshletRTAS& limits) {
+	NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_INPUTS inputs = {};
+	inputs.maxArgCount                                = limits.max_meshlet_count;
+	inputs.flags                                      = NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_FLAG_FAST_TRACE;
+	inputs.type                                       = NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_TYPE_BUILD_CLAS_FROM_TRIANGLES;
+	inputs.mode                                       = NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_MODE_IMPLICIT_DESTINATIONS;
+	inputs.trianglesDesc.vertexFormat                 = DXGI_FORMAT_R16G16B16A16_UNORM;
+	inputs.trianglesDesc.maxGeometryIndexValue        = 0;
+	inputs.trianglesDesc.maxUniqueGeometryCountPerArg = 0;
+	inputs.trianglesDesc.maxTriangleCountPerArg       = 128;
+	inputs.trianglesDesc.maxVertexCountPerArg         = 128;
+	inputs.trianglesDesc.maxTotalTriangleCount        = limits.max_total_triangle_count;
+	inputs.trianglesDesc.maxTotalVertexCount          = limits.max_total_vertex_count;
+	inputs.trianglesDesc.minPositionTruncateBitCount  = 0;
+	
+	return inputs;
+}
+
+MemoryRequirementsRTAS GetMeshletRtasMemoryRequirements(GraphicsContext* api_context, const BuildLimitsMeshletRTAS& limits) {
+	auto* context = (GraphicsContextD3D12*)api_context;
+	
+	auto inputs = TranslateBuildLimitsMeshletRTAS(limits);
+	
+	NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_REQUIREMENTS_INFO requirements = {};
+	
+	NVAPI_GET_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_REQUIREMENTS_INFO_PARAMS requirements_params = {};
+	requirements_params.version = NVAPI_GET_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_REQUIREMENTS_INFO_PARAMS_VER;
+	requirements_params.pInput  = &inputs;
+	requirements_params.pInfo   = &requirements;
+	
+	auto result = NvAPI_D3D12_GetRaytracingMultiIndirectClusterOperationRequirementsInfo(context->device, &requirements_params);
+	DebugAssert(result == NVAPI_OK, "NvAPI_D3D12_GetRaytracingMultiIndirectClusterOperationRequirementsInfo failed.");
+	
+	MemoryRequirementsRTAS memory_requirements;
+	memory_requirements.rtas_max_size_bytes = (u32)requirements.resultDataMaxSizeInBytes;
+	memory_requirements.scratch_size_bytes  = (u32)requirements.scratchDataSizeInBytes;
+	
+	return memory_requirements;
+}
+
+static void CmdBuildMeshletRtasD3D12(CmdBuildMeshletRtasPacket* packet, ID3D12GraphicsCommandList7* command_list, ArrayView<VirtualResource> resources) {
+	u64 meshlet_descs      = ComputeGpuVirtualAddress(packet->inputs.meshlet_descs,      resources);
+	u64 indirect_arguments = ComputeGpuVirtualAddress(packet->inputs.indirect_arguments, resources);
+	
+	NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_DESC desc = {};
+	desc.inputs                  = TranslateBuildLimitsMeshletRTAS(packet->inputs.limits);
+	desc.addressResolutionFlags  = NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_ADDRESS_RESOLUTION_FLAG_NONE;
+	desc.batchResultData         = ComputeGpuVirtualAddress(packet->inputs.meshlet_rtas, resources);
+	desc.batchScratchData        = ComputeGpuVirtualAddress(packet->inputs.scratch_data, resources);
+	desc.destinationAddressArray = { meshlet_descs + 0, 16 };
+	desc.resultSizeArray         = { meshlet_descs + 8, 16 };
+	desc.indirectArgArray        = { indirect_arguments, sizeof(NVAPI_D3D12_RAYTRACING_ACCELERATION_STRUCTURE_MULTI_INDIRECT_TRIANGLE_CLUSTER_ARGS) };
+	desc.indirectArgCount        = 0;
+	
+	NVAPI_RAYTRACING_EXECUTE_MULTI_INDIRECT_CLUSTER_OPERATION_PARAMS params = {};
+	params.version = NVAPI_RAYTRACING_EXECUTE_MULTI_INDIRECT_CLUSTER_OPERATION_PARAMS_VER;
+	params.pDesc   = &desc;
+	
+	auto result = NvAPI_D3D12_RaytracingExecuteMultiIndirectClusterOperation(command_list, &params);
+	DebugAssert(result == NVAPI_OK, "NvAPI_D3D12_RaytracingExecuteMultiIndirectClusterOperation failed.");
 }
 
 static void CmdCopyBufferToTextureD3D12(CmdCopyBufferToTexturePacket* packet, ID3D12GraphicsCommandList7* command_list, ArrayView<VirtualResource> resources) {
@@ -286,7 +352,7 @@ static void CmdSetPushConstantsD3D12(CmdSetPushConstantsPacket* packet, ID3D12Gr
 }
 
 static void CmdSetConstantBufferD3D12(CmdSetConstantBufferPacket* packet, ID3D12GraphicsCommandList7* command_list, ArrayView<VirtualResource> resources) {
-	u64 gpu_address = resources[(u32)packet->gpu_address.resource_id].buffer.resource.d3d12->GetGPUVirtualAddress() + packet->gpu_address.offset;
+	u64 gpu_address = ComputeGpuVirtualAddress(packet->gpu_address, resources);
 	
 	if (packet->pass_type == CommandQueueType::Compute) {
 		command_list->SetComputeRootConstantBufferView(packet->offset, gpu_address);
@@ -619,6 +685,7 @@ static void ResolveBufferAccess(D3D12_BARRIER_SYNC& sync, D3D12_BARRIER_ACCESS& 
 	if (stages_mask & (u32)PipelineStagesMask::VertexShader)  sync |= D3D12_BARRIER_SYNC_VERTEX_SHADING;
 	if (stages_mask & (u32)PipelineStagesMask::Copy)          sync |= D3D12_BARRIER_SYNC_COPY;
 	if (stages_mask & (u32)PipelineStagesMask::IndirectArguments) sync |= D3D12_BARRIER_SYNC_EXECUTE_INDIRECT;
+	if (stages_mask & (u32)PipelineStagesMask::RtasBuild)     sync |= D3D12_BARRIER_SYNC_BUILD_RAYTRACING_ACCELERATION_STRUCTURE;
 	
 	access = D3D12_BARRIER_ACCESS_COMMON;
 	if (access_mask & (u32)ResourceAccessMask::SRV)     access |= D3D12_BARRIER_ACCESS_SHADER_RESOURCE;
@@ -626,6 +693,8 @@ static void ResolveBufferAccess(D3D12_BARRIER_SYNC& sync, D3D12_BARRIER_ACCESS& 
 	if (access_mask & (u32)ResourceAccessMask::CopySrc) access |= D3D12_BARRIER_ACCESS_COPY_SOURCE;
 	if (access_mask & (u32)ResourceAccessMask::CopyDst) access |= D3D12_BARRIER_ACCESS_COPY_DEST;
 	if (access_mask & (u32)ResourceAccessMask::IndirectArguments) access |= D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT;
+	if (access_mask & (u32)ResourceAccessMask::RtasRO)  access |= D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_READ;
+	if (access_mask & (u32)ResourceAccessMask::RtasRW)  access |= D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_WRITE;
 }
 
 static void CreateBufferBarrier(Array<D3D12_BUFFER_BARRIER>& barriers, VirtualResource& resource, ResourceAccessDefinition* last_access, ResourceAccessDefinition* next_access) {
@@ -869,6 +938,7 @@ void ReplayRecordContext(GraphicsContext* api_context, RecordContext* record_con
 			case CommandType::DrawInstanced:         CmdDrawInstancedD3D12((CmdDrawInstancedPacket*)packet, command_list); break;
 			case CommandType::DrawIndexedInstanced:  CmdDrawIndexedInstancedD3D12((CmdDrawIndexedInstancedPacket*)packet, command_list); break;
 			case CommandType::ExecuteIndirect:       CmdExecuteIndirectD3D12((CmdExecuteIndirectPacket*)packet, command_list, context, resources); break;
+			case CommandType::BuildMeshletRTAS:      CmdBuildMeshletRtasD3D12((CmdBuildMeshletRtasPacket*)packet, command_list, resources); break;
 			case CommandType::CopyBufferToTexture:   CmdCopyBufferToTextureD3D12((CmdCopyBufferToTexturePacket*)packet, command_list, resources); break;
 			case CommandType::CopyBufferToBuffer:    CmdCopyBufferToBufferD3D12((CmdCopyBufferToBufferPacket*)packet, command_list, resources); break;
 			case CommandType::ClearRenderTarget:     CmdClearRenderTargetD3D12((CmdClearRenderTargetPacket*)packet, command_list, context, resources); break;

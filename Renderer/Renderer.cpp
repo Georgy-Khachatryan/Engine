@@ -20,7 +20,7 @@ RendererContext* CreateRendererContext(StackAllocator* alloc) {
 	
 	for (u32 i = 0; i < number_of_frames_in_flight; i += 1) {
 		context->upload_buffers[i] = CreateBufferResource(graphics_context, upload_buffer_size, CreateResourceFlags::Upload, &context->upload_buffer_cpu_addresses[i]);
-		context->readback_buffers[i] = CreateBufferResource(graphics_context, readback_buffer_size, CreateResourceFlags::Readback, &context->readback_buffer_cpu_addresses[i]);
+		context->readback_buffers[i] = CreateBufferResource(graphics_context, readback_buffer_size, CreateResourceFlags::Readback | CreateResourceFlags::UAV, &context->readback_buffer_cpu_addresses[i]);
 	}
 	
 	context->graphics_context       = graphics_context;

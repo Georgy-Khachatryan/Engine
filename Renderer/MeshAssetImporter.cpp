@@ -387,15 +387,10 @@ MeshImportResult ImportMeshFile(StackAllocator* alloc, ThreadPool* thread_pool, 
 		ArrayAppend(result_pages, page);
 		
 		u32 end_meshlet_index = page_meshlet_prefix_sum[page_index];
-		u32 meshlet_count = (end_meshlet_index - begin_meshlet_index);
 		
-		// Write page header:
-		{
-			MeshletPageHeader page_header;
-			page_header.meshlet_count = meshlet_count;
-			
-			memcpy(page.data, &page_header, sizeof(page_header));
-		}
+		u32 meshlet_count        = (end_meshlet_index - begin_meshlet_index);
+		u32 total_triangle_count = 0;
+		u32 total_vertex_count   = 0;
 		
 		u64 page_culling_data_offset = sizeof(MeshletPageHeader);
 		u64 page_meshlet_data_offset = page_culling_data_offset + meshlet_count * sizeof(MeshletCullingData);
@@ -406,6 +401,9 @@ MeshImportResult ImportMeshFile(StackAllocator* alloc, ThreadPool* thread_pool, 
 			
 			u32 triangle_count = src_meshlet.end_meshlet_triangles_index - src_meshlet.begin_meshlet_triangles_index;
 			u32 vertex_count   = src_meshlet.end_vertex_indices_index    - src_meshlet.begin_vertex_indices_index;
+			
+			total_triangle_count += triangle_count;
+			total_vertex_count   += vertex_count;
 			
 			float3 position_offset;
 			position_offset.x = floorf(src_meshlet.aabb_min.x * quantization_scale) * rcp_quantization_scale;
@@ -465,6 +463,16 @@ MeshImportResult ImportMeshFile(StackAllocator* alloc, ThreadPool* thread_pool, 
 			{
 				memcpy(page.data + page_meshlet_data_offset, mdt_meshlet_triangles.data + src_meshlet.begin_meshlet_triangles_index, triangle_count * sizeof(MdtMeshletTriangle));
 				page_meshlet_data_offset += triangle_count * sizeof(MdtMeshletTriangle);
+			}
+			
+			// Write page header:
+			{
+				MeshletPageHeader page_header;
+				page_header.meshlet_count        = meshlet_count;
+				page_header.total_triangle_count = total_triangle_count;
+				page_header.total_vertex_count   = total_vertex_count;
+				
+				memcpy(page.data, &page_header, sizeof(page_header));
 			}
 			
 			// Clear padding to zero:

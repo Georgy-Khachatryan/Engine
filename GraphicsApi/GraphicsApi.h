@@ -32,6 +32,7 @@ void ReleaseBufferResource(GraphicsContext* context, NativeBufferResource resour
 void ReleaseMemoryResource(GraphicsContext* context, NativeMemoryResource resource, ResourceReleaseCondition condition = ResourceReleaseCondition::None);
 
 SparseTextureLayout GetSparseTextureLayout(GraphicsContext* context, NativeTextureResource resource);
+MemoryRequirementsRTAS GetMeshletRtasMemoryRequirements(GraphicsContext* context, const BuildLimitsMeshletRTAS& limits);
 
 void SubmitAsyncCopyCommands(GraphicsContext* context, ArrayView<AsyncCopyBufferToBufferCommand> copy_buffer_to_buffer_commands, ArrayView<AsyncCopyBufferToTextureCommand> copy_buffer_to_texture_commands, u64 async_copy_signal_index);
 void AsyncUpdateMemoryMappings(GraphicsContext* context, StackAllocator* alloc, ArrayView<u32> tile_indices, u32 subresource_index, NativeTextureResource resource, NativeMemoryResource memory);

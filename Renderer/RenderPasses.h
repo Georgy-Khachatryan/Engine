@@ -263,16 +263,24 @@ enum struct UpdateMeshletPageTableShaders : u32 {};
 SHADER_DEFINITION_GENERATED_CODE(UpdateMeshletPageTableShaders);
 
 NOTES(Meta::HlslFile{ "UpdateMeshletPageTableData.hlsl"_sl })
-enum struct MeshletPageTableUpdateCommandType : u32 {
+enum struct MeshletPageUpdateCommandType : u16 {
 	PageIn  = 0, // Page is streamed in, set it in the page table.
 	PageOut = 1, // Page is being removed, remove it from the page table.
 };
 
 NOTES(Meta::HlslFile{ "UpdateMeshletPageTableData.hlsl"_sl })
+struct MeshletPageUpdateCommand {
+	MeshletPageUpdateCommandType type = MeshletPageUpdateCommandType::PageIn;
+	u16 readback_index     = 0;
+	u16 asset_page_index   = 0;
+	u16 runtime_page_index = 0;
+};
+
+NOTES(Meta::HlslFile{ "UpdateMeshletPageTableData.hlsl"_sl })
 struct MeshletPageTableUpdateCommand {
-	u32 mesh_asset_index = 0;
-	u16 page_list_offset = 0;
-	u16 page_list_count  = 0;
+	u32 mesh_asset_index    = 0;
+	u16 page_command_offset = 0;
+	u16 page_command_count  = 0;
 };
 
 NOTES(Meta::RenderPass{})
@@ -283,8 +291,9 @@ struct UpdateMeshletPageTableRenderPass {
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
 		HLSL::RegularBuffer<GpuMeshAssetData> mesh_asset_data = VirtualResourceID::GpuMeshAssetData;
-		HLSL::RegularBuffer<MeshletPageTableUpdateCommand> commands;
-		HLSL::RegularBuffer<u32> page_list;
+		HLSL::RegularBuffer<MeshletPageTableUpdateCommand> page_table_commands;
+		HLSL::RegularBuffer<MeshletPageUpdateCommand>      page_commands;
+		HLSL::RWRegularBuffer<MeshletPageHeader> page_header_readback;
 		HLSL::RWByteBuffer mesh_asset_buffer = VirtualResourceID::MeshAssetBuffer;
 	};
 	

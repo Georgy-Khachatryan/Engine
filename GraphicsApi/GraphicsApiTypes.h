@@ -8,6 +8,13 @@ compile_const u32 number_of_frames_in_flight = 2;
 compile_const u32 gpu_memory_page_size_bits  = 16;
 compile_const u32 gpu_memory_page_size       = 1u << gpu_memory_page_size_bits;
 
+
+enum struct VirtualResourceID : u32;
+struct RecordContext;
+struct PipelineLibrary;
+struct GraphicsContext;
+
+
 union NativeBufferResource {
 	void* handle = nullptr;
 	struct ID3D12Resource* d3d12;
@@ -23,10 +30,14 @@ union NativeMemoryResource {
 	struct ID3D12Heap* d3d12;
 };
 
-enum struct VirtualResourceID : u32;
-struct RecordContext;
-struct PipelineLibrary;
-struct GraphicsContext;
+struct GpuAddress {
+	VirtualResourceID resource_id = {};
+	u32 offset = 0;
+	
+	GpuAddress() : resource_id{}, offset(0) {}
+	GpuAddress(VirtualResourceID resource_id, u32 offset = 0) : resource_id(resource_id), offset(offset) {}
+	GpuAddress(const GpuAddress& other) = default;
+};
 
 
 enum struct ShaderType : u32 {
@@ -71,6 +82,26 @@ struct PipelineDefinition {
 };
 
 
+struct MemoryRequirementsRTAS {
+	u32 rtas_max_size_bytes = 0;
+	u32 scratch_size_bytes  = 0;
+};
+
+struct BuildLimitsMeshletRTAS {
+	u32 max_meshlet_count        = 0;
+	u32 max_total_triangle_count = 0;
+	u32 max_total_vertex_count	 = 0;
+};
+
+struct BuildInputsMeshletRTAS {
+	BuildLimitsMeshletRTAS limits;
+	GpuAddress meshlet_rtas;
+	GpuAddress meshlet_descs;
+	GpuAddress scratch_data;
+	GpuAddress indirect_arguments;
+};
+
+
 NOTES()
 enum struct CommandQueueType : u32 {
 	Graphics = 0,
@@ -91,6 +122,7 @@ enum struct PipelineStagesMask : u16 {
 	DepthStencilRW    = 1u << 6,
 	DepthStencil      = DepthStencilRO | DepthStencilRW,
 	IndirectArguments = 1u << 7,
+	RtasBuild         = 1u << 8,
 };
 ENUM_FLAGS_OPERATORS(PipelineStagesMask);
 
@@ -104,6 +136,8 @@ enum struct ResourceAccessMask : u16 {
 	DepthStencilRO    = 1u << 5,
 	DepthStencilRW    = 1u << 6,
 	IndirectArguments = 1u << 7,
+	RtasRO            = 1u << 8,
+	RtasRW            = 1u << 9,
 	AccessRO          = SRV | CopySrc | DepthStencilRO | IndirectArguments,
 	AccessRW          = UAV | CopyDst | DepthStencilRW | RenderTarget,
 };
@@ -153,15 +187,6 @@ struct ResourceAccessDefinition {
 };
 static_assert(sizeof(ResourceAccessDefinition) == 24, "Incorrect ResourceAccessDefinition size.");
 
-
-struct GpuAddress {
-	VirtualResourceID resource_id = {};
-	u32 offset = 0;
-	
-	GpuAddress() : resource_id{}, offset(0) {}
-	GpuAddress(VirtualResourceID resource_id, u32 offset = 0) : resource_id(resource_id), offset(offset) {}
-	GpuAddress(const GpuAddress& other) = default;
-};
 
 enum struct CreateResourceFlags : u32 {
 	None     = 0,

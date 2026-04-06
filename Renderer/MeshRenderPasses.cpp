@@ -159,7 +159,7 @@ void BasicMeshRenderPass::CreatePipelines(PipelineLibrary* lib) {
 		PipelineRasterizer rasterizer;
 	} pipeline;
 	
-	pipeline.scene_radiance.format  = TextureFormat::R16G16B16A16_FLOAT;
+	pipeline.scene_radiance.format = TextureFormat::R16G16B16A16_FLOAT;
 	pipeline.motion_vectors.format = TextureFormat::R16G16_FLOAT;
 	pipeline.depth_stencil.flags   = PipelineDepthStencil::Flags::EnableDepthWrite;
 	pipeline.depth_stencil.format  = TextureFormat::D32_FLOAT;
@@ -204,7 +204,7 @@ void UpdateMeshletPageTableRenderPass::CreatePipelines(PipelineLibrary* lib) {
 }
 
 void UpdateMeshletPageTableRenderPass::RecordPass(RecordContext* record_context) {
-	auto page_table_update_commands = GetPageTableUpdateCommands(meshlet_streaming_system);
+	auto [page_table_update_commands, page_header_readback, page_header_readback_count] = GetMeshletStreamingUpdateCommands(meshlet_streaming_system);
 	if (page_table_update_commands.count == 0) return;
 	
 	HeapSort(page_table_update_commands, [](const MeshletRuntimePageUpdateCommand& lh, const MeshletRuntimePageUpdateCommand& rh)-> bool {
@@ -228,36 +228,40 @@ void UpdateMeshletPageTableRenderPass::RecordPass(RecordContext* record_context)
 		ArrayLastElement(mesh_asset_page_count) += 1;
 	}
 	
-	auto [page_list_gpu_address, page_list_cpu_address] = AllocateTransientUploadBuffer<u32, 16u>(record_context, (u32)page_table_update_commands.count);
-	auto [commands_gpu_address,  commands_cpu_address]  = AllocateTransientUploadBuffer<MeshletPageTableUpdateCommand, 16u>(record_context, mesh_asset_count);
+	auto page_table_commands = AllocateTransientUploadBuffer<MeshletPageTableUpdateCommand, 16u>(record_context, mesh_asset_count);
+	auto page_commands       = AllocateTransientUploadBuffer<MeshletPageUpdateCommand,      16u>(record_context, (u32)page_table_update_commands.count);
 	
-	u32 page_list_offset = 0;
-	u32 commands_offset  = 0;
+	u32 page_command_offset        = 0;
+	u32 page_table_commands_offset = 0;
 	last_mesh_asset_index = u32_max;
 	for (auto& command : page_table_update_commands) {
 		if (last_mesh_asset_index != command.mesh_asset_index) {
 			last_mesh_asset_index = command.mesh_asset_index;
 			
-			MeshletPageTableUpdateCommand command;
-			command.mesh_asset_index = last_mesh_asset_index;
-			command.page_list_offset = (u16)page_list_offset;
-			command.page_list_count  = (u16)mesh_asset_page_count[commands_offset];
-			commands_cpu_address[commands_offset++] = command;
+			MeshletPageTableUpdateCommand page_table_command;
+			page_table_command.mesh_asset_index    = last_mesh_asset_index;
+			page_table_command.page_command_offset = (u16)page_command_offset;
+			page_table_command.page_command_count  = (u16)mesh_asset_page_count[page_table_commands_offset];
+			page_table_commands.cpu_address[page_table_commands_offset++] = page_table_command;
 		}
 		
-		u32 asset_page_index   = command.asset_page_index;
-		u32 runtime_page_index = command.runtime_page_index;
-		page_list_cpu_address[page_list_offset++] = asset_page_index | (runtime_page_index << 16) | ((u32)command.type << 31);
+		MeshletPageUpdateCommand page_command;
+		page_command.type               = command.type;
+		page_command.readback_index     = command.readback_index;
+		page_command.asset_page_index   = command.asset_page_index;
+		page_command.runtime_page_index = command.runtime_page_index;
+		page_commands.cpu_address[page_command_offset++] = page_command;
 	}
 	
 	auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
-	descriptor_table.commands.Bind(commands_gpu_address, commands_offset * sizeof(MeshletPageTableUpdateCommand));
-	descriptor_table.page_list.Bind(page_list_gpu_address, page_list_offset * sizeof(u32));
+	descriptor_table.page_table_commands.Bind(page_table_commands.gpu_address, page_table_commands_offset * sizeof(MeshletPageTableUpdateCommand));
+	descriptor_table.page_commands.Bind(page_commands.gpu_address, page_command_offset * sizeof(MeshletPageUpdateCommand));
+	descriptor_table.page_header_readback.Bind(page_header_readback, page_header_readback_count * sizeof(MeshletPageHeader));
 	
 	CmdSetRootSignature(record_context, root_signature);
 	CmdSetPipelineState(record_context, pipeline_id);
 	
 	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
 	
-	CmdDispatch(record_context, commands_offset);
+	CmdDispatch(record_context, page_table_commands_offset);
 }

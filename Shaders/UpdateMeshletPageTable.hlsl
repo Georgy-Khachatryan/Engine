@@ -7,8 +7,8 @@ compile_const uint thread_group_size = 256;
 
 [ThreadGroupSize(thread_group_size, 1, 1)]
 void MainCS(uint group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
-	MeshletPageTableUpdateCommand command = commands[group_id];
-	GpuMeshAssetData mesh_asset = mesh_asset_data[command.mesh_asset_index];
+	MeshletPageTableUpdateCommand page_table_command = page_table_commands[group_id];
+	GpuMeshAssetData mesh_asset = mesh_asset_data[page_table_command.mesh_asset_index];
 	if (mesh_asset.meshlet_group_buffer_offset == u32_max) return;
 	
 	uint page_residency_mask_offset = mesh_asset.meshlet_group_buffer_offset + mesh_asset.meshlet_group_count * sizeof(MeshletGroup);
@@ -21,20 +21,22 @@ void MainCS(uint group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	
 	GroupMemoryBarrierWithGroupSync();
 	
-	for (uint command_index = thread_index; command_index < command.page_list_count; command_index += thread_group_size) {
-		uint page_command = page_list[command.page_list_offset + command_index];
+	for (uint command_index = thread_index; command_index < page_table_command.page_command_count; command_index += thread_group_size) {
+		MeshletPageUpdateCommand page_command = page_commands[page_table_command.page_command_offset + command_index];
 		
-		uint asset_page_index   = (page_command & 0xFFFF);
-		uint runtime_page_index = (page_command >> 16) & 0x7FFF;
-		uint command_type       = (page_command >> 31);
-		
-		if (command_type == MeshletPageTableUpdateCommandType::PageIn) {
+		uint asset_page_index = page_command.asset_page_index;
+		if (page_command.type == MeshletPageUpdateCommandType::PageIn) {
 			InterlockedOr(gs_page_residency_mask[asset_page_index / 32u], 1u << (asset_page_index % 32u));
-		} else if (command_type == MeshletPageTableUpdateCommandType::PageOut) {
+		} else if (page_command.type == MeshletPageUpdateCommandType::PageOut) {
 			InterlockedAnd(gs_page_residency_mask[asset_page_index / 32u], ~(1u << (asset_page_index % 32u)));
 		}
 		
-		mesh_asset_buffer.Store(page_table_offset + asset_page_index * sizeof(uint), runtime_page_index * MeshletPageHeader::page_size);
+		uint runtime_page_offset = (uint)page_command.runtime_page_index * MeshletPageHeader::page_size;
+		mesh_asset_buffer.Store(page_table_offset + asset_page_index * sizeof(uint), runtime_page_offset);
+		
+		if (page_command.type == MeshletPageUpdateCommandType::PageIn) {
+			page_header_readback[page_command.readback_index] = mesh_asset_buffer.Load<MeshletPageHeader>(runtime_page_offset);
+		}
 	}
 	
 	GroupMemoryBarrierWithGroupSync();
