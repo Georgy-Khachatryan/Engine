@@ -6,6 +6,7 @@
 #include "ShaderCompiler.h"
 
 #include <SDK/DLSS/include/nvsdk_ngx.h>
+#include <SDK/NvAPI/include/nvapi.h>
 
 extern "C" __declspec(dllexport) extern const UINT  D3D12SDKVersion = 618;
 extern "C" __declspec(dllexport) extern const char* D3D12SDKPath    = u8".\\D3D12\\";
@@ -161,6 +162,12 @@ GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
 		ArrayReserve(context->release_queue_last_frame, alloc, release_queue_capacity);
 		ArrayReserve(context->release_queue_this_frame, alloc, release_queue_capacity);
 		ArrayReserve(context->release_queue_next_frame, alloc, release_queue_capacity);
+	}
+	
+	{
+		ProfilerScope("NvAPI_Initialize");
+		auto result = NvAPI_Initialize();
+		DebugAssert(result == NVAPI_OK, "NvAPI_Initialize failed."); // TODO: Disable NvAPI when it's not supported.
 	}
 	
 	{
@@ -582,6 +589,12 @@ void ReleaseGraphicsContext(GraphicsContext* api_context, StackAllocator* alloc)
 	
 	for (auto& root_signature : context->root_signature_table) SafeRelease(root_signature);
 	for (auto& pipeline_state : context->pipeline_state_table) SafeRelease(pipeline_state);
+	
+	{
+		ProfilerScope("NvAPI_Unload");
+		auto result = NvAPI_Unload();
+		DebugAssert(result == NVAPI_OK, "NvAPI_Unload failed."); // TODO: Disable NvAPI when it's not supported.
+	}
 	
 	{
 		ProfilerScope("NVSDK_NGX_D3D12_Shutdown1");

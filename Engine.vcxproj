@@ -33,6 +33,7 @@
     <Import Project="Props/ImGui.props" />
     <Import Project="Props/IntelXeSS.props" />
     <Import Project="Props/MeshDecimationTools.props" />
+    <Import Project="Props/NvAPI.props" />
     <Import Project="Props/NvidiaDLSS.props" />
     <Import Project="Props/Ufbx.props" />
   </ImportGroup>
