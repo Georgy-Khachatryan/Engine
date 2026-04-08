@@ -7,6 +7,7 @@
 compile_const u32 number_of_frames_in_flight = 2;
 compile_const u32 gpu_memory_page_size_bits  = 16;
 compile_const u32 gpu_memory_page_size       = 1u << gpu_memory_page_size_bits;
+compile_const u32 rtas_alignment             = 256;
 
 
 enum struct VirtualResourceID : u32;

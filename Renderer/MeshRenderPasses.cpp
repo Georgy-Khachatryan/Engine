@@ -271,14 +271,13 @@ void MeshletRtasClearBuffersRenderPass::CreatePipelines(PipelineLibrary* lib) {
 }
 
 void MeshletRtasClearBuffersRenderPass::RecordPass(RecordContext* record_context) {
-	auto [meshlet_rtas_build_commands, scratch_allocator_offset, scratch_allocator_base] = GetMeshletRtasBuildCommands(meshlet_streaming_system);
+	auto [meshlet_rtas_build_commands, vertex_buffer_scratch_offset] = GetMeshletRtasBuildCommands(meshlet_streaming_system);
 	if (meshlet_rtas_build_commands.count == 0) return;
 	
 	auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
 	
 	RootSignature::PushConstants constants;
-	constants.scratch_allocator_offset = scratch_allocator_offset;
-	constants.scratch_allocator_base   = scratch_allocator_base;
+	constants.vertex_buffer_scratch_offset = vertex_buffer_scratch_offset;
 	
 	CmdSetRootSignature(record_context, root_signature);
 	CmdSetPipelineState(record_context, pipeline_id);
@@ -294,7 +293,7 @@ void MeshletRtasDecodeVertexBufferRenderPass::CreatePipelines(PipelineLibrary* l
 }
 
 void MeshletRtasDecodeVertexBufferRenderPass::RecordPass(RecordContext* record_context) {
-	auto [meshlet_rtas_build_commands, scratch_allocator_offset, scratch_allocator_base] = GetMeshletRtasBuildCommands(meshlet_streaming_system);
+	auto [meshlet_rtas_build_commands, vertex_buffer_scratch_offset] = GetMeshletRtasBuildCommands(meshlet_streaming_system);
 	if (meshlet_rtas_build_commands.count == 0) return;
 	
 	auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
@@ -306,7 +305,6 @@ void MeshletRtasDecodeVertexBufferRenderPass::RecordPass(RecordContext* record_c
 	
 	for (auto& command : meshlet_rtas_build_commands) {
 		RootSignature::PushConstants constants;
-		constants.scratch_allocator_offset = scratch_allocator_offset;
 		constants.runtime_page_index       = command.runtime_page_index;
 		constants.mesh_asset_index         = command.mesh_asset_index;
 		constants.vertex_buffer_offsets    = command.inputs.meshlet_descs.offset;
@@ -321,7 +319,7 @@ void MeshletRtasBuildRenderPass::CreatePipelines(PipelineLibrary* lib) {
 }
 
 void MeshletRtasBuildRenderPass::RecordPass(RecordContext* record_context) {
-	auto [meshlet_rtas_build_commands, scratch_allocator_offset, scratch_allocator_base] = GetMeshletRtasBuildCommands(meshlet_streaming_system);
+	auto [meshlet_rtas_build_commands, vertex_buffer_scratch_offset] = GetMeshletRtasBuildCommands(meshlet_streaming_system);
 	if (meshlet_rtas_build_commands.count == 0) return;
 	
 	auto inputs = AllocateTransientUploadBuffer<MeshletRtasBuildIndirectArgumentsInputs, 12u>(record_context, (u32)meshlet_rtas_build_commands.count);

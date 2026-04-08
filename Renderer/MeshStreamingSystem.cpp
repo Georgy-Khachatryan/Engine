@@ -46,7 +46,7 @@ MeshStreamingSystem* CreateMeshStreamingSystem(StackAllocator* alloc, u64 buffer
 		ArrayAppend(system->free_mesh_indices, max_runtime_mesh_asset_count - i - 1);
 	}
 	
-	system->heap = CreateNumaHeapAllocator(alloc, max_runtime_mesh_asset_count, (u32)buffer_size);
+	system->heap = CreateNumaHeapAllocator(alloc, max_runtime_mesh_asset_count * 2, (u32)buffer_size);
 	
 	return system;
 }

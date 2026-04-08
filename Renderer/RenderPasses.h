@@ -335,8 +335,7 @@ struct MeshletRtasClearBuffersRenderPass {
 	
 	struct RootSignature : HLSL::BaseRootSignature {
 		struct PushConstants {
-			u32 scratch_allocator_offset = 0;
-			u32 scratch_allocator_base   = 0;
+			u32 vertex_buffer_scratch_offset = 0;
 		};
 		
 		HLSL::PushConstantBuffer<PushConstants> constants;
@@ -362,7 +361,6 @@ struct MeshletRtasDecodeVertexBufferRenderPass {
 		struct PushConstants {
 			u32 runtime_page_index       = 0;
 			u32 mesh_asset_index         = 0;
-			u32 scratch_allocator_offset = 0;
 			u32 vertex_buffer_offsets    = 0;
 		};
 		

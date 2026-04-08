@@ -32,11 +32,10 @@ struct MeshletRtasBuildCommand {
 
 struct MeshletRtasBuildCommands {
 	ArrayView<MeshletRtasBuildCommand> meshlet_rtas_build_commands;
-	u32 scratch_allocator_offset = 0;
-	u32 scratch_allocator_base   = 0;
+	u32 vertex_buffer_scratch_offset = 0;
 };
 
-MeshletStreamingSystem* CreateMeshletStreamingSystem(StackAllocator* alloc);
+MeshletStreamingSystem* CreateMeshletStreamingSystem(StackAllocator* alloc, u32 meshlet_rtas_buffer_size);
 void UpdateMeshletStreamingSystem(MeshletStreamingSystem* system, AsyncTransferQueue* async_transfer_queue, RecordContext* record_context, AssetEntitySystem* asset_system, GpuReadbackQueue* meshlet_streaming_feedback_queue);
 MeshletStreamingUpdateCommands GetMeshletStreamingUpdateCommands(MeshletStreamingSystem* system);
 MeshletRtasBuildCommands GetMeshletRtasBuildCommands(MeshletStreamingSystem* system);

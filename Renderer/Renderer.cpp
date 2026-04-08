@@ -42,7 +42,7 @@ RendererContext* CreateRendererContext(StackAllocator* alloc) {
 	context->streaming_scratch_buffer_size    = streaming_scratch_buffer_size;
 	context->streaming_scratch_buffer_address = GetBufferGpuVirtualAddress(context->streaming_scratch_buffer);
 	
-	context->meshlet_streaming_system = CreateMeshletStreamingSystem(alloc);
+	context->meshlet_streaming_system = CreateMeshletStreamingSystem(alloc, meshlet_rtas_buffer_size);
 	context->mesh_streaming_system    = CreateMeshStreamingSystem(alloc, mesh_asset_buffer_size - MeshletPageHeader::page_size * MeshletPageHeader::runtime_page_count);
 	context->texture_streaming_system = CreateTextureStreamingSystem(graphics_context, alloc, texture_heap_size);
 	

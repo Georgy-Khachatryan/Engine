@@ -1,10 +1,12 @@
 #include "Basic.hlsl"
 #include "Generated/MeshData.hlsl"
 
+compile_const u32 scratch_allocator_offset = 0u;
+
 #if defined(CLEAR_BUFFERS)
 [ThreadGroupSize(1, 1, 1)]
 void MainCS() {
-	scratch_buffer.Store(constants.scratch_allocator_offset, constants.scratch_allocator_base);
+	scratch_buffer.Store(scratch_allocator_offset, constants.vertex_buffer_scratch_offset);
 }
 #endif // defined(CLEAR_BUFFERS)
 
@@ -25,7 +27,7 @@ void MainCS(uint meshlet_index : SV_GroupID, uint thread_index : SV_GroupIndex) 
 	
 	if (thread_index == 0) {
 		uint scratch_allocation_size = meshlet.vertex_count * sizeof(float3);
-		scratch_buffer.InterlockedAdd(constants.scratch_allocator_offset, scratch_allocation_size, gs_scratch_vertex_buffer_offset);
+		scratch_buffer.InterlockedAdd(scratch_allocator_offset, scratch_allocation_size, gs_scratch_vertex_buffer_offset);
 		
 		scratch_buffer.Store(constants.vertex_buffer_offsets + meshlet_index * sizeof(uint), gs_scratch_vertex_buffer_offset);
 	}
