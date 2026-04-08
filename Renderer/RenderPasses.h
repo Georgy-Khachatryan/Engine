@@ -23,6 +23,8 @@ enum struct VirtualResourceID : u32 {
 	
 	// Streaming buffers:
 	MeshAssetBuffer,
+	MeshletRtasBuffer,
+	StreamingScratchBuffer,
 	
 	// Core resources:
 	CurrentBackBuffer,
@@ -298,6 +300,44 @@ struct UpdateMeshletPageTableRenderPass {
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {
+		HLSL::DescriptorTable<Descriptors> descriptor_table;
+	};
+	
+	inline static PipelineID pipeline_id;
+};
+
+
+NOTES(Meta::ShaderName{ "MeshletRTAS.hlsl"_sl })
+enum struct MeshletRtasShaders : u32 {
+	MeshletRtasBuildIndirectArguments = 1u << 0,
+};
+SHADER_DEFINITION_GENERATED_CODE(MeshletRtasShaders);
+
+NOTES(Meta::HlslFile{ "MeshletRtasData.hlsl"_sl })
+struct MeshletRtasBuildIndirectArgumentsInputs {
+	u32 page_index = 0;
+	u32 indirect_arguments_offset = 0;
+};
+
+NOTES(Meta::RenderPass{})
+struct MeshletRtasBuildRenderPass {
+	RENDER_PASS_GENERATED_CODE();
+	
+	MeshletStreamingSystem* meshlet_streaming_system = nullptr;
+	u64 mesh_asset_buffer_address = 0;
+	
+	struct Descriptors : HLSL::BaseDescriptorTable {
+		HLSL::ByteBuffer mesh_asset_buffer = VirtualResourceID::MeshAssetBuffer;
+		HLSL::RegularBuffer<MeshletRtasBuildIndirectArgumentsInputs> meshlet_rtas_inputs;
+		HLSL::RWByteBuffer indirect_arguments = VirtualResourceID::StreamingScratchBuffer;
+	};
+	
+	struct RootSignature : HLSL::BaseRootSignature {
+		struct PushConstants {
+			u64 mesh_asset_buffer_address = 0;
+		};
+		
+		HLSL::PushConstantBuffer<PushConstants> constants;
 		HLSL::DescriptorTable<Descriptors> descriptor_table;
 	};
 	

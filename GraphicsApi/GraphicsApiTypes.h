@@ -195,7 +195,8 @@ enum struct CreateResourceFlags : u32 {
 	DSV      = 1u << 2,
 	RTV      = 1u << 3,
 	UAV      = 1u << 4,
-	Sparse   = 1u << 5,
+	RTAS     = 1u << 5,
+	Sparse   = 1u << 6,
 };
 ENUM_FLAGS_OPERATORS(CreateResourceFlags);
 

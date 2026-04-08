@@ -46,7 +46,15 @@ struct RendererContext {
 	TextureStreamingSystem* texture_streaming_system = nullptr;
 	
 	NativeBufferResource mesh_asset_buffer;
-	u64 mesh_asset_buffer_size = 0;
+	u64 mesh_asset_buffer_size    = 0;
+	u64 mesh_asset_buffer_address = 0;
+	
+	NativeBufferResource meshlet_rtas_buffer;
+	u64 meshlet_rtas_buffer_size    = 0;
+	u64 meshlet_rtas_buffer_address = 0;
+	
+	NativeBufferResource streaming_scratch_buffer;
+	u64 streaming_scratch_buffer_size = 0;
 	
 	DebugGeometryBuffer debug_geometry_buffer;
 };

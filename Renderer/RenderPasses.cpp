@@ -163,6 +163,10 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	auto& update_meshlet_page_table = render_passes.Add<UpdateMeshletPageTableRenderPass>();
 	update_meshlet_page_table.meshlet_streaming_system = renderer_context->meshlet_streaming_system;
 	
+	auto& meshlet_rtas_build = render_passes.Add<MeshletRtasBuildRenderPass>();
+	meshlet_rtas_build.meshlet_streaming_system  = renderer_context->meshlet_streaming_system;
+	meshlet_rtas_build.mesh_asset_buffer_address = renderer_context->mesh_asset_buffer_address;
+	
 	
 	render_passes.Add<TransmittanceLutRenderPass>().atmosphere = atmosphere_parameters_gpu_address;
 	render_passes.Add<MultipleScatteringLutRenderPass>().atmosphere = atmosphere_parameters_gpu_address;

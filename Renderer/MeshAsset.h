@@ -10,6 +10,7 @@
 NOTES(Meta::HlslFile{ "MeshData.hlsl"_sl })
 struct MeshletVertex {
 	u16x3 position;
+	u16 padding;
 	s16x2 normal;
 	s16x2 tangent;
 	float16x2 texcoord;
@@ -91,7 +92,7 @@ struct MeshSourceData {
 
 NOTES()
 struct MeshRuntimeDataLayout {
-	compile_const u64 current_version = 36;
+	compile_const u64 current_version = 37;
 	
 	u64 file_guid = 0;
 	u64 version   = 0;

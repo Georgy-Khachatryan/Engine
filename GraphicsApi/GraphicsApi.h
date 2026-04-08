@@ -31,6 +31,8 @@ void ReleaseTextureResource(GraphicsContext* context, NativeTextureResource reso
 void ReleaseBufferResource(GraphicsContext* context, NativeBufferResource resource, ResourceReleaseCondition condition = ResourceReleaseCondition::None);
 void ReleaseMemoryResource(GraphicsContext* context, NativeMemoryResource resource, ResourceReleaseCondition condition = ResourceReleaseCondition::None);
 
+u64 GetBufferGpuVirtualAddress(NativeBufferResource resource);
+
 SparseTextureLayout GetSparseTextureLayout(GraphicsContext* context, NativeTextureResource resource);
 MemoryRequirementsRTAS GetMeshletRtasMemoryRequirements(GraphicsContext* context, const BuildLimitsMeshletRTAS& limits);
 

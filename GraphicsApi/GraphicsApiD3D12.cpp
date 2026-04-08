@@ -623,9 +623,10 @@ void ReleaseGraphicsContext(GraphicsContext* api_context, StackAllocator* alloc)
 static D3D12_RESOURCE_FLAGS TranslateCreateResourceFlags(CreateResourceFlags flags) {
 	auto result = D3D12_RESOURCE_FLAG_NONE;
 	
-	if (HasAnyFlags(flags, CreateResourceFlags::DSV)) result |= D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
-	if (HasAnyFlags(flags, CreateResourceFlags::RTV)) result |= D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
-	if (HasAnyFlags(flags, CreateResourceFlags::UAV)) result |= D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+	if (HasAnyFlags(flags, CreateResourceFlags::DSV))  result |= D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
+	if (HasAnyFlags(flags, CreateResourceFlags::RTV))  result |= D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+	if (HasAnyFlags(flags, CreateResourceFlags::UAV))  result |= D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+	if (HasAnyFlags(flags, CreateResourceFlags::RTAS)) result |= D3D12_RESOURCE_FLAG_RAYTRACING_ACCELERATION_STRUCTURE;
 	
 	return result;
 }
@@ -827,6 +828,10 @@ void ReleaseBufferResource(GraphicsContext* context, NativeBufferResource resour
 
 void ReleaseMemoryResource(GraphicsContext* context, NativeMemoryResource resource, ResourceReleaseCondition condition) {
 	ReleaseResource((GraphicsContextD3D12*)context, resource.d3d12, condition);
+}
+
+u64 GetBufferGpuVirtualAddress(NativeBufferResource resource) {
+	return resource.d3d12->GetGPUVirtualAddress();
 }
 
 u32 AllocateTransientSrvDescriptorTable(GraphicsContext* api_context, u32 count) {

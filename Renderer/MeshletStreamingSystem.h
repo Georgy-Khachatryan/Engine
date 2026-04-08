@@ -24,6 +24,16 @@ struct MeshletStreamingUpdateCommands {
 	u32 page_header_readback_count = 0;
 };
 
+struct MeshletRtasBuildCommand {
+	BuildInputsMeshletRTAS inputs;
+	u32 runtime_page_index = 0;
+};
+
+struct MeshletRtasBuildCommands {
+	ArrayView<MeshletRtasBuildCommand> meshlet_rtas_build_commands;
+};
+
 MeshletStreamingSystem* CreateMeshletStreamingSystem(StackAllocator* alloc);
 void UpdateMeshletStreamingSystem(MeshletStreamingSystem* system, AsyncTransferQueue* async_transfer_queue, RecordContext* record_context, AssetEntitySystem* asset_system, GpuReadbackQueue* meshlet_streaming_feedback_queue);
 MeshletStreamingUpdateCommands GetMeshletStreamingUpdateCommands(MeshletStreamingSystem* system);
+MeshletRtasBuildCommands GetMeshletRtasBuildCommands(MeshletStreamingSystem* system);

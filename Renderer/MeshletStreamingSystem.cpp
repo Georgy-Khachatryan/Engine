@@ -34,6 +34,9 @@ struct MeshletStreamingSystem {
 	Array<u32> free_page_indices;
 	
 	MeshletStreamingUpdateCommands meshlet_streaming_update_commands;
+	MeshletRtasBuildCommands meshlet_rtas_build_commands;
+	
+	bool built_one_meshlet_rtas = false;
 };
 
 MeshletStreamingSystem* CreateMeshletStreamingSystem(StackAllocator* alloc) {
@@ -104,6 +107,9 @@ void UpdateMeshletStreamingSystem(MeshletStreamingSystem* system, AsyncTransferQ
 	Array<MeshletRuntimePageUpdateCommand> page_table_update_commands;
 	ArrayReserve(page_table_update_commands, alloc, runtime_page_count);
 	
+	Array<MeshletRtasBuildCommand> meshlet_rtas_build_commands;
+	ArrayReserve(meshlet_rtas_build_commands, alloc, 8u);
+	
 	u64 in_flight_page_out_count = 0;
 	u64 current_frame_index = record_context->frame_index;
 	u64 completed_file_read_index = CompletedGpuAsyncTransferIndex(async_transfer_queue);
@@ -138,18 +144,37 @@ void UpdateMeshletStreamingSystem(MeshletStreamingSystem* system, AsyncTransferQ
 			break;
 		} case MeshletRuntimePageState::PageIn: {
 			if (page.wait_index <= current_frame_index) {
-#if 0
-				auto header = *page.page_header_readback;
-				page.page_header_readback = nullptr;
-				
-				BuildLimitsMeshletRTAS limits;
-				limits.max_meshlet_count        = header.meshlet_count;
-				limits.max_total_triangle_count = header.total_triangle_count;
-				limits.max_total_vertex_count   = header.total_vertex_count;
-				
-				auto requirements = GetMeshletRtasMemoryRequirements(record_context->context, limits);
-				SystemWriteToConsole(alloc, "Size: %, Scratch: %\n"_sl, requirements.rtas_max_size_bytes, requirements.scratch_size_bytes);
-#endif
+				// TODO: Build meshlet RTAS for each page.
+				if (system->built_one_meshlet_rtas == false) {
+					system->built_one_meshlet_rtas = true;
+					
+					auto header = *page.page_header_readback;
+					page.page_header_readback = nullptr;
+					
+					MeshletRtasBuildCommand command;
+					command.runtime_page_index = runtime_page_index;
+					
+					auto& limits = command.inputs.limits;
+					limits.max_meshlet_count        = header.meshlet_count;
+					limits.max_total_triangle_count = header.total_triangle_count;
+					limits.max_total_vertex_count   = header.total_vertex_count;
+					
+					auto requirements = GetMeshletRtasMemoryRequirements(record_context->context, limits);
+					
+					// TODO: Dynamically allocate RTAS and scratch memory.
+					u32 rtas_allocation_offset          = 0;
+					u32 streaming_scratch_buffer_offset = 0;
+					u32 meshlet_descs_buffer_offset     = requirements.scratch_size_bytes;
+					u32 indirect_arguments_offset       = meshlet_descs_buffer_offset + limits.max_meshlet_count * 16;
+					
+					auto& inputs = command.inputs;
+					inputs.meshlet_rtas       = GpuAddress(VirtualResourceID::MeshletRtasBuffer,      rtas_allocation_offset);
+					inputs.meshlet_descs      = GpuAddress(VirtualResourceID::StreamingScratchBuffer, meshlet_descs_buffer_offset);
+					inputs.scratch_data       = GpuAddress(VirtualResourceID::StreamingScratchBuffer, streaming_scratch_buffer_offset);
+					inputs.indirect_arguments = GpuAddress(VirtualResourceID::StreamingScratchBuffer, indirect_arguments_offset);
+					
+					ArrayAppend(meshlet_rtas_build_commands, alloc, command);
+				}
 				
 				page.state      = MeshletRuntimePageState::Ready;
 				page.wait_index = 0;
@@ -295,6 +320,7 @@ void UpdateMeshletStreamingSystem(MeshletStreamingSystem* system, AsyncTransferQ
 	}
 	
 	system->meshlet_streaming_update_commands.page_table_update_commands = page_table_update_commands;
+	system->meshlet_rtas_build_commands.meshlet_rtas_build_commands = meshlet_rtas_build_commands;
 }
 
 MeshletStreamingUpdateCommands GetMeshletStreamingUpdateCommands(MeshletStreamingSystem* system) {
@@ -303,3 +329,8 @@ MeshletStreamingUpdateCommands GetMeshletStreamingUpdateCommands(MeshletStreamin
 	return result;
 }
 
+MeshletRtasBuildCommands GetMeshletRtasBuildCommands(MeshletStreamingSystem* system) {
+	auto result = system->meshlet_rtas_build_commands;
+	system->meshlet_rtas_build_commands = {};
+	return result;
+}
