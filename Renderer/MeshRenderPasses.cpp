@@ -266,15 +266,65 @@ void UpdateMeshletPageTableRenderPass::RecordPass(RecordContext* record_context)
 	CmdDispatch(record_context, page_table_commands_offset);
 }
 
+void MeshletRtasClearBuffersRenderPass::CreatePipelines(PipelineLibrary* lib) {
+	pipeline_id = CreateComputePipeline(lib, MeshletRtasShadersID, MeshletRtasShaders::ClearBuffers);
+}
+
+void MeshletRtasClearBuffersRenderPass::RecordPass(RecordContext* record_context) {
+	auto [meshlet_rtas_build_commands, scratch_allocator_offset, scratch_allocator_base] = GetMeshletRtasBuildCommands(meshlet_streaming_system);
+	if (meshlet_rtas_build_commands.count == 0) return;
+	
+	auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
+	
+	RootSignature::PushConstants constants;
+	constants.scratch_allocator_offset = scratch_allocator_offset;
+	constants.scratch_allocator_base   = scratch_allocator_base;
+	
+	CmdSetRootSignature(record_context, root_signature);
+	CmdSetPipelineState(record_context, pipeline_id);
+	
+	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
+	CmdSetRootArgument(record_context, root_signature.constants, constants);
+	
+	CmdDispatch(record_context);
+}
+
+void MeshletRtasDecodeVertexBufferRenderPass::CreatePipelines(PipelineLibrary* lib) {
+	pipeline_id = CreateComputePipeline(lib, MeshletRtasShadersID, MeshletRtasShaders::MeshletRtasDecodeVertexBuffer);
+}
+
+void MeshletRtasDecodeVertexBufferRenderPass::RecordPass(RecordContext* record_context) {
+	auto [meshlet_rtas_build_commands, scratch_allocator_offset, scratch_allocator_base] = GetMeshletRtasBuildCommands(meshlet_streaming_system);
+	if (meshlet_rtas_build_commands.count == 0) return;
+	
+	auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
+	
+	CmdSetRootSignature(record_context, root_signature);
+	CmdSetPipelineState(record_context, pipeline_id);
+	
+	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
+	
+	for (auto& command : meshlet_rtas_build_commands) {
+		RootSignature::PushConstants constants;
+		constants.scratch_allocator_offset = scratch_allocator_offset;
+		constants.runtime_page_index       = command.runtime_page_index;
+		constants.mesh_asset_index         = command.mesh_asset_index;
+		constants.vertex_buffer_offsets    = command.inputs.meshlet_descs.offset;
+		CmdSetRootArgument(record_context, root_signature.constants, constants);
+		
+		CmdDispatch(record_context, command.inputs.limits.max_meshlet_count);
+	}
+}
+
 void MeshletRtasBuildRenderPass::CreatePipelines(PipelineLibrary* lib) {
 	pipeline_id = CreateComputePipeline(lib, MeshletRtasShadersID, MeshletRtasShaders::MeshletRtasBuildIndirectArguments);
 }
 
 void MeshletRtasBuildRenderPass::RecordPass(RecordContext* record_context) {
-	auto [meshlet_rtas_build_commands] = GetMeshletRtasBuildCommands(meshlet_streaming_system);
+	auto [meshlet_rtas_build_commands, scratch_allocator_offset, scratch_allocator_base] = GetMeshletRtasBuildCommands(meshlet_streaming_system);
 	if (meshlet_rtas_build_commands.count == 0) return;
 	
-	auto inputs = AllocateTransientUploadBuffer<MeshletRtasBuildIndirectArgumentsInputs, 16u>(record_context, (u32)meshlet_rtas_build_commands.count);
+	auto inputs = AllocateTransientUploadBuffer<MeshletRtasBuildIndirectArgumentsInputs, 12u>(record_context, (u32)meshlet_rtas_build_commands.count);
 	
 	for (u32 i = 0; i < meshlet_rtas_build_commands.count; i += 1) {
 		auto& command = meshlet_rtas_build_commands[i];
@@ -282,6 +332,7 @@ void MeshletRtasBuildRenderPass::RecordPass(RecordContext* record_context) {
 		MeshletRtasBuildIndirectArgumentsInputs shader_inputs;
 		shader_inputs.page_index                = command.runtime_page_index;
 		shader_inputs.indirect_arguments_offset = command.inputs.indirect_arguments.offset;
+		shader_inputs.vertex_buffer_offsets     = command.inputs.meshlet_descs.offset;
 		inputs.cpu_address[i] = shader_inputs;
 	}
 	
@@ -290,6 +341,7 @@ void MeshletRtasBuildRenderPass::RecordPass(RecordContext* record_context) {
 	
 	RootSignature::PushConstants constants;
 	constants.mesh_asset_buffer_address = mesh_asset_buffer_address;
+	constants.scratch_buffer_address    = scratch_buffer_address;
 	
 	CmdSetRootSignature(record_context, root_signature);
 	CmdSetPipelineState(record_context, pipeline_id);

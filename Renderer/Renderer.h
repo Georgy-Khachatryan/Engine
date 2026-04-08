@@ -54,7 +54,8 @@ struct RendererContext {
 	u64 meshlet_rtas_buffer_address = 0;
 	
 	NativeBufferResource streaming_scratch_buffer;
-	u64 streaming_scratch_buffer_size = 0;
+	u64 streaming_scratch_buffer_size    = 0;
+	u64 streaming_scratch_buffer_address = 0;
 	
 	DebugGeometryBuffer debug_geometry_buffer;
 };

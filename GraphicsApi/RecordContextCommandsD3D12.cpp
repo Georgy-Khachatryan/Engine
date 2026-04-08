@@ -234,7 +234,7 @@ static NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_INPUTS TranslateB
 	inputs.flags                                      = NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_FLAG_FAST_TRACE;
 	inputs.type                                       = NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_TYPE_BUILD_CLAS_FROM_TRIANGLES;
 	inputs.mode                                       = NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_MODE_IMPLICIT_DESTINATIONS;
-	inputs.trianglesDesc.vertexFormat                 = DXGI_FORMAT_R16G16B16A16_UNORM;
+	inputs.trianglesDesc.vertexFormat                 = DXGI_FORMAT_R32G32B32_FLOAT;
 	inputs.trianglesDesc.maxGeometryIndexValue        = 0;
 	inputs.trianglesDesc.maxUniqueGeometryCountPerArg = 0;
 	inputs.trianglesDesc.maxTriangleCountPerArg       = 128;

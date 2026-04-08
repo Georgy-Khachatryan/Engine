@@ -109,6 +109,8 @@ void UpdateMeshletStreamingSystem(MeshletStreamingSystem* system, AsyncTransferQ
 	
 	Array<MeshletRtasBuildCommand> meshlet_rtas_build_commands;
 	ArrayReserve(meshlet_rtas_build_commands, alloc, 8u);
+	u32 scratch_allocator_offset = 0;
+	u32 scratch_allocator_base   = 0;
 	
 	u64 in_flight_page_out_count = 0;
 	u64 current_frame_index = record_context->frame_index;
@@ -153,6 +155,7 @@ void UpdateMeshletStreamingSystem(MeshletStreamingSystem* system, AsyncTransferQ
 					
 					MeshletRtasBuildCommand command;
 					command.runtime_page_index = runtime_page_index;
+					command.mesh_asset_index   = page.mesh_asset_index;
 					
 					auto& limits = command.inputs.limits;
 					limits.max_meshlet_count        = header.meshlet_count;
@@ -163,9 +166,10 @@ void UpdateMeshletStreamingSystem(MeshletStreamingSystem* system, AsyncTransferQ
 					
 					// TODO: Dynamically allocate RTAS and scratch memory.
 					u32 rtas_allocation_offset          = 0;
-					u32 streaming_scratch_buffer_offset = 0;
-					u32 meshlet_descs_buffer_offset     = requirements.scratch_size_bytes;
-					u32 indirect_arguments_offset       = meshlet_descs_buffer_offset + limits.max_meshlet_count * 16;
+					u32 streaming_scratch_buffer_offset = AlignUp(scratch_allocator_offset        + 4u,                              256u);
+					u32 meshlet_descs_buffer_offset     = AlignUp(streaming_scratch_buffer_offset + requirements.scratch_size_bytes, 256u);
+					u32 indirect_arguments_offset       = AlignUp(meshlet_descs_buffer_offset     + limits.max_meshlet_count * 16u,  256u);
+					scratch_allocator_base              = AlignUp(indirect_arguments_offset       + limits.max_meshlet_count * 64u,  256u);
 					
 					auto& inputs = command.inputs;
 					inputs.meshlet_rtas       = GpuAddress(VirtualResourceID::MeshletRtasBuffer,      rtas_allocation_offset);
@@ -321,16 +325,14 @@ void UpdateMeshletStreamingSystem(MeshletStreamingSystem* system, AsyncTransferQ
 	
 	system->meshlet_streaming_update_commands.page_table_update_commands = page_table_update_commands;
 	system->meshlet_rtas_build_commands.meshlet_rtas_build_commands = meshlet_rtas_build_commands;
+	system->meshlet_rtas_build_commands.scratch_allocator_offset    = scratch_allocator_offset;
+	system->meshlet_rtas_build_commands.scratch_allocator_base      = scratch_allocator_base;
 }
 
 MeshletStreamingUpdateCommands GetMeshletStreamingUpdateCommands(MeshletStreamingSystem* system) {
-	auto result = system->meshlet_streaming_update_commands;
-	system->meshlet_streaming_update_commands = {};
-	return result;
+	return system->meshlet_streaming_update_commands;
 }
 
 MeshletRtasBuildCommands GetMeshletRtasBuildCommands(MeshletStreamingSystem* system) {
-	auto result = system->meshlet_rtas_build_commands;
-	system->meshlet_rtas_build_commands = {};
-	return result;
+	return system->meshlet_rtas_build_commands;
 }
