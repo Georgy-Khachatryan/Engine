@@ -84,7 +84,7 @@ struct CmdExecuteIndirectPacket : RecordContextCommandPacket {
 struct CmdBuildMeshletRtasPacket : RecordContextCommandPacket {
 	compile_const CommandType my_type = CommandType::BuildMeshletRTAS;
 	
-	BuildInputsMeshletRTAS inputs;
+	ArrayView<BuildInputsMeshletRTAS> inputs;
 };
 
 struct CmdCopyBufferToTexturePacket : RecordContextCommandPacket {

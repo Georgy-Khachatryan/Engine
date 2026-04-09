@@ -269,25 +269,27 @@ MemoryRequirementsRTAS GetMeshletRtasMemoryRequirements(GraphicsContext* api_con
 }
 
 static void CmdBuildMeshletRtasD3D12(CmdBuildMeshletRtasPacket* packet, ID3D12GraphicsCommandList7* command_list, ArrayView<VirtualResource> resources) {
-	u64 meshlet_descs      = ComputeGpuVirtualAddress(packet->inputs.meshlet_descs,      resources);
-	u64 indirect_arguments = ComputeGpuVirtualAddress(packet->inputs.indirect_arguments, resources);
-	
-	NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_DESC desc = {};
-	desc.inputs                  = TranslateBuildLimitsMeshletRTAS(packet->inputs.limits);
-	desc.addressResolutionFlags  = NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_ADDRESS_RESOLUTION_FLAG_NONE;
-	desc.batchResultData         = ComputeGpuVirtualAddress(packet->inputs.meshlet_rtas, resources);
-	desc.batchScratchData        = ComputeGpuVirtualAddress(packet->inputs.scratch_data, resources);
-	desc.destinationAddressArray = { meshlet_descs + 0, 16 };
-	desc.resultSizeArray         = { meshlet_descs + 8, 16 };
-	desc.indirectArgArray        = { indirect_arguments, sizeof(NVAPI_D3D12_RAYTRACING_ACCELERATION_STRUCTURE_MULTI_INDIRECT_TRIANGLE_CLUSTER_ARGS) };
-	desc.indirectArgCount        = 0;
-	
-	NVAPI_RAYTRACING_EXECUTE_MULTI_INDIRECT_CLUSTER_OPERATION_PARAMS params = {};
-	params.version = NVAPI_RAYTRACING_EXECUTE_MULTI_INDIRECT_CLUSTER_OPERATION_PARAMS_VER;
-	params.pDesc   = &desc;
-	
-	auto result = NvAPI_D3D12_RaytracingExecuteMultiIndirectClusterOperation(command_list, &params);
-	DebugAssert(result == NVAPI_OK, "NvAPI_D3D12_RaytracingExecuteMultiIndirectClusterOperation failed.");
+	for (auto& inputs : packet->inputs) {
+		u64 meshlet_descs      = ComputeGpuVirtualAddress(inputs.meshlet_descs,      resources);
+		u64 indirect_arguments = ComputeGpuVirtualAddress(inputs.indirect_arguments, resources);
+		
+		NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_DESC desc = {};
+		desc.inputs                  = TranslateBuildLimitsMeshletRTAS(inputs.limits);
+		desc.addressResolutionFlags  = NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_ADDRESS_RESOLUTION_FLAG_NONE;
+		desc.batchResultData         = ComputeGpuVirtualAddress(inputs.meshlet_rtas, resources);
+		desc.batchScratchData        = ComputeGpuVirtualAddress(inputs.scratch_data, resources);
+		desc.destinationAddressArray = { meshlet_descs + 0, 16 };
+		desc.resultSizeArray         = { meshlet_descs + 8, 16 };
+		desc.indirectArgArray        = { indirect_arguments, sizeof(NVAPI_D3D12_RAYTRACING_ACCELERATION_STRUCTURE_MULTI_INDIRECT_TRIANGLE_CLUSTER_ARGS) };
+		desc.indirectArgCount        = 0;
+		
+		NVAPI_RAYTRACING_EXECUTE_MULTI_INDIRECT_CLUSTER_OPERATION_PARAMS params = {};
+		params.version = NVAPI_RAYTRACING_EXECUTE_MULTI_INDIRECT_CLUSTER_OPERATION_PARAMS_VER;
+		params.pDesc   = &desc;
+		
+		auto result = NvAPI_D3D12_RaytracingExecuteMultiIndirectClusterOperation(command_list, &params);
+		DebugAssert(result == NVAPI_OK, "NvAPI_D3D12_RaytracingExecuteMultiIndirectClusterOperation failed.");
+	}
 }
 
 static void CmdCopyBufferToTextureD3D12(CmdCopyBufferToTexturePacket* packet, ID3D12GraphicsCommandList7* command_list, ArrayView<VirtualResource> resources) {

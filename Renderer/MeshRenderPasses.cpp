@@ -271,7 +271,7 @@ void MeshletRtasClearBuffersRenderPass::CreatePipelines(PipelineLibrary* lib) {
 }
 
 void MeshletRtasClearBuffersRenderPass::RecordPass(RecordContext* record_context) {
-	auto [meshlet_rtas_build_commands, vertex_buffer_scratch_offset] = GetMeshletRtasBuildCommands(meshlet_streaming_system);
+	auto [meshlet_rtas_build_commands, meshlet_rtas_build_inputs, vertex_buffer_scratch_offset] = GetMeshletRtasBuildCommands(meshlet_streaming_system);
 	if (meshlet_rtas_build_commands.count == 0) return;
 	
 	auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
@@ -293,25 +293,44 @@ void MeshletRtasDecodeVertexBufferRenderPass::CreatePipelines(PipelineLibrary* l
 }
 
 void MeshletRtasDecodeVertexBufferRenderPass::RecordPass(RecordContext* record_context) {
-	auto [meshlet_rtas_build_commands, vertex_buffer_scratch_offset] = GetMeshletRtasBuildCommands(meshlet_streaming_system);
+	auto [meshlet_rtas_build_commands, meshlet_rtas_build_inputs, vertex_buffer_scratch_offset] = GetMeshletRtasBuildCommands(meshlet_streaming_system);
 	if (meshlet_rtas_build_commands.count == 0) return;
 	
+	u32 total_meshlet_count = 0;
+	
+	auto inputs = AllocateTransientUploadBuffer<MeshletRtasDecodeVertexBufferInputs, 12u>(record_context, (u32)meshlet_rtas_build_commands.count);
+	for (u32 i = 0; i < meshlet_rtas_build_commands.count; i += 1) {
+		auto& command      = meshlet_rtas_build_commands[i];
+		auto& build_inputs = meshlet_rtas_build_inputs[i];
+		
+		total_meshlet_count += build_inputs.limits.max_meshlet_count;
+		
+		MeshletRtasDecodeVertexBufferInputs shader_inputs;
+		shader_inputs.runtime_page_index    = command.runtime_page_index;
+		shader_inputs.mesh_asset_index      = command.mesh_asset_index;
+		shader_inputs.vertex_buffer_offsets = build_inputs.meshlet_descs.offset;
+		inputs.cpu_address[i] = shader_inputs;
+	}
+	
+	auto packed_group_indices = AllocateTransientUploadBuffer<u32, 4u>(record_context, total_meshlet_count);
+	for (u32 i = 0, offset = 0; i < meshlet_rtas_build_commands.count; i += 1) {
+		auto& build_inputs = meshlet_rtas_build_inputs[i];
+		
+		for (u32 meshlet_index = 0; meshlet_index < build_inputs.limits.max_meshlet_count; meshlet_index += 1) {
+			packed_group_indices.cpu_address[offset++] = i | (meshlet_index << 16);
+		}
+	}
+	
 	auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
+	descriptor_table.decode_vertex_buffer_inputs.Bind(inputs.gpu_address, (u32)(meshlet_rtas_build_commands.count * sizeof(MeshletRtasDecodeVertexBufferInputs)));
+	descriptor_table.packed_group_indices.Bind(packed_group_indices.gpu_address, total_meshlet_count * sizeof(u32));
 	
 	CmdSetRootSignature(record_context, root_signature);
 	CmdSetPipelineState(record_context, pipeline_id);
 	
 	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
 	
-	for (auto& command : meshlet_rtas_build_commands) {
-		RootSignature::PushConstants constants;
-		constants.runtime_page_index       = command.runtime_page_index;
-		constants.mesh_asset_index         = command.mesh_asset_index;
-		constants.vertex_buffer_offsets    = command.inputs.meshlet_descs.offset;
-		CmdSetRootArgument(record_context, root_signature.constants, constants);
-		
-		CmdDispatch(record_context, command.inputs.limits.max_meshlet_count);
-	}
+	CmdDispatch(record_context, total_meshlet_count);
 }
 
 void MeshletRtasBuildRenderPass::CreatePipelines(PipelineLibrary* lib) {
@@ -319,18 +338,19 @@ void MeshletRtasBuildRenderPass::CreatePipelines(PipelineLibrary* lib) {
 }
 
 void MeshletRtasBuildRenderPass::RecordPass(RecordContext* record_context) {
-	auto [meshlet_rtas_build_commands, vertex_buffer_scratch_offset] = GetMeshletRtasBuildCommands(meshlet_streaming_system);
+	auto [meshlet_rtas_build_commands, meshlet_rtas_build_inputs, vertex_buffer_scratch_offset] = GetMeshletRtasBuildCommands(meshlet_streaming_system);
 	if (meshlet_rtas_build_commands.count == 0) return;
 	
 	auto inputs = AllocateTransientUploadBuffer<MeshletRtasBuildIndirectArgumentsInputs, 12u>(record_context, (u32)meshlet_rtas_build_commands.count);
 	
 	for (u32 i = 0; i < meshlet_rtas_build_commands.count; i += 1) {
-		auto& command = meshlet_rtas_build_commands[i];
+		auto& command      = meshlet_rtas_build_commands[i];
+		auto& build_inputs = meshlet_rtas_build_inputs[i];
 		
 		MeshletRtasBuildIndirectArgumentsInputs shader_inputs;
-		shader_inputs.page_index                = command.runtime_page_index;
-		shader_inputs.indirect_arguments_offset = command.inputs.indirect_arguments.offset;
-		shader_inputs.vertex_buffer_offsets     = command.inputs.meshlet_descs.offset;
+		shader_inputs.runtime_page_index        = command.runtime_page_index;
+		shader_inputs.indirect_arguments_offset = build_inputs.indirect_arguments.offset;
+		shader_inputs.vertex_buffer_offsets     = build_inputs.meshlet_descs.offset;
 		inputs.cpu_address[i] = shader_inputs;
 	}
 	
@@ -349,7 +369,5 @@ void MeshletRtasBuildRenderPass::RecordPass(RecordContext* record_context) {
 	
 	CmdDispatch(record_context, (u32)meshlet_rtas_build_commands.count);
 	
-	for (auto& command : meshlet_rtas_build_commands) {
-		CmdBuildMeshletRTAS(record_context, command.inputs);
-	}
+	CmdBuildMeshletRTAS(record_context, meshlet_rtas_build_inputs);
 }

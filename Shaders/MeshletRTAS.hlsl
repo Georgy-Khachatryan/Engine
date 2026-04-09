@@ -15,8 +15,13 @@ void MainCS() {
 groupshared uint gs_scratch_vertex_buffer_offset;
 
 [ThreadGroupSize(128, 1, 1)]
-void MainCS(uint meshlet_index : SV_GroupID, uint thread_index : SV_GroupIndex) {
-	uint page_offset = constants.runtime_page_index * MeshletPageHeader::page_size;
+void MainCS(uint group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
+	uint group_index = packed_group_indices[group_id];
+	
+	MeshletRtasDecodeVertexBufferInputs inputs = decode_vertex_buffer_inputs[group_index & 0xFFFF];
+	uint meshlet_index = group_index >> 16;
+	
+	uint page_offset = inputs.runtime_page_index * MeshletPageHeader::page_size;
 	MeshletPageHeader page_header = mesh_asset_buffer.Load<MeshletPageHeader>(page_offset);
 	
 	uint meshlet_culling_data_offset = page_offset + sizeof(MeshletPageHeader) + meshlet_index * sizeof(MeshletCullingData);
@@ -29,7 +34,7 @@ void MainCS(uint meshlet_index : SV_GroupID, uint thread_index : SV_GroupIndex) 
 		uint scratch_allocation_size = meshlet.vertex_count * sizeof(float3);
 		scratch_buffer.InterlockedAdd(scratch_allocator_offset, scratch_allocation_size, gs_scratch_vertex_buffer_offset);
 		
-		scratch_buffer.Store(constants.vertex_buffer_offsets + meshlet_index * sizeof(uint), gs_scratch_vertex_buffer_offset);
+		scratch_buffer.Store(inputs.vertex_buffer_offsets + meshlet_index * sizeof(uint), gs_scratch_vertex_buffer_offset);
 	}
 	
 	GroupMemoryBarrierWithGroupSync();
@@ -38,7 +43,7 @@ void MainCS(uint meshlet_index : SV_GroupID, uint thread_index : SV_GroupIndex) 
 		uint vertex_buffer_offset = meshlet_header_offset + sizeof(MeshletHeader);
 		MeshletVertex vertex = mesh_asset_buffer.Load<MeshletVertex>(vertex_buffer_offset + thread_index * sizeof(MeshletVertex));
 		
-		GpuMeshAssetData mesh_asset = mesh_asset_data[constants.mesh_asset_index];
+		GpuMeshAssetData mesh_asset = mesh_asset_data[inputs.mesh_asset_index];
 		float3 vertex_position = float3(vertex.position) * mesh_asset.rcp_quantization_scale + meshlet.position_offset;
 		
 		scratch_buffer.Store(gs_scratch_vertex_buffer_offset + thread_index * sizeof(float3), vertex_position);
@@ -93,7 +98,7 @@ compile_const uint thread_group_size = 64;
 void MainCS(uint group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	MeshletRtasBuildIndirectArgumentsInputs inputs = meshlet_rtas_inputs[group_id];
 	
-	uint page_offset = inputs.page_index * MeshletPageHeader::page_size;
+	uint page_offset = inputs.runtime_page_index * MeshletPageHeader::page_size;
 	MeshletPageHeader page_header = mesh_asset_buffer.Load<MeshletPageHeader>(page_offset);
 	
 	for (uint meshlet_index = thread_index; meshlet_index < page_header.meshlet_count; meshlet_index += thread_group_size) {

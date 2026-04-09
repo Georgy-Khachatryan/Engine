@@ -230,15 +230,15 @@ void CmdDrawIndexedInstancedIndirect(RecordContext* record_context, GpuAddress i
 	CmdExecuteIndirect(record_context, indirect_arguments, CommandType::DrawIndexedInstanced);
 }
 
-void CmdBuildMeshletRTAS(RecordContext* record_context, const BuildInputsMeshletRTAS& inputs) {
+void CmdBuildMeshletRTAS(RecordContext* record_context, ArrayView<BuildInputsMeshletRTAS> inputs) {
 	auto& packet = AppendPacket<CmdBuildMeshletRtasPacket>(record_context);
-	packet.inputs = inputs;
+	packet.inputs = ArrayCopy(inputs, record_context->alloc);
 	
 	FixedCountArray<ResourceAccessDefinition, 4> resource_accesses;
-	resource_accesses[0] = CreateBufferResourceAccess(inputs.meshlet_rtas.resource_id,       PipelineStagesMask::RtasBuild, ResourceAccessMask::RtasRW);
-	resource_accesses[1] = CreateBufferResourceAccess(inputs.meshlet_descs.resource_id,      PipelineStagesMask::RtasBuild, ResourceAccessMask::UAV);
-	resource_accesses[2] = CreateBufferResourceAccess(inputs.scratch_data.resource_id,       PipelineStagesMask::RtasBuild, ResourceAccessMask::UAV);
-	resource_accesses[3] = CreateBufferResourceAccess(inputs.indirect_arguments.resource_id, PipelineStagesMask::RtasBuild, ResourceAccessMask::SRV);
+	resource_accesses[0] = CreateBufferResourceAccess(inputs[0].meshlet_rtas.resource_id,       PipelineStagesMask::RtasBuild, ResourceAccessMask::RtasRW);
+	resource_accesses[1] = CreateBufferResourceAccess(inputs[0].meshlet_descs.resource_id,      PipelineStagesMask::RtasBuild, ResourceAccessMask::UAV);
+	resource_accesses[2] = CreateBufferResourceAccess(inputs[0].scratch_data.resource_id,       PipelineStagesMask::RtasBuild, ResourceAccessMask::UAV);
+	resource_accesses[3] = CreateBufferResourceAccess(inputs[0].indirect_arguments.resource_id, PipelineStagesMask::RtasBuild, ResourceAccessMask::SRV);
 	
 	AppendResourceAccesses(record_context, resource_accesses);
 }

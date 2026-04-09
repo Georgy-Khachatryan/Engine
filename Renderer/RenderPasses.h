@@ -317,9 +317,16 @@ SHADER_DEFINITION_GENERATED_CODE(MeshletRtasShaders);
 
 NOTES(Meta::HlslFile{ "MeshletRtasData.hlsl"_sl })
 struct MeshletRtasBuildIndirectArgumentsInputs {
-	u32 page_index                = 0;
+	u32 runtime_page_index        = 0;
 	u32 indirect_arguments_offset = 0;
 	u32 vertex_buffer_offsets     = 0;
+};
+
+NOTES(Meta::HlslFile{ "MeshletRtasData.hlsl"_sl })
+struct MeshletRtasDecodeVertexBufferInputs {
+	u32 runtime_page_index    = 0;
+	u32 mesh_asset_index      = 0;
+	u32 vertex_buffer_offsets = 0;
 };
 
 
@@ -353,18 +360,13 @@ struct MeshletRtasDecodeVertexBufferRenderPass {
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
 		HLSL::RegularBuffer<GpuMeshAssetData> mesh_asset_data = VirtualResourceID::GpuMeshAssetData;
+		HLSL::RegularBuffer<MeshletRtasDecodeVertexBufferInputs> decode_vertex_buffer_inputs;
+		HLSL::RegularBuffer<u32> packed_group_indices;
 		HLSL::ByteBuffer mesh_asset_buffer = VirtualResourceID::MeshAssetBuffer;
 		HLSL::RWByteBuffer scratch_buffer = VirtualResourceID::StreamingScratchBuffer;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {
-		struct PushConstants {
-			u32 runtime_page_index       = 0;
-			u32 mesh_asset_index         = 0;
-			u32 vertex_buffer_offsets    = 0;
-		};
-		
-		HLSL::PushConstantBuffer<PushConstants> constants;
 		HLSL::DescriptorTable<Descriptors> descriptor_table;
 	};
 	

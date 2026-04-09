@@ -114,7 +114,9 @@ void UpdateMeshletStreamingSystem(MeshletStreamingSystem* system, AsyncTransferQ
 	ArrayReserve(page_table_update_commands, alloc, runtime_page_count);
 	
 	Array<MeshletRtasBuildCommand> meshlet_rtas_build_commands;
+	Array<BuildInputsMeshletRTAS>  meshlet_rtas_build_inputs;
 	ArrayReserve(meshlet_rtas_build_commands, alloc, 8u);
+	ArrayReserve(meshlet_rtas_build_inputs,   alloc, 8u);
 	
 	auto& streaming_scratch_buffer = GetVirtualResource(record_context, VirtualResourceID::StreamingScratchBuffer);
 	u32 scratch_offset = AlignUp((u32)sizeof(u32), rtas_alignment);
@@ -163,15 +165,15 @@ void UpdateMeshletStreamingSystem(MeshletStreamingSystem* system, AsyncTransferQ
 			command.runtime_page_index = runtime_page_index;
 			command.mesh_asset_index   = page.mesh_asset_index;
 			
-			auto& limits = command.inputs.limits;
-			limits.max_meshlet_count        = page.page_header.meshlet_count;
-			limits.max_total_triangle_count = page.page_header.total_triangle_count;
-			limits.max_total_vertex_count   = page.page_header.total_vertex_count;
+			BuildInputsMeshletRTAS inputs;
+			inputs.limits.max_meshlet_count        = page.page_header.meshlet_count;
+			inputs.limits.max_total_triangle_count = page.page_header.total_triangle_count;
+			inputs.limits.max_total_vertex_count   = page.page_header.total_vertex_count;
 			
-			auto requirements = GetMeshletRtasMemoryRequirements(record_context->context, limits);
-			u32 meshlet_descs_scratch_size      = AlignUp(limits.max_meshlet_count * 16u, rtas_alignment);
-			u32 indirect_arguments_scratch_size = AlignUp(limits.max_meshlet_count * 64u, rtas_alignment);
-			u32 vertex_buffer_scratch_size      = AlignUp(limits.max_total_vertex_count * (u32)sizeof(float3), rtas_alignment);
+			auto requirements = GetMeshletRtasMemoryRequirements(record_context->context, inputs.limits);
+			u32 meshlet_descs_scratch_size      = AlignUp(inputs.limits.max_meshlet_count * 16u, rtas_alignment);
+			u32 indirect_arguments_scratch_size = AlignUp(inputs.limits.max_meshlet_count * 64u, rtas_alignment);
+			u32 vertex_buffer_scratch_size      = AlignUp(inputs.limits.max_total_vertex_count * (u32)sizeof(float3), rtas_alignment);
 			u32 shader_scratch_size = meshlet_descs_scratch_size + indirect_arguments_scratch_size + vertex_buffer_scratch_size;
 			u32 total_scratch_size  = shader_scratch_size + AlignUp(requirements.scratch_size_bytes, rtas_alignment);
 			
@@ -181,7 +183,6 @@ void UpdateMeshletStreamingSystem(MeshletStreamingSystem* system, AsyncTransferQ
 					page.rtas_allocation = allocation;
 					scratch_size -= total_scratch_size;
 					
-					auto& inputs = command.inputs;
 					inputs.meshlet_rtas       = GpuAddress(VirtualResourceID::MeshletRtasBuffer,      (u32)system->rtas_heap.GetMemoryBlockOffset(allocation));
 					inputs.meshlet_descs      = GpuAddress(VirtualResourceID::StreamingScratchBuffer, scratch_offset);
 					inputs.indirect_arguments = GpuAddress(VirtualResourceID::StreamingScratchBuffer, scratch_offset + meshlet_descs_scratch_size);
@@ -189,7 +190,9 @@ void UpdateMeshletStreamingSystem(MeshletStreamingSystem* system, AsyncTransferQ
 					
 					// Vertex buffer is allocated at the end of the scratch space.
 					scratch_offset += meshlet_descs_scratch_size + indirect_arguments_scratch_size + AlignUp(requirements.scratch_size_bytes, rtas_alignment);
+					
 					ArrayAppend(meshlet_rtas_build_commands, alloc, command);
+					ArrayAppend(meshlet_rtas_build_inputs,   alloc, inputs);
 					
 					page.wait_index = current_frame_index + number_of_frames_in_flight;
 					page.state      = MeshletRuntimePageState::BuildRTAS;
@@ -343,6 +346,7 @@ void UpdateMeshletStreamingSystem(MeshletStreamingSystem* system, AsyncTransferQ
 	
 	system->meshlet_streaming_update_commands.page_table_update_commands = page_table_update_commands;
 	system->meshlet_rtas_build_commands.meshlet_rtas_build_commands  = meshlet_rtas_build_commands;
+	system->meshlet_rtas_build_commands.meshlet_rtas_build_inputs    = meshlet_rtas_build_inputs;
 	system->meshlet_rtas_build_commands.vertex_buffer_scratch_offset = scratch_size;
 }
 

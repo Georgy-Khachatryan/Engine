@@ -25,13 +25,13 @@ struct MeshletStreamingUpdateCommands {
 };
 
 struct MeshletRtasBuildCommand {
-	BuildInputsMeshletRTAS inputs;
 	u32 runtime_page_index = 0;
 	u32 mesh_asset_index   = 0;
 };
 
 struct MeshletRtasBuildCommands {
 	ArrayView<MeshletRtasBuildCommand> meshlet_rtas_build_commands;
+	ArrayView<BuildInputsMeshletRTAS>  meshlet_rtas_build_inputs;
 	u32 vertex_buffer_scratch_offset = 0;
 };
 
