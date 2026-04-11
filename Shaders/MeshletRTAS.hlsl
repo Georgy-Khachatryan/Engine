@@ -3,12 +3,12 @@
 
 compile_const u32 scratch_allocator_offset = 0u;
 
-#if defined(CLEAR_BUFFERS)
+#if defined(MESHLET_RTAS_CLEAR_BUFFERS)
 [ThreadGroupSize(1, 1, 1)]
 void MainCS() {
 	scratch_buffer.Store(scratch_allocator_offset, constants.vertex_buffer_scratch_offset);
 }
-#endif // defined(CLEAR_BUFFERS)
+#endif // defined(MESHLET_RTAS_CLEAR_BUFFERS)
 
 
 #if defined(MESHLET_RTAS_DECODE_VERTEX_BUFFER)
@@ -128,3 +128,30 @@ void MainCS(uint group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	}
 }
 #endif // defined(MESHLET_RTAS_BUILD_INDIRECT_ARGUMENTS)
+
+
+#if defined(MESHLET_RTAS_WRITE_OFFSETS)
+compile_const uint thread_group_size = 64;
+
+[ThreadGroupSize(thread_group_size, 1, 1)]
+void MainCS(uint group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
+	MeshletRtasWriteOffsetsInputs inputs = write_offsets_inputs[group_id];
+	
+	uint page_offset = inputs.runtime_page_index * MeshletPageHeader::page_size;
+	MeshletPageHeader page_header = mesh_asset_buffer.Load<MeshletPageHeader>(page_offset);
+	
+	uint meshlet_rtas_references_offset = page_offset + sizeof(MeshletPageHeader) + page_header.meshlet_count * sizeof(MeshletCullingData);
+	
+	for (uint meshlet_index = thread_index; meshlet_index < page_header.meshlet_count; meshlet_index += thread_group_size) {
+		uint meshlet_rtas_reference_offset = meshlet_rtas_references_offset + meshlet_index * sizeof(MeshletRtasReference);
+		
+		u64 meshlet_rtas_address = scratch_buffer.Load<u64>(inputs.meshlet_descs_offset + meshlet_index * 16u);
+		u32 meshlet_rtas_offset  = (u32)(meshlet_rtas_address - constants.meshlet_rtas_buffer_address);
+		
+		MeshletRtasReference rtas_reference;
+		rtas_reference.offset = meshlet_rtas_offset;
+		
+		mesh_asset_buffer.Store(meshlet_rtas_reference_offset, rtas_reference);
+	}
+}
+#endif // defined(MESHLET_RTAS_WRITE_OFFSETS)

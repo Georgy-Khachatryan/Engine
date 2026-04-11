@@ -36,6 +36,11 @@ struct MeshletCullingData {
 };
 
 NOTES(Meta::HlslFile{ "MeshData.hlsl"_sl })
+struct MeshletRtasReference {
+	u32 offset = 0;
+};
+
+NOTES(Meta::HlslFile{ "MeshData.hlsl"_sl })
 struct MeshletHeader {
 	float3 position_offset;
 	u16 triangle_count = 0;
@@ -91,7 +96,7 @@ struct MeshSourceData {
 
 NOTES()
 struct MeshRuntimeDataLayout {
-	compile_const u64 current_version = 38;
+	compile_const u64 current_version = 41;
 	
 	u64 file_guid = 0;
 	u64 version   = 0;

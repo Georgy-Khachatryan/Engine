@@ -94,6 +94,12 @@ struct BuildLimitsMeshletRTAS {
 	u32 max_total_vertex_count	 = 0;
 };
 
+struct BuildLimitsMeshletBLAS {
+	u32 max_blas_count          = 0;
+	u32 max_total_meshlet_count = 0;
+	u32 max_meshlets_per_blas   = 0;
+};
+
 struct BuildInputsMeshletRTAS {
 	BuildLimitsMeshletRTAS limits;
 	GpuAddress meshlet_rtas;

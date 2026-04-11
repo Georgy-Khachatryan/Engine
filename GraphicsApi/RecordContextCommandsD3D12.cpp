@@ -246,10 +246,20 @@ static NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_INPUTS TranslateB
 	return inputs;
 }
 
-MemoryRequirementsRTAS GetMeshletRtasMemoryRequirements(GraphicsContext* api_context, const BuildLimitsMeshletRTAS& limits) {
-	auto* context = (GraphicsContextD3D12*)api_context;
+static NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_INPUTS TranslateBuildLimitsMeshletBLAS(const BuildLimitsMeshletBLAS& limits) {
+	NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_INPUTS inputs = {};
+	inputs.maxArgCount                 = limits.max_blas_count;
+	inputs.flags                       = NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_FLAG_FAST_TRACE;
+	inputs.type                        = NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_TYPE_BUILD_BLAS_FROM_CLAS;
+	inputs.mode                        = NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_MODE_IMPLICIT_DESTINATIONS;
+	inputs.clasDesc.maxTotalClasCount  = limits.max_total_meshlet_count;
+	inputs.clasDesc.maxClasCountPerArg = limits.max_meshlets_per_blas;
 	
-	auto inputs = TranslateBuildLimitsMeshletRTAS(limits);
+	return inputs;
+}
+
+static MemoryRequirementsRTAS GetRtasMemoryRequirements(GraphicsContext* api_context, const NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_INPUTS& inputs) {
+	auto* context = (GraphicsContextD3D12*)api_context;
 	
 	NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_REQUIREMENTS_INFO requirements = {};
 	
@@ -266,6 +276,16 @@ MemoryRequirementsRTAS GetMeshletRtasMemoryRequirements(GraphicsContext* api_con
 	memory_requirements.scratch_size_bytes  = (u32)requirements.scratchDataSizeInBytes;
 	
 	return memory_requirements;
+}
+
+MemoryRequirementsRTAS GetMeshletRtasMemoryRequirements(GraphicsContext* api_context, const BuildLimitsMeshletRTAS& limits) {
+	auto inputs = TranslateBuildLimitsMeshletRTAS(limits);
+	return GetRtasMemoryRequirements(api_context, inputs);
+}
+
+MemoryRequirementsRTAS GetMeshletBlasMemoryRequirements(GraphicsContext* api_context, const BuildLimitsMeshletBLAS& limits) {
+	auto inputs = TranslateBuildLimitsMeshletBLAS(limits);
+	return GetRtasMemoryRequirements(api_context, inputs);
 }
 
 static void CmdBuildMeshletRtasD3D12(CmdBuildMeshletRtasPacket* packet, ID3D12GraphicsCommandList7* command_list, ArrayView<VirtualResource> resources) {

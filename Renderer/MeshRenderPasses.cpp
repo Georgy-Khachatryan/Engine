@@ -267,7 +267,7 @@ void UpdateMeshletPageTableRenderPass::RecordPass(RecordContext* record_context)
 }
 
 void MeshletRtasClearBuffersRenderPass::CreatePipelines(PipelineLibrary* lib) {
-	pipeline_id = CreateComputePipeline(lib, MeshletRtasShadersID, MeshletRtasShaders::ClearBuffers);
+	pipeline_id = CreateComputePipeline(lib, MeshletRtasShadersID, MeshletRtasShaders::MeshletRtasClearBuffers);
 }
 
 void MeshletRtasClearBuffersRenderPass::RecordPass(RecordContext* record_context) {
@@ -370,4 +370,39 @@ void MeshletRtasBuildRenderPass::RecordPass(RecordContext* record_context) {
 	CmdDispatch(record_context, (u32)meshlet_rtas_build_commands.count);
 	
 	CmdBuildMeshletRTAS(record_context, meshlet_rtas_build_inputs);
+}
+
+void MeshletRtasWriteOffsetsRenderPass::CreatePipelines(PipelineLibrary* lib) {
+	pipeline_id = CreateComputePipeline(lib, MeshletRtasShadersID, MeshletRtasShaders::MeshletRtasWriteOffsets);
+}
+
+void MeshletRtasWriteOffsetsRenderPass::RecordPass(RecordContext* record_context) {
+	auto [meshlet_rtas_build_commands, meshlet_rtas_build_inputs, vertex_buffer_scratch_offset] = GetMeshletRtasBuildCommands(meshlet_streaming_system);
+	if (meshlet_rtas_build_commands.count == 0) return;
+	
+	auto inputs = AllocateTransientUploadBuffer<MeshletRtasWriteOffsetsInputs, 8u>(record_context, (u32)meshlet_rtas_build_commands.count);
+	
+	for (u32 i = 0; i < meshlet_rtas_build_commands.count; i += 1) {
+		auto& command      = meshlet_rtas_build_commands[i];
+		auto& build_inputs = meshlet_rtas_build_inputs[i];
+		
+		MeshletRtasWriteOffsetsInputs shader_inputs;
+		shader_inputs.runtime_page_index   = command.runtime_page_index;
+		shader_inputs.meshlet_descs_offset = build_inputs.meshlet_descs.offset;
+		inputs.cpu_address[i] = shader_inputs;
+	}
+	
+	auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
+	descriptor_table.write_offsets_inputs.Bind(inputs.gpu_address, (u32)(meshlet_rtas_build_commands.count * sizeof(MeshletRtasWriteOffsetsInputs)));
+	
+	RootSignature::PushConstants constants;
+	constants.meshlet_rtas_buffer_address = meshlet_rtas_buffer_address;
+	
+	CmdSetRootSignature(record_context, root_signature);
+	CmdSetPipelineState(record_context, pipeline_id);
+	
+	CmdSetRootArgument(record_context, root_signature.constants, constants);
+	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
+	
+	CmdDispatch(record_context, (u32)meshlet_rtas_build_commands.count);
 }

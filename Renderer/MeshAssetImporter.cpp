@@ -299,7 +299,7 @@ MeshImportResult ImportMeshFile(StackAllocator* alloc, ThreadPool* thread_pool, 
 			u32 triangle_count = src_meshlet.end_meshlet_triangles_index - src_meshlet.begin_meshlet_triangles_index;
 			u32 vertex_count   = src_meshlet.end_vertex_indices_index    - src_meshlet.begin_vertex_indices_index;
 			
-			u32 meshlet_size = (u32)(sizeof(MeshletCullingData) + sizeof(MeshletHeader) + AlignUp(vertex_count * sizeof(MeshletVertex) + triangle_count * sizeof(MdtMeshletTriangle), 4));
+			u32 meshlet_size = (u32)(sizeof(MeshletCullingData) + sizeof(MeshletRtasReference) + sizeof(MeshletHeader) + AlignUp(vertex_count * sizeof(MeshletVertex) + triangle_count * sizeof(MdtMeshletTriangle), 4));
 			DebugAssert(meshlet_size <= page_size, "Meshlet is larger than a single page. (%/%).", meshlet_size, page_size);
 			
 			if (page_offset + meshlet_size > page_size) {
@@ -393,7 +393,8 @@ MeshImportResult ImportMeshFile(StackAllocator* alloc, ThreadPool* thread_pool, 
 		u32 total_vertex_count   = 0;
 		
 		u64 page_culling_data_offset = sizeof(MeshletPageHeader);
-		u64 page_meshlet_data_offset = page_culling_data_offset + meshlet_count * sizeof(MeshletCullingData);
+		u64 page_meshlet_rtas_offset = page_culling_data_offset + meshlet_count * sizeof(MeshletCullingData);
+		u64 page_meshlet_data_offset = page_meshlet_rtas_offset + meshlet_count * sizeof(MeshletRtasReference);
 		
 		for (u32 page_meshlet_index = begin_meshlet_index; page_meshlet_index < end_meshlet_index; page_meshlet_index += 1) {
 			u32 meshlet_index = page_meshlet_indices[page_meshlet_index];
@@ -428,6 +429,15 @@ MeshImportResult ImportMeshFile(StackAllocator* alloc, ThreadPool* thread_pool, 
 				
 				memcpy(page.data + page_culling_data_offset, &culling_data, sizeof(culling_data));
 				page_culling_data_offset += sizeof(culling_data);
+			}
+			
+			// Write RTAS reference:
+			{
+				MeshletRtasReference rtas_reference;
+				rtas_reference.offset = 0; // Filled in on GPU during meshlet RTAS build.
+				
+				memcpy(page.data + page_meshlet_rtas_offset, &rtas_reference, sizeof(rtas_reference));
+				page_meshlet_rtas_offset += sizeof(rtas_reference);
 			}
 			
 			// Write header:
