@@ -32,7 +32,9 @@ compile_const u32 mesh_feedback_buffer_header_size    = 1;
 [ThreadGroupSize(thread_group_size, 1, 1)]
 void MainCS(uint thread_id : SV_DispatchThreadID) {
 	if (thread_id < MeshletCullingIndirectArgumentsLayout::Count) {
-		indirect_arguments[thread_id] = uint4(0, 1, 1, 0);
+		// We need at least one thread group to copy main pass meshlet count to the disocclusion pass meshlet offset.
+		uint min_thread_group_count = thread_id == IndirectArgumentsLayout::RetestMeshEntityCullingCommands ? 1 : 0;
+		indirect_arguments[thread_id] = uint4(min_thread_group_count, 1, 1, 0);
 	}
 	
 	if (thread_id == 0) {
@@ -50,8 +52,23 @@ void MainCS(uint thread_id : SV_DispatchThreadID) {
 	if (thread_id < constants.texture_streaming_feedback_size) {
 		texture_streaming_feedback[thread_id] = u32_max;
 	}
+	
+	if (thread_id < constants.mesh_instance_capacity) {
+		instance_meshlet_counts[thread_id] = 0;
+	}
 }
 #endif // defined(CLEAR_BUFFERS)
+
+#if defined(READBACK_STATISTICS)
+[ThreadGroupSize(1, 1, 1)]
+void MainCS(uint thread_id : SV_DispatchThreadID) {
+	MeshletCullingStatistics statistics;
+	statistics.meshlet_count_main_pass         = indirect_arguments[MeshletCullingIndirectArgumentsLayout::DispatchMesh].x;
+	statistics.meshlet_count_disocclusion_pass = indirect_arguments[MeshletCullingIndirectArgumentsLayout::DisocclusionDispatchMesh].x;
+	statistics.meshlet_count                   = statistics.meshlet_count_main_pass + statistics.meshlet_count_disocclusion_pass;
+	meshlet_culling_statistics.Store(0, statistics);
+}
+#endif // defined(READBACK_STATISTICS)
 
 
 #if defined(ALLOCATE_STREAMING_FEEDBACK)
@@ -249,6 +266,12 @@ void MainCS(uint thread_id : SV_DispatchThreadID) {
 	uint mesh_entity_index = thread_id;
 	if (BitArrayTestBit(mesh_alive_mask, mesh_entity_index) == false) return;
 #elif defined(DISOCCLUSION_PASS)
+	// There is always at least one thread group dispatched to perform this copy.
+	if (thread_id == 0) {
+		uint main_pass_meshlet_count = indirect_arguments[MeshletCullingIndirectArgumentsLayout::DispatchMesh].x;
+		indirect_arguments[MeshletCullingIndirectArgumentsLayout::DisocclusionDispatchMesh].w = main_pass_meshlet_count;
+	}
+	
 	if (thread_id >= indirect_arguments[IndirectArgumentsLayout::RetestMeshEntityCullingCommands].w) return;
 	uint mesh_entity_index = mesh_entity_culling_commands[thread_id];
 #endif // defined(DISOCCLUSION_PASS)
@@ -484,12 +507,18 @@ void MainCS(uint thread_id : SV_DispatchThreadID, uint thread_index : SV_GroupIn
 	}
 	
 	uint visible_meshlet_index = 0;
-	InterlockedAdd(indirect_arguments[IndirectArgumentsLayout::DispatchMesh].x, 1u, visible_meshlet_index);
+	InterlockedAdd(indirect_arguments[IndirectArgumentsLayout::DispatchMesh].w, 1u, visible_meshlet_index);
 	
 	if (visible_meshlet_index < MeshletConstants::visible_meshlet_buffer_size) {
-		visible_meshlets[visible_meshlet_index] = uint2(meshlet_culling_data_offset + meshlet.meshlet_header_offset, mesh_entity_index);
-	} else {
-		InterlockedAdd(indirect_arguments[IndirectArgumentsLayout::DispatchMesh].x, -1);
+		uint meshlet_header_offset = meshlet_culling_data_offset + meshlet.meshlet_header_offset;
+		MeshletHeader meshlet = mesh_asset_buffer.Load<MeshletHeader>(meshlet_header_offset);
+		
+		visible_meshlets[visible_meshlet_index] = uint2(meshlet_header_offset, mesh_entity_index);
+		InterlockedAdd(indirect_arguments[IndirectArgumentsLayout::DispatchMesh].x, 1u);
+		
+		if (meshlet.rtas_offset != u32_max) {
+			InterlockedAdd(instance_meshlet_counts[mesh_entity_index], 1u);
+		}
 	}
 }
 #endif // defined(MESHLET_CULLING)

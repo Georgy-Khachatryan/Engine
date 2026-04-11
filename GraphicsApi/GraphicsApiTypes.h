@@ -103,9 +103,18 @@ struct BuildLimitsMeshletBLAS {
 struct BuildInputsMeshletRTAS {
 	BuildLimitsMeshletRTAS limits;
 	GpuAddress meshlet_rtas;
-	GpuAddress meshlet_descs;
 	GpuAddress scratch_data;
+	GpuAddress meshlet_descs;
 	GpuAddress indirect_arguments;
+};
+
+struct BuildInputsMeshletBLAS {
+	BuildLimitsMeshletBLAS limits;
+	GpuAddress meshlet_blas;
+	GpuAddress scratch_data;
+	GpuAddress blas_descs;
+	GpuAddress indirect_arguments;
+	GpuAddress indirect_argument_count;
 };
 
 

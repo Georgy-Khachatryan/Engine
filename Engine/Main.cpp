@@ -74,6 +74,8 @@ s32 main() {
 		WindowSwapChainBeginFrame(swap_chain, graphics_context, &alloc);
 		ImGuiBeginFrame(window);
 		
+		auto& meshlet_culling_statistics = world_entity.renderer_world->meshlet_culling_statistics;
+		
 		ImGui::Begin("Stats");
 		ImGui::Text("Initial Alloc Size: %llu", frame_initial_size);
 		ImGui::Text("Frame Alloc Size: %llu", frame_allocation_size);
@@ -81,6 +83,9 @@ s32 main() {
 		ImGui::Text("ImGui Heap Size: %llu", imgui_heap.ComputeTotalMemoryUsage());
 		ImGui::Text("World System Heap Size: %llu", world_system.heap.ComputeTotalMemoryUsage());
 		ImGui::Text("Asset System Heap Size: %llu", asset_system.heap.ComputeTotalMemoryUsage());
+		ImGui::Text("Meshlet Count: %llu", meshlet_culling_statistics.meshlet_count);
+		ImGui::Text("Meshlet Count Main Pass: %llu", meshlet_culling_statistics.meshlet_count_main_pass);
+		ImGui::Text("Meshlet Count Disocclusion Pass: %llu", meshlet_culling_statistics.meshlet_count_disocclusion_pass);
 		ImGui::Combo("Swap Chain Format", &swap_chain_format_index, "HDR\0SDR\0");
 		ImGui::End();
 		

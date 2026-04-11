@@ -53,6 +53,10 @@ struct RendererContext {
 	u64 meshlet_rtas_buffer_size    = 0;
 	u64 meshlet_rtas_buffer_address = 0;
 	
+	NativeBufferResource meshlet_blas_buffer;
+	u64 meshlet_blas_buffer_size    = 0;
+	u64 meshlet_blas_buffer_address = 0;
+	
 	NativeBufferResource streaming_scratch_buffer;
 	u64 streaming_scratch_buffer_size    = 0;
 	u64 streaming_scratch_buffer_address = 0;

@@ -13,7 +13,9 @@ static void BuildResourceTable(RecordContext* record_context, WorldEntitySystem*
 	table.Set(ID::MultipleScatteringLut, TextureSize(TextureFormat::R16G16B16A16_FLOAT, AtmosphereParameters::multiple_scattering_lut_size));
 	table.Set(ID::SkyPanoramaLut,        TextureSize(TextureFormat::R16G16B16A16_FLOAT, AtmosphereParameters::sky_panorama_lut_size));
 	
-	auto* mesh_assets = QueryEntityTypeArray<MeshAssetType>(*asset_system);
+	auto* mesh_assets   = QueryEntityTypeArray<MeshAssetType>(*asset_system);
+	auto* mesh_entities = QueryEntities<GpuMeshEntityQuery>(record_context->alloc, *world_system)[0];
+	
 	table.Set(ID::VisibleMeshlets, MeshletConstants::visible_meshlet_buffer_size * sizeof(uint2));
 	table.Set(ID::MeshEntityCullingCommands, MeshletConstants::mesh_entity_culling_command_count * sizeof(u32));
 	table.Set(ID::MeshletGroupCullingCommands, MeshletConstants::meshlet_group_culling_command_count * sizeof(uint2));
@@ -22,6 +24,7 @@ static void BuildResourceTable(RecordContext* record_context, WorldEntitySystem*
 	table.Set(ID::MeshletStreamingFeedback, 64u * 1024u);
 	table.Set(ID::MeshStreamingFeedback,    mesh_assets->capacity * sizeof(u32) + sizeof(u32));
 	table.Set(ID::TextureStreamingFeedback, persistent_srv_descriptor_count * sizeof(u32));
+	table.Set(ID::InstanceMeshletCounts,    mesh_entities->capacity * sizeof(u32));
 	
 	table.Set(ID::SceneRadiance,       TextureSize(TextureFormat::R16G16B16A16_FLOAT, render_target_size), Flags::UAV | Flags::RTV);
 	table.Set(ID::DepthStencil,        TextureSize(TextureFormat::D32_FLOAT,          render_target_size), Flags::DSV);
@@ -185,7 +188,7 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	render_passes.Add<AtmosphereCompositeRenderPass>().atmosphere = atmosphere_parameters_gpu_address;
 	
 	
-	render_passes.Add<MeshletClearBuffersRenderPass>();
+	render_passes.Add<MeshletClearBuffersRenderPass>().world_system = world_system;
 	render_passes.Add<MeshletAllocateStreamingFeedbackRenderPass>().asset_system = asset_system;
 	
 	render_passes.Add<MeshEntityCullingRenderPass>().world_system = world_system;
@@ -205,6 +208,16 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 		render_passes.Add<BuildHzbRenderPass>();
 	}
 	
+	auto& copy_meshlet_culling_statistics = render_passes.Add<CopyMeshletCullingStatisticsRenderPass>();
+	copy_meshlet_culling_statistics.readback_queue = &renderer_world.meshlet_culling_statistics_readback_queue;
+	
+	auto& meshlet_blas_build_indirect_arguments = render_passes.Add<MeshletBlasBuildIndirectArgumentsRenderPass>();
+	meshlet_blas_build_indirect_arguments.world_system = world_system;
+	meshlet_blas_build_indirect_arguments.scratch_buffer_address = renderer_context->streaming_scratch_buffer_address;
+	
+	auto& meshlet_blas_write_addresses = render_passes.Add<MeshletBlasWriteAddressesRenderPass>();
+	meshlet_blas_write_addresses.scratch_buffer_address = renderer_context->streaming_scratch_buffer_address;
+	meshlet_blas_write_addresses.meshlet_rtas_buffer_address = renderer_context->meshlet_rtas_buffer_address;
 	
 	auto& copy_streaming_feedback = render_passes.Add<CopyStreamingFeedbackRenderPass>();
 	copy_streaming_feedback.meshlet_streaming_feedback_queue = &renderer_world.meshlet_streaming_feedback_queue;

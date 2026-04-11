@@ -236,9 +236,23 @@ void CmdBuildMeshletRTAS(RecordContext* record_context, ArrayView<BuildInputsMes
 	
 	FixedCountArray<ResourceAccessDefinition, 4> resource_accesses;
 	resource_accesses[0] = CreateBufferResourceAccess(inputs[0].meshlet_rtas.resource_id,       PipelineStagesMask::RtasBuild, ResourceAccessMask::RtasRW);
-	resource_accesses[1] = CreateBufferResourceAccess(inputs[0].meshlet_descs.resource_id,      PipelineStagesMask::RtasBuild, ResourceAccessMask::UAV);
-	resource_accesses[2] = CreateBufferResourceAccess(inputs[0].scratch_data.resource_id,       PipelineStagesMask::RtasBuild, ResourceAccessMask::UAV);
+	resource_accesses[1] = CreateBufferResourceAccess(inputs[0].scratch_data.resource_id,       PipelineStagesMask::RtasBuild, ResourceAccessMask::UAV);
+	resource_accesses[2] = CreateBufferResourceAccess(inputs[0].meshlet_descs.resource_id,      PipelineStagesMask::RtasBuild, ResourceAccessMask::UAV);
 	resource_accesses[3] = CreateBufferResourceAccess(inputs[0].indirect_arguments.resource_id, PipelineStagesMask::RtasBuild, ResourceAccessMask::SRV);
+	
+	AppendResourceAccesses(record_context, resource_accesses);
+}
+
+void CmdBuildMeshletBLAS(RecordContext* record_context, const BuildInputsMeshletBLAS& inputs) {
+	auto& packet = AppendPacket<CmdBuildMeshletBlasPacket>(record_context);
+	packet.inputs = inputs;
+	
+	FixedCountArray<ResourceAccessDefinition, 5> resource_accesses;
+	resource_accesses[0] = CreateBufferResourceAccess(inputs.meshlet_blas.resource_id,            PipelineStagesMask::RtasBuild, ResourceAccessMask::RtasRW);
+	resource_accesses[1] = CreateBufferResourceAccess(inputs.scratch_data.resource_id,            PipelineStagesMask::RtasBuild, ResourceAccessMask::UAV);
+	resource_accesses[2] = CreateBufferResourceAccess(inputs.blas_descs.resource_id,              PipelineStagesMask::RtasBuild, ResourceAccessMask::UAV);
+	resource_accesses[3] = CreateBufferResourceAccess(inputs.indirect_arguments.resource_id,      PipelineStagesMask::RtasBuild, ResourceAccessMask::SRV);
+	resource_accesses[4] = CreateBufferResourceAccess(inputs.indirect_argument_count.resource_id, PipelineStagesMask::RtasBuild, ResourceAccessMask::SRV);
 	
 	AppendResourceAccesses(record_context, resource_accesses);
 }

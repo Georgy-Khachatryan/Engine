@@ -24,6 +24,7 @@ enum struct VirtualResourceID : u32 {
 	// Streaming buffers:
 	MeshAssetBuffer,
 	MeshletRtasBuffer,
+	MeshletBlasBuffer,
 	StreamingScratchBuffer,
 	
 	// Core resources:
@@ -46,6 +47,7 @@ enum struct VirtualResourceID : u32 {
 	MeshletGroupCullingCommands,
 	MeshletCullingCommands,
 	MeshletIndirectArguments,
+	InstanceMeshletCounts,
 	
 	// Streaming feedback:
 	MeshletStreamingFeedback,
@@ -313,6 +315,8 @@ enum struct MeshletRtasShaders : u32 {
 	MeshletRtasDecodeVertexBuffer     = 1u << 1,
 	MeshletRtasBuildIndirectArguments = 1u << 2,
 	MeshletRtasWriteOffsets           = 1u << 3,
+	MeshletBlasBuildIndirectArguments = 1u << 4,
+	MeshletBlasWriteAddresses         = 1u << 5,
 };
 SHADER_DEFINITION_GENERATED_CODE(MeshletRtasShaders);
 
@@ -432,6 +436,58 @@ struct MeshletRtasWriteOffsetsRenderPass {
 	inline static PipelineID pipeline_id;
 };
 
+NOTES(Meta::RenderPass{})
+struct MeshletBlasBuildIndirectArgumentsRenderPass {
+	RENDER_PASS_GENERATED_CODE();
+	
+	WorldEntitySystem* world_system = nullptr;
+	u64 scratch_buffer_address = 0;
+	
+	struct Descriptors : HLSL::BaseDescriptorTable {
+		HLSL::RegularBuffer<uint4> indirect_arguments      = VirtualResourceID::MeshletIndirectArguments;
+		HLSL::RWRegularBuffer<u32> instance_meshlet_counts = VirtualResourceID::InstanceMeshletCounts;
+		HLSL::RWByteBuffer         scratch_buffer          = VirtualResourceID::StreamingScratchBuffer;
+	};
+	
+	struct RootSignature : HLSL::BaseRootSignature {
+		struct PushConstants {
+			u64 scratch_buffer_address = 0;
+		};
+		
+		HLSL::PushConstantBuffer<PushConstants> constants;
+		HLSL::DescriptorTable<Descriptors> descriptor_table;
+	};
+	
+	inline static PipelineID pipeline_id;
+};
+
+NOTES(Meta::RenderPass{})
+struct MeshletBlasWriteAddressesRenderPass {
+	RENDER_PASS_GENERATED_CODE();
+	
+	u64 scratch_buffer_address      = 0;
+	u64 meshlet_rtas_buffer_address = 0;
+	
+	struct Descriptors : HLSL::BaseDescriptorTable {
+		HLSL::ByteBuffer           mesh_asset_buffer       = VirtualResourceID::MeshAssetBuffer;
+		HLSL::RegularBuffer<uint2> visible_meshlets        = VirtualResourceID::VisibleMeshlets;
+		HLSL::RWRegularBuffer<u32> instance_meshlet_counts = VirtualResourceID::InstanceMeshletCounts;
+		HLSL::RWByteBuffer         scratch_buffer          = VirtualResourceID::StreamingScratchBuffer;
+	};
+	
+	struct RootSignature : HLSL::BaseRootSignature {
+		struct PushConstants {
+			u64 scratch_buffer_address      = 0;
+			u64 meshlet_rtas_buffer_address = 0;
+		};
+		
+		HLSL::PushConstantBuffer<PushConstants> constants;
+		HLSL::DescriptorTable<Descriptors> descriptor_table;
+	};
+	
+	inline static PipelineID pipeline_id;
+};
+
 
 
 NOTES(Meta::ShaderName{ "MeshletCulling.hlsl"_sl })
@@ -441,8 +497,9 @@ enum struct MeshletCullingShaders : u32 {
 	MeshEntityCulling         = 1u << 2,
 	MeshletGroupCulling       = 1u << 3,
 	MeshletCulling            = 1u << 4,
-	MainPass                  = 1u << 5,
-	DisocclusionPass          = 1u << 6,
+	ReadbackStatistics        = 1u << 5,
+	MainPass                  = 1u << 6,
+	DisocclusionPass          = 1u << 7,
 };
 SHADER_DEFINITION_GENERATED_CODE(MeshletCullingShaders);
 
@@ -465,6 +522,10 @@ struct MeshletConstants {
 	compile_const u32 meshlet_culling_command_bin_count  = 6;
 	compile_const u32 meshlet_culling_command_bin_size   = 16 * 1024;
 	compile_const u32 meshlet_culling_command_count      = meshlet_culling_command_bin_size * (meshlet_culling_command_bin_count + disocclusion_bin_count);
+	
+	compile_const u32 max_meshlet_blas_count  = 256;
+	compile_const u32 max_total_blas_meshlets = 64 * 1024;
+	compile_const u32 max_meshlets_per_blas   = 2048;
 };
 
 NOTES(Meta::HlslFile{ "MeshData.hlsl"_sl })
@@ -491,6 +552,7 @@ enum struct MeshletCullingIndirectArgumentsLayout : u32 {
 	Count
 };
 
+NOTES(Meta::HlslFile{ "MeshData.hlsl"_sl })
 enum struct MeshletCullingPass : u32 {
 	Main         = 0,
 	Disocclusion = 1,
@@ -500,12 +562,15 @@ NOTES(Meta::RenderPass{})
 struct MeshletClearBuffersRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
+	WorldEntitySystem* world_system = nullptr;
+	
 	struct Descriptors : HLSL::BaseDescriptorTable {
 		HLSL::RWRegularBuffer<uint4> indirect_arguments       = VirtualResourceID::MeshletIndirectArguments;
 		HLSL::RWRegularBuffer<u32> meshlet_streaming_feedback = VirtualResourceID::MeshletStreamingFeedback;
 		HLSL::RWRegularBuffer<u32> mesh_streaming_feedback    = VirtualResourceID::MeshStreamingFeedback;
 		HLSL::RWRegularBuffer<u32> texture_streaming_feedback = VirtualResourceID::TextureStreamingFeedback;
 		HLSL::RWRegularBuffer<u32> culling_hzb_build_state    = VirtualResourceID::CullingHzbBuildState;
+		HLSL::RWRegularBuffer<u32> instance_meshlet_counts    = VirtualResourceID::InstanceMeshletCounts;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {
@@ -513,6 +578,7 @@ struct MeshletClearBuffersRenderPass {
 			u32 meshlet_streaming_feedback_size = 0;
 			u32 mesh_streaming_feedback_size    = 0;
 			u32 texture_streaming_feedback_size = 0;
+			u32 mesh_instance_capacity          = 0;
 		};
 		
 		HLSL::PushConstantBuffer<PushConstants> constants;
@@ -612,9 +678,6 @@ NOTES(Meta::RenderPass{})
 struct MeshletCullingRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
-	GpuReadbackQueue* meshlet_streaming_feedback_queue = nullptr;
-	GpuReadbackQueue* mesh_streaming_feedback_queue    = nullptr;
-	GpuReadbackQueue* texture_streaming_feedback_queue = nullptr;
 	MeshletCullingPass pass = MeshletCullingPass::Main;
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
@@ -629,8 +692,9 @@ struct MeshletCullingRenderPass {
 		
 		HLSL::RWRegularBuffer<u32> texture_streaming_feedback = VirtualResourceID::TextureStreamingFeedback;
 		HLSL::RWRegularBuffer<uint2> meshlet_culling_commands = VirtualResourceID::MeshletCullingCommands;
-		HLSL::RWRegularBuffer<uint2> visible_meshlets   = VirtualResourceID::VisibleMeshlets;
-		HLSL::RWRegularBuffer<uint4> indirect_arguments = VirtualResourceID::MeshletIndirectArguments;
+		HLSL::RWRegularBuffer<uint2> visible_meshlets         = VirtualResourceID::VisibleMeshlets;
+		HLSL::RWRegularBuffer<uint4> indirect_arguments       = VirtualResourceID::MeshletIndirectArguments;
+		HLSL::RWRegularBuffer<u32>   instance_meshlet_counts  = VirtualResourceID::InstanceMeshletCounts;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {
@@ -645,6 +709,24 @@ struct MeshletCullingRenderPass {
 	
 	inline static PipelineID main_pipeline_id;
 	inline static PipelineID disocclusion_pipeline_id;
+};
+
+NOTES(Meta::RenderPass{})
+struct CopyMeshletCullingStatisticsRenderPass {
+	RENDER_PASS_GENERATED_CODE();
+	
+	GpuReadbackQueue* readback_queue = nullptr;
+	
+	struct Descriptors : HLSL::BaseDescriptorTable {
+		HLSL::RegularBuffer<uint4> indirect_arguments = VirtualResourceID::MeshletIndirectArguments;
+		HLSL::RWByteBuffer meshlet_culling_statistics;
+	};
+	
+	struct RootSignature : HLSL::BaseRootSignature {
+		HLSL::DescriptorTable<Descriptors> descriptor_table;
+	};
+	
+	inline static PipelineID pipeline_id;
 };
 
 NOTES(Meta::RenderPass{})
@@ -706,11 +788,17 @@ struct BasicMeshRenderPass {
 		HLSL::RegularBuffer<GpuMeshAssetData>  mesh_asset_data  = VirtualResourceID::GpuMeshAssetData;
 		HLSL::RegularBuffer<GpuMeshEntityData> mesh_entity_data = VirtualResourceID::GpuMeshEntityData;
 		HLSL::RegularBuffer<GpuMaterialTextureData> material_texture_data = VirtualResourceID::MaterialAssetTextureData;
-		HLSL::ByteBuffer          mesh_asset_buffer = VirtualResourceID::MeshAssetBuffer;
-		HLSL::RegularBuffer<uint2> visible_meshlets = VirtualResourceID::VisibleMeshlets;
+		HLSL::ByteBuffer           mesh_asset_buffer  = VirtualResourceID::MeshAssetBuffer;
+		HLSL::RegularBuffer<uint2> visible_meshlets   = VirtualResourceID::VisibleMeshlets;
+		HLSL::RegularBuffer<uint4> indirect_arguments = VirtualResourceID::MeshletIndirectArguments;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {
+		struct PushConstants {
+			MeshletCullingPass pass = MeshletCullingPass::Main;
+		};
+		
+		HLSL::PushConstantBuffer<PushConstants> constants;
 		HLSL::ConstantBuffer<SceneConstants> scene;
 		HLSL::DescriptorTable<Descriptors> descriptor_table;
 	};

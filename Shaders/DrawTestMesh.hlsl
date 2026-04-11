@@ -15,7 +15,7 @@ struct InputPrimitivePS {
 	uint material_index   : MATERIAL_INDEX;
 };
 
-#define VISUALIZATION_TYPE 1
+#define VISUALIZATION_TYPE 0
 
 #if defined(MESH_SHADER)
 [OutputTopology("triangle")]
@@ -27,6 +27,9 @@ void MainMS(
 	out indices uint3 result_indices[128],
 	out primitives InputPrimitivePS result_primitives[128]) {
 	
+	if (constants.pass == MeshletCullingPass::Disocclusion) {
+		group_id += indirect_arguments[MeshletCullingIndirectArgumentsLayout::DispatchMesh].x;
+	}
 	uint2 meshlet_instance = visible_meshlets[group_id]; 
 	
 	uint mesh_entity_index = meshlet_instance.y;
@@ -73,7 +76,7 @@ void MainMS(
 		uint indices = uint((u64(packed_indices.x) | (u64(packed_indices.y) << 32)) >> ((load_offset & 0x3) * 8));
 		result_indices[thread_index] = uint3(indices >> 0, indices >> 8, indices >> 16) & 0xFF;
 		
-		result_primitives[thread_index].visualization_id = VISUALIZATION_TYPE ? meshlet.level_of_detail_index : (meshlet_header_offset >> 4);
+		result_primitives[thread_index].visualization_id = VISUALIZATION_TYPE == 0 ? (meshlet_header_offset >> 4) : VISUALIZATION_TYPE == 1 ? meshlet.level_of_detail_index : VISUALIZATION_TYPE == 2 ? mesh_entity_index : 0;
 		result_primitives[thread_index].material_index   = mesh_entity.material_asset_index;
 	}
 }
@@ -88,11 +91,11 @@ struct OutputPS {
 OutputPS MainPS(InputPS input, InputPrimitivePS primitive_input, float3 bary : SV_Barycentrics) {
 	float wireframe = BarycentricWireframe(bary, ddx(bary), ddy(bary));
 	
-#if (VISUALIZATION_TYPE == 0)
-	float3 meshlet_color = DecodeSRGB(RandomColor(primitive_input.visualization_id));
-#else // (VISUALIZATION_TYPE != 0)
+#if (VISUALIZATION_TYPE == 1)
 	// float3 meshlet_color = ViridisHeatMap(Pow2(1.0 - saturate(primitive_input.visualization_id * rcp(15.0))));
 	float3 meshlet_color = PlasmaHeatMap(Pow2(1.0 - saturate(primitive_input.visualization_id * rcp(15.0))));
+#else // (VISUALIZATION_TYPE != 0)
+	float3 meshlet_color = DecodeSRGB(RandomColor(primitive_input.visualization_id));
 #endif // (VISUALIZATION_TYPE != 0)
 	
 	if (primitive_input.material_index != u32_max) {

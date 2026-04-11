@@ -312,6 +312,30 @@ static void CmdBuildMeshletRtasD3D12(CmdBuildMeshletRtasPacket* packet, ID3D12Gr
 	}
 }
 
+static void CmdBuildMeshletBlasD3D12(CmdBuildMeshletBlasPacket* packet, ID3D12GraphicsCommandList7* command_list, ArrayView<VirtualResource> resources) {
+	auto& inputs = packet->inputs;
+	
+	u64 blas_descs         = ComputeGpuVirtualAddress(inputs.blas_descs,         resources);
+	u64 indirect_arguments = ComputeGpuVirtualAddress(inputs.indirect_arguments, resources);
+	
+	NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_DESC desc = {};
+	desc.inputs                  = TranslateBuildLimitsMeshletBLAS(inputs.limits);
+	desc.addressResolutionFlags  = NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_ADDRESS_RESOLUTION_FLAG_NONE;
+	desc.batchResultData         = ComputeGpuVirtualAddress(inputs.meshlet_blas, resources);
+	desc.batchScratchData        = ComputeGpuVirtualAddress(inputs.scratch_data, resources);
+	desc.destinationAddressArray = { blas_descs + 0, 16 };
+	desc.resultSizeArray         = { blas_descs + 8, 16 };
+	desc.indirectArgArray        = { indirect_arguments, sizeof(NVAPI_D3D12_RAYTRACING_ACCELERATION_STRUCTURE_MULTI_INDIRECT_CLUSTER_ARGS) };
+	desc.indirectArgCount        = ComputeGpuVirtualAddress(inputs.indirect_argument_count, resources);
+	
+	NVAPI_RAYTRACING_EXECUTE_MULTI_INDIRECT_CLUSTER_OPERATION_PARAMS params = {};
+	params.version = NVAPI_RAYTRACING_EXECUTE_MULTI_INDIRECT_CLUSTER_OPERATION_PARAMS_VER;
+	params.pDesc   = &desc;
+	
+	auto result = NvAPI_D3D12_RaytracingExecuteMultiIndirectClusterOperation(command_list, &params);
+	DebugAssert(result == NVAPI_OK, "NvAPI_D3D12_RaytracingExecuteMultiIndirectClusterOperation failed.");
+}
+
 static void CmdCopyBufferToTextureD3D12(CmdCopyBufferToTexturePacket* packet, ID3D12GraphicsCommandList7* command_list, ArrayView<VirtualResource> resources) {
 	auto& src_resource = resources[(u32)packet->src_buffer_gpu_address.resource_id];
 	auto& dst_resource = resources[(u32)packet->dst_texture_resource_id];
@@ -961,6 +985,7 @@ void ReplayRecordContext(GraphicsContext* api_context, RecordContext* record_con
 			case CommandType::DrawIndexedInstanced:  CmdDrawIndexedInstancedD3D12((CmdDrawIndexedInstancedPacket*)packet, command_list); break;
 			case CommandType::ExecuteIndirect:       CmdExecuteIndirectD3D12((CmdExecuteIndirectPacket*)packet, command_list, context, resources); break;
 			case CommandType::BuildMeshletRTAS:      CmdBuildMeshletRtasD3D12((CmdBuildMeshletRtasPacket*)packet, command_list, resources); break;
+			case CommandType::BuildMeshletBLAS:      CmdBuildMeshletBlasD3D12((CmdBuildMeshletBlasPacket*)packet, command_list, resources); break;
 			case CommandType::CopyBufferToTexture:   CmdCopyBufferToTextureD3D12((CmdCopyBufferToTexturePacket*)packet, command_list, resources); break;
 			case CommandType::CopyBufferToBuffer:    CmdCopyBufferToBufferD3D12((CmdCopyBufferToBufferPacket*)packet, command_list, resources); break;
 			case CommandType::ClearRenderTarget:     CmdClearRenderTargetD3D12((CmdClearRenderTargetPacket*)packet, command_list, context, resources); break;

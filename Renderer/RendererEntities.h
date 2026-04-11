@@ -48,6 +48,13 @@ struct DebugFreezeCullingCamera {
 	quat view_to_world_rotation;
 };
 
+NOTES(Meta::HlslFile{ "MeshData.hlsl"_sl })
+struct MeshletCullingStatistics {
+	u32 meshlet_count                   = 0;
+	u32 meshlet_count_main_pass         = 0;
+	u32 meshlet_count_disocclusion_pass = 0;
+};
+
 NOTES(Meta::NoSaveLoad{})
 struct RendererWorld {
 	SceneConstants scene_constants;
@@ -57,6 +64,7 @@ struct RendererWorld {
 	float meshlet_target_error_pixels = 1.f;
 	
 	DebugFreezeCullingCamera debug_freeze_culling_camera;
+	MeshletCullingStatistics meshlet_culling_statistics;
 	
 	bool enable_anti_aliasing = true;
 	u32 jitter_frame_index = 0;
@@ -64,6 +72,7 @@ struct RendererWorld {
 	GpuReadbackQueue meshlet_streaming_feedback_queue;
 	GpuReadbackQueue mesh_streaming_feedback_queue;
 	GpuReadbackQueue texture_streaming_feedback_queue;
+	GpuReadbackQueue meshlet_culling_statistics_readback_queue;
 	
 	Array<GpuComponentUploadBuffer> gpu_uploads;
 	

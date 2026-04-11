@@ -7,13 +7,14 @@
 #include "RenderPasses.h"
 #include "TextureStreamingSystem.h"
 
-compile_const u32 upload_buffer_size     = 8 * 1024 * 1024;
-compile_const u32 readback_buffer_size   = 1 * 1024 * 1024;
-compile_const u32 mesh_asset_buffer_size = MeshletPageHeader::page_size * MeshletPageHeader::runtime_page_count + (2 * 1024 * 1024);
-compile_const u32 meshlet_rtas_buffer_size = (384u * 1024u) * MeshletPageHeader::runtime_page_count;
+compile_const u32 upload_buffer_size                   = 8 * 1024 * 1024;
+compile_const u32 readback_buffer_size                 = 1 * 1024 * 1024;
+compile_const u32 mesh_asset_buffer_size               = MeshletPageHeader::page_size * MeshletPageHeader::runtime_page_count + (2 * 1024 * 1024);
+compile_const u32 meshlet_rtas_buffer_size             = (384u * 1024u) * MeshletPageHeader::runtime_page_count;
+compile_const u32 meshlet_blas_buffer_size             = 16 * 1024 * 1024;
 compile_const u32 max_transient_resource_table_entries = 16;
-compile_const u32 texture_heap_size      = 64 * 1024 * 1024;
-compile_const u32 streaming_scratch_buffer_size = 16 * 1024 * 1024;
+compile_const u32 texture_heap_size                    = 64 * 1024 * 1024;
+compile_const u32 streaming_scratch_buffer_size        = 16 * 1024 * 1024;
 
 RendererContext* CreateRendererContext(StackAllocator* alloc) {
 	auto* context = NewFromAlloc(alloc, RendererContext);
@@ -38,9 +39,24 @@ RendererContext* CreateRendererContext(StackAllocator* alloc) {
 	context->meshlet_rtas_buffer_size    = meshlet_rtas_buffer_size;
 	context->meshlet_rtas_buffer_address = GetBufferGpuVirtualAddress(context->meshlet_rtas_buffer);
 	
-	context->streaming_scratch_buffer         = CreateBufferResource(graphics_context, streaming_scratch_buffer_size, CreateResourceFlags::UAV);
-	context->streaming_scratch_buffer_size    = streaming_scratch_buffer_size;
-	context->streaming_scratch_buffer_address = GetBufferGpuVirtualAddress(context->streaming_scratch_buffer);
+	{
+		BuildLimitsMeshletBLAS limits;
+		limits.max_blas_count          = MeshletConstants::max_meshlet_blas_count;
+		limits.max_total_meshlet_count = MeshletConstants::max_total_blas_meshlets;
+		limits.max_meshlets_per_blas   = MeshletConstants::max_meshlets_per_blas;
+		
+		auto requirements = GetMeshletBlasMemoryRequirements(graphics_context, limits);
+		requirements.rtas_max_size_bytes = Math::Max(requirements.rtas_max_size_bytes, meshlet_blas_buffer_size);
+		requirements.scratch_size_bytes  = Math::Max(requirements.scratch_size_bytes, streaming_scratch_buffer_size);
+		
+		context->meshlet_blas_buffer         = CreateBufferResource(graphics_context, requirements.rtas_max_size_bytes, CreateResourceFlags::UAV | CreateResourceFlags::RTAS);
+		context->meshlet_blas_buffer_size    = requirements.rtas_max_size_bytes;
+		context->meshlet_blas_buffer_address = GetBufferGpuVirtualAddress(context->meshlet_blas_buffer);
+		
+		context->streaming_scratch_buffer         = CreateBufferResource(graphics_context, requirements.scratch_size_bytes, CreateResourceFlags::UAV);
+		context->streaming_scratch_buffer_size    = requirements.scratch_size_bytes;
+		context->streaming_scratch_buffer_address = GetBufferGpuVirtualAddress(context->streaming_scratch_buffer);
+	}
 	
 	context->meshlet_streaming_system = CreateMeshletStreamingSystem(alloc, meshlet_rtas_buffer_size);
 	context->mesh_streaming_system    = CreateMeshStreamingSystem(alloc, mesh_asset_buffer_size - MeshletPageHeader::page_size * MeshletPageHeader::runtime_page_count);
@@ -52,6 +68,7 @@ RendererContext* CreateRendererContext(StackAllocator* alloc) {
 void ReleaseRendererContext(RendererContext* context, StackAllocator* alloc) {
 	ReleaseBufferResource(context->graphics_context, context->debug_geometry_buffer.resource);
 	ReleaseBufferResource(context->graphics_context, context->mesh_asset_buffer);
+	ReleaseBufferResource(context->graphics_context, context->meshlet_blas_buffer);
 	ReleaseBufferResource(context->graphics_context, context->meshlet_rtas_buffer);
 	ReleaseBufferResource(context->graphics_context, context->streaming_scratch_buffer);
 	ReleaseAsyncTransferQueue(context->async_transfer_queue);
@@ -107,10 +124,11 @@ RecordContext* BeginRecordContext(StackAllocator* alloc, RendererContext* contex
 	
 	resource_table->virtual_resources.count = (u64)VirtualResourceID::Count;
 	resource_table->Set(VirtualResourceID::CurrentBackBuffer, WindowSwapGetCurrentBackBuffer(swap_chain), swap_chain->size);
-	resource_table->Set(VirtualResourceID::MeshAssetBuffer, context->mesh_asset_buffer, mesh_asset_buffer_size);
-	resource_table->Set(VirtualResourceID::MeshletRtasBuffer, context->meshlet_rtas_buffer, meshlet_rtas_buffer_size);
-	resource_table->Set(VirtualResourceID::StreamingScratchBuffer, context->streaming_scratch_buffer, streaming_scratch_buffer_size);
-	resource_table->Set(VirtualResourceID::DebugMeshBuffer, context->debug_geometry_buffer.resource, (u32)context->debug_geometry_buffer.resource_size);
+	resource_table->Set(VirtualResourceID::MeshAssetBuffer,        context->mesh_asset_buffer,              (u32)context->mesh_asset_buffer_size);
+	resource_table->Set(VirtualResourceID::MeshletRtasBuffer,      context->meshlet_rtas_buffer,            (u32)context->meshlet_rtas_buffer_size);
+	resource_table->Set(VirtualResourceID::MeshletBlasBuffer,      context->meshlet_blas_buffer,            (u32)context->meshlet_blas_buffer_size);
+	resource_table->Set(VirtualResourceID::StreamingScratchBuffer, context->streaming_scratch_buffer,       (u32)context->streaming_scratch_buffer_size);
+	resource_table->Set(VirtualResourceID::DebugMeshBuffer,        context->debug_geometry_buffer.resource, (u32)context->debug_geometry_buffer.resource_size);
 	
 	u64 buffer_index = context->transient_buffer_index;
 	resource_table->Set(VirtualResourceID::TransientUploadBuffer, context->upload_buffers[buffer_index], upload_buffer_size, context->upload_buffer_cpu_addresses[buffer_index]);
@@ -123,6 +141,11 @@ RecordContext* BeginRecordContext(StackAllocator* alloc, RendererContext* contex
 void UpdateStreamingSystems(RendererContext* renderer_context, ThreadPool* thread_pool, RecordContext* record_context, WorldEntitySystem* world_system, AssetEntitySystem* asset_system, u64 world_entity_guid) {
 	auto world_entity = QueryEntityByGUID<WorldEntityQuery>(*world_system, world_entity_guid);
 	auto& renderer_world = *world_entity.renderer_world;
+	
+	auto meshlet_culling_statistics = renderer_world.meshlet_culling_statistics_readback_queue.Load(record_context->frame_index);
+	if (meshlet_culling_statistics.data != nullptr) {
+		renderer_world.meshlet_culling_statistics = *(MeshletCullingStatistics*)meshlet_culling_statistics.data;
+	}
 	
 	UpdateMeshStreamingFiles(renderer_context->mesh_streaming_system, thread_pool, record_context, asset_system);
 	UpdateTextureStreamingFiles(renderer_context->texture_streaming_system, thread_pool, renderer_context->async_transfer_queue, record_context, asset_system);

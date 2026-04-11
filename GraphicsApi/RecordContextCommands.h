@@ -11,23 +11,24 @@ enum struct CommandType : u16 {
 	DrawIndexedInstanced  = 5,
 	ExecuteIndirect       = 6,
 	BuildMeshletRTAS      = 7,
-	CopyBufferToTexture   = 8,
-	CopyBufferToBuffer    = 9,
-	ClearRenderTarget     = 10,
-	ClearDepthStencil     = 11,
-	SetRenderTargets      = 12,
-	SetViewport           = 13,
-	SetScissor            = 14,
-	SetIndexBufferView    = 15,
-	SetRootSignature      = 16,
-	SetPipelineState      = 17,
-	SetDescriptorTable    = 18,
-	SetPushConstants      = 19,
-	SetConstantBuffer     = 20,
-	BeginProfilerScope    = 21,
-	EndProfilerScope      = 22,
-	DispatchXeSS          = 23,
-	DispatchDLSS          = 24,
+	BuildMeshletBLAS      = 8,
+	CopyBufferToTexture   = 9,
+	CopyBufferToBuffer    = 10,
+	ClearRenderTarget     = 11,
+	ClearDepthStencil     = 12,
+	SetRenderTargets      = 13,
+	SetViewport           = 14,
+	SetScissor            = 15,
+	SetIndexBufferView    = 16,
+	SetRootSignature      = 17,
+	SetPipelineState      = 18,
+	SetDescriptorTable    = 19,
+	SetPushConstants      = 20,
+	SetConstantBuffer     = 21,
+	BeginProfilerScope    = 22,
+	EndProfilerScope      = 23,
+	DispatchXeSS          = 24,
+	DispatchDLSS          = 25,
 	
 	Count
 };
@@ -85,6 +86,12 @@ struct CmdBuildMeshletRtasPacket : RecordContextCommandPacket {
 	compile_const CommandType my_type = CommandType::BuildMeshletRTAS;
 	
 	ArrayView<BuildInputsMeshletRTAS> inputs;
+};
+
+struct CmdBuildMeshletBlasPacket : RecordContextCommandPacket {
+	compile_const CommandType my_type = CommandType::BuildMeshletBLAS;
+	
+	BuildInputsMeshletBLAS inputs;
 };
 
 struct CmdCopyBufferToTexturePacket : RecordContextCommandPacket {
