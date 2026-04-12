@@ -102,7 +102,7 @@ struct ShaderSourceFile {
 };
 
 static ShaderSourceFile ReadShaderSourceFile(StackAllocator* alloc, String filename) {
-	auto filepath = StringFormat(alloc, "%/%"_sl, shader_directory_path, filename);
+	auto filepath = StringStartsWith(filename, "SDK"_sl) ? filename : StringFormat(alloc, "%/%"_sl, shader_directory_path, filename);
 	
 	ShaderSourceFile shader_file;
 	shader_file.contents = SystemReadFileToString(alloc, filepath);

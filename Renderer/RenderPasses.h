@@ -40,6 +40,8 @@ enum struct VirtualResourceID : u32 {
 	SceneConstants,
 	CullingHZB,
 	CullingHzbBuildState,
+	TlasMeshInstances,
+	SceneTLAS,
 	
 	// Mesh rendering:
 	VisibleMeshlets,
@@ -317,6 +319,7 @@ enum struct MeshletRtasShaders : u32 {
 	MeshletRtasWriteOffsets           = 1u << 3,
 	MeshletBlasBuildIndirectArguments = 1u << 4,
 	MeshletBlasWriteAddresses         = 1u << 5,
+	BuildMeshEntityInstances          = 1u << 6,
 };
 SHADER_DEFINITION_GENERATED_CODE(MeshletRtasShaders);
 
@@ -488,6 +491,27 @@ struct MeshletBlasWriteAddressesRenderPass {
 	inline static PipelineID pipeline_id;
 };
 
+NOTES(Meta::RenderPass{})
+struct BuildTlasRenderPass {
+	RENDER_PASS_GENERATED_CODE();
+	
+	WorldEntitySystem* world_system = nullptr;
+	
+	struct Descriptors : HLSL::BaseDescriptorTable {
+		HLSL::RegularBuffer<u32>          mesh_alive_mask         = VirtualResourceID::MeshEntityAliveMask;
+		HLSL::ByteBuffer                  mesh_asset_buffer       = VirtualResourceID::MeshAssetBuffer;
+		HLSL::RegularBuffer<GpuTransform> mesh_transforms         = VirtualResourceID::MeshEntityGpuTransform;
+		HLSL::RegularBuffer<u32>          instance_meshlet_counts = VirtualResourceID::InstanceMeshletCounts;
+		HLSL::RWByteBuffer                tlas_mesh_instances     = VirtualResourceID::TlasMeshInstances;
+		HLSL::RWByteBuffer                scratch_buffer          = VirtualResourceID::StreamingScratchBuffer;
+	};
+	
+	struct RootSignature : HLSL::BaseRootSignature {
+		HLSL::DescriptorTable<Descriptors> descriptor_table;
+	};
+	
+	inline static PipelineID pipeline_id;
+};
 
 
 NOTES(Meta::ShaderName{ "MeshletCulling.hlsl"_sl })
@@ -523,7 +547,7 @@ struct MeshletConstants {
 	compile_const u32 meshlet_culling_command_bin_size   = 16 * 1024;
 	compile_const u32 meshlet_culling_command_count      = meshlet_culling_command_bin_size * (meshlet_culling_command_bin_count + disocclusion_bin_count);
 	
-	compile_const u32 max_meshlet_blas_count  = 256;
+	compile_const u32 max_meshlet_blas_count  = 512;
 	compile_const u32 max_total_blas_meshlets = 64 * 1024;
 	compile_const u32 max_meshlets_per_blas   = 2048;
 };
@@ -763,6 +787,29 @@ struct BuildHzbRenderPass {
 		};
 		
 		HLSL::PushConstantBuffer<PushConstants> constants;
+		HLSL::DescriptorTable<Descriptors> descriptor_table;
+		HLSL::ConstantBuffer<SceneConstants> scene;
+	};
+	
+	inline static PipelineID pipeline_id;
+};
+
+
+NOTES(Meta::ShaderName{ "RaytracingDebug.hlsl"_sl })
+enum struct RaytracingDebugShaders : u32 {};
+SHADER_DEFINITION_GENERATED_CODE(RaytracingDebugShaders);
+
+NOTES(Meta::RenderPass{})
+struct RaytracingDebugRenderPass {
+	RENDER_PASS_GENERATED_CODE();
+	
+	struct Descriptors : HLSL::BaseDescriptorTable {
+		HLSL::Texture2D<float> depth_stencil = VirtualResourceID::DepthStencil;
+		HLSL::TopLevelRTAS     scene_tlas    = VirtualResourceID::SceneTLAS;
+		HLSL::RWTexture2D<float4> scene_radiance = VirtualResourceID::SceneRadiance;
+	};
+	
+	struct RootSignature : HLSL::BaseRootSignature {
 		HLSL::DescriptorTable<Descriptors> descriptor_table;
 		HLSL::ConstantBuffer<SceneConstants> scene;
 	};

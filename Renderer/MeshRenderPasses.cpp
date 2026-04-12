@@ -230,6 +230,24 @@ void BasicMeshRenderPass::RecordPass(RecordContext* record_context) {
 	CmdDispatchMeshIndirect(record_context, GpuAddress(VirtualResourceID::MeshletIndirectArguments, indirect_arguments_offset * sizeof(uint4)));
 }
 
+
+void RaytracingDebugRenderPass::CreatePipelines(PipelineLibrary* lib) {
+	pipeline_id = CreateComputePipeline(lib, RaytracingDebugShadersID);
+}
+
+void RaytracingDebugRenderPass::RecordPass(RecordContext* record_context) {
+	auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
+	
+	CmdSetRootSignature(record_context, root_signature);
+	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
+	CmdSetRootArgument(record_context, root_signature.scene, VirtualResourceID::SceneConstants);
+	CmdSetPipelineState(record_context, pipeline_id);
+	
+	auto render_target_size = GetTextureSize(record_context, VirtualResourceID::SceneRadiance);
+	CmdDispatch(record_context, DivideAndRoundUp(uint2(render_target_size), uint2(8, 4)));
+}
+
+
 void UpdateMeshletPageTableRenderPass::CreatePipelines(PipelineLibrary* lib) {
 	pipeline_id = CreateComputePipeline(lib, UpdateMeshletPageTableShadersID);
 }
@@ -491,3 +509,28 @@ void MeshletBlasWriteAddressesRenderPass::RecordPass(RecordContext* record_conte
 	CmdBuildMeshletBLAS(record_context, inputs);
 }
 
+
+void BuildTlasRenderPass::CreatePipelines(PipelineLibrary* lib) {
+	pipeline_id = CreateComputePipeline(lib, MeshletRtasShadersID, MeshletRtasShaders::BuildMeshEntityInstances);
+}
+
+void BuildTlasRenderPass::RecordPass(RecordContext* record_context) {
+	auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
+	
+	CmdSetRootSignature(record_context, root_signature);
+	CmdSetPipelineState(record_context, pipeline_id);
+	
+	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
+	
+	auto* mesh_entities = QueryEntities<GpuMeshEntityQuery>(record_context->alloc, *world_system)[0];
+	if (mesh_entities->capacity != 0) { // TODO: Minimize the dispatch size.
+		CmdDispatch(record_context, DivideAndRoundUp(mesh_entities->capacity, 256u));
+	}
+	
+	BuildInputsTLAS inputs;
+	inputs.limits.blas_instance_count = mesh_entities->count;
+	inputs.result_tlas    = VirtualResourceID::SceneTLAS;
+	inputs.instance_descs = VirtualResourceID::TlasMeshInstances;
+	inputs.scratch_data   = VirtualResourceID::StreamingScratchBuffer;
+	CmdBuildTLAS(record_context, inputs);
+}

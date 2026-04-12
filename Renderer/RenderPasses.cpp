@@ -21,10 +21,14 @@ static void BuildResourceTable(RecordContext* record_context, WorldEntitySystem*
 	table.Set(ID::MeshletGroupCullingCommands, MeshletConstants::meshlet_group_culling_command_count * sizeof(uint2));
 	table.Set(ID::MeshletCullingCommands, MeshletConstants::meshlet_culling_command_count * sizeof(uint2));
 	table.Set(ID::MeshletIndirectArguments, (u32)MeshletCullingIndirectArgumentsLayout::Count * sizeof(uint4));
-	table.Set(ID::MeshletStreamingFeedback, 64u * 1024u);
+	table.Set(ID::MeshletStreamingFeedback, gpu_memory_page_size);
 	table.Set(ID::MeshStreamingFeedback,    mesh_assets->capacity * sizeof(u32) + sizeof(u32));
 	table.Set(ID::TextureStreamingFeedback, persistent_srv_descriptor_count * sizeof(u32));
 	table.Set(ID::InstanceMeshletCounts,    mesh_entities->capacity * sizeof(u32));
+	table.Set(ID::TlasMeshInstances,        mesh_entities->count * 64u);
+	
+	auto tlas_requirements = GetTlasMemoryRequirements(record_context->context, { mesh_entities->count });
+	table.Set(ID::SceneTLAS, AlignUp(tlas_requirements.rtas_max_size_bytes, gpu_memory_page_size), Flags::UAV | Flags::RTAS);
 	
 	table.Set(ID::SceneRadiance,       TextureSize(TextureFormat::R16G16B16A16_FLOAT, render_target_size), Flags::UAV | Flags::RTV);
 	table.Set(ID::DepthStencil,        TextureSize(TextureFormat::D32_FLOAT,          render_target_size), Flags::DSV);
@@ -219,10 +223,16 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	meshlet_blas_write_addresses.scratch_buffer_address = renderer_context->streaming_scratch_buffer_address;
 	meshlet_blas_write_addresses.meshlet_rtas_buffer_address = renderer_context->meshlet_rtas_buffer_address;
 	
+	auto& build_tlas = render_passes.Add<BuildTlasRenderPass>();
+	build_tlas.world_system = world_system;
+	
 	auto& copy_streaming_feedback = render_passes.Add<CopyStreamingFeedbackRenderPass>();
 	copy_streaming_feedback.meshlet_streaming_feedback_queue = &renderer_world.meshlet_streaming_feedback_queue;
 	copy_streaming_feedback.mesh_streaming_feedback_queue    = &renderer_world.mesh_streaming_feedback_queue;
 	copy_streaming_feedback.texture_streaming_feedback_queue = &renderer_world.texture_streaming_feedback_queue;
+	
+	
+	render_passes.Add<RaytracingDebugRenderPass>();
 	
 	
 	auto& debug_geometry = render_passes.Add<DebugGeometryRenderPass>();

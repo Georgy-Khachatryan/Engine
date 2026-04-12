@@ -143,6 +143,19 @@ GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
 	
 	
 	{
+		ProfilerScope("NvAPI_Initialize");
+		auto result = NvAPI_Initialize();
+		DebugAssert(result == NVAPI_OK, "NvAPI_Initialize failed."); // TODO: Disable NvAPI when it's not supported.
+	}
+	
+	{
+		ProfilerScope("NvAPI_D3D12_SetNvShaderExtnSlotSpace");
+		auto result = NvAPI_D3D12_SetNvShaderExtnSlotSpace(device, 0, 1);
+		DebugAssert(result == NVAPI_OK, "NvAPI_D3D12_SetNvShaderExtnSlotSpace failed.");
+	}
+	
+	
+	{
 		extern ArrayView<ShaderDefinition> shader_definition_table;
 		extern ArrayView<String>         root_signature_filenames;
 		extern ArrayView<ArrayView<u32>> root_signature_streams;
@@ -162,12 +175,6 @@ GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
 		ArrayReserve(context->release_queue_last_frame, alloc, release_queue_capacity);
 		ArrayReserve(context->release_queue_this_frame, alloc, release_queue_capacity);
 		ArrayReserve(context->release_queue_next_frame, alloc, release_queue_capacity);
-	}
-	
-	{
-		ProfilerScope("NvAPI_Initialize");
-		auto result = NvAPI_Initialize();
-		DebugAssert(result == NVAPI_OK, "NvAPI_Initialize failed."); // TODO: Disable NvAPI when it's not supported.
 	}
 	
 	{
@@ -555,6 +562,24 @@ static void BuildRootSignatures(GraphicsContextD3D12* context, StackAllocator* a
 				break;
 			}
 			}
+		}
+		
+		// TODO: Disable NvAPI when it's not supported.
+		{
+			Array<D3D12_DESCRIPTOR_RANGE1> descriptor_ranges;
+			auto& descriptor_range = ArrayEmplace(descriptor_ranges, alloc);
+			descriptor_range.RangeType          = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
+			descriptor_range.NumDescriptors     = 1;
+			descriptor_range.BaseShaderRegister = 0;
+			descriptor_range.RegisterSpace      = 1;
+			descriptor_range.Flags              = D3D12_DESCRIPTOR_RANGE_FLAG_NONE;
+			descriptor_range.OffsetInDescriptorsFromTableStart = 0;
+			
+			auto& root_parameter = ArrayEmplace(root_parameters, alloc); 
+			root_parameter.ParameterType    = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+			root_parameter.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+			root_parameter.DescriptorTable.NumDescriptorRanges = 1;
+			root_parameter.DescriptorTable.pDescriptorRanges   = descriptor_ranges.data;
 		}
 		
 		D3D12_VERSIONED_ROOT_SIGNATURE_DESC desc = {};

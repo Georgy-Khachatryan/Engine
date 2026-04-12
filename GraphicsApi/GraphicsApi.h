@@ -36,6 +36,7 @@ u64 GetBufferGpuVirtualAddress(NativeBufferResource resource);
 SparseTextureLayout GetSparseTextureLayout(GraphicsContext* context, NativeTextureResource resource);
 MemoryRequirementsRTAS GetMeshletRtasMemoryRequirements(GraphicsContext* context, const BuildLimitsMeshletRTAS& limits);
 MemoryRequirementsRTAS GetMeshletBlasMemoryRequirements(GraphicsContext* context, const BuildLimitsMeshletBLAS& limits);
+MemoryRequirementsRTAS GetTlasMemoryRequirements(GraphicsContext* api_context, const BuildLimitsTLAS& limits);
 
 void SubmitAsyncCopyCommands(GraphicsContext* context, ArrayView<AsyncCopyBufferToBufferCommand> copy_buffer_to_buffer_commands, ArrayView<AsyncCopyBufferToTextureCommand> copy_buffer_to_texture_commands, u64 async_copy_signal_index);
 void AsyncUpdateMemoryMappings(GraphicsContext* context, StackAllocator* alloc, ArrayView<u32> tile_indices, u32 subresource_index, NativeTextureResource resource, NativeMemoryResource memory);

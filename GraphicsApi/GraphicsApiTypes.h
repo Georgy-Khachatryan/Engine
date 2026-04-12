@@ -100,6 +100,10 @@ struct BuildLimitsMeshletBLAS {
 	u32 max_meshlets_per_blas   = 0;
 };
 
+struct BuildLimitsTLAS {
+	u32 blas_instance_count = 0;
+};
+
 struct BuildInputsMeshletRTAS {
 	BuildLimitsMeshletRTAS limits;
 	GpuAddress meshlet_rtas;
@@ -115,6 +119,13 @@ struct BuildInputsMeshletBLAS {
 	GpuAddress blas_descs;
 	GpuAddress indirect_arguments;
 	GpuAddress indirect_argument_count;
+};
+
+struct BuildInputsTLAS {
+	BuildLimitsTLAS limits;
+	GpuAddress result_tlas;
+	GpuAddress instance_descs;
+	GpuAddress scratch_data;
 };
 
 
@@ -275,6 +286,7 @@ enum struct ResourceDescriptorType : u16 {
 	RWRegularBuffer = (4u << IndexOffset) | AnyBuffer  | AnyUAV,
 	ByteBuffer      = (5u << IndexOffset) | AnyBuffer  | AnySRV,
 	RWByteBuffer    = (6u << IndexOffset) | AnyBuffer  | AnyUAV,
+	TopLevelRTAS    = (7u << IndexOffset) | AnyBuffer  | AnySRV,
 };
 ENUM_FLAGS_OPERATORS(ResourceDescriptorType);
 
@@ -573,6 +585,16 @@ namespace HLSL {
 		void Bind(GpuAddress gpu_address, u32 size = u32_max) {
 			resource_id = gpu_address.resource_id;
 			buffer = { Type::RWByteBuffer, 1, gpu_address.offset, size };
+		}
+	};
+	
+	NOTES(ResourceDescriptorType::TopLevelRTAS)
+	struct TopLevelRTAS : ResourceDescriptor {
+		TopLevelRTAS(VirtualResourceID resource = (VirtualResourceID)0) { Bind(resource); }
+		
+		void Bind(GpuAddress gpu_address) {
+			resource_id = gpu_address.resource_id;
+			buffer = { Type::TopLevelRTAS, 0, gpu_address.offset, u32_max };
 		}
 	};
 	

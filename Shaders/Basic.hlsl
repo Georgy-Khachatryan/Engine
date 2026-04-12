@@ -53,6 +53,9 @@ compile_const s64 s64_min = (s64)0x8000000000000000;
 #define BEGIN_ROOT_SIGNATURE_NAMESPACE(pass_name, scope_name) namespace pass_name { namespace scope_name {
 #define END_ROOT_SIGNATURE_NAMESPACE(pass_name, scope_name) } }
 
+#define NV_SHADER_EXTN_SLOT u0
+#define NV_SHADER_EXTN_REGISTER_SPACE space1
+
 #include ROOT_SIGNATURE_FILEPATH
 
 
@@ -265,6 +268,14 @@ float3 QuatMul(quat q, float3 v) {
 	// https://fgiesen.wordpress.com/2019/02/09/rotating-a-single-vector-using-a-quaternion/
 	float3 t = cross(q.xyz, v) * 2.0;
 	return v + t * q.w + cross(q.xyz, t);
+}
+
+float3x3 QuatToRotationMatrix(quat q) {
+	float3x3 result;
+	result[0] = float3(1.0 - 2.0 * (q.y * q.y + q.z * q.z),       2.0 * (q.x * q.y - q.z * q.w),       2.0 * (q.x * q.z + q.y * q.w));
+	result[1] = float3(      2.0 * (q.x * q.y + q.z * q.w), 1.0 - 2.0 * (q.x * q.x + q.z * q.z),       2.0 * (q.y * q.z - q.x * q.w));
+	result[2] = float3(      2.0 * (q.x * q.z - q.y * q.w),       2.0 * (q.y * q.z + q.x * q.w), 1.0 - 2.0 * (q.x * q.x + q.y * q.y));
+	return result;
 }
 
 #if defined(GENERATED_MESHDATA_HLSL)

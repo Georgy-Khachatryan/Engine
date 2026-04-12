@@ -257,6 +257,18 @@ void CmdBuildMeshletBLAS(RecordContext* record_context, const BuildInputsMeshlet
 	AppendResourceAccesses(record_context, resource_accesses);
 }
 
+void CmdBuildTLAS(RecordContext* record_context, const BuildInputsTLAS& inputs) {
+	auto& packet = AppendPacket<CmdBuildTlasPacket>(record_context);
+	packet.inputs = inputs;
+	
+	FixedCountArray<ResourceAccessDefinition, 3> resource_accesses;
+	resource_accesses[0] = CreateBufferResourceAccess(inputs.result_tlas.resource_id,    PipelineStagesMask::RtasBuild, ResourceAccessMask::RtasRW);
+	resource_accesses[1] = CreateBufferResourceAccess(inputs.instance_descs.resource_id, PipelineStagesMask::RtasBuild, ResourceAccessMask::SRV);
+	resource_accesses[2] = CreateBufferResourceAccess(inputs.scratch_data.resource_id,   PipelineStagesMask::RtasBuild, ResourceAccessMask::UAV);
+	
+	AppendResourceAccesses(record_context, resource_accesses);
+}
+
 void CmdCopyBufferToTexture(RecordContext* record_context, GpuAddress src_buffer_gpu_address, VirtualResourceID dst_texture_resource_id, u32 src_row_pitch, uint3 src_size, uint3 dst_offset, u32 dst_subresource_index) {
 	auto& packet = AppendPacket<CmdCopyBufferToTexturePacket>(record_context);
 	packet.src_buffer_gpu_address  = src_buffer_gpu_address;

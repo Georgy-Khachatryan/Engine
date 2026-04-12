@@ -12,23 +12,24 @@ enum struct CommandType : u16 {
 	ExecuteIndirect       = 6,
 	BuildMeshletRTAS      = 7,
 	BuildMeshletBLAS      = 8,
-	CopyBufferToTexture   = 9,
-	CopyBufferToBuffer    = 10,
-	ClearRenderTarget     = 11,
-	ClearDepthStencil     = 12,
-	SetRenderTargets      = 13,
-	SetViewport           = 14,
-	SetScissor            = 15,
-	SetIndexBufferView    = 16,
-	SetRootSignature      = 17,
-	SetPipelineState      = 18,
-	SetDescriptorTable    = 19,
-	SetPushConstants      = 20,
-	SetConstantBuffer     = 21,
-	BeginProfilerScope    = 22,
-	EndProfilerScope      = 23,
-	DispatchXeSS          = 24,
-	DispatchDLSS          = 25,
+	BuildTLAS             = 9,
+	CopyBufferToTexture   = 10,
+	CopyBufferToBuffer    = 11,
+	ClearRenderTarget     = 12,
+	ClearDepthStencil     = 13,
+	SetRenderTargets      = 14,
+	SetViewport           = 15,
+	SetScissor            = 16,
+	SetIndexBufferView    = 17,
+	SetRootSignature      = 18,
+	SetPipelineState      = 19,
+	SetDescriptorTable    = 20,
+	SetPushConstants      = 21,
+	SetConstantBuffer     = 22,
+	BeginProfilerScope    = 23,
+	EndProfilerScope      = 24,
+	DispatchXeSS          = 25,
+	DispatchDLSS          = 26,
 	
 	Count
 };
@@ -92,6 +93,12 @@ struct CmdBuildMeshletBlasPacket : RecordContextCommandPacket {
 	compile_const CommandType my_type = CommandType::BuildMeshletBLAS;
 	
 	BuildInputsMeshletBLAS inputs;
+};
+
+struct CmdBuildTlasPacket : RecordContextCommandPacket {
+	compile_const CommandType my_type = CommandType::BuildTLAS;
+	
+	BuildInputsTLAS inputs;
 };
 
 struct CmdCopyBufferToTexturePacket : RecordContextCommandPacket {

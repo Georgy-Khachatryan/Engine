@@ -250,7 +250,7 @@ float3 Math::QuatToEulerXyzAngles(const quat& q) {
 	} else if (is_safe_2 == false) {
 		theta_0 = theta_diff * 2.f;
 	} else {
-	theta_0 = theta_sum + theta_diff;
+		theta_0 = theta_sum + theta_diff;
 		theta_2 = theta_sum - theta_diff;
 	}
 	

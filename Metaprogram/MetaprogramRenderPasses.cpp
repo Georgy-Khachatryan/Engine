@@ -324,6 +324,7 @@ static void GenerateCodeForRenderPass(StackAllocator* alloc, String filename, St
 				"RWStructuredBuffer"_sl,
 				"ByteAddressBuffer"_sl,
 				"RWByteAddressBuffer"_sl,
+				"RaytracingAccelerationStructure"_sl,
 			};
 			
 			for (auto& descriptor : root_argument.descriptors) {

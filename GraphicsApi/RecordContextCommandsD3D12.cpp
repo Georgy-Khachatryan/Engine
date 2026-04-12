@@ -8,6 +8,11 @@
 #include <SDK/XeSS/include/xess_d3d12.h>
 #include <SDK/NvApi/include/nvapi.h>
 
+static u64 ComputeGpuVirtualAddress(GpuAddress gpu_address, ArrayView<VirtualResource> resources) {
+	auto& resource = resources[(u32)gpu_address.resource_id];
+	return resource.buffer.resource.d3d12->GetGPUVirtualAddress() + gpu_address.offset;
+}
+
 static void CreateDescriptorTables(GraphicsContextD3D12* context, ArrayView<HLSL::BaseDescriptorTable*> descriptor_tables, ArrayView<VirtualResource> resources) {
 	ProfilerScope("CreateDescriptorTables");
 	
@@ -98,6 +103,16 @@ static void CreateDescriptorTables(GraphicsContextD3D12* context, ArrayView<HLSL
 				
 				device->CreateUnorderedAccessView(resource.buffer.resource.d3d12, nullptr, &desc, descriptor_table_handle);
 				break;
+			} case ResourceDescriptorType::TopLevelRTAS: {
+				D3D12_SHADER_RESOURCE_VIEW_DESC desc = {};
+				desc.Format                  = DXGI_FORMAT_UNKNOWN;
+				desc.ViewDimension           = D3D12_SRV_DIMENSION_RAYTRACING_ACCELERATION_STRUCTURE;
+				desc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+				desc.RaytracingAccelerationStructure.Location = ComputeGpuVirtualAddress(GpuAddress(descriptor.resource_id, descriptor.buffer.offset), resources);
+				DebugAssert(desc.RaytracingAccelerationStructure.Location % D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BYTE_ALIGNMENT == 0, "TopLevelRTAS offset is not correctly aligned.");
+				
+				device->CreateShaderResourceView(nullptr, &desc, descriptor_table_handle);
+				break;
 			} default: {
 				DebugAssertAlways("Unhandled ResourceDescriptorType '%'.", (u32)descriptor.common.type);
 				break;
@@ -108,11 +123,6 @@ static void CreateDescriptorTables(GraphicsContextD3D12* context, ArrayView<HLSL
 		}
 	}
 	
-}
-
-static u64 ComputeGpuVirtualAddress(GpuAddress gpu_address, ArrayView<VirtualResource> resources) {
-	auto& resource = resources[(u32)gpu_address.resource_id];
-	return resource.buffer.resource.d3d12->GetGPUVirtualAddress() + gpu_address.offset;
 }
 
 static void CreateRenderTargetView(GraphicsContextD3D12* context, VirtualResource& resource, D3D12_CPU_DESCRIPTOR_HANDLE descriptor_handle) {
@@ -258,6 +268,18 @@ static NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_INPUTS TranslateB
 	return inputs;
 }
 
+static NVAPI_D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS_EX TranslateBuildLimitsTLAS(const BuildLimitsTLAS& limits) {
+	NVAPI_D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS_EX inputs = {};
+	inputs.type                      = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL;
+	inputs.flags                     = NVAPI_D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE_EX;
+	inputs.numDescs                  = limits.blas_instance_count;
+	inputs.descsLayout               = D3D12_ELEMENTS_LAYOUT_ARRAY;
+	inputs.geometryDescStrideInBytes = sizeof(D3D12_RAYTRACING_INSTANCE_DESC);
+	inputs.instanceDescs             = 0;
+	
+	return inputs;
+}
+
 static MemoryRequirementsRTAS GetRtasMemoryRequirements(GraphicsContext* api_context, const NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_INPUTS& inputs) {
 	auto* context = (GraphicsContextD3D12*)api_context;
 	
@@ -286,6 +308,28 @@ MemoryRequirementsRTAS GetMeshletRtasMemoryRequirements(GraphicsContext* api_con
 MemoryRequirementsRTAS GetMeshletBlasMemoryRequirements(GraphicsContext* api_context, const BuildLimitsMeshletBLAS& limits) {
 	auto inputs = TranslateBuildLimitsMeshletBLAS(limits);
 	return GetRtasMemoryRequirements(api_context, inputs);
+}
+
+MemoryRequirementsRTAS GetTlasMemoryRequirements(GraphicsContext* api_context, const BuildLimitsTLAS& limits) {
+	auto* context = (GraphicsContextD3D12*)api_context;
+	
+	auto inputs = TranslateBuildLimitsTLAS(limits);
+	
+	D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO requirements = {};
+	
+	NVAPI_GET_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO_EX_PARAMS params = {};
+	params.version = NVAPI_GET_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO_EX_PARAMS_VER;
+	params.pDesc   = &inputs;
+	params.pInfo   = &requirements;
+	
+	auto result = NvAPI_D3D12_GetRaytracingAccelerationStructurePrebuildInfoEx(context->device, &params);
+	DebugAssert(result == NVAPI_OK, "NvAPI_D3D12_GetRaytracingMultiIndirectClusterOperationRequirementsInfo failed.");
+	
+	MemoryRequirementsRTAS memory_requirements;
+	memory_requirements.rtas_max_size_bytes = (u32)requirements.ResultDataMaxSizeInBytes;
+	memory_requirements.scratch_size_bytes  = (u32)requirements.ScratchDataSizeInBytes;
+	
+	return memory_requirements;
 }
 
 static void CmdBuildMeshletRtasD3D12(CmdBuildMeshletRtasPacket* packet, ID3D12GraphicsCommandList7* command_list, ArrayView<VirtualResource> resources) {
@@ -333,6 +377,24 @@ static void CmdBuildMeshletBlasD3D12(CmdBuildMeshletBlasPacket* packet, ID3D12Gr
 	params.pDesc   = &desc;
 	
 	auto result = NvAPI_D3D12_RaytracingExecuteMultiIndirectClusterOperation(command_list, &params);
+	DebugAssert(result == NVAPI_OK, "NvAPI_D3D12_RaytracingExecuteMultiIndirectClusterOperation failed.");
+}
+
+static void CmdBuildTlasD3D12(CmdBuildTlasPacket* packet, ID3D12GraphicsCommandList7* command_list, ArrayView<VirtualResource> resources) {
+	auto& inputs = packet->inputs;
+	
+	NVAPI_D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC_EX desc = {};
+	desc.destAccelerationStructureData    = ComputeGpuVirtualAddress(inputs.result_tlas, resources);
+	desc.inputs                           = TranslateBuildLimitsTLAS(inputs.limits);
+	desc.inputs.instanceDescs             = ComputeGpuVirtualAddress(inputs.instance_descs, resources);
+	desc.sourceAccelerationStructureData  = 0;
+	desc.scratchAccelerationStructureData = ComputeGpuVirtualAddress(inputs.scratch_data, resources);
+	
+	NVAPI_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_EX_PARAMS params = {};
+	params.version = NVAPI_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_EX_PARAMS_VER;
+	params.pDesc   = &desc;
+	
+	auto result = NvAPI_D3D12_BuildRaytracingAccelerationStructureEx(command_list, &params);
 	DebugAssert(result == NVAPI_OK, "NvAPI_D3D12_RaytracingExecuteMultiIndirectClusterOperation failed.");
 }
 
@@ -986,6 +1048,7 @@ void ReplayRecordContext(GraphicsContext* api_context, RecordContext* record_con
 			case CommandType::ExecuteIndirect:       CmdExecuteIndirectD3D12((CmdExecuteIndirectPacket*)packet, command_list, context, resources); break;
 			case CommandType::BuildMeshletRTAS:      CmdBuildMeshletRtasD3D12((CmdBuildMeshletRtasPacket*)packet, command_list, resources); break;
 			case CommandType::BuildMeshletBLAS:      CmdBuildMeshletBlasD3D12((CmdBuildMeshletBlasPacket*)packet, command_list, resources); break;
+			case CommandType::BuildTLAS:             CmdBuildTlasD3D12((CmdBuildTlasPacket*)packet, command_list, resources); break;
 			case CommandType::CopyBufferToTexture:   CmdCopyBufferToTextureD3D12((CmdCopyBufferToTexturePacket*)packet, command_list, resources); break;
 			case CommandType::CopyBufferToBuffer:    CmdCopyBufferToBufferD3D12((CmdCopyBufferToBufferPacket*)packet, command_list, resources); break;
 			case CommandType::ClearRenderTarget:     CmdClearRenderTargetD3D12((CmdClearRenderTargetPacket*)packet, command_list, context, resources); break;

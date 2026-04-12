@@ -33,6 +33,16 @@ struct MeshletBlasIndirectArguments {
 };
 _Static_assert(sizeof(MeshletBlasIndirectArguments) == 16, "Mismatching NVAPI_D3D12_RAYTRACING_ACCELERATION_STRUCTURE_MULTI_INDIRECT_CLUSTER_ARGS size.");
 
+// Translated from D3D12_RAYTRACING_INSTANCE_DESC in d3d12.h
+struct BlasInstanceDesc {
+	float3x4 model_to_world;
+	u32 instance_id   : 24;
+	u32 instance_mask : 8;
+	u32 user_data     : 24;
+	u32 flags         : 8;
+	u64 blas_address;
+};
+_Static_assert(sizeof(BlasInstanceDesc) == 64, "Mismatching D3D12_RAYTRACING_INSTANCE_DESC size.");
 
 // Translated from NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_CLUSTER_FLAGS in nvapi.h
 enum struct MeshletFlags : u32 {
@@ -53,6 +63,8 @@ compile_const u32 scratch_meshlet_count_offset = 4u;
 compile_const u32 scratch_blas_count_offset    = 8u;
 compile_const u32 scratch_committed_blas_count_offset = 12u;
 compile_const u32 scratch_blas_indirect_arguments_offset = 16u;
+compile_const u32 tlas_mesh_instance_counter_offset = 32u;
+
 
 #if defined(MESHLET_RTAS_CLEAR_BUFFERS)
 [ThreadGroupSize(64, 1, 1)]
@@ -188,9 +200,12 @@ void MainCS(uint thread_id : SV_DispatchThreadID) {
 	if (meshlet_count != 0 && meshlet_count <= MeshletConstants::max_meshlets_per_blas) {
 		uint meshlet_offset = 0;
 		scratch_buffer.InterlockedAdd(scratch_meshlet_count_offset, meshlet_count, meshlet_offset);
-		scratch_buffer.InterlockedAdd(scratch_blas_count_offset, 1u, blas_index);
 		
-		if (blas_index < MeshletConstants::max_meshlet_blas_count && meshlet_offset < MeshletConstants::max_total_blas_meshlets) {
+		uint candidate_blas_index = 0;
+		scratch_buffer.InterlockedAdd(scratch_blas_count_offset, 1u, candidate_blas_index);
+		
+		if (candidate_blas_index < MeshletConstants::max_meshlet_blas_count && meshlet_offset < MeshletConstants::max_total_blas_meshlets) {
+			blas_index = candidate_blas_index;
 			scratch_buffer.InterlockedAdd(scratch_committed_blas_count_offset, 1u);
 			
 			u64 scratch_buffer_base = constants.scratch_buffer_address + rtas_alignment + MeshletConstants::max_meshlet_blas_count * sizeof(MeshletBlasIndirectArguments);
@@ -239,3 +254,41 @@ void MainCS(uint thread_id : SV_DispatchThreadID) {
 	scratch_buffer.Store(base_offset + (meshlet_offset + meshlet_index) * sizeof(u64),  meshlet_rtas_address);
 }
 #endif // defined(MESHLET_BLAS_WRITE_ADDRESSES)
+
+
+#if defined(BUILD_MESH_ENTITY_INSTANCES)
+compile_const uint thread_group_size = 256;
+
+[ThreadGroupSize(thread_group_size, 1, 1)]
+void MainCS(uint thread_id : SV_DispatchThreadID) {
+	uint mesh_entity_index = thread_id;
+	if (BitArrayTestBit(mesh_alive_mask, mesh_entity_index) == false) return;
+	
+	u64 blas_address = 0;
+	
+	uint blas_index = instance_meshlet_counts[mesh_entity_index];
+	if (blas_index != u32_max) {
+		uint base_offset = rtas_alignment + MeshletConstants::max_meshlet_blas_count * 16u + MeshletConstants::max_total_blas_meshlets * 8u;
+		blas_address = scratch_buffer.Load<u64>(base_offset + blas_index * 16u);
+	}
+	
+	uint instance_index = 0;
+	scratch_buffer.InterlockedAdd(tlas_mesh_instance_counter_offset, 1u, instance_index);
+	
+	BlasInstanceDesc desc = (BlasInstanceDesc)0;
+	desc.instance_id    = mesh_entity_index;
+	desc.instance_mask  = blas_address ? 0xFF : 0;
+	desc.user_data      = 0;
+	desc.flags          = 0;
+	desc.blas_address   = blas_address;
+	
+	GpuTransform model_to_world = mesh_transforms[mesh_entity_index];
+	
+	float3x3 model_to_world_rotation = QuatToRotationMatrix(model_to_world.rotation);
+	desc.model_to_world[0] = float4(model_to_world_rotation[0] * model_to_world.scale, model_to_world.position[0]);
+	desc.model_to_world[1] = float4(model_to_world_rotation[1] * model_to_world.scale, model_to_world.position[1]);
+	desc.model_to_world[2] = float4(model_to_world_rotation[2] * model_to_world.scale, model_to_world.position[2]);
+	
+	tlas_mesh_instances.Store(instance_index * sizeof(BlasInstanceDesc), desc);
+}
+#endif // defined(BUILD_MESH_ENTITY_INSTANCES)
