@@ -35,6 +35,7 @@ u64 GetBufferGpuVirtualAddress(NativeBufferResource resource);
 
 SparseTextureLayout GetSparseTextureLayout(GraphicsContext* context, NativeTextureResource resource);
 MemoryRequirementsRTAS GetMeshletRtasMemoryRequirements(GraphicsContext* context, const BuildLimitsMeshletRTAS& limits);
+MemoryRequirementsRTAS GetMeshletRtasMemoryRequirements(GraphicsContext* context, const MoveLimitsMeshletRTAS& limits);
 MemoryRequirementsRTAS GetMeshletBlasMemoryRequirements(GraphicsContext* context, const BuildLimitsMeshletBLAS& limits);
 MemoryRequirementsRTAS GetTlasMemoryRequirements(GraphicsContext* api_context, const BuildLimitsTLAS& limits);
 

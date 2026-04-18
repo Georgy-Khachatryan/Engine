@@ -253,10 +253,10 @@ void UpdateMeshletPageTableRenderPass::CreatePipelines(PipelineLibrary* lib) {
 }
 
 void UpdateMeshletPageTableRenderPass::RecordPass(RecordContext* record_context) {
-	auto [page_table_update_commands, page_header_readback, page_header_readback_count] = GetMeshletStreamingUpdateCommands(meshlet_streaming_system);
-	if (page_table_update_commands.count == 0) return;
+	auto commands = GetMeshletStreamingCommands(meshlet_streaming_system);
+	if (commands.page_table_update_commands.count == 0) return;
 	
-	HeapSort(page_table_update_commands, [](const MeshletRuntimePageUpdateCommand& lh, const MeshletRuntimePageUpdateCommand& rh)-> bool {
+	HeapSort(commands.page_table_update_commands, [](const MeshletRuntimePageUpdateCommand& lh, const MeshletRuntimePageUpdateCommand& rh)-> bool {
 		u64 lh_id = ((u64)lh.mesh_asset_index << 32) | (u64)lh.asset_page_index;
 		u64 rh_id = ((u64)rh.mesh_asset_index << 32) | (u64)rh.asset_page_index;
 		
@@ -264,11 +264,11 @@ void UpdateMeshletPageTableRenderPass::RecordPass(RecordContext* record_context)
 	});
 	
 	Array<u32> mesh_asset_page_count;
-	ArrayReserve(mesh_asset_page_count, record_context->alloc, page_table_update_commands.count);
+	ArrayReserve(mesh_asset_page_count, record_context->alloc, commands.page_table_update_commands.count);
 	
 	u32 mesh_asset_count = 0;
 	u32 last_mesh_asset_index = u32_max;
-	for (auto& command : page_table_update_commands) {
+	for (auto& command : commands.page_table_update_commands) {
 		if (last_mesh_asset_index != command.mesh_asset_index) {
 			last_mesh_asset_index = command.mesh_asset_index;
 			mesh_asset_count += 1;
@@ -278,12 +278,12 @@ void UpdateMeshletPageTableRenderPass::RecordPass(RecordContext* record_context)
 	}
 	
 	auto page_table_commands = AllocateTransientUploadBuffer<MeshletPageTableUpdateCommand, 16u>(record_context, mesh_asset_count);
-	auto page_commands       = AllocateTransientUploadBuffer<MeshletPageUpdateCommand,      16u>(record_context, (u32)page_table_update_commands.count);
+	auto page_commands       = AllocateTransientUploadBuffer<MeshletPageUpdateCommand,      16u>(record_context, (u32)commands.page_table_update_commands.count);
 	
 	u32 page_command_offset        = 0;
 	u32 page_table_commands_offset = 0;
 	last_mesh_asset_index = u32_max;
-	for (auto& command : page_table_update_commands) {
+	for (auto& command : commands.page_table_update_commands) {
 		if (last_mesh_asset_index != command.mesh_asset_index) {
 			last_mesh_asset_index = command.mesh_asset_index;
 			
@@ -305,7 +305,7 @@ void UpdateMeshletPageTableRenderPass::RecordPass(RecordContext* record_context)
 	auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
 	descriptor_table.page_table_commands.Bind(page_table_commands.gpu_address, page_table_commands_offset * sizeof(MeshletPageTableUpdateCommand));
 	descriptor_table.page_commands.Bind(page_commands.gpu_address, page_command_offset * sizeof(MeshletPageUpdateCommand));
-	descriptor_table.page_header_readback.Bind(page_header_readback, page_header_readback_count * sizeof(MeshletPageHeader));
+	descriptor_table.page_header_readback.Bind(commands.page_header_readback, commands.page_header_readback_count * sizeof(MeshletPageHeader));
 	
 	CmdSetRootSignature(record_context, root_signature);
 	CmdSetPipelineState(record_context, pipeline_id);
@@ -320,12 +320,12 @@ void MeshletRtasClearBuffersRenderPass::CreatePipelines(PipelineLibrary* lib) {
 }
 
 void MeshletRtasClearBuffersRenderPass::RecordPass(RecordContext* record_context) {
-	auto [meshlet_rtas_build_commands, meshlet_rtas_build_inputs, vertex_buffer_scratch_offset] = GetMeshletRtasBuildCommands(meshlet_streaming_system);
+	auto commands = GetMeshletStreamingCommands(meshlet_streaming_system);
 	
 	auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
 	
 	RootSignature::PushConstants constants;
-	constants.vertex_buffer_scratch_offset = vertex_buffer_scratch_offset;
+	constants.vertex_buffer_scratch_offset = commands.vertex_buffer_scratch_offset;
 	
 	CmdSetRootSignature(record_context, root_signature);
 	CmdSetPipelineState(record_context, pipeline_id);
@@ -341,28 +341,28 @@ void MeshletRtasDecodeVertexBufferRenderPass::CreatePipelines(PipelineLibrary* l
 }
 
 void MeshletRtasDecodeVertexBufferRenderPass::RecordPass(RecordContext* record_context) {
-	auto [meshlet_rtas_build_commands, meshlet_rtas_build_inputs, vertex_buffer_scratch_offset] = GetMeshletRtasBuildCommands(meshlet_streaming_system);
-	if (meshlet_rtas_build_commands.count == 0) return;
+	auto commands = GetMeshletStreamingCommands(meshlet_streaming_system);
+	if (commands.meshlet_rtas_build_commands.count == 0) return;
 	
 	u32 total_meshlet_count = 0;
 	
-	auto inputs = AllocateTransientUploadBuffer<MeshletRtasDecodeVertexBufferInputs, 12u>(record_context, (u32)meshlet_rtas_build_commands.count);
-	for (u32 i = 0; i < meshlet_rtas_build_commands.count; i += 1) {
-		auto& command      = meshlet_rtas_build_commands[i];
-		auto& build_inputs = meshlet_rtas_build_inputs[i];
+	auto inputs = AllocateTransientUploadBuffer<MeshletRtasDecodeVertexBufferInputs, 12u>(record_context, (u32)commands.meshlet_rtas_build_commands.count);
+	for (u32 i = 0; i < commands.meshlet_rtas_build_commands.count; i += 1) {
+		auto& command      = commands.meshlet_rtas_build_commands[i];
+		auto& build_inputs = commands.meshlet_rtas_build_inputs[i];
 		
 		total_meshlet_count += build_inputs.limits.max_meshlet_count;
 		
 		MeshletRtasDecodeVertexBufferInputs shader_inputs;
 		shader_inputs.runtime_page_index    = command.runtime_page_index;
 		shader_inputs.mesh_asset_index      = command.mesh_asset_index;
-		shader_inputs.vertex_buffer_offsets = build_inputs.meshlet_descs.offset;
+		shader_inputs.vertex_buffer_offsets = build_inputs.dst_meshlet_descs.offset;
 		inputs.cpu_address[i] = shader_inputs;
 	}
 	
 	auto packed_group_indices = AllocateTransientUploadBuffer<u32, 4u>(record_context, total_meshlet_count);
-	for (u32 i = 0, offset = 0; i < meshlet_rtas_build_commands.count; i += 1) {
-		auto& build_inputs = meshlet_rtas_build_inputs[i];
+	for (u32 i = 0, offset = 0; i < commands.meshlet_rtas_build_commands.count; i += 1) {
+		auto& build_inputs = commands.meshlet_rtas_build_inputs[i];
 		
 		for (u32 meshlet_index = 0; meshlet_index < build_inputs.limits.max_meshlet_count; meshlet_index += 1) {
 			packed_group_indices.cpu_address[offset++] = i | (meshlet_index << 16);
@@ -370,7 +370,7 @@ void MeshletRtasDecodeVertexBufferRenderPass::RecordPass(RecordContext* record_c
 	}
 	
 	auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
-	descriptor_table.decode_vertex_buffer_inputs.Bind(inputs.gpu_address, (u32)(meshlet_rtas_build_commands.count * sizeof(MeshletRtasDecodeVertexBufferInputs)));
+	descriptor_table.decode_vertex_buffer_inputs.Bind(inputs.gpu_address, (u32)(commands.meshlet_rtas_build_commands.count * sizeof(MeshletRtasDecodeVertexBufferInputs)));
 	descriptor_table.packed_group_indices.Bind(packed_group_indices.gpu_address, total_meshlet_count * sizeof(u32));
 	
 	CmdSetRootSignature(record_context, root_signature);
@@ -386,24 +386,24 @@ void MeshletRtasBuildRenderPass::CreatePipelines(PipelineLibrary* lib) {
 }
 
 void MeshletRtasBuildRenderPass::RecordPass(RecordContext* record_context) {
-	auto [meshlet_rtas_build_commands, meshlet_rtas_build_inputs, vertex_buffer_scratch_offset] = GetMeshletRtasBuildCommands(meshlet_streaming_system);
-	if (meshlet_rtas_build_commands.count == 0) return;
+	auto commands = GetMeshletStreamingCommands(meshlet_streaming_system);
+	if (commands.meshlet_rtas_build_commands.count == 0) return;
 	
-	auto inputs = AllocateTransientUploadBuffer<MeshletRtasBuildIndirectArgumentsInputs, 12u>(record_context, (u32)meshlet_rtas_build_commands.count);
+	auto inputs = AllocateTransientUploadBuffer<MeshletRtasBuildIndirectArgumentsInputs, 12u>(record_context, (u32)commands.meshlet_rtas_build_commands.count);
 	
-	for (u32 i = 0; i < meshlet_rtas_build_commands.count; i += 1) {
-		auto& command      = meshlet_rtas_build_commands[i];
-		auto& build_inputs = meshlet_rtas_build_inputs[i];
+	for (u32 i = 0; i < commands.meshlet_rtas_build_commands.count; i += 1) {
+		auto& command      = commands.meshlet_rtas_build_commands[i];
+		auto& build_inputs = commands.meshlet_rtas_build_inputs[i];
 		
 		MeshletRtasBuildIndirectArgumentsInputs shader_inputs;
 		shader_inputs.runtime_page_index        = command.runtime_page_index;
 		shader_inputs.indirect_arguments_offset = build_inputs.indirect_arguments.offset;
-		shader_inputs.vertex_buffer_offsets     = build_inputs.meshlet_descs.offset;
+		shader_inputs.vertex_buffer_offsets     = build_inputs.dst_meshlet_descs.offset;
 		inputs.cpu_address[i] = shader_inputs;
 	}
 	
 	auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
-	descriptor_table.meshlet_rtas_inputs.Bind(inputs.gpu_address, (u32)(meshlet_rtas_build_commands.count * sizeof(MeshletRtasBuildIndirectArgumentsInputs)));
+	descriptor_table.meshlet_rtas_inputs.Bind(inputs.gpu_address, (u32)(commands.meshlet_rtas_build_commands.count * sizeof(MeshletRtasBuildIndirectArgumentsInputs)));
 	
 	RootSignature::PushConstants constants;
 	constants.mesh_asset_buffer_address = mesh_asset_buffer_address;
@@ -415,9 +415,10 @@ void MeshletRtasBuildRenderPass::RecordPass(RecordContext* record_context) {
 	CmdSetRootArgument(record_context, root_signature.constants, constants);
 	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
 	
-	CmdDispatch(record_context, (u32)meshlet_rtas_build_commands.count);
+	CmdDispatch(record_context, (u32)commands.meshlet_rtas_build_commands.count);
 	
-	CmdBuildMeshletRTAS(record_context, meshlet_rtas_build_inputs);
+	CmdBuildMeshletRTAS(record_context, commands.meshlet_rtas_build_inputs);
+	CmdMoveMeshletRTAS(record_context, commands.meshlet_rtas_move_inputs);
 }
 
 void MeshletRtasWriteOffsetsRenderPass::CreatePipelines(PipelineLibrary* lib) {
@@ -425,23 +426,24 @@ void MeshletRtasWriteOffsetsRenderPass::CreatePipelines(PipelineLibrary* lib) {
 }
 
 void MeshletRtasWriteOffsetsRenderPass::RecordPass(RecordContext* record_context) {
-	auto [meshlet_rtas_build_commands, meshlet_rtas_build_inputs, vertex_buffer_scratch_offset] = GetMeshletRtasBuildCommands(meshlet_streaming_system);
-	if (meshlet_rtas_build_commands.count == 0) return;
+	auto commands = GetMeshletStreamingCommands(meshlet_streaming_system);
+	if (commands.meshlet_rtas_build_commands.count == 0) return;
 	
-	auto inputs = AllocateTransientUploadBuffer<MeshletRtasWriteOffsetsInputs, 8u>(record_context, (u32)meshlet_rtas_build_commands.count);
+	auto inputs = AllocateTransientUploadBuffer<MeshletRtasWriteOffsetsInputs, 8u>(record_context, (u32)commands.meshlet_rtas_build_commands.count);
 	
-	for (u32 i = 0; i < meshlet_rtas_build_commands.count; i += 1) {
-		auto& command      = meshlet_rtas_build_commands[i];
-		auto& build_inputs = meshlet_rtas_build_inputs[i];
+	for (u32 i = 0; i < commands.meshlet_rtas_build_commands.count; i += 1) {
+		auto& command     = commands.meshlet_rtas_build_commands[i];
+		auto& move_inputs = commands.meshlet_rtas_move_inputs[i];
 		
 		MeshletRtasWriteOffsetsInputs shader_inputs;
 		shader_inputs.runtime_page_index   = command.runtime_page_index;
-		shader_inputs.meshlet_descs_offset = build_inputs.meshlet_descs.offset;
+		shader_inputs.meshlet_descs_offset = move_inputs.dst_meshlet_descs.offset;
 		inputs.cpu_address[i] = shader_inputs;
 	}
 	
 	auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
-	descriptor_table.write_offsets_inputs.Bind(inputs.gpu_address, (u32)(meshlet_rtas_build_commands.count * sizeof(MeshletRtasWriteOffsetsInputs)));
+	descriptor_table.write_offsets_inputs.Bind(inputs.gpu_address, (u32)(commands.meshlet_rtas_build_commands.count * sizeof(MeshletRtasWriteOffsetsInputs)));
+	descriptor_table.page_size_readback.Bind(commands.rtas_page_size_readback, (u32)(commands.meshlet_rtas_build_commands.count * sizeof(u32)));
 	
 	RootSignature::PushConstants constants;
 	constants.meshlet_rtas_buffer_address = meshlet_rtas_buffer_address;
@@ -452,7 +454,7 @@ void MeshletRtasWriteOffsetsRenderPass::RecordPass(RecordContext* record_context
 	CmdSetRootArgument(record_context, root_signature.constants, constants);
 	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
 	
-	CmdDispatch(record_context, (u32)meshlet_rtas_build_commands.count);
+	CmdDispatch(record_context, (u32)commands.meshlet_rtas_build_commands.count);
 }
 
 
@@ -503,7 +505,7 @@ void MeshletBlasWriteAddressesRenderPass::RecordPass(RecordContext* record_conte
 	inputs.limits.max_meshlets_per_blas   = MeshletConstants::max_meshlets_per_blas;
 	inputs.meshlet_blas            = GpuAddress(VirtualResourceID::MeshletBlasBuffer, 0u);
 	inputs.scratch_data            = GpuAddress(VirtualResourceID::StreamingScratchBuffer, rtas_alignment + MeshletConstants::max_meshlet_blas_count * 16u + MeshletConstants::max_total_blas_meshlets * 8u + MeshletConstants::max_meshlet_blas_count * 16u);
-	inputs.blas_descs              = GpuAddress(VirtualResourceID::StreamingScratchBuffer, rtas_alignment + MeshletConstants::max_meshlet_blas_count * 16u + MeshletConstants::max_total_blas_meshlets * 8u);
+	inputs.dst_blas_descs          = GpuAddress(VirtualResourceID::StreamingScratchBuffer, rtas_alignment + MeshletConstants::max_meshlet_blas_count * 16u + MeshletConstants::max_total_blas_meshlets * 8u);
 	inputs.indirect_arguments      = GpuAddress(VirtualResourceID::StreamingScratchBuffer, rtas_alignment);
 	inputs.indirect_argument_count = GpuAddress(VirtualResourceID::StreamingScratchBuffer, 12u);
 	CmdBuildMeshletBLAS(record_context, inputs);

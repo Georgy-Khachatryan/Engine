@@ -94,6 +94,11 @@ struct BuildLimitsMeshletRTAS {
 	u32 max_total_vertex_count	 = 0;
 };
 
+struct MoveLimitsMeshletRTAS {
+	u32 max_meshlet_count   = 0;
+	u32 rtas_max_size_bytes = 0;
+};
+
 struct BuildLimitsMeshletBLAS {
 	u32 max_blas_count          = 0;
 	u32 max_total_meshlet_count = 0;
@@ -108,15 +113,23 @@ struct BuildInputsMeshletRTAS {
 	BuildLimitsMeshletRTAS limits;
 	GpuAddress meshlet_rtas;
 	GpuAddress scratch_data;
-	GpuAddress meshlet_descs;
+	GpuAddress dst_meshlet_descs;
 	GpuAddress indirect_arguments;
+};
+
+struct MoveInputsMeshletRTAS {
+	MoveLimitsMeshletRTAS limits;
+	GpuAddress meshlet_rtas;
+	GpuAddress scratch_data;
+	GpuAddress src_meshlet_descs;
+	GpuAddress dst_meshlet_descs;
 };
 
 struct BuildInputsMeshletBLAS {
 	BuildLimitsMeshletBLAS limits;
 	GpuAddress meshlet_blas;
 	GpuAddress scratch_data;
-	GpuAddress blas_descs;
+	GpuAddress dst_blas_descs;
 	GpuAddress indirect_arguments;
 	GpuAddress indirect_argument_count;
 };

@@ -425,6 +425,7 @@ struct MeshletRtasWriteOffsetsRenderPass {
 		HLSL::RegularBuffer<MeshletRtasWriteOffsetsInputs> write_offsets_inputs;
 		HLSL::ByteBuffer   scratch_buffer    = VirtualResourceID::StreamingScratchBuffer;
 		HLSL::RWByteBuffer mesh_asset_buffer = VirtualResourceID::MeshAssetBuffer;
+		HLSL::RWByteBuffer page_size_readback;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {

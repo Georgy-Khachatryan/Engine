@@ -63,7 +63,10 @@ struct NumaHeapAllocator : HeapAllocatorBase<NumaHeapAllocatorBlock> {
 	u32 max_allocation_count = 0;
 	
 	NumaHeapAllocation Allocate(u64 size);
+	void ReallocateShrink(NumaHeapAllocation allocation, u64 new_size);
 	void Deallocate(NumaHeapAllocation allocation);
+	
+	float ComputeFragmentation();
 	
 	u64 GetMemoryBlockOffset(NumaHeapAllocation allocation);
 	u64 GetMemoryBlockSize(NumaHeapAllocation allocation);

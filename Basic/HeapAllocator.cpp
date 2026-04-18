@@ -465,6 +465,13 @@ NumaHeapAllocation NumaHeapAllocator::Allocate(u64 size) {
 	return { block == nullptr ? u32_max : (u32)(block - blocks) };
 }
 
+void NumaHeapAllocator::ReallocateShrink(NumaHeapAllocation allocation, u64 new_size) {
+	DebugAssert(allocation.index != u32_max, "Invalid allocation.");
+	
+	auto* block = &blocks[allocation.index];
+	PushFreeBlockExcess(this, block, new_size);
+}
+
 void NumaHeapAllocator::Deallocate(NumaHeapAllocation allocation) {
 	if (allocation.index == u32_max) return;
 	
@@ -478,6 +485,24 @@ u64 NumaHeapAllocator::GetMemoryBlockOffset(NumaHeapAllocation allocation) {
 
 u64 NumaHeapAllocator::GetMemoryBlockSize(NumaHeapAllocation allocation) {
 	return allocation.index != u32_max ? blocks[allocation.index].size : 0;
+}
+
+float NumaHeapAllocator::ComputeFragmentation() {
+	float64 quality = 0.0;
+	float64 total_free_size = 0.0;
+	
+	for (u32 i = 0; i < max_allocation_count; i += 1) {
+		auto& block = blocks[i];
+		if (block.is_free_block) {
+			auto block_size = (float64)block.size;
+			quality         += block_size * block_size;
+			total_free_size += block_size;
+		}
+	}
+	
+	// For reference see https://asawicki.info/news_1757_a_metric_for_memory_fragmentation
+	auto quality_percent = total_free_size != 0.0 ? sqrt(quality) / total_free_size : 1.0;
+	return (float)(1.0 - (quality_percent * quality_percent));
 }
 
 NumaHeapAllocator CreateNumaHeapAllocator(StackAllocator* alloc, u32 max_allocation_count, u32 reserved_size) {

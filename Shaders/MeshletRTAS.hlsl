@@ -156,6 +156,8 @@ void MainCS(uint group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 
 
 #if defined(MESHLET_RTAS_WRITE_OFFSETS)
+groupshared uint gs_page_meshlet_rtas_size;
+
 compile_const uint thread_group_size = 64;
 
 [ThreadGroupSize(thread_group_size, 1, 1)]
@@ -165,8 +167,10 @@ void MainCS(uint group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	uint page_offset = inputs.runtime_page_index * MeshletPageHeader::page_size;
 	MeshletPageHeader page_header = mesh_asset_buffer.Load<MeshletPageHeader>(page_offset);
 	
+	uint thread_page_meshlet_rtas_size = 0;
 	for (uint meshlet_index = thread_index; meshlet_index < page_header.meshlet_count; meshlet_index += thread_group_size) {
 		u64 meshlet_rtas_address = scratch_buffer.Load<u64>(inputs.meshlet_descs_offset + meshlet_index * 16u);
+		u32 meshlet_rtas_size    = scratch_buffer.Load<u32>(inputs.meshlet_descs_offset + 8u + meshlet_index * 16u);
 		u32 meshlet_rtas_offset  = (u32)(meshlet_rtas_address - constants.meshlet_rtas_buffer_address);
 		
 		uint meshlet_culling_data_offset = page_offset + sizeof(MeshletPageHeader) + meshlet_index * sizeof(MeshletCullingData);
@@ -177,6 +181,21 @@ void MainCS(uint group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 		
 		meshlet.rtas_offset = meshlet_rtas_offset;
 		mesh_asset_buffer.Store(meshlet_header_offset, meshlet);
+		
+		thread_page_meshlet_rtas_size += meshlet_rtas_size;
+	}
+	
+	
+	if (thread_index == 0) {
+		gs_page_meshlet_rtas_size = 0;
+	}
+	
+	GroupMemoryBarrierWithGroupSync();
+	InterlockedAdd(gs_page_meshlet_rtas_size, thread_page_meshlet_rtas_size);
+	GroupMemoryBarrierWithGroupSync();
+	
+	if (thread_index == 0) {
+		page_size_readback.Store(group_id * sizeof(u32), gs_page_meshlet_rtas_size);
 	}
 }
 #endif // defined(MESHLET_RTAS_WRITE_OFFSETS)

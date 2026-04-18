@@ -11,25 +11,26 @@ enum struct CommandType : u16 {
 	DrawIndexedInstanced  = 5,
 	ExecuteIndirect       = 6,
 	BuildMeshletRTAS      = 7,
-	BuildMeshletBLAS      = 8,
-	BuildTLAS             = 9,
-	CopyBufferToTexture   = 10,
-	CopyBufferToBuffer    = 11,
-	ClearRenderTarget     = 12,
-	ClearDepthStencil     = 13,
-	SetRenderTargets      = 14,
-	SetViewport           = 15,
-	SetScissor            = 16,
-	SetIndexBufferView    = 17,
-	SetRootSignature      = 18,
-	SetPipelineState      = 19,
-	SetDescriptorTable    = 20,
-	SetPushConstants      = 21,
-	SetConstantBuffer     = 22,
-	BeginProfilerScope    = 23,
-	EndProfilerScope      = 24,
-	DispatchXeSS          = 25,
-	DispatchDLSS          = 26,
+	MoveMeshletRTAS       = 8,
+	BuildMeshletBLAS      = 9,
+	BuildTLAS             = 10,
+	CopyBufferToTexture   = 11,
+	CopyBufferToBuffer    = 12,
+	ClearRenderTarget     = 13,
+	ClearDepthStencil     = 14,
+	SetRenderTargets      = 15,
+	SetViewport           = 16,
+	SetScissor            = 17,
+	SetIndexBufferView    = 18,
+	SetRootSignature      = 19,
+	SetPipelineState      = 20,
+	SetDescriptorTable    = 21,
+	SetPushConstants      = 22,
+	SetConstantBuffer     = 23,
+	BeginProfilerScope    = 24,
+	EndProfilerScope      = 25,
+	DispatchXeSS          = 26,
+	DispatchDLSS          = 27,
 	
 	Count
 };
@@ -87,6 +88,12 @@ struct CmdBuildMeshletRtasPacket : RecordContextCommandPacket {
 	compile_const CommandType my_type = CommandType::BuildMeshletRTAS;
 	
 	ArrayView<BuildInputsMeshletRTAS> inputs;
+};
+
+struct CmdMoveMeshletRtasPacket : RecordContextCommandPacket {
+	compile_const CommandType my_type = CommandType::MoveMeshletRTAS;
+	
+	ArrayView<MoveInputsMeshletRTAS> inputs;
 };
 
 struct CmdBuildMeshletBlasPacket : RecordContextCommandPacket {
