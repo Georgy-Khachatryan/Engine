@@ -10,7 +10,7 @@
 compile_const u32 upload_buffer_size                   = 8 * 1024 * 1024;
 compile_const u32 readback_buffer_size                 = 1 * 1024 * 1024;
 compile_const u32 mesh_asset_buffer_size               = MeshletPageHeader::page_size * MeshletPageHeader::runtime_page_count + (2 * 1024 * 1024);
-compile_const u32 meshlet_rtas_buffer_size             = (384u * 1024u) * MeshletPageHeader::runtime_page_count;
+compile_const u32 meshlet_rtas_buffer_size             = (128u * 1024u) * MeshletPageHeader::runtime_page_count;
 compile_const u32 meshlet_blas_buffer_size             = 16 * 1024 * 1024;
 compile_const u32 max_transient_resource_table_entries = 16;
 compile_const u32 texture_heap_size                    = 64 * 1024 * 1024;

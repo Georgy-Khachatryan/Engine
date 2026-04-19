@@ -317,9 +317,10 @@ enum struct MeshletRtasShaders : u32 {
 	MeshletRtasDecodeVertexBuffer     = 1u << 1,
 	MeshletRtasBuildIndirectArguments = 1u << 2,
 	MeshletRtasWriteOffsets           = 1u << 3,
-	MeshletBlasBuildIndirectArguments = 1u << 4,
-	MeshletBlasWriteAddresses         = 1u << 5,
-	BuildMeshEntityInstances          = 1u << 6,
+	MeshletRtasUpdateOffsets          = 1u << 4,
+	MeshletBlasBuildIndirectArguments = 1u << 5,
+	MeshletBlasWriteAddresses         = 1u << 6,
+	BuildMeshEntityInstances          = 1u << 7,
 };
 SHADER_DEFINITION_GENERATED_CODE(MeshletRtasShaders);
 
@@ -341,6 +342,12 @@ NOTES(Meta::HlslFile{ "MeshletRtasData.hlsl"_sl })
 struct MeshletRtasWriteOffsetsInputs {
 	u32 runtime_page_index   = 0;
 	u32 meshlet_descs_offset = 0;
+};
+
+NOTES(Meta::HlslFile{ "MeshletRtasData.hlsl"_sl })
+struct MeshletRtasUpdateOffsetsInputs {
+	u32 runtime_page_index = 0;
+	u32 page_address_shift = 0;
 };
 
 
@@ -431,6 +438,33 @@ struct MeshletRtasWriteOffsetsRenderPass {
 	struct RootSignature : HLSL::BaseRootSignature {
 		struct PushConstants {
 			u64 meshlet_rtas_buffer_address = 0;
+		};
+		
+		HLSL::PushConstantBuffer<PushConstants> constants;
+		HLSL::DescriptorTable<Descriptors> descriptor_table;
+	};
+	
+	inline static PipelineID pipeline_id;
+};
+
+NOTES(Meta::RenderPass{})
+struct MeshletRtasUpdateOffsetsRenderPass {
+	RENDER_PASS_GENERATED_CODE();
+	
+	MeshletStreamingSystem* meshlet_streaming_system = nullptr;
+	u64 meshlet_rtas_buffer_address = 0;
+	
+	struct Descriptors : HLSL::BaseDescriptorTable {
+		HLSL::RegularBuffer<MeshletRtasUpdateOffsetsInputs> update_offsets_inputs;
+		HLSL::RWByteBuffer scratch_buffer    = VirtualResourceID::StreamingScratchBuffer;
+		HLSL::RWByteBuffer mesh_asset_buffer = VirtualResourceID::MeshAssetBuffer;
+	};
+	
+	struct RootSignature : HLSL::BaseRootSignature {
+		struct PushConstants {
+			u64 meshlet_rtas_buffer_address = 0;
+			u32 new_addresses_offset = 0;
+			u32 old_addresses_offset = 0;
 		};
 		
 		HLSL::PushConstantBuffer<PushConstants> constants;

@@ -1,5 +1,6 @@
 #include "BasicMemory.h"
 #include "BasicMath.h"
+#include "BasicArray.h"
 
 compile_const u64 allocation_granularity = 64 * 1024;
 compile_const u64 minimum_alignment_bits = 3;
@@ -469,6 +470,12 @@ void NumaHeapAllocator::ReallocateShrink(NumaHeapAllocation allocation, u64 new_
 	DebugAssert(allocation.index != u32_max, "Invalid allocation.");
 	
 	auto* block = &blocks[allocation.index];
+	
+	auto* next_block = block->GetNextBlock();
+	if (next_block && next_block->is_free_block) {
+		PopFreeBlock(this, next_block, ComputeBinIndex(next_block->size));
+		CombineFreeBlocks(this, block, next_block);
+	}
 	PushFreeBlockExcess(this, block, new_size);
 }
 
@@ -487,17 +494,75 @@ u64 NumaHeapAllocator::GetMemoryBlockSize(NumaHeapAllocation allocation) {
 	return allocation.index != u32_max ? blocks[allocation.index].size : 0;
 }
 
+void NumaHeapAllocator::CompactMemoryBlocks(StackAllocator* alloc, Array<NumaMemoryMoveCommand>& move_commands) {
+	auto* block = &blocks[0];
+	
+	while (block != nullptr) {
+		while (block && block->is_free_block == false) {
+			block = block->GetNextBlock();
+		}
+		
+		auto* free_block = block;
+		if (free_block == nullptr) break;
+		
+		block = block->GetNextBlock();
+		if (block == nullptr) break;
+		
+		PopFreeBlock(this, free_block, ComputeBinIndex(free_block->size));
+		
+		u32 free_block_offset = free_block->offset;
+		block->SetLastBlock(free_block->GetLastBlock());
+		if (free_block->HasLastBlock()) {
+			free_block->GetLastBlock()->SetNextBlock(block);
+		}
+		
+		NumaHeapAllocatorBlock* last_block = nullptr;
+		while (block && block->is_free_block == false) {
+			NumaMemoryMoveCommand command;
+			command.allocation.index = (u32)(block - blocks);
+			command.old_offset = block->offset;
+			command.new_offset = free_block_offset;
+			command.size       = block->size;
+			ArrayAppend(move_commands, alloc, command);
+			
+			block->offset = free_block_offset;
+			free_block_offset += block->size;
+			
+			last_block = block;
+			block = block->GetNextBlock();
+		}
+		DebugAssert(last_block != nullptr, "Failed to find a block to compact.");
+		
+		free_block->offset = free_block_offset;
+		
+		free_block->SetNextBlock(block);
+		free_block->SetLastBlock(last_block);
+		
+		last_block->SetNextBlock(free_block);
+		if (block != nullptr) {
+			block->SetLastBlock(free_block);
+		}
+		
+		if (block != nullptr && block->is_free_block) {
+			PopFreeBlock(this, block, ComputeBinIndex(block->size));
+			CombineFreeBlocks(this, free_block, block);
+		}
+		PushFreeBlock(this, free_block);
+	}
+}
+
 float NumaHeapAllocator::ComputeFragmentation() {
-	float64 quality = 0.0;
+	float64 quality         = 0.0;
 	float64 total_free_size = 0.0;
 	
-	for (u32 i = 0; i < max_allocation_count; i += 1) {
-		auto& block = blocks[i];
-		if (block.is_free_block) {
-			auto block_size = (float64)block.size;
+	auto* block = &blocks[0];
+	while (block) {
+		if (block->is_free_block) {
+			auto block_size = (float64)block->size;
 			quality         += block_size * block_size;
 			total_free_size += block_size;
 		}
+		block = block->GetNextBlock();
 	}
 	
 	// For reference see https://asawicki.info/news_1757_a_metric_for_memory_fragmentation
@@ -538,4 +603,7 @@ void ResetNumaHeapAllocator(NumaHeapAllocator& heap) {
 	heap.unused_block_count = heap.max_allocation_count;
 	
 	PushNewPageFreeBlock(&heap, heap.reserved_size);
+	
+	// Allocate a zero size header block to make sure we can always find it at index [0].
+	AllocateHeapBlock(&heap, 0);
 }

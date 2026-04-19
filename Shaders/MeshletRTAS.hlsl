@@ -58,12 +58,13 @@ enum struct MeshletGeometryFlags : u32 {
 	Opaque                      = 1u << 7,
 };
 
-compile_const u32 scratch_allocator_offset     = 0u;
-compile_const u32 scratch_meshlet_count_offset = 4u;
-compile_const u32 scratch_blas_count_offset    = 8u;
-compile_const u32 scratch_committed_blas_count_offset = 12u;
+compile_const u32 scratch_allocator_offset               = 0u;
+compile_const u32 scratch_meshlet_count_offset           = 4u;
+compile_const u32 scratch_blas_count_offset              = 8u;
+compile_const u32 scratch_committed_blas_count_offset    = 12u;
 compile_const u32 scratch_blas_indirect_arguments_offset = 16u;
-compile_const u32 tlas_mesh_instance_counter_offset = 32u;
+compile_const u32 tlas_mesh_instance_counter_offset      = 32u;
+compile_const u32 scratch_compaction_move_counter_offset = 36u;
 
 
 #if defined(MESHLET_RTAS_CLEAR_BUFFERS)
@@ -199,6 +200,48 @@ void MainCS(uint group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	}
 }
 #endif // defined(MESHLET_RTAS_WRITE_OFFSETS)
+
+
+#if defined(MESHLET_RTAS_UPDATE_OFFSETS)
+groupshared uint gs_output_base_index;
+
+compile_const uint thread_group_size = 64;
+
+[ThreadGroupSize(thread_group_size, 1, 1)]
+void MainCS(uint group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
+	MeshletRtasUpdateOffsetsInputs inputs = update_offsets_inputs[group_id];
+	
+	uint page_offset = inputs.runtime_page_index * MeshletPageHeader::page_size;
+	MeshletPageHeader page_header = mesh_asset_buffer.Load<MeshletPageHeader>(page_offset);
+	
+	if (thread_index == 0) {
+		scratch_buffer.InterlockedAdd(scratch_compaction_move_counter_offset, page_header.meshlet_count, gs_output_base_index);
+	}
+	
+	GroupMemoryBarrierWithGroupSync();
+	
+	for (uint meshlet_index = thread_index; meshlet_index < page_header.meshlet_count; meshlet_index += thread_group_size) {
+		uint meshlet_culling_data_offset = page_offset + sizeof(MeshletPageHeader) + meshlet_index * sizeof(MeshletCullingData);
+		MeshletCullingData meshlet_culling_data = mesh_asset_buffer.Load<MeshletCullingData>(meshlet_culling_data_offset);
+		
+		uint meshlet_header_offset = meshlet_culling_data_offset + meshlet_culling_data.meshlet_header_offset;
+		MeshletHeader meshlet = mesh_asset_buffer.Load<MeshletHeader>(meshlet_header_offset);
+		
+		u32 old_offset = meshlet.rtas_offset;
+		u32 new_offset = meshlet.rtas_offset - inputs.page_address_shift;
+		
+		u64 old_address = constants.meshlet_rtas_buffer_address + (u64)old_offset;
+		u64 new_address = constants.meshlet_rtas_buffer_address + (u64)new_offset;
+		
+		u32 meshlet_offset = (gs_output_base_index + meshlet_index) * sizeof(u64);
+		scratch_buffer.Store<u64>(constants.new_addresses_offset + meshlet_offset, new_address);
+		scratch_buffer.Store<u64>(constants.old_addresses_offset + meshlet_offset, old_address);
+		
+		meshlet.rtas_offset = new_offset;
+		mesh_asset_buffer.Store(meshlet_header_offset, meshlet);
+	}
+}
+#endif // defined(MESHLET_RTAS_UPDATE_OFFSETS)
 
 
 compile_const uint rtas_alignment = 256u;

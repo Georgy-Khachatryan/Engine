@@ -261,7 +261,7 @@ static NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_INPUTS TranslateM
 	inputs.maxArgCount             = limits.max_meshlet_count;
 	inputs.flags                   = NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_FLAG_NONE;
 	inputs.type                    = NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_TYPE_MOVE_CLUSTER_OBJECT;
-	inputs.mode                    = NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_MODE_IMPLICIT_DESTINATIONS;
+	inputs.mode                    = limits.is_explicit ? NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_MODE_EXPLICIT_DESTINATIONS : NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_MODE_IMPLICIT_DESTINATIONS;
 	inputs.movesDesc.type          = NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_MOVE_TYPE_CLUSTER_LEVEL_ACCELERATION_STRUCTURE;
 	inputs.movesDesc.maxBytesMoved = limits.rtas_max_size_bytes;
 	
@@ -385,11 +385,11 @@ static void CmdMoveMeshletRtasD3D12(CmdMoveMeshletRtasPacket* packet, ID3D12Grap
 		NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_DESC desc = {};
 		desc.inputs                  = TranslateMoveLimitsMeshletRTAS(inputs.limits);
 		desc.addressResolutionFlags  = NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_ADDRESS_RESOLUTION_FLAG_NONE;
-		desc.batchResultData         = ComputeGpuVirtualAddress(inputs.meshlet_rtas, resources);
+		desc.batchResultData         = inputs.limits.is_explicit ? 0 : ComputeGpuVirtualAddress(inputs.meshlet_rtas, resources);
 		desc.batchScratchData        = ComputeGpuVirtualAddress(inputs.scratch_data, resources);
-		desc.destinationAddressArray = { dst_meshlet_descs + 0, 16 };
-		desc.resultSizeArray         = { dst_meshlet_descs + 8, 16 };
-		desc.indirectArgArray        = { src_meshlet_descs + 0, 16 };
+		desc.destinationAddressArray = { dst_meshlet_descs + 0, inputs.limits.is_explicit ? 8u : 16u };
+		desc.resultSizeArray         = { (inputs.limits.is_explicit ? 0u : dst_meshlet_descs + 8u), (inputs.limits.is_explicit ? 0u : 16u) };
+		desc.indirectArgArray        = { src_meshlet_descs + 0, inputs.limits.is_explicit ? 8u : 16u };
 		desc.indirectArgCount        = 0;
 		
 		NVAPI_RAYTRACING_EXECUTE_MULTI_INDIRECT_CLUSTER_OPERATION_PARAMS params = {};

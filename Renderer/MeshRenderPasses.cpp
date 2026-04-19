@@ -457,6 +457,44 @@ void MeshletRtasWriteOffsetsRenderPass::RecordPass(RecordContext* record_context
 	CmdDispatch(record_context, (u32)commands.meshlet_rtas_build_commands.count);
 }
 
+void MeshletRtasUpdateOffsetsRenderPass::CreatePipelines(PipelineLibrary* lib) {
+	pipeline_id = CreateComputePipeline(lib, MeshletRtasShadersID, MeshletRtasShaders::MeshletRtasUpdateOffsets);
+}
+
+void MeshletRtasUpdateOffsetsRenderPass::RecordPass(RecordContext* record_context) {
+	auto commands = GetMeshletStreamingCommands(meshlet_streaming_system);
+	if (commands.compaction_move_commands.count == 0) return;
+	
+	auto inputs = AllocateTransientUploadBuffer<MeshletRtasUpdateOffsetsInputs, 8u>(record_context, (u32)commands.compaction_move_commands.count);
+	
+	for (u32 i = 0; i < commands.compaction_move_commands.count; i += 1) {
+		auto& command = commands.compaction_move_commands[i];
+		
+		MeshletRtasUpdateOffsetsInputs shader_inputs;
+		shader_inputs.runtime_page_index = command.runtime_page_index;
+		shader_inputs.page_address_shift = command.page_address_shift;
+		inputs.cpu_address[i] = shader_inputs;
+	}
+	
+	auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
+	descriptor_table.update_offsets_inputs.Bind(inputs.gpu_address, (u32)(commands.compaction_move_commands.count * sizeof(MeshletRtasUpdateOffsetsInputs)));
+	
+	RootSignature::PushConstants constants;
+	constants.meshlet_rtas_buffer_address = meshlet_rtas_buffer_address;
+	constants.new_addresses_offset = commands.compaction_move_inputs.dst_meshlet_descs.offset;
+	constants.old_addresses_offset = commands.compaction_move_inputs.src_meshlet_descs.offset;
+	
+	CmdSetRootSignature(record_context, root_signature);
+	CmdSetPipelineState(record_context, pipeline_id);
+	
+	CmdSetRootArgument(record_context, root_signature.constants, constants);
+	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
+	
+	CmdDispatch(record_context, (u32)commands.compaction_move_commands.count);
+	
+	CmdMoveMeshletRTAS(record_context, { &commands.compaction_move_inputs, 1 });
+}
+
 
 void MeshletBlasBuildIndirectArgumentsRenderPass::CreatePipelines(PipelineLibrary* lib) {
 	pipeline_id = CreateComputePipeline(lib, MeshletRtasShadersID, MeshletRtasShaders::MeshletBlasBuildIndirectArguments);

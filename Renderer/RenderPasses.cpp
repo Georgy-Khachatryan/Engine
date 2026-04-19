@@ -185,6 +185,9 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	meshlet_rtas_write_offsets.meshlet_streaming_system    = renderer_context->meshlet_streaming_system;
 	meshlet_rtas_write_offsets.meshlet_rtas_buffer_address = renderer_context->meshlet_rtas_buffer_address;
 	
+	auto& meshlet_rtas_update_offsets = render_passes.Add<MeshletRtasUpdateOffsetsRenderPass>();
+	meshlet_rtas_update_offsets.meshlet_streaming_system    = renderer_context->meshlet_streaming_system;
+	meshlet_rtas_update_offsets.meshlet_rtas_buffer_address = renderer_context->meshlet_rtas_buffer_address;
 	
 	render_passes.Add<TransmittanceLutRenderPass>().atmosphere = atmosphere_parameters_gpu_address;
 	render_passes.Add<MultipleScatteringLutRenderPass>().atmosphere = atmosphere_parameters_gpu_address;

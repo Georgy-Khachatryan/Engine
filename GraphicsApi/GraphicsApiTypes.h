@@ -97,6 +97,7 @@ struct BuildLimitsMeshletRTAS {
 struct MoveLimitsMeshletRTAS {
 	u32 max_meshlet_count   = 0;
 	u32 rtas_max_size_bytes = 0;
+	bool is_explicit = false;
 };
 
 struct BuildLimitsMeshletBLAS {
@@ -178,8 +179,8 @@ enum struct ResourceAccessMask : u16 {
 	IndirectArguments = 1u << 7,
 	RtasRO            = 1u << 8,
 	RtasRW            = 1u << 9,
-	AccessRO          = SRV | CopySrc | DepthStencilRO | IndirectArguments,
-	AccessRW          = UAV | CopyDst | DepthStencilRW | RenderTarget,
+	AccessRO          = SRV | CopySrc | DepthStencilRO | RtasRO | IndirectArguments,
+	AccessRW          = UAV | CopyDst | DepthStencilRW | RtasRW | RenderTarget,
 };
 ENUM_FLAGS_OPERATORS(ResourceAccessMask);
 

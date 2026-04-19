@@ -23,6 +23,11 @@ struct MeshletRtasBuildCommand {
 	u32 mesh_asset_index   = 0;
 };
 
+struct MeshletRtasMoveCommand {
+	u32 runtime_page_index = 0;
+	u32 page_address_shift = 0;
+};
+
 struct MeshletStreamingCommands {
 	ArrayView<MeshletRuntimePageUpdateCommand> page_table_update_commands;
 	GpuAddress page_header_readback;
@@ -34,6 +39,9 @@ struct MeshletStreamingCommands {
 	u32 vertex_buffer_scratch_offset = 0;
 	
 	GpuAddress rtas_page_size_readback;
+	
+	ArrayView<MeshletRtasMoveCommand> compaction_move_commands;
+	MoveInputsMeshletRTAS             compaction_move_inputs;
 };
 
 MeshletStreamingSystem* CreateMeshletStreamingSystem(StackAllocator* alloc, u32 meshlet_rtas_buffer_size);

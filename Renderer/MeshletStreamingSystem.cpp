@@ -38,6 +38,7 @@ struct MeshletStreamingSystem {
 	Array<u32> free_page_indices;
 	
 	NumaHeapAllocator rtas_heap;
+	Array<u32> rtas_allocation_index_to_page_index;
 	
 	MeshletStreamingCommands meshlet_streaming_commands;
 };
@@ -54,6 +55,7 @@ MeshletStreamingSystem* CreateMeshletStreamingSystem(StackAllocator* alloc, u32 
 	}
 	
 	system->rtas_heap = CreateNumaHeapAllocator(alloc, runtime_page_count * 2, meshlet_rtas_buffer_size);
+	ArrayResizeMemset(system->rtas_allocation_index_to_page_index, alloc, runtime_page_count * 2, 0xFF);
 	
 	return system;
 }
@@ -120,7 +122,7 @@ void UpdateMeshletStreamingSystem(MeshletStreamingSystem* system, AsyncTransferQ
 	ArrayReserve(meshlet_rtas_move_inputs,    alloc, 8u);
 	
 	auto& streaming_scratch_buffer = GetVirtualResource(record_context, VirtualResourceID::StreamingScratchBuffer);
-	u32 scratch_offset = AlignUp((u32)sizeof(u32), rtas_alignment);
+	u32 scratch_offset = rtas_alignment;
 	u32 scratch_size   = streaming_scratch_buffer.buffer.size;
 	
 	
@@ -191,6 +193,8 @@ void UpdateMeshletStreamingSystem(MeshletStreamingSystem* system, AsyncTransferQ
 					page.rtas_allocation = allocation;
 					scratch_size -= total_scratch_size;
 					
+					system->rtas_allocation_index_to_page_index[allocation.index] = runtime_page_index;
+					
 					inputs.meshlet_rtas       = GpuAddress(VirtualResourceID::MeshletRtasBuffer,      (u32)system->rtas_heap.GetMemoryBlockOffset(allocation));
 					inputs.dst_meshlet_descs  = GpuAddress(VirtualResourceID::StreamingScratchBuffer, scratch_offset);
 					inputs.indirect_arguments = GpuAddress(VirtualResourceID::StreamingScratchBuffer, scratch_offset + meshlet_descs_scratch_size);
@@ -226,7 +230,6 @@ void UpdateMeshletStreamingSystem(MeshletStreamingSystem* system, AsyncTransferQ
 		
 		if (page.state == MeshletRuntimePageState::PageOut) {
 			if (page.wait_index <= current_frame_index) {
-				system->rtas_heap.Deallocate(page.rtas_allocation);
 				page = {};
 				ArrayAppend(free_page_indices, runtime_page_index);
 			} else {
@@ -338,6 +341,11 @@ void UpdateMeshletStreamingSystem(MeshletStreamingSystem* system, AsyncTransferQ
 			page.state      = MeshletRuntimePageState::PageOut;
 			page.wait_index = current_frame_index + number_of_frames_in_flight;
 			
+			// Meshlet RTAS must be deallocated here, otherwise memory compaction may try to move this block.
+			system->rtas_heap.Deallocate(page.rtas_allocation);
+			system->rtas_allocation_index_to_page_index[page.rtas_allocation.index] = u32_max;
+			page.rtas_allocation = {};
+			
 			MeshletRuntimePageUpdateCommand page_table_update_command;
 			page_table_update_command.type               = MeshletPageUpdateCommandType::PageOut;
 			page_table_update_command.runtime_page_index = candidate.runtime_page_index;
@@ -372,11 +380,50 @@ void UpdateMeshletStreamingSystem(MeshletStreamingSystem* system, AsyncTransferQ
 		page.wait_index       = wait_file_index;
 	}
 	
+	Array<NumaMemoryMoveCommand> move_commands;
+	system->rtas_heap.CompactMemoryBlocks(alloc, move_commands);
+	
+	Array<MeshletRtasMoveCommand> compaction_move_commands;
+	ArrayReserve(compaction_move_commands, alloc, move_commands.count);
+	
+	MoveInputsMeshletRTAS compaction_move_inputs;
+	compaction_move_inputs.limits.is_explicit = true;
+	
+	for (auto& command : move_commands) {
+		u32 runtime_page_index = system->rtas_allocation_index_to_page_index[command.allocation.index];
+		
+		auto& page = runtime_pages[runtime_page_index];
+		DebugAssert(page.state == MeshletRuntimePageState::BuildRTAS || page.state == MeshletRuntimePageState::Ready, "Cannot move meshlet RTAS page in state '%'.", (u32)page.state);
+		
+		compaction_move_inputs.limits.max_meshlet_count   += page.page_header.meshlet_count;
+		compaction_move_inputs.limits.rtas_max_size_bytes += command.size;
+		
+		MeshletRtasMoveCommand move_command;
+		move_command.runtime_page_index = runtime_page_index;
+		move_command.page_address_shift = command.old_offset - command.new_offset;
+		ArrayAppend(compaction_move_commands, move_command);
+	}
+	
+	if (compaction_move_commands.count != 0) {
+		auto move_requirements = GetMeshletRtasMemoryRequirements(record_context->context, compaction_move_inputs.limits);
+		u32 meshlet_descs_scratch_size = AlignUp(compaction_move_inputs.limits.max_meshlet_count * 8u * 2u, rtas_alignment);
+		u32 total_scratch_size = meshlet_descs_scratch_size + AlignUp(move_requirements.scratch_size_bytes, rtas_alignment);
+		
+		u32 move_scratch_offset = rtas_alignment;
+		compaction_move_inputs.meshlet_rtas      = GpuAddress(VirtualResourceID::MeshletRtasBuffer);
+		compaction_move_inputs.src_meshlet_descs = GpuAddress(VirtualResourceID::StreamingScratchBuffer, move_scratch_offset);
+		compaction_move_inputs.dst_meshlet_descs = GpuAddress(VirtualResourceID::StreamingScratchBuffer, move_scratch_offset + compaction_move_inputs.limits.max_meshlet_count * 8u);
+		compaction_move_inputs.scratch_data      = GpuAddress(VirtualResourceID::StreamingScratchBuffer, move_scratch_offset + meshlet_descs_scratch_size);
+		DebugAssert(total_scratch_size + move_scratch_offset < streaming_scratch_buffer.buffer.size, "Compaction moves are too large for the allocated scratch buffer.");
+	}
+	
 	system->meshlet_streaming_commands.page_table_update_commands   = page_table_update_commands;
 	system->meshlet_streaming_commands.meshlet_rtas_build_commands  = meshlet_rtas_build_commands;
 	system->meshlet_streaming_commands.meshlet_rtas_build_inputs    = meshlet_rtas_build_inputs;
 	system->meshlet_streaming_commands.meshlet_rtas_move_inputs     = meshlet_rtas_move_inputs;
 	system->meshlet_streaming_commands.vertex_buffer_scratch_offset = scratch_size;
+	system->meshlet_streaming_commands.compaction_move_commands     = compaction_move_commands;
+	system->meshlet_streaming_commands.compaction_move_inputs       = compaction_move_inputs;
 }
 
 MeshletStreamingCommands GetMeshletStreamingCommands(MeshletStreamingSystem* system) {

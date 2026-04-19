@@ -13,7 +13,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	if (VISUALIZATION_TYPE >= 3) return;
 	
 	uint2  thread_id = group_id * uint2(8, 4) + MortonDecode(thread_index);
-	float2 thread_uv = (thread_id + scene.jitter_offset_pixels) * scene.inv_render_target_size;
+	float2 thread_uv = (thread_id + 0.5 - scene.jitter_offset_pixels) * scene.inv_render_target_size;
 	
 	RayInfo view_space_ray = RayInfoFromScreenUv(thread_uv, scene.clip_to_view_coef);
 	
@@ -55,7 +55,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 		
 #if (VISUALIZATION_TYPE == 0)
 		float delta_time = (uint)(t1 - t0) * (1.0 / 20000.0) * (1.0 / sample_count);
-		scene_radiance[thread_id] = t1 < t0 ? 100.0 : float4(PlasmaHeatMap(saturate(delta_time)) * wireframe, 1.0);
+		scene_radiance[thread_id] = float4(PlasmaHeatMap(saturate(delta_time)) * wireframe, 1.0);
 #elif (VISUALIZATION_TYPE == 1)
 		scene_radiance[thread_id] = float4(DecodeSRGB(RandomColor(meshlet_header_offset >> 4)) * wireframe, 1.0);
 #elif (VISUALIZATION_TYPE == 2)

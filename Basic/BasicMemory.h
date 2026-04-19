@@ -5,6 +5,8 @@ void* SystemAllocateAddressSpace(u64 reserved_size);
 bool SystemDeallocateAddressSpace(void* address);
 bool SystemCommitMemoryPages(void* address, u64 committed_size);
 
+template<typename T> struct Array;
+
 struct StackAllocatorBlock;
 
 struct StackAllocator {
@@ -56,6 +58,13 @@ void ResetHeapAllocator(HeapAllocator& alloc);
 struct NumaHeapAllocatorBlock;
 struct NumaHeapAllocation { u32 index = u32_max; };
 
+struct NumaMemoryMoveCommand {
+	NumaHeapAllocation allocation;
+	u32 old_offset = 0;
+	u32 new_offset = 0;
+	u32 size       = 0;
+};
+
 struct NumaHeapAllocator : HeapAllocatorBase<NumaHeapAllocatorBlock> {
 	NumaHeapAllocatorBlock* blocks = nullptr;
 	u32* unused_block_indices = nullptr;
@@ -66,6 +75,7 @@ struct NumaHeapAllocator : HeapAllocatorBase<NumaHeapAllocatorBlock> {
 	void ReallocateShrink(NumaHeapAllocation allocation, u64 new_size);
 	void Deallocate(NumaHeapAllocation allocation);
 	
+	void CompactMemoryBlocks(StackAllocator* alloc, Array<NumaMemoryMoveCommand>& move_commands);
 	float ComputeFragmentation();
 	
 	u64 GetMemoryBlockOffset(NumaHeapAllocation allocation);
