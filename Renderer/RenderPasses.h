@@ -271,7 +271,8 @@ SHADER_DEFINITION_GENERATED_CODE(UpdateMeshletPageTableShaders);
 NOTES(Meta::HlslFile{ "UpdateMeshletPageTableData.hlsl"_sl })
 enum struct MeshletPageUpdateCommandType : u16 {
 	PageIn  = 0, // Page is streamed in, set it in the page table.
-	PageOut = 1, // Page is being removed, remove it from the page table.
+	RtasIn  = 1, // Page RTAS is ready.
+	PageOut = 2, // Page is being removed, remove it from the page table.
 };
 
 NOTES(Meta::HlslFile{ "UpdateMeshletPageTableData.hlsl"_sl })
@@ -585,7 +586,7 @@ struct MeshletConstants {
 	
 	compile_const u32 max_meshlet_blas_count  = 512;
 	compile_const u32 max_total_blas_meshlets = 64 * 1024;
-	compile_const u32 max_meshlets_per_blas   = 2048;
+	compile_const u32 max_meshlets_per_blas   = 4096;
 };
 
 NOTES(Meta::HlslFile{ "MeshData.hlsl"_sl })

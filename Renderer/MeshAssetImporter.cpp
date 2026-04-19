@@ -287,11 +287,11 @@ MeshImportResult ImportMeshFile(StackAllocator* alloc, ThreadPool* thread_pool, 
 		auto& src_group = mdt_meshlet_groups[result_to_mdt_meshlet_group_index[meshlet_group_index]];
 		auto& dst_group = result_meshlet_groups[meshlet_group_index];
 		
-		dst_group.meshlet_count = src_group.end_meshlet_index - src_group.begin_meshlet_index;
-		dst_group.error_metric  = LoadMdtErrorMetric(src_group.error_metric);
-		dst_group.aabb_center   = (float3(src_group.aabb_max) + float3(src_group.aabb_min)) * 0.5f;
-		dst_group.aabb_radius   = (float3(src_group.aabb_max) - float3(src_group.aabb_min)) * 0.5f;
-		dst_group.is_resident   = 0;
+		dst_group.meshlet_count  = src_group.end_meshlet_index - src_group.begin_meshlet_index;
+		dst_group.error_metric   = LoadMdtErrorMetric(src_group.error_metric);
+		dst_group.aabb_center    = (float3(src_group.aabb_max) + float3(src_group.aabb_min)) * 0.5f;
+		dst_group.aabb_radius    = (float3(src_group.aabb_max) - float3(src_group.aabb_min)) * 0.5f;
+		dst_group.residency_mask = 0;
 		
 		for (u32 meshlet_index = src_group.begin_meshlet_index; meshlet_index < src_group.end_meshlet_index; meshlet_index += 1) {
 			auto& src_meshlet = mdt_meshlets[meshlet_index];
@@ -496,11 +496,11 @@ MeshImportResult ImportMeshFile(StackAllocator* alloc, ThreadPool* thread_pool, 
 	bool write_file_success = true;
 	
 	MeshRuntimeDataLayout runtime_data_layout;
-	runtime_data_layout.file_guid  = runtime_data_guid;
-	runtime_data_layout.version    = MeshRuntimeDataLayout::current_version;
-	runtime_data_layout.page_count = (u32)result_pages.count;
-	runtime_data_layout.meshlet_group_count = (u32)result_meshlet_groups.count;
-	runtime_data_layout.meshlet_count = (u32)mdt_meshlets.count;
+	runtime_data_layout.file_guid              = runtime_data_guid;
+	runtime_data_layout.version                = MeshRuntimeDataLayout::current_version;
+	runtime_data_layout.page_count             = (u32)result_pages.count;
+	runtime_data_layout.meshlet_group_count    = (u32)result_meshlet_groups.count;
+	runtime_data_layout.meshlet_count          = (u32)mdt_meshlets.count;
 	runtime_data_layout.rcp_quantization_scale = rcp_quantization_scale;
 	
 	u64 write_offset = 0;
@@ -512,9 +512,10 @@ MeshImportResult ImportMeshFile(StackAllocator* alloc, ThreadPool* thread_pool, 
 	write_file_success &= SystemWriteFile(runtime_file, result_meshlet_groups.data, result_meshlet_groups.count * sizeof(MeshletGroup), write_offset);
 	write_offset += result_meshlet_groups.count * sizeof(MeshletGroup);
 	
-	u32 page_residency_mask[MeshletPageHeader::max_page_count / 32u] = {};
-	write_file_success &= SystemWriteFile(runtime_file, &page_residency_mask, sizeof(page_residency_mask), write_offset);
-	write_offset += sizeof(page_residency_mask);
+	Array<u32> page_and_rtas_residency_masks;
+	ArrayResizeMemset(page_and_rtas_residency_masks, alloc, DivideAndRoundUp(result_pages.count, sizeof(u32)) * 2);
+	write_file_success &= SystemWriteFile(runtime_file, page_and_rtas_residency_masks.data, page_and_rtas_residency_masks.count * sizeof(u32), write_offset);
+	write_offset += page_and_rtas_residency_masks.count * sizeof(u32);
 	
 	Array<u32> page_table;
 	ArrayResizeMemset(page_table, alloc, result_pages.count);

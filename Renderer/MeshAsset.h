@@ -46,14 +46,22 @@ struct MeshletHeader {
 
 NOTES(Meta::HlslFile{ "MeshData.hlsl"_sl })
 struct MeshletPageHeader {
-	compile_const u32 page_size = 128 * 1024; // TODO: Experiment with different page sizes.
-	compile_const u32 max_page_count = 4096;
+	compile_const u32 page_size          = 128 * 1024; // TODO: Experiment with different page sizes.
+	compile_const u32 max_page_count     = 4096;
 	compile_const u32 runtime_page_count = 1024;
+	compile_const u32 max_page_residency_mask_size = max_page_count / 32;
 	
 	u16 meshlet_count        = 0;
 	u16 total_triangle_count = 0; 
 	u16 total_vertex_count   = 0; 
 	u16 padding              = 0;
+};
+
+NOTES(Meta::HlslFile{ "MeshData.hlsl"_sl })
+enum struct MeshletGroupResidencyMask : u32 {
+	None = 0u,      // Nothing is resident.
+	Page = 1u << 0, // Meshlet data is resident.
+	RTAS = 1u << 1, // Meshlet RTAS is built and resident.
 };
 
 NOTES(Meta::HlslFile{ "MeshData.hlsl"_sl })
@@ -65,11 +73,11 @@ struct MeshletGroup {
 	
 	u32 meshlet_offset = 0;
 	u16 meshlet_count  = 0;
-	u16 is_resident    = 0;
+	u16 residency_mask = 0;
 	u32 page_index     = 0;
 	u32 page_count     = 0;
 	
-	compile_const u32 offset_of_is_resident = 50;
+	compile_const u32 offset_of_residency_mask = 50;
 };
 
 NOTES(Meta::HlslFile{ "MeshData.hlsl"_sl })
@@ -92,7 +100,7 @@ struct MeshSourceData {
 
 NOTES()
 struct MeshRuntimeDataLayout {
-	compile_const u64 current_version = 42;
+	compile_const u64 current_version = 44;
 	
 	u64 file_guid = 0;
 	u64 version   = 0;

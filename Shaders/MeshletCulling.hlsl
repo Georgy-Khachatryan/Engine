@@ -36,6 +36,15 @@ compile_const u32 meshlet_feedback_buffer_header_size = 2;
 compile_const u32 meshlet_feedback_asset_header_size  = 2;
 compile_const u32 mesh_feedback_buffer_header_size    = 1;
 
+#if defined(MAIN_PASS) || defined(DISOCCLUSION_PASS)
+compile_const MeshletGroupResidencyMask target_residency_mask = MeshletGroupResidencyMask::Page;
+#endif // defined(MAIN_PASS) || defined(DISOCCLUSION_PASS)
+
+#if defined(RAYTRACING_PASS)
+compile_const MeshletGroupResidencyMask target_residency_mask = MeshletGroupResidencyMask::RTAS;
+#endif // defined(RAYTRACING_PASS)
+
+
 #if defined(CLEAR_BUFFERS)
 [ThreadGroupSize(thread_group_size, 1, 1)]
 void MainCS(uint thread_id : SV_DispatchThreadID) {
@@ -390,8 +399,8 @@ void MainCS(uint thread_id : SV_DispatchThreadID, uint thread_index : SV_GroupIn
 	GpuTransform model_to_world = mesh_transforms[mesh_entity_index];
 	GpuTransform prev_model_to_world = prev_mesh_transforms[mesh_entity_index];
 	
-	compile_const uint page_residency_mask_size = MeshletPageHeader::max_page_count / 32u;
-	uint page_table_offset = mesh_asset.meshlet_group_buffer_offset + mesh_asset.meshlet_group_count * sizeof(MeshletGroup) + page_residency_mask_size * sizeof(uint);
+	uint page_residency_mask_size = DivideAndRoundUp(mesh_asset.meshlet_page_count, 32u);
+	uint page_table_offset = mesh_asset.meshlet_group_buffer_offset + mesh_asset.meshlet_group_count * sizeof(MeshletGroup) + page_residency_mask_size * sizeof(uint) * 2;
 	
 	MeshletGroup group = mesh_asset_buffer.Load<MeshletGroup>(mesh_asset.meshlet_group_buffer_offset + meshlet_group_index * sizeof(MeshletGroup));
 	float2 coarser_level_error_metric = EvaluateMeshletErrorMetric(group.error_metric, model_to_world);
@@ -413,7 +422,7 @@ void MainCS(uint thread_id : SV_DispatchThreadID, uint thread_index : SV_GroupIn
 	}
 #endif // defined(MAIN_PASS) || defined(DISOCCLUSION_PASS)
 	
-	if (group.is_resident == 0) return;
+	if ((group.residency_mask & target_residency_mask) == 0) return;
 	
 	uint meshlet_offset = group.meshlet_offset; // Offset from the beginning of the first page, in meshlets.
 	uint meshlet_count  = group.meshlet_count;  // Total meshlet count across all pages.
@@ -492,7 +501,8 @@ void MainCS(uint thread_id : SV_DispatchThreadID, uint thread_index : SV_GroupIn
 	bool has_higher_level_of_detail = false;
 	if (meshlet.current_level_meshlet_group_index != u32_max) {
 		uint higher_detail_group_offset = mesh_asset.meshlet_group_buffer_offset + meshlet.current_level_meshlet_group_index * sizeof(MeshletGroup);
-		has_higher_level_of_detail = mesh_asset_buffer.Load<u16>(higher_detail_group_offset + MeshletGroup::offset_of_is_resident) != 0;
+		uint group_residency_mask  = mesh_asset_buffer.Load<u16>(higher_detail_group_offset + MeshletGroup::offset_of_residency_mask);
+		has_higher_level_of_detail = (group_residency_mask & target_residency_mask) != 0;
 	}
 	
 	float2 current_level_error_metric = EvaluateMeshletErrorMetric(meshlet.current_level_error_metric, model_to_world);
@@ -543,15 +553,10 @@ void MainCS(uint thread_id : SV_DispatchThreadID, uint thread_index : SV_GroupIn
 	InterlockedAdd(indirect_arguments[IndirectArgumentsLayout::RaytracingBuildBLAS].w, 1u, visible_meshlet_index);
 	
 	if (visible_meshlet_index < MeshletConstants::visible_meshlet_buffer_size) {
+		InterlockedAdd(instance_meshlet_counts[mesh_entity_index], 1u);
+		
+		visible_meshlets[visible_meshlet_index] = uint2(meshlet_culling_data_offset + meshlet.meshlet_header_offset, mesh_entity_index);
 		InterlockedMax(indirect_arguments[IndirectArgumentsLayout::RaytracingBuildBLAS].x, DivideAndRoundUp(visible_meshlet_index + 1, 256u));
-		
-		uint meshlet_header_offset = meshlet_culling_data_offset + meshlet.meshlet_header_offset;
-		visible_meshlets[visible_meshlet_index] = uint2(meshlet_header_offset, mesh_entity_index);
-		
-		// TODO: Cull pages with no RTASes early.
-		if (mesh_asset_buffer.Load<MeshletHeader>(meshlet_header_offset).rtas_offset != u32_max) {
-			InterlockedAdd(instance_meshlet_counts[mesh_entity_index], 1u);
-		}
 	}
 #endif // defined(RAYTRACING_PASS)
 }

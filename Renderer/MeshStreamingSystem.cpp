@@ -76,9 +76,8 @@ static ArrayView<u64> ProcessMeshStreamingFeedback(RecordContext* record_context
 }
 
 static u32 ComputeRuntimeMeshSize(const MeshRuntimeDataLayout& layout) {
-	compile_const u32 page_residency_mask_size = (MeshletPageHeader::max_page_count / 32u) * sizeof(u32);
-	u32 file_data_size  = layout.meshlet_group_count * sizeof(MeshletGroup) + page_residency_mask_size;
-	u32 allocation_size = file_data_size + layout.page_count * sizeof(u32);
+	u32 page_residency_mask_size = DivideAndRoundUp(layout.page_count, 32u);
+	u32 allocation_size = layout.meshlet_group_count * sizeof(MeshletGroup) + page_residency_mask_size * sizeof(u32) * 2 + layout.page_count * sizeof(u32);
 	
 	return AlignUp(allocation_size, async_file_read_alignment);
 }

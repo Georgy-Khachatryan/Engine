@@ -130,6 +130,8 @@ void UpdateMeshletStreamingSystem(MeshletStreamingSystem* system, AsyncTransferQ
 	u64 current_frame_index = record_context->frame_index;
 	u64 completed_file_read_index = CompletedGpuAsyncTransferIndex(async_transfer_queue);
 	
+	u32 page_in_command_count = 0;
+	
 	// Update page states:
 	for (u32 runtime_page_index = 0; runtime_page_index < runtime_pages.count; runtime_page_index += 1) {
 		auto& page = runtime_pages[runtime_page_index];
@@ -151,7 +153,7 @@ void UpdateMeshletStreamingSystem(MeshletStreamingSystem* system, AsyncTransferQ
 			page_table_update_command.runtime_page_index = runtime_page_index;
 			page_table_update_command.mesh_asset_index   = page.mesh_asset_index;
 			page_table_update_command.asset_page_index   = page.asset_page_index;
-			page_table_update_command.readback_index     = (u32)page_table_update_commands.count;
+			page_table_update_command.readback_index     = page_in_command_count++;
 			ArrayAppend(page_table_update_commands, page_table_update_command);
 		}
 		
@@ -226,6 +228,13 @@ void UpdateMeshletStreamingSystem(MeshletStreamingSystem* system, AsyncTransferQ
 			page.state      = MeshletRuntimePageState::Ready;
 			page.wait_index = 0;
 			page.cache_frame_index = (u32)current_frame_index;
+			
+			MeshletRuntimePageUpdateCommand page_table_update_command;
+			page_table_update_command.type               = MeshletPageUpdateCommandType::RtasIn;
+			page_table_update_command.runtime_page_index = runtime_page_index;
+			page_table_update_command.mesh_asset_index   = page.mesh_asset_index;
+			page_table_update_command.asset_page_index   = page.asset_page_index;
+			ArrayAppend(page_table_update_commands, page_table_update_command);
 		}
 		
 		if (page.state == MeshletRuntimePageState::PageOut) {
@@ -239,15 +248,17 @@ void UpdateMeshletStreamingSystem(MeshletStreamingSystem* system, AsyncTransferQ
 	}
 	
 	// Allocate page header readback buffer for page in commands.
-	if (page_table_update_commands.count != 0) {
-		auto [gpu_address, cpu_address] = AllocateTransientReadbackBuffer<MeshletPageHeader, 16u>(record_context, (u32)page_table_update_commands.count);
+	if (page_in_command_count != 0) {
+		auto [gpu_address, cpu_address] = AllocateTransientReadbackBuffer<MeshletPageHeader, 16u>(record_context, page_in_command_count);
 		
 		for (auto& command : page_table_update_commands) {
-			runtime_pages[command.runtime_page_index].readback = cpu_address++;
+			if (command.type == MeshletPageUpdateCommandType::PageIn) {
+				runtime_pages[command.runtime_page_index].readback = cpu_address++;
+			}
 		}
 		
 		system->meshlet_streaming_commands.page_header_readback       = gpu_address;
-		system->meshlet_streaming_commands.page_header_readback_count = (u32)page_table_update_commands.count;
+		system->meshlet_streaming_commands.page_header_readback_count = page_in_command_count;
 	}
 	
 	if (meshlet_rtas_build_commands.count != 0) {
