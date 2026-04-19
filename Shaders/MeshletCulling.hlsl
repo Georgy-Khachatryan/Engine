@@ -17,9 +17,17 @@ enum struct IndirectArgumentsLayout : u32 {
 	MeshletCullingCommands      = MeshletCullingIndirectArgumentsLayout::DisocclusionMeshletCullingCommands,
 #endif // defined(DISOCCLUSION_PASS)
 	
+#if defined(MAIN_PASS) || defined(DISOCCLUSION_PASS)
 	RetestMeshEntityCullingCommands   = MeshletCullingIndirectArgumentsLayout::RetestMeshEntityCullingCommands,
 	RetestMeshletGroupCullingCommands = MeshletCullingIndirectArgumentsLayout::RetestMeshletGroupCullingCommands,
 	RetestMeshletCullingCommands      = MeshletCullingIndirectArgumentsLayout::RetestMeshletCullingCommands,
+#endif // defined(MAIN_PASS) || defined(DISOCCLUSION_PASS)
+	
+#if defined(RAYTRACING_PASS)
+	RaytracingBuildBLAS         = MeshletCullingIndirectArgumentsLayout::RaytracingBuildBLAS,
+	MeshletGroupCullingCommands = MeshletCullingIndirectArgumentsLayout::RaytracingMeshletGroupCullingCommands,
+	MeshletCullingCommands      = MeshletCullingIndirectArgumentsLayout::RaytracingMeshletCullingCommands,
+#endif // defined(RAYTRACING_PASS)
 };
 
 compile_const uint thread_group_size = MeshletConstants::meshlet_culling_thread_group_size;
@@ -33,7 +41,7 @@ compile_const u32 mesh_feedback_buffer_header_size    = 1;
 void MainCS(uint thread_id : SV_DispatchThreadID) {
 	if (thread_id < MeshletCullingIndirectArgumentsLayout::Count) {
 		// We need at least one thread group to copy main pass meshlet count to the disocclusion pass meshlet offset.
-		uint min_thread_group_count = thread_id == IndirectArgumentsLayout::RetestMeshEntityCullingCommands ? 1 : 0;
+		uint min_thread_group_count = thread_id == MeshletCullingIndirectArgumentsLayout::RetestMeshEntityCullingCommands ? 1 : 0;
 		indirect_arguments[thread_id] = uint4(min_thread_group_count, 1, 1, 0);
 	}
 	
@@ -216,9 +224,11 @@ enum struct VisibilityStatus : uint {
 };
 
 VisibilityStatus IsModelSpaceBoxVisible(GpuTransform model_to_world, GpuTransform prev_model_to_world, float3 aabb_center, float3 aabb_radius) {
+#if defined(MAIN_PASS) || defined(DISOCCLUSION_PASS)
 	// Frustum culling using current transform:
 	ClipSpaceBoxInfo clip_space_box = TransfromBoxModelToClipSpace(model_to_world, scene.culling_world_to_view, scene.culling_view_to_clip_coef, aabb_center, aabb_radius);
 	if (FrustumCullClipSpaceBox(clip_space_box) == false) return VisibilityStatus::FrustumCulled;
+#endif // defined(MAIN_PASS) || defined(DISOCCLUSION_PASS)
 	
 #if defined(MAIN_PASS) && defined(ENABLE_OCCLUSION_CULLING)
 	// Occlusion culling against previous HZB using previous transform:
@@ -230,6 +240,10 @@ VisibilityStatus IsModelSpaceBoxVisible(GpuTransform model_to_world, GpuTransfor
 	// Occlusion culling against current HZB using current transform:
 	if (OcclusionCullClipSpaceBox(clip_space_box) == false) return VisibilityStatus::OcclusionCulled;
 #endif // defined(DISOCCLUSION_PASS) && defined(ENABLE_OCCLUSION_CULLING)
+	
+#if defined(RAYTRACING_PASS)
+	// TODO: Apply culling applicable to raytracing.
+#endif // defined(RAYTRACING_PASS)
 	
 	return VisibilityStatus::Visible;
 }
@@ -262,7 +276,7 @@ void AppendMeshletGroupCullingCommand(uint mesh_entity_index, uint meshlet_group
 
 [ThreadGroupSize(thread_group_size, 1, 1)]
 void MainCS(uint thread_id : SV_DispatchThreadID) {
-#if defined(MAIN_PASS)
+#if defined(MAIN_PASS) || defined(RAYTRACING_PASS)
 	uint mesh_entity_index = thread_id;
 	if (BitArrayTestBit(mesh_alive_mask, mesh_entity_index) == false) return;
 #elif defined(DISOCCLUSION_PASS)
@@ -345,7 +359,7 @@ void AppendMeshletCullingCommand(uint mesh_entity_index, uint meshlet_culling_da
 
 [ThreadGroupSize(thread_group_size, 1, 1)]
 void MainCS(uint thread_id : SV_DispatchThreadID, uint thread_index : SV_GroupIndex) {
-#if defined(MAIN_PASS)
+#if defined(MAIN_PASS) || defined(RAYTRACING_PASS)
 	compile_const bool is_disocclusion_bin = false;
 #elif defined(DISOCCLUSION_PASS)
 	bool is_disocclusion_bin = (constants.bin_index == MeshletConstants::disocclusion_bin_index);
@@ -359,10 +373,12 @@ void MainCS(uint thread_id : SV_DispatchThreadID, uint thread_index : SV_GroupIn
 		meshlet_group_culling_command = meshlet_group_culling_commands[bin_base_offset + (thread_id >> constants.bin_index)];
 		meshlet_group_culling_command.x += thread_id & CreateBitMaskSmall(constants.bin_index);
 	} else {
+#if defined(DISOCCLUSION_PASS)
 		if (thread_id >= indirect_arguments[IndirectArgumentsLayout::RetestMeshletGroupCullingCommands].w) return;
 		
 		uint bin_base_offset = MeshletConstants::meshlet_group_culling_command_bin_count * MeshletConstants::meshlet_group_culling_command_bin_size;
 		meshlet_group_culling_command = meshlet_group_culling_commands[bin_base_offset + thread_id];
+#endif // defined(DISOCCLUSION_PASS)
 	}
 	
 	uint meshlet_group_index = meshlet_group_culling_command.x;
@@ -390,10 +406,12 @@ void MainCS(uint thread_id : SV_DispatchThreadID, uint thread_index : SV_GroupIn
 	uint begin_page_index = group.page_index;
 	uint end_page_index   = group.page_index + group.page_count;
 	
+#if defined(MAIN_PASS) || defined(DISOCCLUSION_PASS)
 	// Write streaming feedback for both resident and non resident pages.
 	for (uint page_index = begin_page_index; page_index < end_page_index; page_index += 1) {
 		InterlockedOr(meshlet_streaming_feedback[mesh_asset.feedback_buffer_offset + (page_index / 32u)], 1u << (page_index % 32u));
 	}
+#endif // defined(MAIN_PASS) || defined(DISOCCLUSION_PASS)
 	
 	if (group.is_resident == 0) return;
 	
@@ -439,7 +457,7 @@ void AppendOccludedMeshlet(uint mesh_entity_index, uint meshlet_culling_data_off
 
 [ThreadGroupSize(thread_group_size, 1, 1)]
 void MainCS(uint thread_id : SV_DispatchThreadID, uint thread_index : SV_GroupIndex) {
-#if defined(MAIN_PASS)
+#if defined(MAIN_PASS) || defined(RAYTRACING_PASS)
 	compile_const bool is_disocclusion_bin = false;
 #elif defined(DISOCCLUSION_PASS)
 	bool is_disocclusion_bin = (constants.bin_index == MeshletConstants::disocclusion_bin_index);
@@ -453,10 +471,12 @@ void MainCS(uint thread_id : SV_DispatchThreadID, uint thread_index : SV_GroupIn
 		meshlet_culling_command = meshlet_culling_commands[bin_base_offset + (thread_id >> constants.bin_index)];
 		meshlet_culling_command.x += (thread_id & CreateBitMaskSmall(constants.bin_index)) * sizeof(MeshletCullingData);
 	} else {
+#if defined(DISOCCLUSION_PASS)
 		if (thread_id >= indirect_arguments[IndirectArgumentsLayout::RetestMeshletCullingCommands].w) return;
 		
 		uint bin_base_offset = MeshletConstants::meshlet_culling_command_bin_count * MeshletConstants::meshlet_culling_command_bin_size;
 		meshlet_culling_command = meshlet_culling_commands[bin_base_offset + thread_id];
+#endif // defined(DISOCCLUSION_PASS)
 	}
 	
 	uint meshlet_culling_data_offset = meshlet_culling_command.x;
@@ -486,6 +506,7 @@ void MainCS(uint thread_id : SV_DispatchThreadID, uint thread_index : SV_GroupIn
 	}
 	if (meshlet_visibility_status != VisibilityStatus::Visible) return;
 	
+#if defined(MAIN_PASS) || defined(DISOCCLUSION_PASS)
 	// Write streaming feedback for textures.
 	if (mesh_entity.material_asset_index != u32_max) {
 		compile_const float texture_size_mip_0 = 4096.0;
@@ -505,20 +526,33 @@ void MainCS(uint thread_id : SV_DispatchThreadID, uint thread_index : SV_GroupIn
 		InterlockedMin(texture_streaming_feedback[material.albedo], asuint(target_mip_level));
 		InterlockedMin(texture_streaming_feedback[material.normal], asuint(target_mip_level));
 	}
+#endif // defined(MAIN_PASS) || defined(DISOCCLUSION_PASS)
 	
+#if defined(MAIN_PASS) || defined(DISOCCLUSION_PASS)
 	uint visible_meshlet_index = 0;
 	InterlockedAdd(indirect_arguments[IndirectArgumentsLayout::DispatchMesh].w, 1u, visible_meshlet_index);
 	
 	if (visible_meshlet_index < MeshletConstants::visible_meshlet_buffer_size) {
-		uint meshlet_header_offset = meshlet_culling_data_offset + meshlet.meshlet_header_offset;
-		MeshletHeader meshlet = mesh_asset_buffer.Load<MeshletHeader>(meshlet_header_offset);
-		
-		visible_meshlets[visible_meshlet_index] = uint2(meshlet_header_offset, mesh_entity_index);
+		visible_meshlets[visible_meshlet_index] = uint2(meshlet_culling_data_offset + meshlet.meshlet_header_offset, mesh_entity_index);
 		InterlockedAdd(indirect_arguments[IndirectArgumentsLayout::DispatchMesh].x, 1u);
+	}
+#endif // defined(MAIN_PASS) || defined(DISOCCLUSION_PASS)
+	
+#if defined(RAYTRACING_PASS)
+	uint visible_meshlet_index = 0;
+	InterlockedAdd(indirect_arguments[IndirectArgumentsLayout::RaytracingBuildBLAS].w, 1u, visible_meshlet_index);
+	
+	if (visible_meshlet_index < MeshletConstants::visible_meshlet_buffer_size) {
+		InterlockedMax(indirect_arguments[IndirectArgumentsLayout::RaytracingBuildBLAS].x, DivideAndRoundUp(visible_meshlet_index + 1, 256u));
 		
-		if (meshlet.rtas_offset != u32_max) {
+		uint meshlet_header_offset = meshlet_culling_data_offset + meshlet.meshlet_header_offset;
+		visible_meshlets[visible_meshlet_index] = uint2(meshlet_header_offset, mesh_entity_index);
+		
+		// TODO: Cull pages with no RTASes early.
+		if (mesh_asset_buffer.Load<MeshletHeader>(meshlet_header_offset).rtas_offset != u32_max) {
 			InterlockedAdd(instance_meshlet_counts[mesh_entity_index], 1u);
 		}
 	}
+#endif // defined(RAYTRACING_PASS)
 }
 #endif // defined(MESHLET_CULLING)

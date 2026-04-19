@@ -198,11 +198,12 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	render_passes.Add<MeshletClearBuffersRenderPass>().world_system = world_system;
 	render_passes.Add<MeshletAllocateStreamingFeedbackRenderPass>().asset_system = asset_system;
 	
-	render_passes.Add<MeshEntityCullingRenderPass>().world_system = world_system;
-	render_passes.Add<MeshletGroupCullingRenderPass>();
-	render_passes.Add<MeshletCullingRenderPass>();
-	render_passes.Add<BasicMeshRenderPass>();
-	
+	{
+		render_passes.Add<MeshEntityCullingRenderPass>().world_system = world_system;
+		render_passes.Add<MeshletGroupCullingRenderPass>();
+		render_passes.Add<MeshletCullingRenderPass>();
+		render_passes.Add<BasicMeshRenderPass>();
+	}
 	
 	if (renderer_world.debug_freeze_culling_camera.enabled == false) {
 		render_passes.Add<BuildHzbRenderPass>();
@@ -213,6 +214,14 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 		render_passes.Add<BasicMeshRenderPass>("DisocclusionBasicMesh"_sl).pass = MeshletCullingPass::Disocclusion;
 		
 		render_passes.Add<BuildHzbRenderPass>();
+	}
+	
+	{
+		auto& raytracing_mesh_entity_culling = render_passes.Add<MeshEntityCullingRenderPass>("RaytracingMeshEntityCulling"_sl);
+		raytracing_mesh_entity_culling.pass = MeshletCullingPass::Raytracing;
+		raytracing_mesh_entity_culling.world_system = world_system;
+		render_passes.Add<MeshletGroupCullingRenderPass>("RaytracingMeshletGroupCulling"_sl).pass = MeshletCullingPass::Raytracing;
+		render_passes.Add<MeshletCullingRenderPass>("RaytracingMeshletCulling"_sl).pass = MeshletCullingPass::Raytracing;
 	}
 	
 	auto& copy_meshlet_culling_statistics = render_passes.Add<CopyMeshletCullingStatisticsRenderPass>();

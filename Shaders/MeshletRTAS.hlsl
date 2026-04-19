@@ -62,9 +62,8 @@ compile_const u32 scratch_allocator_offset               = 0u;
 compile_const u32 scratch_meshlet_count_offset           = 4u;
 compile_const u32 scratch_blas_count_offset              = 8u;
 compile_const u32 scratch_committed_blas_count_offset    = 12u;
-compile_const u32 scratch_blas_indirect_arguments_offset = 16u;
-compile_const u32 tlas_mesh_instance_counter_offset      = 32u;
-compile_const u32 scratch_compaction_move_counter_offset = 36u;
+compile_const u32 scratch_compaction_move_counter_offset = 16u;
+compile_const u32 tlas_mesh_instance_counter_offset      = 20u;
 
 
 #if defined(MESHLET_RTAS_CLEAR_BUFFERS)
@@ -251,11 +250,6 @@ compile_const uint thread_group_size = 256;
 
 [ThreadGroupSize(thread_group_size, 1, 1)]
 void MainCS(uint thread_id : SV_DispatchThreadID) {
-	if (thread_id == 0) {
-		uint total_meshlet_count = indirect_arguments[MeshletCullingIndirectArgumentsLayout::DisocclusionDispatchMesh].w;
-		scratch_buffer.Store4(scratch_blas_indirect_arguments_offset, uint4(DivideAndRoundUp(total_meshlet_count, 256u), 1, 1, total_meshlet_count));
-	}
-	
 	uint meshlet_count = instance_meshlet_counts[thread_id];
 	
 	uint blas_index = u32_max;
@@ -289,7 +283,7 @@ compile_const uint thread_group_size = 256;
 
 [ThreadGroupSize(thread_group_size, 1, 1)]
 void MainCS(uint thread_id : SV_DispatchThreadID) {
-	uint total_meshlet_count = scratch_buffer.Load4(scratch_blas_indirect_arguments_offset).w;
+	uint total_meshlet_count = indirect_arguments[MeshletCullingIndirectArgumentsLayout::RaytracingBuildBLAS].w;
 	if (thread_id >= total_meshlet_count) return;
 	
 	uint2 meshlet_instance = visible_meshlets[thread_id]; 

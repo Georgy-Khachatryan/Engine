@@ -482,7 +482,6 @@ struct MeshletBlasBuildIndirectArgumentsRenderPass {
 	u64 scratch_buffer_address = 0;
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
-		HLSL::RegularBuffer<uint4> indirect_arguments      = VirtualResourceID::MeshletIndirectArguments;
 		HLSL::RWRegularBuffer<u32> instance_meshlet_counts = VirtualResourceID::InstanceMeshletCounts;
 		HLSL::RWByteBuffer         scratch_buffer          = VirtualResourceID::StreamingScratchBuffer;
 	};
@@ -507,6 +506,7 @@ struct MeshletBlasWriteAddressesRenderPass {
 	u64 meshlet_rtas_buffer_address = 0;
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
+		HLSL::RegularBuffer<uint4> indirect_arguments      = VirtualResourceID::MeshletIndirectArguments;
 		HLSL::ByteBuffer           mesh_asset_buffer       = VirtualResourceID::MeshAssetBuffer;
 		HLSL::RegularBuffer<uint2> visible_meshlets        = VirtualResourceID::VisibleMeshlets;
 		HLSL::RWRegularBuffer<u32> instance_meshlet_counts = VirtualResourceID::InstanceMeshletCounts;
@@ -559,6 +559,7 @@ enum struct MeshletCullingShaders : u32 {
 	ReadbackStatistics        = 1u << 5,
 	MainPass                  = 1u << 6,
 	DisocclusionPass          = 1u << 7,
+	RaytracingPass            = 1u << 8,
 };
 SHADER_DEFINITION_GENERATED_CODE(MeshletCullingShaders);
 
@@ -591,6 +592,7 @@ NOTES(Meta::HlslFile{ "MeshData.hlsl"_sl })
 enum struct MeshletCullingIndirectArgumentsLayout : u32 {
 	DispatchMesh,
 	DisocclusionDispatchMesh,
+	RaytracingBuildBLAS,
 	
 	MeshletGroupCullingCommands,
 	MeshletGroupCullingEnd = MeshletGroupCullingCommands + MeshletConstants::meshlet_group_culling_command_bin_count - 1,
@@ -608,6 +610,12 @@ enum struct MeshletCullingIndirectArgumentsLayout : u32 {
 	RetestMeshletGroupCullingCommands,
 	RetestMeshletCullingCommands,
 	
+	RaytracingMeshletGroupCullingCommands,
+	RaytracingMeshletGroupCullingEnd = RaytracingMeshletGroupCullingCommands + MeshletConstants::meshlet_group_culling_command_bin_count - 1,
+	
+	RaytracingMeshletCullingCommands,
+	RaytracingMeshletCullingCommandsEnd = RaytracingMeshletCullingCommands + MeshletConstants::meshlet_culling_command_bin_count - 1,
+	
 	Count
 };
 
@@ -615,6 +623,9 @@ NOTES(Meta::HlslFile{ "MeshData.hlsl"_sl })
 enum struct MeshletCullingPass : u32 {
 	Main         = 0,
 	Disocclusion = 1,
+	Raytracing   = 2,
+	
+	Count
 };
 
 NOTES(Meta::RenderPass{})
@@ -694,8 +705,7 @@ struct MeshEntityCullingRenderPass {
 		HLSL::DescriptorTable<Descriptors> descriptor_table;
 	};
 	
-	inline static PipelineID main_pipeline_id;
-	inline static PipelineID disocclusion_pipeline_id;
+	inline static FixedCountArray<PipelineID, (u32)MeshletCullingPass::Count> pipeline_ids;
 };
 
 NOTES(Meta::RenderPass{})
@@ -729,8 +739,7 @@ struct MeshletGroupCullingRenderPass {
 		HLSL::DescriptorTable<Descriptors> descriptor_table;
 	};
 	
-	inline static PipelineID main_pipeline_id;
-	inline static PipelineID disocclusion_pipeline_id;
+	inline static FixedCountArray<PipelineID, (u32)MeshletCullingPass::Count> pipeline_ids;
 };
 
 NOTES(Meta::RenderPass{})
@@ -766,8 +775,7 @@ struct MeshletCullingRenderPass {
 		HLSL::DescriptorTable<Descriptors> descriptor_table;
 	};
 	
-	inline static PipelineID main_pipeline_id;
-	inline static PipelineID disocclusion_pipeline_id;
+	inline static FixedCountArray<PipelineID, (u32)MeshletCullingPass::Count> pipeline_ids;
 };
 
 NOTES(Meta::RenderPass{})
