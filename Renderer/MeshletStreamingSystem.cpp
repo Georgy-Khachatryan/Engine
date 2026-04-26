@@ -121,16 +121,17 @@ void UpdateMeshletStreamingSystem(MeshletStreamingSystem* system, AsyncTransferQ
 	ArrayReserve(meshlet_rtas_build_inputs,   alloc, 8u);
 	ArrayReserve(meshlet_rtas_move_inputs,    alloc, 8u);
 	
-	auto& streaming_scratch_buffer = GetVirtualResource(record_context, VirtualResourceID::StreamingScratchBuffer);
-	u32 scratch_offset = rtas_alignment;
-	u32 scratch_size   = streaming_scratch_buffer.buffer.size;
+	u32 streaming_scratch_buffer_size = GetBufferSize(record_context, VirtualResourceID::StreamingScratchBuffer);
 	
+	u32 meshlet_rtas_scratch_offset = 0;
+	u32 meshlet_rtas_scratch_size   = streaming_scratch_buffer_size;
 	
+	u32 page_in_command_count    = 0;
 	u64 in_flight_page_out_count = 0;
-	u64 current_frame_index = record_context->frame_index;
+	
+	u64 current_frame_index       = record_context->frame_index;
 	u64 completed_file_read_index = CompletedGpuAsyncTransferIndex(async_transfer_queue);
 	
-	u32 page_in_command_count = 0;
 	
 	// Update page states:
 	for (u32 runtime_page_index = 0; runtime_page_index < runtime_pages.count; runtime_page_index += 1) {
@@ -186,33 +187,32 @@ void UpdateMeshletStreamingSystem(MeshletStreamingSystem* system, AsyncTransferQ
 			u32 indirect_arguments_scratch_size = AlignUp(inputs.limits.max_meshlet_count * 64u, rtas_alignment);
 			u32 vertex_buffer_scratch_size      = AlignUp(inputs.limits.max_total_vertex_count * (u32)sizeof(float3), rtas_alignment);
 			u32 build_and_move_scratch_size     = AlignUp(Math::Max(requirements.scratch_size_bytes, move_requirements.scratch_size_bytes), rtas_alignment);
-			u32 shader_scratch_size = meshlet_descs_scratch_size + indirect_arguments_scratch_size + vertex_buffer_scratch_size;
-			u32 total_scratch_size  = shader_scratch_size + build_and_move_scratch_size;
+			u32 total_scratch_size              = meshlet_descs_scratch_size + indirect_arguments_scratch_size + vertex_buffer_scratch_size + build_and_move_scratch_size;
 			
-			if (scratch_size >= total_scratch_size) {
+			if (meshlet_rtas_scratch_size >= total_scratch_size) {
 				auto allocation = system->rtas_heap.Allocate(AlignUp(requirements.rtas_max_size_bytes, rtas_alignment));
 				if (allocation.index != u32_max) {
 					page.rtas_allocation = allocation;
-					scratch_size -= total_scratch_size;
 					
 					system->rtas_allocation_index_to_page_index[allocation.index] = runtime_page_index;
 					
 					inputs.meshlet_rtas       = GpuAddress(VirtualResourceID::MeshletRtasBuffer,      (u32)system->rtas_heap.GetMemoryBlockOffset(allocation));
-					inputs.dst_meshlet_descs  = GpuAddress(VirtualResourceID::StreamingScratchBuffer, scratch_offset);
-					inputs.indirect_arguments = GpuAddress(VirtualResourceID::StreamingScratchBuffer, scratch_offset + meshlet_descs_scratch_size);
-					inputs.scratch_data       = GpuAddress(VirtualResourceID::StreamingScratchBuffer, scratch_offset + meshlet_descs_scratch_size + indirect_arguments_scratch_size);
+					inputs.dst_meshlet_descs  = GpuAddress(VirtualResourceID::StreamingScratchBuffer, meshlet_rtas_scratch_offset);
+					inputs.indirect_arguments = GpuAddress(VirtualResourceID::StreamingScratchBuffer, meshlet_rtas_scratch_offset + meshlet_descs_scratch_size);
+					inputs.scratch_data       = GpuAddress(VirtualResourceID::StreamingScratchBuffer, meshlet_rtas_scratch_offset + meshlet_descs_scratch_size + indirect_arguments_scratch_size);
 					
 					move_inputs.src_meshlet_descs = inputs.dst_meshlet_descs;
-					move_inputs.dst_meshlet_descs = GpuAddress(VirtualResourceID::StreamingScratchBuffer, scratch_offset + inputs.limits.max_meshlet_count * 16u);
+					move_inputs.dst_meshlet_descs = GpuAddress(VirtualResourceID::StreamingScratchBuffer, meshlet_rtas_scratch_offset + inputs.limits.max_meshlet_count * 16u);
 					move_inputs.meshlet_rtas = inputs.meshlet_rtas;
 					move_inputs.scratch_data = inputs.scratch_data;
-					
-					// Vertex buffer is allocated at the end of the scratch space.
-					scratch_offset += meshlet_descs_scratch_size + indirect_arguments_scratch_size + total_scratch_size;
 					
 					ArrayAppend(meshlet_rtas_build_commands, alloc, command);
 					ArrayAppend(meshlet_rtas_build_inputs,   alloc, inputs);
 					ArrayAppend(meshlet_rtas_move_inputs,    alloc, move_inputs);
+					
+					// Vertex buffer is allocated at the end of the scratch space.
+					meshlet_rtas_scratch_offset += meshlet_descs_scratch_size + indirect_arguments_scratch_size + build_and_move_scratch_size;
+					meshlet_rtas_scratch_size   -= total_scratch_size;
 					
 					page.wait_index = current_frame_index + number_of_frames_in_flight;
 					page.state      = MeshletRuntimePageState::BuildRTAS;
@@ -391,6 +391,7 @@ void UpdateMeshletStreamingSystem(MeshletStreamingSystem* system, AsyncTransferQ
 		page.wait_index       = wait_file_index;
 	}
 	
+	
 	Array<NumaMemoryMoveCommand> move_commands;
 	system->rtas_heap.CompactMemoryBlocks(alloc, move_commands);
 	
@@ -398,7 +399,7 @@ void UpdateMeshletStreamingSystem(MeshletStreamingSystem* system, AsyncTransferQ
 	ArrayReserve(compaction_move_commands, alloc, move_commands.count);
 	
 	MoveInputsMeshletRTAS compaction_move_inputs;
-	compaction_move_inputs.limits.is_explicit = true;
+	compaction_move_inputs.limits.result_type = IndirectRtasResultType::Explicit;
 	
 	for (auto& command : move_commands) {
 		u32 runtime_page_index = system->rtas_allocation_index_to_page_index[command.allocation.index];
@@ -420,19 +421,19 @@ void UpdateMeshletStreamingSystem(MeshletStreamingSystem* system, AsyncTransferQ
 		u32 meshlet_descs_scratch_size = AlignUp(compaction_move_inputs.limits.max_meshlet_count * 8u * 2u, rtas_alignment);
 		u32 total_scratch_size = meshlet_descs_scratch_size + AlignUp(move_requirements.scratch_size_bytes, rtas_alignment);
 		
-		u32 move_scratch_offset = rtas_alignment;
-		compaction_move_inputs.meshlet_rtas      = GpuAddress(VirtualResourceID::MeshletRtasBuffer);
-		compaction_move_inputs.src_meshlet_descs = GpuAddress(VirtualResourceID::StreamingScratchBuffer, move_scratch_offset);
-		compaction_move_inputs.dst_meshlet_descs = GpuAddress(VirtualResourceID::StreamingScratchBuffer, move_scratch_offset + compaction_move_inputs.limits.max_meshlet_count * 8u);
-		compaction_move_inputs.scratch_data      = GpuAddress(VirtualResourceID::StreamingScratchBuffer, move_scratch_offset + meshlet_descs_scratch_size);
-		DebugAssert(total_scratch_size + move_scratch_offset < streaming_scratch_buffer.buffer.size, "Compaction moves are too large for the allocated scratch buffer.");
+		compaction_move_inputs.meshlet_rtas      = GpuAddress(VirtualResourceID::MeshletRtasBuffer,      0u);
+		compaction_move_inputs.src_meshlet_descs = GpuAddress(VirtualResourceID::StreamingScratchBuffer, 0u);
+		compaction_move_inputs.dst_meshlet_descs = GpuAddress(VirtualResourceID::StreamingScratchBuffer, compaction_move_inputs.limits.max_meshlet_count * 8u);
+		compaction_move_inputs.scratch_data      = GpuAddress(VirtualResourceID::StreamingScratchBuffer, meshlet_descs_scratch_size);
+		DebugAssert(total_scratch_size <= streaming_scratch_buffer_size, "Compaction moves are too large for the allocated scratch buffer.");
 	}
+	
 	
 	system->meshlet_streaming_commands.page_table_update_commands   = page_table_update_commands;
 	system->meshlet_streaming_commands.meshlet_rtas_build_commands  = meshlet_rtas_build_commands;
 	system->meshlet_streaming_commands.meshlet_rtas_build_inputs    = meshlet_rtas_build_inputs;
 	system->meshlet_streaming_commands.meshlet_rtas_move_inputs     = meshlet_rtas_move_inputs;
-	system->meshlet_streaming_commands.vertex_buffer_scratch_offset = scratch_size;
+	system->meshlet_streaming_commands.vertex_buffer_scratch_offset = meshlet_rtas_scratch_offset;
 	system->meshlet_streaming_commands.compaction_move_commands     = compaction_move_commands;
 	system->meshlet_streaming_commands.compaction_move_inputs       = compaction_move_inputs;
 }

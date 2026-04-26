@@ -250,7 +250,7 @@ void CmdMoveMeshletRTAS(RecordContext* record_context, ArrayView<MoveInputsMeshl
 	FixedCountArray<ResourceAccessDefinition, 4> resource_accesses;
 	resource_accesses[0] = CreateBufferResourceAccess(inputs[0].meshlet_rtas.resource_id,      PipelineStagesMask::RtasBuild, ResourceAccessMask::RtasRW);
 	resource_accesses[1] = CreateBufferResourceAccess(inputs[0].scratch_data.resource_id,      PipelineStagesMask::RtasBuild, ResourceAccessMask::UAV);
-	resource_accesses[2] = CreateBufferResourceAccess(inputs[0].dst_meshlet_descs.resource_id, PipelineStagesMask::RtasBuild, inputs[0].limits.is_explicit ? ResourceAccessMask::SRV : ResourceAccessMask::UAV);
+	resource_accesses[2] = CreateBufferResourceAccess(inputs[0].dst_meshlet_descs.resource_id, PipelineStagesMask::RtasBuild, inputs[0].limits.result_type == IndirectRtasResultType::Explicit ? ResourceAccessMask::SRV : ResourceAccessMask::UAV);
 	resource_accesses[3] = CreateBufferResourceAccess(inputs[0].src_meshlet_descs.resource_id, PipelineStagesMask::RtasBuild, ResourceAccessMask::SRV);
 	
 	AppendResourceAccesses(record_context, resource_accesses);

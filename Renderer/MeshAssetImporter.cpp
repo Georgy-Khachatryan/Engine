@@ -170,7 +170,7 @@ MeshImportResult ImportMeshFile(StackAllocator* alloc, ThreadPool* thread_pool, 
 	MdtSystemCallbacks callbacks = {};
 	callbacks.heap_allocator.reallocate = [](void* old_memory_block, u64 size_bytes, void* user_data)-> void* {
 		auto& allocator_user_data = *(MdtHeapAllocatorUserData*)user_data;
-		u64 old_size_bytes = HeapAllocator::GetMemoryBlockSize(old_memory_block);
+		u64 old_size_bytes = allocator_user_data.heap.GetMemoryBlockSize(old_memory_block);
 		
 		ScopedLock(allocator_user_data.lock);
 		return allocator_user_data.heap.Reallocate(old_memory_block, old_size_bytes, size_bytes, 64);

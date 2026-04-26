@@ -45,7 +45,7 @@ struct HeapAllocator : HeapAllocatorBase<HeapAllocatorBlock> {
 	void* Allocate(u64 size, u64 alignment = 8);
 	void* Reallocate(void* old_memory, u64 old_size, u64 new_size, u64 alignment = 8);
 	void  Deallocate(void* old_memory, u64 old_size = 0);
-	static u64 GetMemoryBlockSize(void* memory);
+	u64 GetMemoryBlockSize(void* memory);
 	
 	u64 ComputeTotalMemoryUsage();
 };

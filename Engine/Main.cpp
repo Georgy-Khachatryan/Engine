@@ -83,9 +83,10 @@ s32 main() {
 		ImGui::Text("ImGui Heap Size: %llu", imgui_heap.ComputeTotalMemoryUsage());
 		ImGui::Text("World System Heap Size: %llu", world_system.heap.ComputeTotalMemoryUsage());
 		ImGui::Text("Asset System Heap Size: %llu", asset_system.heap.ComputeTotalMemoryUsage());
-		ImGui::Text("Meshlet Count: %llu", meshlet_culling_statistics.meshlet_count);
+		ImGui::Text("Meshlet Count Raster Passes: %llu", meshlet_culling_statistics.meshlet_count);
 		ImGui::Text("Meshlet Count Main Pass: %llu", meshlet_culling_statistics.meshlet_count_main_pass);
 		ImGui::Text("Meshlet Count Disocclusion Pass: %llu", meshlet_culling_statistics.meshlet_count_disocclusion_pass);
+		ImGui::Text("Meshlet Count Raytracing Pass: %llu", meshlet_culling_statistics.meshlet_count_raytracing_pass);
 		ImGui::Combo("Swap Chain Format", &swap_chain_format_index, "HDR\0SDR\0");
 		ImGui::End();
 		

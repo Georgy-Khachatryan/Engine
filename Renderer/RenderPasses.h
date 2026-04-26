@@ -50,6 +50,7 @@ enum struct VirtualResourceID : u32 {
 	MeshletCullingCommands,
 	MeshletIndirectArguments,
 	InstanceMeshletCounts,
+	MeshletRtasIndirectArguments,
 	
 	// Streaming feedback:
 	MeshletStreamingFeedback,
@@ -314,14 +315,13 @@ struct UpdateMeshletPageTableRenderPass {
 
 NOTES(Meta::ShaderName{ "MeshletRTAS.hlsl"_sl })
 enum struct MeshletRtasShaders : u32 {
-	MeshletRtasClearBuffers           = 1u << 0,
-	MeshletRtasDecodeVertexBuffer     = 1u << 1,
-	MeshletRtasBuildIndirectArguments = 1u << 2,
-	MeshletRtasWriteOffsets           = 1u << 3,
-	MeshletRtasUpdateOffsets          = 1u << 4,
-	MeshletBlasBuildIndirectArguments = 1u << 5,
-	MeshletBlasWriteAddresses         = 1u << 6,
-	BuildMeshEntityInstances          = 1u << 7,
+	MeshletRtasDecodeVertexBuffer     = 1u << 0,
+	MeshletRtasBuildIndirectArguments = 1u << 1,
+	MeshletRtasWriteOffsets           = 1u << 2,
+	MeshletRtasUpdateOffsets          = 1u << 3,
+	MeshletBlasBuildIndirectArguments = 1u << 4,
+	MeshletBlasWriteAddresses         = 1u << 5,
+	BuildMeshEntityInstances          = 1u << 6,
 };
 SHADER_DEFINITION_GENERATED_CODE(MeshletRtasShaders);
 
@@ -351,15 +351,31 @@ struct MeshletRtasUpdateOffsetsInputs {
 	u32 page_address_shift = 0;
 };
 
+NOTES(Meta::HlslFile{ "MeshletRtasData.hlsl"_sl })
+enum struct MeshletRtasIndirectArgumentsLayout {
+	VertexBufferAllocator,
+	CompactionMoveCount,
+	TlasMeshInstanceCount,
+	BlasMeshletCount,
+	CandidateBlasCount,
+	CommittedBlasCount,
+	
+	Count
+};
 
 NOTES(Meta::RenderPass{})
-struct MeshletRtasClearBuffersRenderPass {
+struct MeshletRtasDecodeVertexBufferRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
 	MeshletStreamingSystem* meshlet_streaming_system = nullptr;
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
-		HLSL::RWByteBuffer scratch_buffer = VirtualResourceID::StreamingScratchBuffer;
+		HLSL::RegularBuffer<u32>                                 packed_group_indices;
+		HLSL::RegularBuffer<MeshletRtasDecodeVertexBufferInputs> decode_vertex_buffer_inputs;
+		HLSL::RWRegularBuffer<u32> rtas_indirect_arguments = VirtualResourceID::MeshletRtasIndirectArguments;
+		HLSL::RegularBuffer<GpuMeshAssetData> mesh_asset_data = VirtualResourceID::GpuMeshAssetData;
+		HLSL::ByteBuffer   mesh_asset_buffer = VirtualResourceID::MeshAssetBuffer;
+		HLSL::RWByteBuffer scratch_buffer    = VirtualResourceID::StreamingScratchBuffer;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {
@@ -375,27 +391,6 @@ struct MeshletRtasClearBuffersRenderPass {
 };
 
 NOTES(Meta::RenderPass{})
-struct MeshletRtasDecodeVertexBufferRenderPass {
-	RENDER_PASS_GENERATED_CODE();
-	
-	MeshletStreamingSystem* meshlet_streaming_system = nullptr;
-	
-	struct Descriptors : HLSL::BaseDescriptorTable {
-		HLSL::RegularBuffer<GpuMeshAssetData> mesh_asset_data = VirtualResourceID::GpuMeshAssetData;
-		HLSL::RegularBuffer<MeshletRtasDecodeVertexBufferInputs> decode_vertex_buffer_inputs;
-		HLSL::RegularBuffer<u32> packed_group_indices;
-		HLSL::ByteBuffer mesh_asset_buffer = VirtualResourceID::MeshAssetBuffer;
-		HLSL::RWByteBuffer scratch_buffer = VirtualResourceID::StreamingScratchBuffer;
-	};
-	
-	struct RootSignature : HLSL::BaseRootSignature {
-		HLSL::DescriptorTable<Descriptors> descriptor_table;
-	};
-	
-	inline static PipelineID pipeline_id;
-};
-
-NOTES(Meta::RenderPass{})
 struct MeshletRtasBuildRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
@@ -404,8 +399,8 @@ struct MeshletRtasBuildRenderPass {
 	u64 scratch_buffer_address    = 0;
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
-		HLSL::ByteBuffer mesh_asset_buffer = VirtualResourceID::MeshAssetBuffer;
 		HLSL::RegularBuffer<MeshletRtasBuildIndirectArgumentsInputs> meshlet_rtas_inputs;
+		HLSL::ByteBuffer mesh_asset_buffer = VirtualResourceID::MeshAssetBuffer;
 		HLSL::RWByteBuffer scratch_buffer = VirtualResourceID::StreamingScratchBuffer;
 	};
 	
@@ -430,7 +425,7 @@ struct MeshletRtasWriteOffsetsRenderPass {
 	u64 meshlet_rtas_buffer_address = 0;
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
-		HLSL::RegularBuffer<MeshletRtasWriteOffsetsInputs> write_offsets_inputs;
+		HLSL::RegularBuffer<MeshletRtasWriteOffsetsInputs>  write_offsets_inputs;
 		HLSL::ByteBuffer   scratch_buffer    = VirtualResourceID::StreamingScratchBuffer;
 		HLSL::RWByteBuffer mesh_asset_buffer = VirtualResourceID::MeshAssetBuffer;
 		HLSL::RWByteBuffer page_size_readback;
@@ -457,6 +452,7 @@ struct MeshletRtasUpdateOffsetsRenderPass {
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
 		HLSL::RegularBuffer<MeshletRtasUpdateOffsetsInputs> update_offsets_inputs;
+		HLSL::RWRegularBuffer<u32> rtas_indirect_arguments = VirtualResourceID::MeshletRtasIndirectArguments;
 		HLSL::RWByteBuffer scratch_buffer    = VirtualResourceID::StreamingScratchBuffer;
 		HLSL::RWByteBuffer mesh_asset_buffer = VirtualResourceID::MeshAssetBuffer;
 	};
@@ -483,6 +479,7 @@ struct MeshletBlasBuildIndirectArgumentsRenderPass {
 	u64 scratch_buffer_address = 0;
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
+		HLSL::RWRegularBuffer<u32> rtas_indirect_arguments = VirtualResourceID::MeshletRtasIndirectArguments;
 		HLSL::RWRegularBuffer<u32> instance_meshlet_counts = VirtualResourceID::InstanceMeshletCounts;
 		HLSL::RWByteBuffer         scratch_buffer          = VirtualResourceID::StreamingScratchBuffer;
 	};
@@ -503,7 +500,6 @@ NOTES(Meta::RenderPass{})
 struct MeshletBlasWriteAddressesRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
-	u64 scratch_buffer_address      = 0;
 	u64 meshlet_rtas_buffer_address = 0;
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
@@ -516,7 +512,6 @@ struct MeshletBlasWriteAddressesRenderPass {
 	
 	struct RootSignature : HLSL::BaseRootSignature {
 		struct PushConstants {
-			u64 scratch_buffer_address      = 0;
 			u64 meshlet_rtas_buffer_address = 0;
 		};
 		
@@ -534,6 +529,7 @@ struct BuildTlasRenderPass {
 	WorldEntitySystem* world_system = nullptr;
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
+		HLSL::RWRegularBuffer<u32>        rtas_indirect_arguments = VirtualResourceID::MeshletRtasIndirectArguments;
 		HLSL::RegularBuffer<u32>          mesh_alive_mask         = VirtualResourceID::MeshEntityAliveMask;
 		HLSL::ByteBuffer                  mesh_asset_buffer       = VirtualResourceID::MeshAssetBuffer;
 		HLSL::RegularBuffer<GpuTransform> mesh_transforms         = VirtualResourceID::MeshEntityGpuTransform;
@@ -586,7 +582,12 @@ struct MeshletConstants {
 	
 	compile_const u32 max_meshlet_blas_count  = 512;
 	compile_const u32 max_total_blas_meshlets = 64 * 1024;
-	compile_const u32 max_meshlets_per_blas   = 4096;
+	compile_const u32 max_meshlets_per_blas   = 16 * 1024;
+	
+	compile_const u32 blas_build_indirect_arguments_offset = 0;
+	compile_const u32 blas_build_result_blas_descs_offset  = blas_build_indirect_arguments_offset + MeshletConstants::max_meshlet_blas_count * 16u;
+	compile_const u32 blas_build_meshlet_addresses_offset  = blas_build_result_blas_descs_offset  + MeshletConstants::max_meshlet_blas_count * 16u;
+	compile_const u32 blas_build_scratch_offset            = blas_build_meshlet_addresses_offset  + MeshletConstants::max_total_blas_meshlets * 8u;
 };
 
 NOTES(Meta::HlslFile{ "MeshData.hlsl"_sl })
@@ -636,6 +637,7 @@ struct MeshletClearBuffersRenderPass {
 	WorldEntitySystem* world_system = nullptr;
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
+		HLSL::RWRegularBuffer<u32> rtas_indirect_arguments    = VirtualResourceID::MeshletRtasIndirectArguments;
 		HLSL::RWRegularBuffer<uint4> indirect_arguments       = VirtualResourceID::MeshletIndirectArguments;
 		HLSL::RWRegularBuffer<u32> meshlet_streaming_feedback = VirtualResourceID::MeshletStreamingFeedback;
 		HLSL::RWRegularBuffer<u32> mesh_streaming_feedback    = VirtualResourceID::MeshStreamingFeedback;

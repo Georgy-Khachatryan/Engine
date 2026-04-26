@@ -46,12 +46,18 @@ compile_const MeshletGroupResidencyMask target_residency_mask = MeshletGroupResi
 
 
 #if defined(CLEAR_BUFFERS)
+#include "Generated/MeshletRtasData.hlsl"
+
 [ThreadGroupSize(thread_group_size, 1, 1)]
 void MainCS(uint thread_id : SV_DispatchThreadID) {
 	if (thread_id < MeshletCullingIndirectArgumentsLayout::Count) {
 		// We need at least one thread group to copy main pass meshlet count to the disocclusion pass meshlet offset.
 		uint min_thread_group_count = thread_id == MeshletCullingIndirectArgumentsLayout::RetestMeshEntityCullingCommands ? 1 : 0;
 		indirect_arguments[thread_id] = uint4(min_thread_group_count, 1, 1, 0);
+	}
+	
+	if (thread_id < MeshletRtasIndirectArgumentsLayout::Count) {
+		rtas_indirect_arguments[thread_id] = 0;
 	}
 	
 	if (thread_id == 0) {
@@ -82,6 +88,7 @@ void MainCS(uint thread_id : SV_DispatchThreadID) {
 	MeshletCullingStatistics statistics;
 	statistics.meshlet_count_main_pass         = indirect_arguments[MeshletCullingIndirectArgumentsLayout::DispatchMesh].x;
 	statistics.meshlet_count_disocclusion_pass = indirect_arguments[MeshletCullingIndirectArgumentsLayout::DisocclusionDispatchMesh].x;
+	statistics.meshlet_count_raytracing_pass   = indirect_arguments[MeshletCullingIndirectArgumentsLayout::RaytracingBuildBLAS].w;
 	statistics.meshlet_count                   = statistics.meshlet_count_main_pass + statistics.meshlet_count_disocclusion_pass;
 	meshlet_culling_statistics.Store(0, statistics);
 }
@@ -418,7 +425,7 @@ void MainCS(uint thread_id : SV_DispatchThreadID, uint thread_index : SV_GroupIn
 #if defined(MAIN_PASS) || defined(DISOCCLUSION_PASS)
 	// Write streaming feedback for both resident and non resident pages.
 	for (uint page_index = begin_page_index; page_index < end_page_index; page_index += 1) {
-		InterlockedOr(meshlet_streaming_feedback[mesh_asset.feedback_buffer_offset + (page_index / 32u)], 1u << (page_index % 32u));
+		BitArraySetBit(meshlet_streaming_feedback, page_index, mesh_asset.feedback_buffer_offset);
 	}
 #endif // defined(MAIN_PASS) || defined(DISOCCLUSION_PASS)
 	

@@ -156,6 +156,7 @@ inline u32 CreateResourceDescriptor(RecordContext* record_context, const T& desc
 }
 
 TextureSize GetTextureSize(RecordContext* record_context, VirtualResourceID resource_id);
+u32 GetBufferSize(RecordContext* record_context, VirtualResourceID resource_id);
 VirtualResource& GetVirtualResource(RecordContext* record_context, VirtualResourceID resource_id);
 
 template<typename T>

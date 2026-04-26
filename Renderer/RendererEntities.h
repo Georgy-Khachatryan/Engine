@@ -40,7 +40,8 @@ struct SceneConstants {
 	float3 world_space_camera_position;
 	
 	float texture_world_to_pixel_scale; // Used for texture streaming feedback.
-	uint3 padding;
+	u32 frame_index;
+	uint2 padding;
 };
 
 struct DebugFreezeCullingCamera {
@@ -53,6 +54,7 @@ struct MeshletCullingStatistics {
 	u32 meshlet_count                   = 0;
 	u32 meshlet_count_main_pass         = 0;
 	u32 meshlet_count_disocclusion_pass = 0;
+	u32 meshlet_count_raytracing_pass   = 0;
 };
 
 NOTES(Meta::NoSaveLoad{})

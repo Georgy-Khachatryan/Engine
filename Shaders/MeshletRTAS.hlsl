@@ -1,9 +1,10 @@
 #include "Basic.hlsl"
 #include "Generated/MeshData.hlsl"
+#include "Generated/MeshletRtasData.hlsl"
 
 // See license for NvAPI structures and enums in THIRD_PARTY_LICENSES.md
 // Translated from NVAPI_D3D12_RAYTRACING_ACCELERATION_STRUCTURE_MULTI_INDIRECT_TRIANGLE_CLUSTER_ARGS in nvapi.h
-struct MeshletRtasIndirectArguments {
+struct MeshletRtasBuildIndirectArguments {
 	u32 meshlet_id;
 	u32 meshlet_flags;
 	u32 triangle_count                : 9;
@@ -23,15 +24,15 @@ struct MeshletRtasIndirectArguments {
 	u64 opacity_micromap_array;
 	u64 opacity_micromap_index_buffer;
 };
-_Static_assert(sizeof(MeshletRtasIndirectArguments) == 64, "Mismatching NVAPI_D3D12_RAYTRACING_ACCELERATION_STRUCTURE_MULTI_INDIRECT_TRIANGLE_CLUSTER_ARGS size.");
+_Static_assert(sizeof(MeshletRtasBuildIndirectArguments) == 64, "Mismatching NVAPI_D3D12_RAYTRACING_ACCELERATION_STRUCTURE_MULTI_INDIRECT_TRIANGLE_CLUSTER_ARGS size.");
 
 // Translated from NVAPI_D3D12_RAYTRACING_ACCELERATION_STRUCTURE_MULTI_INDIRECT_CLUSTER_ARGS in nvapi.h
-struct MeshletBlasIndirectArguments {
+struct MeshletBlasBuildIndirectArguments {
 	u32 meshlet_count;
 	u32 padding;
 	u64 meshlet_addresses;
 };
-_Static_assert(sizeof(MeshletBlasIndirectArguments) == 16, "Mismatching NVAPI_D3D12_RAYTRACING_ACCELERATION_STRUCTURE_MULTI_INDIRECT_CLUSTER_ARGS size.");
+_Static_assert(sizeof(MeshletBlasBuildIndirectArguments) == 16, "Mismatching NVAPI_D3D12_RAYTRACING_ACCELERATION_STRUCTURE_MULTI_INDIRECT_CLUSTER_ARGS size.");
 
 // Translated from D3D12_RAYTRACING_INSTANCE_DESC in d3d12.h
 struct BlasInstanceDesc {
@@ -58,22 +59,7 @@ enum struct MeshletGeometryFlags : u32 {
 	Opaque                      = 1u << 7,
 };
 
-compile_const u32 scratch_allocator_offset               = 0u;
-compile_const u32 scratch_meshlet_count_offset           = 4u;
-compile_const u32 scratch_blas_count_offset              = 8u;
-compile_const u32 scratch_committed_blas_count_offset    = 12u;
-compile_const u32 scratch_compaction_move_counter_offset = 16u;
-compile_const u32 tlas_mesh_instance_counter_offset      = 20u;
-
-
-#if defined(MESHLET_RTAS_CLEAR_BUFFERS)
-[ThreadGroupSize(64, 1, 1)]
-void MainCS(uint thread_id : SV_DispatchThreadID) {
-	uint value = thread_id == scratch_allocator_offset ? constants.vertex_buffer_scratch_offset : 0;
-	scratch_buffer.Store(thread_id * sizeof(uint), value);
-}
-#endif // defined(MESHLET_RTAS_CLEAR_BUFFERS)
-
+using IndirectArgumentsLayout = MeshletRtasIndirectArgumentsLayout;
 
 #if defined(MESHLET_RTAS_DECODE_VERTEX_BUFFER)
 groupshared uint gs_scratch_vertex_buffer_offset;
@@ -96,9 +82,14 @@ void MainCS(uint group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	
 	if (thread_index == 0) {
 		uint scratch_allocation_size = meshlet.vertex_count * sizeof(float3);
-		scratch_buffer.InterlockedAdd(scratch_allocator_offset, scratch_allocation_size, gs_scratch_vertex_buffer_offset);
 		
-		scratch_buffer.Store(inputs.vertex_buffer_offsets + meshlet_index * sizeof(uint), gs_scratch_vertex_buffer_offset);
+		uint scratch_vertex_buffer_offset = 0;
+		InterlockedAdd(rtas_indirect_arguments[IndirectArgumentsLayout::VertexBufferAllocator], scratch_allocation_size, scratch_vertex_buffer_offset);
+		scratch_vertex_buffer_offset += constants.vertex_buffer_scratch_offset;
+		
+		scratch_buffer.Store(inputs.vertex_buffer_offsets + meshlet_index * sizeof(uint), scratch_vertex_buffer_offset);
+		
+		gs_scratch_vertex_buffer_offset = scratch_vertex_buffer_offset;
 	}
 	
 	GroupMemoryBarrierWithGroupSync();
@@ -134,11 +125,11 @@ void MainCS(uint group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 		MeshletHeader meshlet = mesh_asset_buffer.Load<MeshletHeader>(meshlet_header_offset);
 		
 		uint vertex_buffer_offset = meshlet_header_offset + sizeof(MeshletHeader);
-		uint index_buffer_offset  = vertex_buffer_offset + meshlet.vertex_count * sizeof(MeshletVertex);
+		uint index_buffer_offset  = vertex_buffer_offset  + meshlet.vertex_count * sizeof(MeshletVertex);
 		
 		uint scratch_vertex_buffer_offset = scratch_buffer.Load(inputs.vertex_buffer_offsets + meshlet_index * sizeof(uint));
 		
-		MeshletRtasIndirectArguments arguments = (MeshletRtasIndirectArguments)0;
+		MeshletRtasBuildIndirectArguments arguments = (MeshletRtasBuildIndirectArguments)0;
 		arguments.meshlet_id           = meshlet_header_offset;
 		arguments.meshlet_flags        = MeshletFlags::None;
 		arguments.triangle_count       = meshlet.triangle_count;
@@ -149,7 +140,7 @@ void MainCS(uint group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 		arguments.vertex_buffer_stride = sizeof(float3);
 		arguments.index_buffer         = constants.mesh_asset_buffer_address + (u64)index_buffer_offset;
 		arguments.vertex_buffer        = constants.scratch_buffer_address    + (u64)scratch_vertex_buffer_offset;
-		scratch_buffer.Store(inputs.indirect_arguments_offset + meshlet_index * sizeof(MeshletRtasIndirectArguments), arguments);
+		scratch_buffer.Store(inputs.indirect_arguments_offset + meshlet_index * sizeof(MeshletRtasBuildIndirectArguments), arguments);
 	}
 }
 #endif // defined(MESHLET_RTAS_BUILD_INDIRECT_ARGUMENTS)
@@ -214,7 +205,7 @@ void MainCS(uint group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	MeshletPageHeader page_header = mesh_asset_buffer.Load<MeshletPageHeader>(page_offset);
 	
 	if (thread_index == 0) {
-		scratch_buffer.InterlockedAdd(scratch_compaction_move_counter_offset, page_header.meshlet_count, gs_output_base_index);
+		InterlockedAdd(rtas_indirect_arguments[IndirectArgumentsLayout::CompactionMoveCount], page_header.meshlet_count, gs_output_base_index);
 	}
 	
 	GroupMemoryBarrierWithGroupSync();
@@ -243,8 +234,6 @@ void MainCS(uint group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 #endif // defined(MESHLET_RTAS_UPDATE_OFFSETS)
 
 
-compile_const uint rtas_alignment = 256u;
-
 #if defined(MESHLET_BLAS_BUILD_INDIRECT_ARGUMENTS)
 compile_const uint thread_group_size = 256;
 
@@ -252,28 +241,32 @@ compile_const uint thread_group_size = 256;
 void MainCS(uint thread_id : SV_DispatchThreadID) {
 	uint meshlet_count = instance_meshlet_counts[thread_id];
 	
-	uint blas_index = u32_max;
+	uint blas_desc_offset = u32_max;
 	if (meshlet_count != 0 && meshlet_count <= MeshletConstants::max_meshlets_per_blas) {
-		uint meshlet_offset = 0;
-		scratch_buffer.InterlockedAdd(scratch_meshlet_count_offset, meshlet_count, meshlet_offset);
+		uint meshlet_list_offset = 0;
+		InterlockedAdd(rtas_indirect_arguments[IndirectArgumentsLayout::BlasMeshletCount], meshlet_count, meshlet_list_offset);
 		
 		uint candidate_blas_index = 0;
-		scratch_buffer.InterlockedAdd(scratch_blas_count_offset, 1u, candidate_blas_index);
+		InterlockedAdd(rtas_indirect_arguments[IndirectArgumentsLayout::CandidateBlasCount], 1u, candidate_blas_index);
 		
-		if (candidate_blas_index < MeshletConstants::max_meshlet_blas_count && meshlet_offset < MeshletConstants::max_total_blas_meshlets) {
-			blas_index = candidate_blas_index;
-			scratch_buffer.InterlockedAdd(scratch_committed_blas_count_offset, 1u);
+		if (candidate_blas_index < MeshletConstants::max_meshlet_blas_count && (meshlet_list_offset + meshlet_count) <= MeshletConstants::max_total_blas_meshlets) {
+			uint committed_blas_index = 0;
+			InterlockedAdd(rtas_indirect_arguments[IndirectArgumentsLayout::CommittedBlasCount], 1u, committed_blas_index);
 			
-			u64 scratch_buffer_base = constants.scratch_buffer_address + rtas_alignment + MeshletConstants::max_meshlet_blas_count * sizeof(MeshletBlasIndirectArguments);
+			blas_desc_offset               = MeshletConstants::blas_build_result_blas_descs_offset  + committed_blas_index * sizeof(MeshletBlasBuildIndirectArguments);
+			uint indirect_arguments_offset = MeshletConstants::blas_build_indirect_arguments_offset + committed_blas_index * 16u;
+			uint meshlet_addresses_offset  = MeshletConstants::blas_build_meshlet_addresses_offset  + meshlet_list_offset  * sizeof(u64);
 			
-			MeshletBlasIndirectArguments arguments = (MeshletBlasIndirectArguments)0;
-			arguments.meshlet_count     = 0; // Used as a counter in the subsequent pass.
-			arguments.meshlet_addresses = scratch_buffer_base + (u64)(meshlet_offset * sizeof(u64));
-			scratch_buffer.Store(rtas_alignment + blas_index * sizeof(MeshletBlasIndirectArguments), arguments);
+			MeshletBlasBuildIndirectArguments arguments = (MeshletBlasBuildIndirectArguments)0;
+			arguments.meshlet_count     = meshlet_count;
+			arguments.meshlet_addresses = constants.scratch_buffer_address + (u64)meshlet_addresses_offset;
+			scratch_buffer.Store(indirect_arguments_offset, arguments);
+			
+			scratch_buffer.Store(blas_desc_offset + sizeof(uint3), meshlet_addresses_offset);
 		}
 	}
 	
-	instance_meshlet_counts[thread_id] = blas_index;
+	instance_meshlet_counts[thread_id] = blas_desc_offset;
 }
 #endif // defined(MESHLET_BLAS_ALLOCATE_ADDRESSES)
 
@@ -291,23 +284,16 @@ void MainCS(uint thread_id : SV_DispatchThreadID) {
 	uint meshlet_header_offset = meshlet_instance.x;
 	uint mesh_entity_index     = meshlet_instance.y;
 	
-	uint blas_index = instance_meshlet_counts[mesh_entity_index];
-	if (blas_index == u32_max) return;
+	uint blas_desc_offset = instance_meshlet_counts[mesh_entity_index];
+	if (blas_desc_offset == u32_max) return;
+	
+	uint meshlet_offset = 0;
+	scratch_buffer.InterlockedAdd(blas_desc_offset + sizeof(uint3), sizeof(u64), meshlet_offset);
 	
 	MeshletHeader meshlet = mesh_asset_buffer.Load<MeshletHeader>(meshlet_header_offset);
-	if (meshlet.rtas_offset == u32_max) return;
-	
-	uint meshlet_index = 0;
-	scratch_buffer.InterlockedAdd(rtas_alignment + blas_index * sizeof(MeshletBlasIndirectArguments), 1u, meshlet_index);
-	
-	u64 scratch_buffer_base = constants.scratch_buffer_address + rtas_alignment + MeshletConstants::max_meshlet_blas_count * sizeof(MeshletBlasIndirectArguments);
-	
-	MeshletBlasIndirectArguments args = scratch_buffer.Load<MeshletBlasIndirectArguments>(rtas_alignment + blas_index * sizeof(MeshletBlasIndirectArguments));
-	uint meshlet_offset = (uint)(args.meshlet_addresses - scratch_buffer_base) / sizeof(u64);
-	
 	u64 meshlet_rtas_address = constants.meshlet_rtas_buffer_address + (u64)meshlet.rtas_offset;
-	uint base_offset = rtas_alignment + MeshletConstants::max_meshlet_blas_count * sizeof(MeshletBlasIndirectArguments);
-	scratch_buffer.Store(base_offset + (meshlet_offset + meshlet_index) * sizeof(u64),  meshlet_rtas_address);
+	
+	scratch_buffer.Store<u64>(meshlet_offset, meshlet_rtas_address);
 }
 #endif // defined(MESHLET_BLAS_WRITE_ADDRESSES)
 
@@ -320,16 +306,11 @@ void MainCS(uint thread_id : SV_DispatchThreadID) {
 	uint mesh_entity_index = thread_id;
 	if (BitArrayTestBit(mesh_alive_mask, mesh_entity_index) == false) return;
 	
-	u64 blas_address = 0;
-	
-	uint blas_index = instance_meshlet_counts[mesh_entity_index];
-	if (blas_index != u32_max) {
-		uint base_offset = rtas_alignment + MeshletConstants::max_meshlet_blas_count * 16u + MeshletConstants::max_total_blas_meshlets * 8u;
-		blas_address = scratch_buffer.Load<u64>(base_offset + blas_index * 16u);
-	}
+	u32 blas_desc_offset = instance_meshlet_counts[mesh_entity_index];
+	u64 blas_address = blas_desc_offset != u32_max ? scratch_buffer.Load<u64>(blas_desc_offset) : 0;
 	
 	uint instance_index = 0;
-	scratch_buffer.InterlockedAdd(tlas_mesh_instance_counter_offset, 1u, instance_index);
+	InterlockedAdd(rtas_indirect_arguments[IndirectArgumentsLayout::TlasMeshInstanceCount], 1u, instance_index);
 	
 	BlasInstanceDesc desc = (BlasInstanceDesc)0;
 	desc.instance_id    = mesh_entity_index;

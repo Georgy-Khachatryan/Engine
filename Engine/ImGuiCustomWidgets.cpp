@@ -81,7 +81,7 @@ bool ImGui::InputText(const char* label, String& string, HeapAllocator* heap, Im
 	
 	InputTextHeapStringCallbackData callback_data;
 	callback_data.string    = string;
-	callback_data.capacity  = heap ? HeapAllocator::GetMemoryBlockSize(string.data) : string.count + 1; // Including null terminator.
+	callback_data.capacity  = heap ? heap->GetMemoryBlockSize(string.data) : string.count + 1; // Including null terminator.
 	callback_data.heap      = heap;
 	callback_data.callback  = callback;
 	callback_data.user_data = user_data;

@@ -305,9 +305,13 @@ float4 TransformModelToClipSpaceDirection(float3 model_space_direction, GpuTrans
 #endif // defined(GENERATED_MESHDATA_HLSL)
 
 
-bool BitArrayTestBit(StructuredBuffer<uint> mask, u32 index) {
-	return ((mask[index / 32u] >> (index % 32u)) & 0x1) != 0;
-}
+bool BitArrayTestBit(StructuredBuffer<uint> mask, u32 index, u32 offset = 0) { return (mask[offset + index / 32u] & (1u << (index % 32u))) != 0; }
+void BitArraySetBit(RWStructuredBuffer<uint> mask, u32 index, u32 offset = 0) { InterlockedOr(mask[offset + index / 32u], 1u << (index % 32u)); }
+void BitArrayResetBit(RWStructuredBuffer<uint> mask, u32 index, u32 offset = 0) { InterlockedAnd(mask[offset + index / 32u], ~(1u << (index % 32u))); }
+
+#define GsBitArrayTestBit(gs_mask, index) ((gs_mask[index / 32u] & (1u << (index % 32u))) != 0)
+#define GsBitArraySetBit(gs_mask, index) InterlockedOr(gs_mask[index / 32u], 1u << (index % 32u))
+#define GsBitArrayResetBit(gs_mask, index) InterlockedAnd(gs_mask[index / 32u], ~(1u << (index % 32u)))
 
 uint CreateBitMaskSmall(uint bit_count) {
 	return ((1u << bit_count) - 1);

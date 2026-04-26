@@ -202,14 +202,13 @@ static bool CompileShaderToBlob(ShaderCompiler* compiler, StackAllocator* alloc,
 	ArrayAppend(arguments, L"-Zpr");
 	ArrayAppend(arguments, L"-enable-16bit-types");
 	
-#if BUILD_TYPE(DEBUG) || BUILD_TYPE(DEV)
+#define DXC_ENABLE_DEBUG_INFO 1
+#if DXC_ENABLE_DEBUG_INFO
 	ArrayAppend(arguments, L"-Zi"); // In the debug and dev builds embed PDBs and keep reflection to help in debugging with PIX.
 	ArrayAppend(arguments, L"-Qembed_debug");
-#elif BUILD_TYPE(PROFILE)
-	ArrayAppend(arguments, L"-Qstrip_reflect"); // In profile build remove both PDBs and reflection.
-#else // !BUILD_TYPE(PROFILE)
-	#error "Unknown BUILD_TYPE."
-#endif // !BUILD_TYPE(PROFILE)
+#else // !DXC_ENABLE_DEBUG_INFO
+	ArrayAppend(arguments, L"-Qstrip_reflect"); // TODO: Remove both PDBs and reflection when they're not needed.
+#endif // !DXC_ENABLE_DEBUG_INFO
 	
 	for (u64 i : BitScanLow(key.permutation)) {
 		ArrayAppend(arguments, L"-D");

@@ -29,12 +29,12 @@ void MainCS(uint group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 		
 		uint asset_page_index = page_command.asset_page_index;
 		if (page_command.type == MeshletPageUpdateCommandType::PageIn) {
-			InterlockedOr(gs_page_residency_mask[asset_page_index / 32u], 1u << (asset_page_index % 32u));
+			GsBitArraySetBit(gs_page_residency_mask, asset_page_index);
 		} else if (page_command.type == MeshletPageUpdateCommandType::RtasIn) {
-			InterlockedOr(gs_rtas_residency_mask[asset_page_index / 32u], 1u << (asset_page_index % 32u));
+			GsBitArraySetBit(gs_rtas_residency_mask, asset_page_index);
 		} else if (page_command.type == MeshletPageUpdateCommandType::PageOut) {
-			InterlockedAnd(gs_page_residency_mask[asset_page_index / 32u], ~(1u << (asset_page_index % 32u)));
-			InterlockedAnd(gs_rtas_residency_mask[asset_page_index / 32u], ~(1u << (asset_page_index % 32u)));
+			GsBitArrayResetBit(gs_page_residency_mask, asset_page_index);
+			GsBitArrayResetBit(gs_rtas_residency_mask, asset_page_index);
 		}
 		
 		uint runtime_page_offset = (uint)page_command.runtime_page_index * MeshletPageHeader::page_size;
@@ -60,8 +60,8 @@ void MainCS(uint group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 		
 		uint group_residency_mask = MeshletGroupResidencyMask::Page | MeshletGroupResidencyMask::RTAS;
 		for (uint page_index = group.page_index; page_index < (group.page_index + group.page_count); page_index += 1) {
-			if ((gs_page_residency_mask[page_index / 32u] & (1u << (page_index % 32u))) == 0u) group_residency_mask &= ~MeshletGroupResidencyMask::Page;
-			if ((gs_rtas_residency_mask[page_index / 32u] & (1u << (page_index % 32u))) == 0u) group_residency_mask &= ~MeshletGroupResidencyMask::RTAS;
+			if (GsBitArrayTestBit(gs_page_residency_mask, page_index) == false) group_residency_mask &= ~MeshletGroupResidencyMask::Page;
+			if (GsBitArrayTestBit(gs_rtas_residency_mask, page_index) == false) group_residency_mask &= ~MeshletGroupResidencyMask::RTAS;
 		}
 		
 		if (group.residency_mask != group_residency_mask) {

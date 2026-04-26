@@ -16,16 +16,16 @@ void MeshletClearBuffersRenderPass::RecordPass(RecordContext* record_context) {
 	
 	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
 	
-	auto& meshlet_streaming_feedback = GetVirtualResource(record_context, VirtualResourceID::MeshletStreamingFeedback);
-	auto& mesh_streaming_feedback    = GetVirtualResource(record_context, VirtualResourceID::MeshStreamingFeedback);
-	auto& texture_streaming_feedback = GetVirtualResource(record_context, VirtualResourceID::TextureStreamingFeedback);
+	u32 meshlet_streaming_feedback_size = GetBufferSize(record_context, VirtualResourceID::MeshletStreamingFeedback);
+	u32 mesh_streaming_feedback_size    = GetBufferSize(record_context, VirtualResourceID::MeshStreamingFeedback);
+	u32 texture_streaming_feedback_size = GetBufferSize(record_context, VirtualResourceID::TextureStreamingFeedback);
 	
 	auto* mesh_entities = QueryEntities<GpuMeshEntityQuery>(record_context->alloc, *world_system)[0];
 	
 	RootSignature::PushConstants constants;
-	constants.meshlet_streaming_feedback_size = meshlet_streaming_feedback.buffer.size / sizeof(u32);
-	constants.mesh_streaming_feedback_size    = mesh_streaming_feedback.buffer.size    / sizeof(u32);
-	constants.texture_streaming_feedback_size = texture_streaming_feedback.buffer.size / sizeof(u32);
+	constants.meshlet_streaming_feedback_size = meshlet_streaming_feedback_size / sizeof(u32);
+	constants.mesh_streaming_feedback_size    = mesh_streaming_feedback_size    / sizeof(u32);
+	constants.texture_streaming_feedback_size = texture_streaming_feedback_size / sizeof(u32);
 	constants.mesh_instance_capacity          = mesh_entities->capacity;
 	CmdSetRootArgument(record_context, root_signature.constants, constants);
 	
@@ -177,10 +177,10 @@ void CopyStreamingFeedbackRenderPass::RecordPass(RecordContext* record_context) 
 	};
 	
 	for (auto& [resource_id, readback_queue] : feedback_buffers) {
-		auto& readback_buffer = GetVirtualResource(record_context, resource_id);
-		auto [readback_gpu_address, readback_cpu_address] = AllocateTransientReadbackBuffer(record_context, readback_buffer.buffer.size);
+		u32 readback_buffer_size = GetBufferSize(record_context, resource_id);
+		auto [readback_gpu_address, readback_cpu_address] = AllocateTransientReadbackBuffer(record_context, readback_buffer_size);
 		
-		CmdCopyBufferToBuffer(record_context, resource_id, readback_gpu_address, readback_buffer.buffer.size);
+		CmdCopyBufferToBuffer(record_context, resource_id, readback_gpu_address, readback_buffer_size);
 		readback_queue->Store(readback_cpu_address, record_context->frame_index);
 	}
 }
@@ -322,27 +322,6 @@ void UpdateMeshletPageTableRenderPass::RecordPass(RecordContext* record_context)
 	CmdDispatch(record_context, page_table_commands_offset);
 }
 
-void MeshletRtasClearBuffersRenderPass::CreatePipelines(PipelineLibrary* lib) {
-	pipeline_id = CreateComputePipeline(lib, MeshletRtasShadersID, MeshletRtasShaders::MeshletRtasClearBuffers);
-}
-
-void MeshletRtasClearBuffersRenderPass::RecordPass(RecordContext* record_context) {
-	auto commands = GetMeshletStreamingCommands(meshlet_streaming_system);
-	
-	auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
-	
-	RootSignature::PushConstants constants;
-	constants.vertex_buffer_scratch_offset = commands.vertex_buffer_scratch_offset;
-	
-	CmdSetRootSignature(record_context, root_signature);
-	CmdSetPipelineState(record_context, pipeline_id);
-	
-	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
-	CmdSetRootArgument(record_context, root_signature.constants, constants);
-	
-	CmdDispatch(record_context);
-}
-
 void MeshletRtasDecodeVertexBufferRenderPass::CreatePipelines(PipelineLibrary* lib) {
 	pipeline_id = CreateComputePipeline(lib, MeshletRtasShadersID, MeshletRtasShaders::MeshletRtasDecodeVertexBuffer);
 }
@@ -376,6 +355,9 @@ void MeshletRtasDecodeVertexBufferRenderPass::RecordPass(RecordContext* record_c
 		}
 	}
 	
+	RootSignature::PushConstants constants;
+	constants.vertex_buffer_scratch_offset = commands.vertex_buffer_scratch_offset;
+	
 	auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
 	descriptor_table.decode_vertex_buffer_inputs.Bind(inputs.gpu_address, (u32)(commands.meshlet_rtas_build_commands.count * sizeof(MeshletRtasDecodeVertexBufferInputs)));
 	descriptor_table.packed_group_indices.Bind(packed_group_indices.gpu_address, total_meshlet_count * sizeof(u32));
@@ -384,6 +366,7 @@ void MeshletRtasDecodeVertexBufferRenderPass::RecordPass(RecordContext* record_c
 	CmdSetPipelineState(record_context, pipeline_id);
 	
 	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
+	CmdSetRootArgument(record_context, root_signature.constants, constants);
 	
 	CmdDispatch(record_context, total_meshlet_count);
 }
@@ -520,7 +503,9 @@ void MeshletBlasBuildIndirectArgumentsRenderPass::RecordPass(RecordContext* reco
 	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
 	
 	auto* mesh_entities = QueryEntities<GpuMeshEntityQuery>(record_context->alloc, *world_system)[0];
-	CmdDispatch(record_context, DivideAndRoundUp(mesh_entities->capacity, 256u));
+	if (mesh_entities->capacity != 0) { // TODO: Minimize the dispatch size.
+		CmdDispatch(record_context, DivideAndRoundUp(mesh_entities->capacity, 256u));
+	}
 }
 
 
@@ -532,7 +517,6 @@ void MeshletBlasWriteAddressesRenderPass::RecordPass(RecordContext* record_conte
 	auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
 	
 	RootSignature::PushConstants constants;
-	constants.scratch_buffer_address = scratch_buffer_address;
 	constants.meshlet_rtas_buffer_address = meshlet_rtas_buffer_address;
 	
 	CmdSetRootSignature(record_context, root_signature);
@@ -549,11 +533,11 @@ void MeshletBlasWriteAddressesRenderPass::RecordPass(RecordContext* record_conte
 	inputs.limits.max_blas_count          = MeshletConstants::max_meshlet_blas_count;
 	inputs.limits.max_total_meshlet_count = MeshletConstants::max_total_blas_meshlets;
 	inputs.limits.max_meshlets_per_blas   = MeshletConstants::max_meshlets_per_blas;
-	inputs.meshlet_blas            = GpuAddress(VirtualResourceID::MeshletBlasBuffer, 0u);
-	inputs.scratch_data            = GpuAddress(VirtualResourceID::StreamingScratchBuffer, rtas_alignment + MeshletConstants::max_meshlet_blas_count * 16u + MeshletConstants::max_total_blas_meshlets * 8u + MeshletConstants::max_meshlet_blas_count * 16u);
-	inputs.dst_blas_descs          = GpuAddress(VirtualResourceID::StreamingScratchBuffer, rtas_alignment + MeshletConstants::max_meshlet_blas_count * 16u + MeshletConstants::max_total_blas_meshlets * 8u);
-	inputs.indirect_arguments      = GpuAddress(VirtualResourceID::StreamingScratchBuffer, rtas_alignment);
-	inputs.indirect_argument_count = GpuAddress(VirtualResourceID::StreamingScratchBuffer, 12u);
+	inputs.meshlet_blas            = GpuAddress(VirtualResourceID::MeshletBlasBuffer,      0u);
+	inputs.scratch_data            = GpuAddress(VirtualResourceID::StreamingScratchBuffer, MeshletConstants::blas_build_scratch_offset);
+	inputs.dst_blas_descs          = GpuAddress(VirtualResourceID::StreamingScratchBuffer, MeshletConstants::blas_build_result_blas_descs_offset);
+	inputs.indirect_arguments      = GpuAddress(VirtualResourceID::StreamingScratchBuffer, MeshletConstants::blas_build_indirect_arguments_offset);
+	inputs.indirect_argument_count = GpuAddress(VirtualResourceID::MeshletRtasIndirectArguments, (u32)MeshletRtasIndirectArgumentsLayout::CommittedBlasCount * sizeof(u32));
 	CmdBuildMeshletBLAS(record_context, inputs);
 }
 

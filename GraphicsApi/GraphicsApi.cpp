@@ -132,6 +132,12 @@ TextureSize GetTextureSize(RecordContext* record_context, VirtualResourceID reso
 	return resource.texture.size;
 }
 
+u32 GetBufferSize(RecordContext* record_context, VirtualResourceID resource_id) {
+	auto& resource = record_context->resource_table->virtual_resources[(u32)resource_id];
+	DebugAssert(resource.type == VirtualResource::Type::VirtualBuffer || resource.type == VirtualResource::Type::NativeBuffer, "Resource is not a buffer.");
+	return resource.buffer.size;
+}
+
 VirtualResource& GetVirtualResource(RecordContext* record_context, VirtualResourceID resource_id) {
 	return record_context->resource_table->virtual_resources[(u32)resource_id];
 }
