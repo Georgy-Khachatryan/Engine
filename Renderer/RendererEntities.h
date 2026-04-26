@@ -41,7 +41,7 @@ struct SceneConstants {
 	
 	float texture_world_to_pixel_scale; // Used for texture streaming feedback.
 	u32 frame_index;
-	uint2 padding;
+	float reference_path_tracer_percent;
 };
 
 struct DebugFreezeCullingCamera {
@@ -64,6 +64,7 @@ struct RendererWorld {
 	float2 window_size = float2(1.f, 1.f);
 	float sun_elevation_degrees = 3.f;
 	float meshlet_target_error_pixels = 1.f;
+	float reference_path_tracer_percent = 0.f;
 	
 	DebugFreezeCullingCamera debug_freeze_culling_camera;
 	MeshletCullingStatistics meshlet_culling_statistics;

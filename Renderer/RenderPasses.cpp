@@ -149,6 +149,7 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	}
 	
 	scene.frame_index = (u32)record_context->frame_index;
+	scene.reference_path_tracer_percent = renderer_world.reference_path_tracer_percent;
 	
 	auto gpu_scene_constants = AllocateGpuComponentUploadBuffer(record_context, 1, world_entity.gpu_scene_constants);
 	AppendGpuTransferCommand(gpu_scene_constants, 0, scene);
@@ -245,6 +246,10 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	
 	
 	render_passes.Add<RaytracingDebugRenderPass>();
+	
+	if (renderer_world.reference_path_tracer_percent != 0.f) {
+		render_passes.Add<ReferencePathTracerRenderPass>();
+	}
 	
 	
 	auto& debug_geometry = render_passes.Add<DebugGeometryRenderPass>();

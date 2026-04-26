@@ -255,6 +255,23 @@ void RaytracingDebugRenderPass::RecordPass(RecordContext* record_context) {
 }
 
 
+void ReferencePathTracerRenderPass::CreatePipelines(PipelineLibrary* lib) {
+	pipeline_id = CreateComputePipeline(lib, ReferencePathTracerShadersID);
+}
+
+void ReferencePathTracerRenderPass::RecordPass(RecordContext* record_context) {
+	auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
+	
+	CmdSetRootSignature(record_context, root_signature);
+	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
+	CmdSetRootArgument(record_context, root_signature.scene, VirtualResourceID::SceneConstants);
+	CmdSetPipelineState(record_context, pipeline_id);
+	
+	auto render_target_size = GetTextureSize(record_context, VirtualResourceID::SceneRadiance);
+	CmdDispatch(record_context, DivideAndRoundUp(uint2(render_target_size), uint2(8, 4)));
+}
+
+
 void UpdateMeshletPageTableRenderPass::CreatePipelines(PipelineLibrary* lib) {
 	pipeline_id = CreateComputePipeline(lib, UpdateMeshletPageTableShadersID);
 }

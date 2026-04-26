@@ -864,6 +864,32 @@ struct RaytracingDebugRenderPass {
 };
 
 
+NOTES(Meta::ShaderName{ "ReferencePathTracer.hlsl"_sl })
+enum struct ReferencePathTracerShaders : u32 {};
+SHADER_DEFINITION_GENERATED_CODE(ReferencePathTracerShaders);
+
+NOTES(Meta::RenderPass{})
+struct ReferencePathTracerRenderPass {
+	RENDER_PASS_GENERATED_CODE();
+	
+	struct Descriptors : HLSL::BaseDescriptorTable {
+		HLSL::RegularBuffer<GpuTransform>           mesh_transforms       = VirtualResourceID::MeshEntityGpuTransform;
+		HLSL::RegularBuffer<GpuMeshAssetData>       mesh_asset_data       = VirtualResourceID::GpuMeshAssetData;
+		HLSL::RegularBuffer<GpuMeshEntityData>      mesh_entity_data      = VirtualResourceID::GpuMeshEntityData;
+		HLSL::RegularBuffer<GpuMaterialTextureData> material_texture_data = VirtualResourceID::MaterialAssetTextureData;
+		HLSL::ByteBuffer                            mesh_asset_buffer     = VirtualResourceID::MeshAssetBuffer;
+		HLSL::TopLevelRTAS                          scene_tlas            = VirtualResourceID::SceneTLAS;
+		HLSL::RWTexture2D<float4>                   scene_radiance        = VirtualResourceID::SceneRadiance;
+	};
+	
+	struct RootSignature : HLSL::BaseRootSignature {
+		HLSL::DescriptorTable<Descriptors> descriptor_table;
+		HLSL::ConstantBuffer<SceneConstants> scene;
+	};
+	
+	inline static PipelineID pipeline_id;
+};
+
 
 NOTES(Meta::ShaderName{ "DrawTestMesh.hlsl"_sl })
 enum struct DrawTestMeshShaders : u32 {};

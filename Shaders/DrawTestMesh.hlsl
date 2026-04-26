@@ -1,4 +1,5 @@
 #include "Basic.hlsl"
+#include "MeshletVertexDecoding.hlsl"
 
 struct InputPS {
 	float4 position : SV_Position;
@@ -15,7 +16,7 @@ struct InputPrimitivePS {
 	uint material_index   : MATERIAL_INDEX;
 };
 
-#define VISUALIZATION_TYPE 0
+#define VISUALIZATION_TYPE 3
 
 #if defined(MESH_SHADER)
 [OutputTopology("triangle")]
@@ -45,12 +46,11 @@ void MainMS(
 	
 	SetMeshOutputCounts(meshlet.vertex_count, meshlet.triangle_count);
 	
-	uint vertex_buffer_offset = meshlet_header_offset + sizeof(MeshletHeader);
-	uint index_buffer_offset  = vertex_buffer_offset + meshlet.vertex_count * sizeof(MeshletVertex);
+	MeshletBufferOffsets offsets = ComputeMeshletBufferOffsets(meshlet, meshlet_header_offset);
 	
 	if (thread_index < meshlet.vertex_count) {
-		MeshletVertex vertex = mesh_asset_buffer.Load<MeshletVertex>(vertex_buffer_offset + thread_index * sizeof(MeshletVertex));
-		float3 vertex_position = float3(vertex.position) * mesh_asset.rcp_quantization_scale + meshlet.position_offset;
+		MeshletVertex vertex = LoadMeshletVertexBuffer(mesh_asset_buffer, offsets.vertex_buffer_offset, thread_index);
+		float3 vertex_position = DecodeMeshletVertexPosition(vertex.position, mesh_asset, meshlet);
 		
 		float4 clip_space_position      = TransformModelToClipSpace(vertex_position, model_to_world,      scene.world_to_view,      scene.view_to_clip_coef);
 		float4 prev_clip_space_position = TransformModelToClipSpace(vertex_position, prev_model_to_world, scene.prev_world_to_view, scene.prev_view_to_clip_coef);
@@ -69,12 +69,7 @@ void MainMS(
 	}
 	
 	if (thread_index < meshlet.triangle_count) {
-		compile_const uint triangle_size_bytes = 3;
-		uint load_offset = index_buffer_offset + thread_index * triangle_size_bytes;
-		uint2 packed_indices = mesh_asset_buffer.Load<uint2>(load_offset & ~0x3);
-		
-		uint indices = uint((u64(packed_indices.x) | (u64(packed_indices.y) << 32)) >> ((load_offset & 0x3) * 8));
-		result_indices[thread_index] = uint3(indices >> 0, indices >> 8, indices >> 16) & 0xFF;
+		result_indices[thread_index] = LoadMeshletIndexBuffer(mesh_asset_buffer, offsets.index_buffer_offset, thread_index);
 		
 		result_primitives[thread_index].visualization_id = VISUALIZATION_TYPE == 0 ? (meshlet_header_offset >> 4) : VISUALIZATION_TYPE == 1 ? meshlet.level_of_detail_index : VISUALIZATION_TYPE == 2 ? mesh_entity_index : 0;
 		result_primitives[thread_index].material_index   = mesh_entity.material_asset_index;
@@ -83,14 +78,14 @@ void MainMS(
 #endif // defined(MESH_SHADER)
 
 #if defined(PIXEL_SHADER)
+#include "MaterialSampling.hlsl"
+
 struct OutputPS {
 	float4 color : SV_Target0;
 	float2 motion_vectors : SV_Target1;
 };
 
 OutputPS MainPS(InputPS input, InputPrimitivePS primitive_input, float3 bary : SV_Barycentrics) {
-	float wireframe = BarycentricWireframe(bary, ddx(bary), ddy(bary));
-	
 #if (VISUALIZATION_TYPE == 1)
 	// float3 meshlet_color = ViridisHeatMap(Pow2(1.0 - saturate(primitive_input.visualization_id * rcp(15.0))));
 	float3 meshlet_color = PlasmaHeatMap(Pow2(1.0 - saturate(primitive_input.visualization_id * rcp(15.0))));
@@ -98,27 +93,21 @@ OutputPS MainPS(InputPS input, InputPrimitivePS primitive_input, float3 bary : S
 	float3 meshlet_color = DecodeSRGB(RandomColor(primitive_input.visualization_id));
 #endif // (VISUALIZATION_TYPE != 0)
 	
-	if (primitive_input.material_index != u32_max) {
-		GpuMaterialTextureData material = material_texture_data[primitive_input.material_index];
-		if (material.albedo != u32_max) {
-			Texture2D<float3> albedo_texture = ResourceDescriptorHeap[material.albedo];
-			float3 albedo = albedo_texture.Sample(sampler_linear_wrap, input.texcoord);
-			
-			Texture2D<float2> normal_texture = ResourceDescriptorHeap[material.normal];
-			float2 hemioct_normal = normal_texture.Sample(sampler_linear_wrap, input.texcoord);
-			
-			compile_const float bitangent_sign = -1.0; // TODO: Store per vertex/triangle?
-			float3x3 tangent_to_world = transpose(float3x3(input.world_space_tangent, bitangent_sign * cross(input.world_space_normal, input.world_space_tangent), input.world_space_normal));
-			float3 normal = mul(tangent_to_world, DecodeHemiOctahedralMap01(hemioct_normal));
-			
-			meshlet_color = albedo * max(normal.z * 0.5 + 0.5, 0.0);
-			wireframe = 1.0;
-		}
-	}
-	wireframe = wireframe * 0.5 + 0.5;
+#if (VISUALIZATION_TYPE == 3)
+	TexcoordStream texcoord_stream;
+	texcoord_stream.texcoord = input.texcoord;
+	MaterialProperties properties = SampleMaterial(primitive_input.material_index, texcoord_stream);
+	
+	float3x3 tangent_to_world = ComputeTangentToOtherSpace(input.world_space_tangent, input.world_space_normal);
+	float3 world_space_normal = mul(tangent_to_world, properties.normal);
+	
+	meshlet_color = properties.albedo * max(world_space_normal.z * 0.5 + 0.5, 0.0);
+#else // (VISUALIZATION_TYPE != 3)
+	meshlet_color *= BarycentricWireframe(bary, ddx(bary), ddy(bary)) * 0.5 + 0.5;
+#endif // (VISUALIZATION_TYPE == 3)
 	
 	OutputPS output;
-	output.color = float4(meshlet_color * wireframe, 1.0);
+	output.color = float4(meshlet_color, 1.0);
 	output.motion_vectors = NdcToScreenUvDirection((input.prev_position.xy / input.prev_position.z) - (input.curr_position.xy / input.curr_position.z));
 	
 	return output;

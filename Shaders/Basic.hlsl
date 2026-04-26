@@ -135,10 +135,11 @@ float2 EncodeOctahedralMap(float3 value) {
 }
  
 // Optimized octahedron decoding by Rune Stubbe.
-float3 DecodeOctahedralMap(float2 value) {
-	float3 result = float3(value.x, value.y, 1.0 - abs(value.x) - abs(value.y));
-	float t = saturate(-result.z);
-	return normalize(float3(result.xy + select(result.xy >= 0.0, -t, t), result.z));
+template<typename T>
+vector<T, 3> DecodeOctahedralMap(vector<T, 2> value) {
+	vector<T, 3> result = vector<T, 3>(value.x, value.y, (T)1.0 - abs(value.x) - abs(value.y));
+	T t = saturate(-result.z);
+	return normalize(vector<T, 3>(result.xy + select(result.xy >= (T)0.0, -t, t), result.z));
 }
 
 // Based on https://x.com/rygorous/status/1292942936817115136
@@ -147,14 +148,16 @@ float2 EncodeHemiOctahedralMap(float3 value) {
 	return float2(t.x + t.y, t.x - t.y);
 }
 
-float3 DecodeHemiOctahedralMap(float2 value) {
-	float2 t = float2(value.x + value.y, value.x - value.y);
-	return normalize(float3(t, 2.0 - abs(t.x) - abs(t.y)));
+template<typename T>
+vector<T, 3> DecodeHemiOctahedralMap(vector<T, 2> value) {
+	vector<T, 2> t = vector<T, 2>(value.x + value.y, value.x - value.y);
+	return normalize(vector<T, 3>(t, 2.0 - abs(t.x) - abs(t.y)));
 }
 
-float3 DecodeHemiOctahedralMap01(float2 value) { // Same as DecodeHemiOctahedralMap, but input is in [0, 1] range instead of [-1, 1]
-	float2 t = float2(value.x + value.y - 1.0, value.x - value.y);
-	return normalize(float3(t, 1.0 - abs(t.x) - abs(t.y)));
+template<typename T>
+vector<T, 3> DecodeHemiOctahedralMap01(vector<T, 2> value) { // Same as DecodeHemiOctahedralMap, but input is in [0, 1] range instead of [-1, 1]
+	vector<T, 2> t = vector<T, 2>(value.x + value.y - (T)1.0, value.x - value.y);
+	return normalize(vector<T, 3>(t, (T)1.0 - abs(t.x) - abs(t.y)));
 }
 
 
@@ -203,6 +206,30 @@ float3 ConvertHSVtoRGB(float3 hsv) {
 float3 RandomColor(uint seed_a, uint seed_b = 0) {
 	u32 hash = WyHash32(seed_a, seed_b);
 	return ConvertHSVtoRGB(float3((hash & 0xFF) * rcp(0xFF), 0.6, 0.7));
+}
+
+
+float2 ConcentricMapping(float2 uv) {
+	float2 ndc = uv * 2.0 - 1.0;
+	if (all(ndc == 0.0)) return 0.0;
+	
+	float theta  = 0.0;
+	float radius = 1.0;
+	
+	if (abs(ndc.x) > abs(ndc.y)) { 
+		radius = ndc.x;
+		theta  = (PI * 0.25) * (ndc.y / ndc.x);
+	} else {
+		radius = ndc.y;
+		theta  = (PI * 0.5) - ((PI * 0.25) * (ndc.x / ndc.y)); 
+	}
+	
+	return float2(cos(theta), sin(theta)) * radius;
+}
+
+float3 CosineWeightedHemisphereMapping(float2 uv) {
+	float2 disk_sample = ConcentricMapping(uv);
+	return float3(disk_sample, sqrt(max(1.0 - Pow2(disk_sample.x) - Pow2(disk_sample.y), 0.0)));
 }
 
 
@@ -259,6 +286,22 @@ float4 TransformViewToClipSpaceDirection(float3 view_space_position, float4 view
 		result.z = view_space_position.z * view_to_clip_coef.z;
 		result.w = 0.0;
 	}
+	
+	return result;
+}
+
+// Tom Duff, James Burgess, Per Christensen, Christophe Hery, Andrew Kensler, Max Liani, and Ryusuke Villemin.
+// 2017. Building an Orthonormal Basis, Revisited. https://jcgt.org/published/0006/01/01/
+float3x3 BuildOrthonormalBasis(float3 normal) {
+	float sign = normal.z < 0.f ? -1.0 : +1.0;
+	
+	float a = -1.0 / (sign + normal.z);
+	float b = normal.x * normal.y * a;
+	
+	float3x3 result;
+	result[0] = float3(1.0 + sign * normal.x * normal.x * a, sign * b, -sign * normal.x);
+	result[1] = float3(b, sign + normal.y * normal.y * a, -normal.y);
+	result[2] = normal;
 	
 	return result;
 }
