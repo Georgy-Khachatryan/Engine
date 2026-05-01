@@ -32,6 +32,10 @@ float3 SampleTrowbridgeReitzVNDF(float2 u, float3 wo, float2 alpha) {
 	return normalize(float3(wm_standard.xy * alpha, wm_standard.z));
 }
 
+float FresnelSchlick(float f0, float cos_theta) {
+	return f0 + (1.0 - f0) * Pow5(1.0 - cos_theta);
+}
+
 float3 FresnelSchlick(float3 f0, float cos_theta) {
 	return f0 + (1.0 - f0) * Pow5(1.0 - cos_theta);
 }
@@ -54,6 +58,7 @@ float SmithVisibilityG(float3 wo, float3 wi, float alpha_square) {
 
 compile_const u32 energy_compensation_lut_size = 32u;
 compile_const float energy_compensation_lut_cos_theta_bias = (1.0 / 1024.0);
+compile_const float dielectric_f0 = 0.04;
 
 
 // Result has exclusive upper bound, i.e. the range is [0, 1).
@@ -157,10 +162,12 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 			ray_desc.Origin += ray_desc.Direction * ray_query.CommittedRayT() + world_space_normal * (1.0 / 1024.0);
 			
 			{
+				float  metalness    = properties.metalness;
 				float  roughness    = properties.roughness;
-				float3 f0           = properties.albedo;
+				float3 metallic_f0  = properties.albedo;
 				float  alpha        = Pow2(roughness);
 				float  alpha_square = Pow2(alpha);
+				float3 diffuse_albedo = properties.albedo;
 				
 				float3x3 world_to_tangent = BuildOrthonormalBasis(world_space_normal);
 				float3x3 tangent_to_world = transpose(world_to_tangent);
@@ -169,18 +176,40 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 				float3 wh = SampleTrowbridgeReitzVNDF(ComputeRandomUnorm16x2(hash), wo, alpha);
 				float3 wi = reflect(-wo, wh);
 				
-				ray_desc.Direction = mul(tangent_to_world, wi);
-				
 				if ((wi.z * wo.z) > 0.0) {
-					float3 specular_fresnel = FresnelSchlick(f0, dot(wo, wh));
+					float2 mis_thresholds = ComputeRandomUnorm16x2(hash);
 					
 					// Based on "Practical multiple scattering compensation for microfacet models" by Emmanuel Turquin.
 					float2 energy_compensation_lut_parameters = saturate(float2(wo.z + energy_compensation_lut_cos_theta_bias, roughness));
 					float2 energy_compensation_lut_uv = LutParametersToUv(energy_compensation_lut_parameters, energy_compensation_lut_size);
-					float  single_scattering_energy   = ggx_conductor_energy_lut.SampleLevel(sampler_linear_clamp, energy_compensation_lut_uv, 0);
-					float3 energy_compensation        = (1.0 + specular_fresnel * (1.0 - single_scattering_energy) / single_scattering_energy);
+					float2 single_scattering_energy   = ggx_single_scattering_energy_lut.SampleLevel(sampler_linear_clamp, energy_compensation_lut_uv, 0);
 					
-					throughput *= specular_fresnel * energy_compensation * (SmithVisibilityG(wo, wi, alpha_square) / SmithVisibilityG1(wo, alpha_square));
+					if (mis_thresholds.x < metalness) {
+						float3 specular_fresnel = FresnelSchlick(metallic_f0, dot(wo, wh));
+						float3 energy_compensation = (1.0 + specular_fresnel * (1.0 - single_scattering_energy.x) / single_scattering_energy.x);
+						
+						ray_desc.Direction = mul(tangent_to_world, wi);
+						
+						throughput *= specular_fresnel * energy_compensation * (SmithVisibilityG(wo, wi, alpha_square) / SmithVisibilityG1(wo, alpha_square));
+					} else {
+						float specular_fresnel = FresnelSchlick(dielectric_f0, dot(wo, wh));
+						float energy_compensation = 1.0 / single_scattering_energy.y;
+						
+						float mis_specular_weight = specular_fresnel;
+						float mis_diffuse_weight  = dot(diffuse_albedo, rec709_luminance_coefficients) * (1.0 - mis_specular_weight);
+						float normalized_mis_specular_weight = mis_specular_weight / (mis_specular_weight + mis_diffuse_weight);
+						float normalized_mis_diffuse_weight  = 1.0 - normalized_mis_specular_weight;
+						
+						if (mis_thresholds.y < normalized_mis_specular_weight) {
+							ray_desc.Direction = normalize(mul(tangent_to_world, wi));
+							
+							throughput *= specular_fresnel * energy_compensation * (SmithVisibilityG(wo, wi, alpha_square) / SmithVisibilityG1(wo, alpha_square)) / normalized_mis_specular_weight;
+						} else {
+							ray_desc.Direction = normalize(mul(tangent_to_world, CosineWeightedHemisphereMapping(ComputeRandomUnorm16x2(hash))));
+							
+							throughput *= diffuse_albedo * (energy_compensation * (1.0 - specular_fresnel) / normalized_mis_diffuse_weight);
+						}
+					}
 				} else {
 					i = max_path_length;
 				}
@@ -209,7 +238,7 @@ compile_const u32 sample_grid_size_xy = 128;
 compile_const u32 sample_count        = sample_grid_size_xy * sample_grid_size_xy;
 compile_const u32 samples_per_thread  = sample_count / thread_group_size;
 
-groupshared float gs_single_scattering_energy[64];
+groupshared float2 gs_single_scattering_energy[64];
 
 [ThreadGroupSize(thread_group_size, 1, 1)][WaveSize(16, 128)]
 void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
@@ -222,7 +251,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	
 	float3 wo = float3(sqrt(1.0 - Pow2(cos_theta)), 0.0, cos_theta);
 	
-	precise float single_scattering_energy = 0.0;
+	float2 single_scattering_energy = 0.0;
 	for (u32 i = 0; i < samples_per_thread; i += 1) {
 		u32 sample_index = thread_index * samples_per_thread + i;
 		
@@ -233,11 +262,15 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 		float3 wi = reflect(-wo, wh);
 		
 		if ((wi.z * wo.z) > 0.0) {
-			single_scattering_energy += SmithVisibilityG(wo, wi, alpha_square) / SmithVisibilityG1(wo, alpha_square);
+			float specular_sample = SmithVisibilityG(wo, wi, alpha_square) / SmithVisibilityG1(wo, alpha_square);
+			single_scattering_energy.x += specular_sample; // Conductor
+			
+			float fresnel = FresnelSchlick(dielectric_f0, dot(wo, wh));
+			single_scattering_energy.y += fresnel * specular_sample + (1.0 - fresnel); // Dielectric
 		}
 	}
 	
-	float wave_single_scattering_energy = WaveActiveSum(single_scattering_energy);
+	float2 wave_single_scattering_energy = WaveActiveSum(single_scattering_energy);
 	if (WaveIsFirstLane()) {
 		gs_single_scattering_energy[thread_index / WaveGetLaneCount()] = wave_single_scattering_energy;
 	}
@@ -245,14 +278,14 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	GroupMemoryBarrierWithGroupSync();
 	
 	if (thread_index == 0) {
-		float group_single_scattering_energy = wave_single_scattering_energy;
+		float2 group_single_scattering_energy = wave_single_scattering_energy;
 		
 		u32 wave_count = thread_group_size / WaveGetLaneCount();
 		for (u32 i = 1; i < wave_count; i += 1) {
 			group_single_scattering_energy += gs_single_scattering_energy[i];
 		}
 		
-		ggx_conductor_energy_lut[group_id] = group_single_scattering_energy / sample_count;
+		ggx_single_scattering_energy_lut[group_id] = group_single_scattering_energy / sample_count;
 	}
 }
 #endif // defined(ENERGY_COMPENSATION_LUT)

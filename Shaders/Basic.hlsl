@@ -215,6 +215,8 @@ float3 RandomColor(uint seed_a, uint seed_b = 0) {
 	return ConvertHSVtoRGB(float3((hash & 0xFF) * rcp(0xFF), 0.6, 0.7));
 }
 
+compile_const float3 rec709_luminance_coefficients = float3(0.2126, 0.7152, 0.0722);
+
 
 float2 ConcentricMapping(float2 uv) {
 	float2 ndc = uv * 2.0 - 1.0;

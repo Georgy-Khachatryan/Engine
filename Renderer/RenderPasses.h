@@ -64,7 +64,7 @@ enum struct VirtualResourceID : u32 {
 	
 	// Reference Path Tracer:
 	ReferencePathTracerRadiance,
-	GgxConductorEnergyLUT,
+	GgxSingleScatteringEnergyLUT,
 	
 	// Debug geometry:
 	DebugGeometryDepthStencil,
@@ -884,7 +884,7 @@ struct ReferencePathTracerRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
-		HLSL::Texture2D<float>                      ggx_conductor_energy_lut = VirtualResourceID::GgxConductorEnergyLUT;
+		HLSL::Texture2D<float2>                     ggx_single_scattering_energy_lut = VirtualResourceID::GgxSingleScatteringEnergyLUT;
 		HLSL::RegularBuffer<GpuTransform>           mesh_transforms       = VirtualResourceID::MeshEntityGpuTransform;
 		HLSL::RegularBuffer<GpuMeshAssetData>       mesh_asset_data       = VirtualResourceID::GpuMeshAssetData;
 		HLSL::RegularBuffer<GpuMeshEntityData>      mesh_entity_data      = VirtualResourceID::GpuMeshEntityData;
@@ -908,7 +908,7 @@ struct EnergyCompensationLutRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
-		HLSL::RWTexture2D<float> ggx_conductor_energy_lut = VirtualResourceID::GgxConductorEnergyLUT;
+		HLSL::RWTexture2D<float2> ggx_single_scattering_energy_lut = VirtualResourceID::GgxSingleScatteringEnergyLUT;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {

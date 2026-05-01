@@ -37,7 +37,7 @@ static void BuildResourceTable(RecordContext* record_context, WorldEntitySystem*
 	table.Set(ID::SceneRadianceResult, TextureSize(TextureFormat::R16G16B16A16_FLOAT, render_target_size), Flags::UAV);
 	
 	table.Set(ID::ReferencePathTracerRadiance, TextureSize(TextureFormat::R32G32B32A32_FLOAT, render_target_size), Flags::UAV);
-	table.Set(ID::GgxConductorEnergyLUT, TextureSize(TextureFormat::R32_FLOAT, 32, 32), Flags::UAV);
+	table.Set(ID::GgxSingleScatteringEnergyLUT, TextureSize(TextureFormat::R16G16_UNORM, 32, 32), Flags::UAV);
 	
 	table.Set(ID::CullingHZB,           BuildHzbRenderPass::ComputeCullingHzbSize(render_target_size));
 	table.Set(ID::CullingHzbBuildState, BuildHzbRenderPass::culling_hzb_build_state_size);

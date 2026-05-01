@@ -282,7 +282,7 @@ void EnergyCompensationLutRenderPass::RecordPass(RecordContext* record_context) 
 	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
 	CmdSetPipelineState(record_context, pipeline_id);
 	
-	CmdDispatch(record_context, uint2(GetTextureSize(record_context, VirtualResourceID::GgxConductorEnergyLUT)));
+	CmdDispatch(record_context, uint2(GetTextureSize(record_context, VirtualResourceID::GgxSingleScatteringEnergyLUT)));
 }
 
 
