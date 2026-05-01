@@ -64,6 +64,7 @@ enum struct VirtualResourceID : u32 {
 	
 	// Reference Path Tracer:
 	ReferencePathTracerRadiance,
+	GgxConductorEnergyLUT,
 	
 	// Debug geometry:
 	DebugGeometryDepthStencil,
@@ -871,7 +872,11 @@ struct RaytracingDebugRenderPass {
 
 
 NOTES(Meta::ShaderName{ "ReferencePathTracer.hlsl"_sl })
-enum struct ReferencePathTracerShaders : u32 {};
+enum struct ReferencePathTracerShaders : u32 {
+	None                  = 0u,
+	ReferencePathTracer   = 1u << 0,
+	EnergyCompensationLUT = 1u << 1,
+};
 SHADER_DEFINITION_GENERATED_CODE(ReferencePathTracerShaders);
 
 NOTES(Meta::RenderPass{})
@@ -879,6 +884,7 @@ struct ReferencePathTracerRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
+		HLSL::Texture2D<float>                      ggx_conductor_energy_lut = VirtualResourceID::GgxConductorEnergyLUT;
 		HLSL::RegularBuffer<GpuTransform>           mesh_transforms       = VirtualResourceID::MeshEntityGpuTransform;
 		HLSL::RegularBuffer<GpuMeshAssetData>       mesh_asset_data       = VirtualResourceID::GpuMeshAssetData;
 		HLSL::RegularBuffer<GpuMeshEntityData>      mesh_entity_data      = VirtualResourceID::GpuMeshEntityData;
@@ -892,6 +898,21 @@ struct ReferencePathTracerRenderPass {
 	struct RootSignature : HLSL::BaseRootSignature {
 		HLSL::DescriptorTable<Descriptors> descriptor_table;
 		HLSL::ConstantBuffer<SceneConstants> scene;
+	};
+	
+	inline static PipelineID pipeline_id;
+};
+
+NOTES(Meta::RenderPass{})
+struct EnergyCompensationLutRenderPass {
+	RENDER_PASS_GENERATED_CODE();
+	
+	struct Descriptors : HLSL::BaseDescriptorTable {
+		HLSL::RWTexture2D<float> ggx_conductor_energy_lut = VirtualResourceID::GgxConductorEnergyLUT;
+	};
+	
+	struct RootSignature : HLSL::BaseRootSignature {
+		HLSL::DescriptorTable<Descriptors> descriptor_table;
 	};
 	
 	inline static PipelineID pipeline_id;

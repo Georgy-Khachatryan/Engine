@@ -133,6 +133,8 @@ float2 ScreenUvToNdc(float2 uv)  { return float2(uv.x * 2.0 - 1.0, 1.0 - uv.y * 
 float2 NdcToScreenUvDirection(float2 ndc) { return float2(ndc.x * 0.5, ndc.y * -0.5); }
 float2 ScreenUvToNdcDirection(float2 uv)  { return float2(uv.x * 2.0, uv.y * -2.0); }
 
+float2 LutParametersToUv(float2 parameters, uint2 lut_size) { return (parameters * (lut_size - 1) + 0.5) * (1.0 / lut_size); }
+
 // Based on https://knarkowicz.wordpress.com/2014/04/16/octahedron-normal-vector-encoding/
 float2 EncodeOctahedralMap(float3 value) {
 	float2 result = value.xy * (1.0 / (abs(value.x) + abs(value.y) + abs(value.z)));

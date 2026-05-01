@@ -256,7 +256,7 @@ void RaytracingDebugRenderPass::RecordPass(RecordContext* record_context) {
 
 
 void ReferencePathTracerRenderPass::CreatePipelines(PipelineLibrary* lib) {
-	pipeline_id = CreateComputePipeline(lib, ReferencePathTracerShadersID);
+	pipeline_id = CreateComputePipeline(lib, ReferencePathTracerShadersID, ReferencePathTracerShaders::ReferencePathTracer);
 }
 
 void ReferencePathTracerRenderPass::RecordPass(RecordContext* record_context) {
@@ -269,6 +269,20 @@ void ReferencePathTracerRenderPass::RecordPass(RecordContext* record_context) {
 	
 	auto render_target_size = GetTextureSize(record_context, VirtualResourceID::SceneRadiance);
 	CmdDispatch(record_context, DivideAndRoundUp(uint2(render_target_size), uint2(8, 4)));
+}
+
+void EnergyCompensationLutRenderPass::CreatePipelines(PipelineLibrary* lib) {
+	pipeline_id = CreateComputePipeline(lib, ReferencePathTracerShadersID, ReferencePathTracerShaders::EnergyCompensationLUT);
+}
+
+void EnergyCompensationLutRenderPass::RecordPass(RecordContext* record_context) {
+	auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
+	
+	CmdSetRootSignature(record_context, root_signature);
+	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
+	CmdSetPipelineState(record_context, pipeline_id);
+	
+	CmdDispatch(record_context, uint2(GetTextureSize(record_context, VirtualResourceID::GgxConductorEnergyLUT)));
 }
 
 

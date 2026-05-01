@@ -1,26 +1,4 @@
 #include "Basic.hlsl"
-#include "SDK/NvAPI/include/nvHLSLExtns.h"
-#include "MaterialSampling.hlsl"
-#include "MeshletVertexDecoding.hlsl"
-
-template<typename T>
-T BarycentricInterpolation(float3 barycentrics, T v0, T v1, T v2) {
-	return v0 * barycentrics.x + v1 * barycentrics.y + v2 * barycentrics.z;
-}
-
-float3 DecodeAndInterpolateUnitVector(float3 barycentrics, u16x2 v0, u16x2 v1, u16x2 v2) {
-	float3 n0 = DecodeOctahedralMap(DecodeR16G16_SNORM(v0));
-	float3 n1 = DecodeOctahedralMap(DecodeR16G16_SNORM(v1));
-	float3 n2 = DecodeOctahedralMap(DecodeR16G16_SNORM(v2));
-	return BarycentricInterpolation(barycentrics, n0, n1, n2);
-}
-
-// Result has exclusive upper bound, i.e. [0, 1)
-float2 ComputeRandomUnorm16x2(inout uint hash) {
-	float2 result = float2(hash & 0xFFFF, (hash >> 16) & 0xFFFF) * rcp(0x10000);
-	hash = WyHash32(hash, 0);
-	return result;
-}
 
 
 //
@@ -72,6 +50,35 @@ float SmithVisibilityG1(float3 w, float alpha_square) {
 float SmithVisibilityG(float3 wo, float3 wi, float alpha_square) {
 	return rcp(1.0 + SmithVisibilityLambda(wo.z, alpha_square) + SmithVisibilityLambda(wi.z, alpha_square)); // Height correlated.
 	// return G1(wo, alpha_square) * G1(wi, alpha_square); // Uncorrelated.
+}
+
+compile_const u32 energy_compensation_lut_size = 32u;
+compile_const float energy_compensation_lut_cos_theta_bias = (1.0 / 1024.0);
+
+
+// Result has exclusive upper bound, i.e. the range is [0, 1).
+float2 ComputeRandomUnorm16x2(inout uint hash) {
+	float2 result = float2(hash & 0xFFFF, (hash >> 16) & 0xFFFF) * rcp(0x10000);
+	hash = WyHash32(hash, 0);
+	return result;
+}
+
+
+#if defined(REFERENCE_PATH_TRACER)
+#include "SDK/NvAPI/include/nvHLSLExtns.h"
+#include "MaterialSampling.hlsl"
+#include "MeshletVertexDecoding.hlsl"
+
+template<typename T>
+T BarycentricInterpolation(float3 barycentrics, T v0, T v1, T v2) {
+	return v0 * barycentrics.x + v1 * barycentrics.y + v2 * barycentrics.z;
+}
+
+float3 DecodeAndInterpolateUnitVector(float3 barycentrics, u16x2 v0, u16x2 v1, u16x2 v2) {
+	float3 n0 = DecodeOctahedralMap(DecodeR16G16_SNORM(v0));
+	float3 n1 = DecodeOctahedralMap(DecodeR16G16_SNORM(v1));
+	float3 n2 = DecodeOctahedralMap(DecodeR16G16_SNORM(v2));
+	return BarycentricInterpolation(barycentrics, n0, n1, n2);
 }
 
 
@@ -166,7 +173,14 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 				
 				if ((wi.z * wo.z) > 0.0) {
 					float3 specular_fresnel = FresnelSchlick(f0, dot(wo, wh));
-					throughput *= specular_fresnel * (SmithVisibilityG(wo, wi, alpha_square) / SmithVisibilityG1(wo, alpha_square));
+					
+					// Based on "Practical multiple scattering compensation for microfacet models" by Emmanuel Turquin.
+					float2 energy_compensation_lut_parameters = saturate(float2(wo.z + energy_compensation_lut_cos_theta_bias, roughness));
+					float2 energy_compensation_lut_uv = LutParametersToUv(energy_compensation_lut_parameters, energy_compensation_lut_size);
+					float  single_scattering_energy   = ggx_conductor_energy_lut.SampleLevel(sampler_linear_clamp, energy_compensation_lut_uv, 0);
+					float3 energy_compensation        = (1.0 + specular_fresnel * (1.0 - single_scattering_energy) / single_scattering_energy);
+					
+					throughput *= specular_fresnel * energy_compensation * (SmithVisibilityG(wo, wi, alpha_square) / SmithVisibilityG1(wo, alpha_square));
 				} else {
 					i = max_path_length;
 				}
@@ -177,7 +191,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 		}
 	}
 	
-	float3 old_accumulated_radiance = path_tracer_radiance[thread_id].xyz;
+	float3 old_accumulated_radiance = max(path_tracer_radiance[thread_id].xyz, 0.0);
 	float3 new_accumulated_radiance = (old_accumulated_radiance * (scene.path_tracer_accumulated_frame_count - 1) + radiance) / (float)scene.path_tracer_accumulated_frame_count;
 	path_tracer_radiance[thread_id] = float4(new_accumulated_radiance, 1.0);
 	
@@ -186,3 +200,59 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 		scene_radiance[thread_id] = float4(new_accumulated_radiance, 1.0);
 	}
 }
+#endif // defined(REFERENCE_PATH_TRACER)
+
+
+#if defined(ENERGY_COMPENSATION_LUT)
+compile_const u32 thread_group_size   = 1024;
+compile_const u32 sample_grid_size_xy = 128;
+compile_const u32 sample_count        = sample_grid_size_xy * sample_grid_size_xy;
+compile_const u32 samples_per_thread  = sample_count / thread_group_size;
+
+groupshared float gs_single_scattering_energy[64];
+
+[ThreadGroupSize(thread_group_size, 1, 1)][WaveSize(16, 128)]
+void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
+	float2 group_uv = group_id * (1.0 / (energy_compensation_lut_size - 1));
+	
+	float roughness    = group_uv.y;
+	float alpha        = Pow2(roughness);
+	float alpha_square = Pow2(alpha);
+	float cos_theta    = saturate(group_uv.x + energy_compensation_lut_cos_theta_bias);
+	
+	float3 wo = float3(sqrt(1.0 - Pow2(cos_theta)), 0.0, cos_theta);
+	
+	precise float single_scattering_energy = 0.0;
+	for (u32 i = 0; i < samples_per_thread; i += 1) {
+		u32 sample_index = thread_index * samples_per_thread + i;
+		
+		// Sample UV have exclusive upper bound, i.e. the range is [0, 1).
+		float2 sample_uv = uint2(sample_index % sample_grid_size_xy, sample_index / sample_grid_size_xy) * (1.0 / sample_grid_size_xy);
+		
+		float3 wh = SampleTrowbridgeReitzVNDF(sample_uv, wo, alpha);
+		float3 wi = reflect(-wo, wh);
+		
+		if ((wi.z * wo.z) > 0.0) {
+			single_scattering_energy += SmithVisibilityG(wo, wi, alpha_square) / SmithVisibilityG1(wo, alpha_square);
+		}
+	}
+	
+	float wave_single_scattering_energy = WaveActiveSum(single_scattering_energy);
+	if (WaveIsFirstLane()) {
+		gs_single_scattering_energy[thread_index / WaveGetLaneCount()] = wave_single_scattering_energy;
+	}
+	
+	GroupMemoryBarrierWithGroupSync();
+	
+	if (thread_index == 0) {
+		float group_single_scattering_energy = wave_single_scattering_energy;
+		
+		u32 wave_count = thread_group_size / WaveGetLaneCount();
+		for (u32 i = 1; i < wave_count; i += 1) {
+			group_single_scattering_energy += gs_single_scattering_energy[i];
+		}
+		
+		ggx_conductor_energy_lut[group_id] = group_single_scattering_energy / sample_count;
+	}
+}
+#endif // defined(ENERGY_COMPENSATION_LUT)
