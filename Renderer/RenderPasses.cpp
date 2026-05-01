@@ -36,6 +36,8 @@ static void BuildResourceTable(RecordContext* record_context, WorldEntitySystem*
 	table.Set(ID::MotionVectors,       TextureSize(TextureFormat::R16G16_FLOAT,       render_target_size), Flags::UAV | Flags::RTV);
 	table.Set(ID::SceneRadianceResult, TextureSize(TextureFormat::R16G16B16A16_FLOAT, render_target_size), Flags::UAV);
 	
+	table.Set(ID::ReferencePathTracerRadiance, TextureSize(TextureFormat::R32G32B32A32_FLOAT, render_target_size), Flags::UAV);
+	
 	table.Set(ID::CullingHZB,           BuildHzbRenderPass::ComputeCullingHzbSize(render_target_size));
 	table.Set(ID::CullingHzbBuildState, BuildHzbRenderPass::culling_hzb_build_state_size);
 	
@@ -97,6 +99,9 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	scene.prev_view_to_world     = scene.view_to_world;
 	scene.prev_world_to_view     = scene.world_to_view;
 	
+	scene.prev_render_target_size     = scene.render_target_size;
+	scene.inv_prev_render_target_size = scene.inv_render_target_size;
+	
 	scene.render_target_size     = float2(render_target_size);
 	scene.inv_render_target_size = float2(1.f) / scene.render_target_size;
 	if (camera.transform_type == CameraTransformType::Perspective) {
@@ -151,6 +156,16 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	scene.frame_index = (u32)record_context->frame_index;
 	scene.reference_path_tracer_percent = renderer_world.reference_path_tracer_percent;
 	
+	bool should_reset_path_tracer = renderer_world.reset_reference_path_tracer || memcmp(&scene.view_to_world, &scene.prev_view_to_world, sizeof(float3x4)) != 0 || memcmp(&scene.render_target_size, &scene.prev_render_target_size, sizeof(float2)) != 0;
+	if (should_reset_path_tracer) {
+		renderer_world.reset_reference_path_tracer = false;
+		scene.path_tracer_accumulated_frame_count = 0;
+	}
+	
+	if (renderer_world.reference_path_tracer_percent != 0.f) {
+		scene.path_tracer_accumulated_frame_count += 1;
+	}
+	
 	auto gpu_scene_constants = AllocateGpuComponentUploadBuffer(record_context, 1, world_entity.gpu_scene_constants);
 	AppendGpuTransferCommand(gpu_scene_constants, 0, scene);
 	ArrayAppend(renderer_world.gpu_uploads, record_context->alloc, gpu_scene_constants);
@@ -161,6 +176,7 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	
 	auto [atmosphere_parameters_gpu_address, atmosphere_parameters_cpu_address] = AllocateTransientUploadBuffer<AtmosphereParameters>(record_context);
 	*atmosphere_parameters_cpu_address = atmosphere_parameters;
+	
 	
 	RenderPassArray render_passes;
 	render_passes.alloc = record_context->alloc;

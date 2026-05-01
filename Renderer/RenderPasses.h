@@ -62,6 +62,9 @@ enum struct VirtualResourceID : u32 {
 	MultipleScatteringLut,
 	SkyPanoramaLut,
 	
+	// Reference Path Tracer:
+	ReferencePathTracerRadiance,
+	
 	// Debug geometry:
 	DebugGeometryDepthStencil,
 	DebugMeshBuffer,
@@ -882,6 +885,7 @@ struct ReferencePathTracerRenderPass {
 		HLSL::RegularBuffer<GpuMaterialTextureData> material_texture_data = VirtualResourceID::MaterialAssetTextureData;
 		HLSL::ByteBuffer                            mesh_asset_buffer     = VirtualResourceID::MeshAssetBuffer;
 		HLSL::TopLevelRTAS                          scene_tlas            = VirtualResourceID::SceneTLAS;
+		HLSL::RWTexture2D<float4>                   path_tracer_radiance  = VirtualResourceID::ReferencePathTracerRadiance;
 		HLSL::RWTexture2D<float4>                   scene_radiance        = VirtualResourceID::SceneRadiance;
 	};
 	

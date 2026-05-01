@@ -102,8 +102,12 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 		}
 	}
 	
+	float3 old_accumulated_radiance = path_tracer_radiance[thread_id].xyz;
+	float3 new_accumulated_radiance = (old_accumulated_radiance * (scene.path_tracer_accumulated_frame_count - 1) + radiance) / (float)scene.path_tracer_accumulated_frame_count;
+	path_tracer_radiance[thread_id] = float4(new_accumulated_radiance, 1.0);
+	
 	uint reference_path_tracer_min_x = (uint)(scene.render_target_size.x * scene.reference_path_tracer_percent);
 	if (thread_id.x < reference_path_tracer_min_x) {
-		scene_radiance[thread_id] = float4(radiance, 1.0);
+		scene_radiance[thread_id] = float4(new_accumulated_radiance, 1.0);
 	}
 }

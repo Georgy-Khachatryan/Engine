@@ -55,7 +55,7 @@ static void CameraControls(CameraEntityType camera_entity, bool scene_focused, b
 		world_space_position += (view_to_world * ray_info.direction) * move_distance;
 	}
 	
-	if (mouse_lock.locked_mouse_button == ImGuiMouseButton_Left) {
+	if (mouse_lock.locked_mouse_button == ImGuiMouseButton_Left && (io.MouseDelta.x != 0.f || io.MouseDelta.y != 0.f)) {
 		float radians_per_pixel = 1.f / 240.f;
 		
 		compile_const float3 view_space_up = float3(0.f, -1.f, 0.f);
@@ -67,7 +67,7 @@ static void CameraControls(CameraEntityType camera_entity, bool scene_focused, b
 		view_to_world_quat = Math::AxisAngleToQuat(view_to_world * float3(1.f, 0.f, 0.f), -io.MouseDelta.y * radians_per_pixel) * view_to_world_quat;
 		
 		view_to_world_quat = Math::Normalize(view_to_world_quat);
-	} else if (mouse_lock.locked_mouse_button == ImGuiMouseButton_Right) {
+	} else if (mouse_lock.locked_mouse_button == ImGuiMouseButton_Right && (io.MouseDelta.x != 0.f || io.MouseDelta.y != 0.f)) {
 		float meters_per_pixel = 1.f / 240.f;
 		float sensetivity_scale = (ImGui::IsKeyDown(ImGuiMod_Shift) ? 5.f : 1.f) * (ImGui::IsKeyDown(ImGuiMod_Alt) ? 0.2f : 1.f);
 		
@@ -893,9 +893,13 @@ void LevelEditorUpdate(LevelEditorContext* editor_context, StackAllocator* alloc
 	
 	ImGui::SliderFloat("Meshlet Target Error Pixels", &world_entity.renderer_world->meshlet_target_error_pixels, 1.f, 128.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
 	ImGui::SliderFloat("Sun Elevation", &world_entity.renderer_world->sun_elevation_degrees, -10.f, +190.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
-	ImGui::SliderFloat("Reference Path Tracer Percent", &world_entity.renderer_world->reference_path_tracer_percent, 0.f, 1.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
 	ImGui::Checkbox("Enable Anti Aliasing", &world_entity.renderer_world->enable_anti_aliasing);
 	ImGui::Checkbox("Freeze Culling State", &world_entity.renderer_world->debug_freeze_culling_camera.enabled);
+	ImGui::SliderFloat("Reference Path Tracer Percent", &world_entity.renderer_world->reference_path_tracer_percent, 0.f, 1.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+	ImGui::SetNextItemShortcut(ImGuiKey_R, ImGuiInputFlags_RouteGlobal | ImGuiInputFlags_RouteOverFocused);
+	if (ImGui::Button("Reset Reference Path Tracer")) {
+		world_entity.renderer_world->reset_reference_path_tracer = true;
+	}
 	ImGui::Text("Window Size: %ux%u", (u32)window_size.x, (u32)window_size.y);
 	
 	ImGui::SetNextItemWidth(-FLT_MIN);

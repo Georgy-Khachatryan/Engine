@@ -14,6 +14,9 @@ struct SceneConstants {
 	float2 render_target_size;
 	float2 inv_render_target_size;
 	
+	float2 prev_render_target_size;
+	float2 inv_prev_render_target_size;
+	
 	float4 view_to_clip_coef;
 	float4 clip_to_view_coef;
 	float3x4 view_to_world;
@@ -42,6 +45,7 @@ struct SceneConstants {
 	float texture_world_to_pixel_scale; // Used for texture streaming feedback.
 	u32 frame_index;
 	float reference_path_tracer_percent;
+	u32 path_tracer_accumulated_frame_count = 0;
 };
 
 struct DebugFreezeCullingCamera {
@@ -65,6 +69,7 @@ struct RendererWorld {
 	float sun_elevation_degrees = 3.f;
 	float meshlet_target_error_pixels = 1.f;
 	float reference_path_tracer_percent = 0.f;
+	bool reset_reference_path_tracer = false;
 	
 	DebugFreezeCullingCamera debug_freeze_culling_camera;
 	MeshletCullingStatistics meshlet_culling_statistics;
