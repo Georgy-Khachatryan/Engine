@@ -15,10 +15,72 @@ float3 DecodeAndInterpolateUnitVector(float3 barycentrics, u16x2 v0, u16x2 v1, u
 	return BarycentricInterpolation(barycentrics, n0, n1, n2);
 }
 
+// Result has exclusive upper bound, i.e. [0, 1)
+float2 ComputeRandomUnorm16x2(inout uint hash) {
+	float2 result = float2(hash & 0xFFFF, (hash >> 16) & 0xFFFF) * rcp(0x10000);
+	hash = WyHash32(hash, 0);
+	return result;
+}
+
+
+//
+// Based on "Sampling Visible GGX Normals with Spherical Caps" by Jonathan Dupuy and Anis Benyoub.
+//
+// Sampling the visible hemisphere as half vectors.
+//
+float3 SampleVndfHemisphere(float2 u, float3 wo) {
+	// Sample a spherical cap in (-wo.z, 1].
+	float phi = 2.0 * PI * u.x;
+	
+	float z = mad((1.0 - u.y), (1.0 + wo.z), -wo.z);
+	float sin_theta = sqrt(saturate(1.0 - z * z));
+	
+	float x = sin_theta * cos(phi);
+	float y = sin_theta * sin(phi);
+	
+	// Compute halfway direction, return without normalization (as this is done later).
+	return float3(x, y, z) + wo;
+}
+
+// Trowbridge Reitz (GGX) VNDF sampling. PDF = (G_1 * D) / (4.0 * cos_theta_o)
+float3 SampleTrowbridgeReitzVNDF(float2 u, float3 wo, float2 alpha) {
+	// Warp to the hemisphere configuration.
+	float3 wo_standard = normalize(float3(wo.xy * alpha, wo.z));
+	
+	// Sample the hemisphere.
+	float3 wm_standard = SampleVndfHemisphere(u, wo_standard);
+	
+	// Warp the microfacet normal back to the ellipsoid configuration.
+	return normalize(float3(wm_standard.xy * alpha, wm_standard.z));
+}
+
+float3 FresnelSchlick(float3 f0, float cos_theta) {
+	return f0 + (1.0 - f0) * Pow5(1.0 - cos_theta);
+}
+
+float SmithVisibilityLambda(float cos_theta, float alpha_square) {
+	float tan_theta_square = rcp(Pow2(cos_theta)) - 1.0;
+	return (sqrt(alpha_square * tan_theta_square + 1.0) - 1.0) * 0.5;
+}
+
+// Smith masking function.
+float SmithVisibilityG1(float3 w, float alpha_square) {
+	return rcp(1.0 + SmithVisibilityLambda(w.z, alpha_square));
+}
+
+// Smith masking-shadowing function.
+float SmithVisibilityG(float3 wo, float3 wi, float alpha_square) {
+	return rcp(1.0 + SmithVisibilityLambda(wo.z, alpha_square) + SmithVisibilityLambda(wi.z, alpha_square)); // Height correlated.
+	// return G1(wo, alpha_square) * G1(wi, alpha_square); // Uncorrelated.
+}
+
+
 [ThreadGroupSize(32, 1, 1)]
 void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
-	uint2  thread_id = group_id * uint2(8, 4) + MortonDecode(thread_index);
-	float2 thread_uv = (thread_id + 0.5 - scene.jitter_offset_pixels) * scene.inv_render_target_size;
+	uint2 thread_id = group_id * uint2(8, 4) + MortonDecode(thread_index);
+	
+	uint hash = WyHash32(thread_id.x | (thread_id.y << 16), scene.path_tracer_accumulated_frame_count);
+	float2 thread_uv = (thread_id + ComputeRandomUnorm16x2(hash)) * scene.inv_render_target_size;
 	
 	RayInfo view_space_ray = RayInfoFromScreenUv(thread_uv, scene.clip_to_view_coef);
 	
@@ -30,9 +92,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	
 	float3 radiance   = 0.0;
 	float3 throughput = 1.0;
-	uint max_path_length = 4;
-	
-	uint hash = WyHash32(thread_id.x | (thread_id.y << 16), scene.frame_index);
+	uint max_path_length = 512 + 2;
 	
 	[loop]
 	for (uint i = 0; i < max_path_length; i += 1) {
@@ -87,17 +147,32 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 			if (ray_query.CommittedTriangleFrontFace() == false) {
 				world_space_normal = -world_space_normal;
 			}
-			
-			throughput *= properties.albedo;
-			
 			ray_desc.Origin += ray_desc.Direction * ray_query.CommittedRayT() + world_space_normal * (1.0 / 1024.0);
 			
-			float3 tangent_space_direction = CosineWeightedHemisphereMapping((float2(hash & 0xFF, (hash >> 8) & 0xFF)) * rcp(0xFF));
-			hash = WyHash32(hash, 0);
-			
-			ray_desc.Direction = normalize(mul(transpose(BuildOrthonormalBasis(world_space_normal)), tangent_space_direction));
+			{
+				float  roughness    = properties.roughness;
+				float3 f0           = properties.albedo;
+				float  alpha        = Pow2(roughness);
+				float  alpha_square = Pow2(alpha);
+				
+				float3x3 world_to_tangent = BuildOrthonormalBasis(world_space_normal);
+				float3x3 tangent_to_world = transpose(world_to_tangent);
+				
+				float3 wo = mul(world_to_tangent, -ray_desc.Direction);
+				float3 wh = SampleTrowbridgeReitzVNDF(ComputeRandomUnorm16x2(hash), wo, alpha);
+				float3 wi = reflect(-wo, wh);
+				
+				ray_desc.Direction = mul(tangent_to_world, wi);
+				
+				if ((wi.z * wo.z) > 0.0) {
+					float3 specular_fresnel = FresnelSchlick(f0, dot(wo, wh));
+					throughput *= specular_fresnel * (SmithVisibilityG(wo, wi, alpha_square) / SmithVisibilityG1(wo, alpha_square));
+				} else {
+					i = max_path_length;
+				}
+			}
 		} else {
-			radiance += throughput * max(ray_desc.Direction.z, 0.0);
+			radiance += throughput;
 			i = max_path_length;
 		}
 	}

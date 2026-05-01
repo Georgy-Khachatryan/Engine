@@ -66,6 +66,11 @@ float2 Pow2(float2 value) { return value * value; }
 float3 Pow2(float3 value) { return value * value; }
 float4 Pow2(float4 value) { return value * value; }
 
+float  Pow5(float  value) { return Pow2(Pow2(value)) * value; }
+float2 Pow5(float2 value) { return Pow2(Pow2(value)) * value; }
+float3 Pow5(float3 value) { return Pow2(Pow2(value)) * value; }
+float4 Pow5(float4 value) { return Pow2(Pow2(value)) * value; }
+
 uint DivideAndRoundUp(uint numerator, uint denominator) { return (numerator + (denominator - 1)) / denominator; }
 uint AlignUp(uint size, uint alignment) { return (size + alignment - 1) & ~(alignment - 1); }
 
