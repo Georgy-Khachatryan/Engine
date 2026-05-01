@@ -84,7 +84,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 			float3x3 tangent_to_world = mul(QuatToRotationMatrix(model_to_world.rotation), tangent_to_model);
 			float3 world_space_normal = normalize(mul(tangent_to_world, properties.normal));
 			
-			if (ray_query.CandidateTriangleFrontFace() == false) {
+			if (ray_query.CommittedTriangleFrontFace() == false) {
 				world_space_normal = -world_space_normal;
 			}
 			

@@ -32,6 +32,10 @@ float3 DecodeMeshletVertexPosition(u16x3 position, GpuMeshAssetData mesh_asset, 
 	return float3(position) * mesh_asset.rcp_quantization_scale + meshlet.position_offset;
 }
 
+float3 DecodeMeshletVertexPosition(float3 position, GpuMeshAssetData mesh_asset, MeshletHeader meshlet) {
+	return position;
+}
+
 // TODO: Pass in correct bitangent sign.
 float3x3 ComputeTangentToOtherSpace(float3 other_space_tangent, float3 other_space_normal, float bitangent_sign = -1.0) {
 	return transpose(float3x3(other_space_tangent, bitangent_sign * cross(other_space_normal, other_space_tangent), other_space_normal));

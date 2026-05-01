@@ -247,8 +247,8 @@ static NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_INPUTS TranslateB
 	inputs.trianglesDesc.vertexFormat                 = DXGI_FORMAT_R32G32B32_FLOAT;
 	inputs.trianglesDesc.maxGeometryIndexValue        = 0;
 	inputs.trianglesDesc.maxUniqueGeometryCountPerArg = 0;
-	inputs.trianglesDesc.maxTriangleCountPerArg       = 128;
-	inputs.trianglesDesc.maxVertexCountPerArg         = 128;
+	inputs.trianglesDesc.maxTriangleCountPerArg       = Math::Min(max_triangles_per_meshlet, limits.max_total_triangle_count);
+	inputs.trianglesDesc.maxVertexCountPerArg         = Math::Min(max_vertices_per_meshlet,  limits.max_total_vertex_count);
 	inputs.trianglesDesc.maxTotalTriangleCount        = limits.max_total_triangle_count;
 	inputs.trianglesDesc.maxTotalVertexCount          = limits.max_total_vertex_count;
 	inputs.trianglesDesc.minPositionTruncateBitCount  = 0;

@@ -211,7 +211,7 @@ struct MultipleScatteringLutRenderPass {
 	GpuAddress atmosphere;
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
-		HLSL::Texture2D<float4>   transmittance_lut       = VirtualResourceID::TransmittanceLut;
+		HLSL::Texture2D<float3>   transmittance_lut       = VirtualResourceID::TransmittanceLut;
 		HLSL::RWTexture2D<float4> multiple_scattering_lut = VirtualResourceID::MultipleScatteringLut;
 	};
 	
@@ -230,13 +230,14 @@ struct SkyPanoramaLutRenderPass {
 	GpuAddress atmosphere;
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
-		HLSL::Texture2D<float4>   transmittance_lut       = VirtualResourceID::TransmittanceLut;
-		HLSL::Texture2D<float4>   multiple_scattering_lut = VirtualResourceID::MultipleScatteringLut;
+		HLSL::Texture2D<float3>   transmittance_lut       = VirtualResourceID::TransmittanceLut;
+		HLSL::Texture2D<float3>   multiple_scattering_lut = VirtualResourceID::MultipleScatteringLut;
 		HLSL::RWTexture2D<float4> sky_panorama_lut        = VirtualResourceID::SkyPanoramaLut;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {
 		HLSL::ConstantBuffer<AtmosphereParameters> atmosphere;
+		HLSL::ConstantBuffer<SceneConstants> scene;
 		HLSL::DescriptorTable<Descriptors> descriptor_table;
 	};
 	
@@ -250,9 +251,11 @@ struct AtmosphereCompositeRenderPass {
 	GpuAddress atmosphere;
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
-		HLSL::Texture2D<float4> transmittance_lut = VirtualResourceID::TransmittanceLut;
-		HLSL::Texture2D<float4> sky_panorama_lut = VirtualResourceID::SkyPanoramaLut;
+		HLSL::Texture2D<float3> transmittance_lut = VirtualResourceID::TransmittanceLut;
+		HLSL::Texture2D<float3> sky_panorama_lut = VirtualResourceID::SkyPanoramaLut;
+		HLSL::Texture2D<float>  depth_stencil    = VirtualResourceID::DepthStencil;
 		HLSL::RWTexture2D<float4> scene_radiance = VirtualResourceID::SceneRadiance;
+		HLSL::RWTexture2D<float2> motion_vectors = VirtualResourceID::MotionVectors;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {

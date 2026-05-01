@@ -215,9 +215,6 @@ MeshImportResult ImportMeshFile(StackAllocator* alloc, ThreadPool* thread_pool, 
 		if (tangent_length > 0.f) tangent = tangent * (1.f / tangent_length);
 	};
 	
-	compile_const u32 max_triangles_per_meshlet = 128;
-	compile_const u32 max_vertices_per_meshlet  = 128;
-	
 	inputs.meshlet_target_triangle_count = max_triangles_per_meshlet;
 	inputs.meshlet_target_vertex_count   = max_vertices_per_meshlet;
 	
@@ -406,9 +403,9 @@ MeshImportResult ImportMeshFile(StackAllocator* alloc, ThreadPool* thread_pool, 
 			total_vertex_count   += vertex_count;
 			
 			float3 position_offset;
-			position_offset.x = floorf(src_meshlet.aabb_min.x * quantization_scale) * rcp_quantization_scale;
-			position_offset.y = floorf(src_meshlet.aabb_min.y * quantization_scale) * rcp_quantization_scale;
-			position_offset.z = floorf(src_meshlet.aabb_min.z * quantization_scale) * rcp_quantization_scale;
+			position_offset.x = floorf(src_meshlet.aabb_min.x * quantization_scale);
+			position_offset.y = floorf(src_meshlet.aabb_min.y * quantization_scale);
+			position_offset.z = floorf(src_meshlet.aabb_min.z * quantization_scale);
 			
 			u32 level_of_detail_index = mdt_meshlet_groups[src_meshlet.coarser_level_meshlet_group_index].level_of_detail_index;
 			
@@ -435,9 +432,9 @@ MeshImportResult ImportMeshFile(StackAllocator* alloc, ThreadPool* thread_pool, 
 				MeshletHeader meshlet_header;
 				meshlet_header.triangle_count  = triangle_count;
 				meshlet_header.vertex_count    = vertex_count;
-				meshlet_header.position_offset = position_offset;
-				meshlet_header.level_of_detail_index = level_of_detail_index;
+				meshlet_header.position_offset = position_offset * rcp_quantization_scale;
 				meshlet_header.rtas_offset     = u32_max;
+				meshlet_header.level_of_detail_index = level_of_detail_index;
 				
 				memcpy(page.data + page_meshlet_data_offset, &meshlet_header, sizeof(meshlet_header));
 				page_meshlet_data_offset += sizeof(meshlet_header);
@@ -450,8 +447,17 @@ MeshImportResult ImportMeshFile(StackAllocator* alloc, ThreadPool* thread_pool, 
 				auto octahedral_normal  = Math::EncodeOctahedralMap(src_vertex.normal);
 				auto octahedral_tangent = Math::EncodeOctahedralMap(src_vertex.tangent);
 				
+#if MESH_ASSET_OPTION_USE_FLOAT3_VERTEX_POSITION
+				float3 quantized_position = src_vertex.position;
+#else // !MESH_ASSET_OPTION_USE_FLOAT3_VERTEX_POSITION
+				float3 quantized_position;
+				quantized_position.x = floorf(src_vertex.position.x * quantization_scale) - position_offset.x;
+				quantized_position.y = floorf(src_vertex.position.y * quantization_scale) - position_offset.y;
+				quantized_position.z = floorf(src_vertex.position.z * quantization_scale) - position_offset.z;
+#endif // !MESH_ASSET_OPTION_USE_FLOAT3_VERTEX_POSITION
+				
 				MeshletVertex dst_vertex; 
-				dst_vertex.position = u16x3((src_vertex.position - position_offset) * quantization_scale);
+				dst_vertex.position = MeshletVertexPositionType(quantized_position);
 				dst_vertex.normal   = Math::EncodeR16G16_SNORM(octahedral_normal);
 				dst_vertex.tangent  = Math::EncodeR16G16_SNORM(octahedral_tangent); // TODO: Store tangent as an angle relative to a canonical tangent.
 				dst_vertex.texcoord = Math::EncodeR16G16_FLOAT(src_vertex.texcoord);

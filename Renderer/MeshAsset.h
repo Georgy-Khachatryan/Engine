@@ -6,10 +6,16 @@
 #include "EntitySystem/Components.h"
 #include "MaterialAsset.h"
 
+#define MESH_ASSET_OPTION_USE_FLOAT3_VERTEX_POSITION 0
+#if MESH_ASSET_OPTION_USE_FLOAT3_VERTEX_POSITION
+using MeshletVertexPositionType = float3;
+#else // !MESH_ASSET_OPTION_USE_FLOAT3_VERTEX_POSITION
+using MeshletVertexPositionType = u16x3;
+#endif // !MESH_ASSET_OPTION_USE_FLOAT3_VERTEX_POSITION
 
 NOTES(Meta::HlslFile{ "MeshData.hlsl"_sl })
 struct MeshletVertex {
-	u16x3 position;
+	MeshletVertexPositionType position;
 	s16x2 normal;
 	s16x2 tangent;
 	float16x2 texcoord;
@@ -100,7 +106,10 @@ struct MeshSourceData {
 
 NOTES()
 struct MeshRuntimeDataLayout {
-	compile_const u64 current_version = 44;
+	compile_const u64 sequential_version = 46;
+	
+	compile_const u64 options_version = MESH_ASSET_OPTION_USE_FLOAT3_VERTEX_POSITION;
+	compile_const u64 current_version = (sequential_version << 1u) | options_version;
 	
 	u64 file_guid = 0;
 	u64 version   = 0;

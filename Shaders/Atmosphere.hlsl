@@ -1,4 +1,5 @@
 #include "Basic.hlsl"
+#include "AtmosphereSampling.hlsl"
 #include "Generated/SceneData.hlsl"
 #include "Generated/AtmosphereData.hlsl"
 
@@ -6,13 +7,6 @@
 // Sebastien Hillaire. 2020. A Scalable and Production Ready Sky and Atmosphere Rendering Technique.
 // https://github.com/sebh/UnrealEngineSkyAtmosphere see license in THIRD_PARTY_LICENSES.md
 //
-
-compile_const float2 inv_transmittance_lut_size       = 1.0 / AtmosphereParameters::transmittance_lut_size;
-compile_const float2 inv_multiple_scattering_lut_size = 1.0 / AtmosphereParameters::multiple_scattering_lut_size;
-compile_const float2 inv_sky_panorama_lut_size        = 1.0 / AtmosphereParameters::sky_panorama_lut_size;
-compile_const float  planet_radius_offset             = 0.01;
-compile_const uint   thread_group_size                = AtmosphereParameters::thread_group_size;
-compile_const float  world_to_planet_space_scale      = 1.0 / 1000.0;
 
 struct AtmosphereMedium {
 	float3 scattering_mie;
@@ -60,114 +54,6 @@ AtmosphereMedium SampleAtmosphereMedium(AtmosphereParameters atmosphere, float3 
 	return sample;
 }
 
-float3 WorldToPlanetSpace(float3 world_space_position) {
-	return world_space_position * world_to_planet_space_scale;
-}
-
-struct TransmittanceLutCoordinates {
-	float view_height;
-	float cos_view_zenith_angle;
-};
-
-TransmittanceLutCoordinates UvToTransmittanceLutCoordinates(AtmosphereParameters atmosphere, float2 uv) {
-	float x_mu = uv.x;
-	float x_r  = uv.y;
-	
-	float H   = sqrt(atmosphere.top_radius * atmosphere.top_radius - atmosphere.bottom_radius * atmosphere.bottom_radius);
-	float rho = H * x_r;
-	
-	TransmittanceLutCoordinates coordinates;
-	coordinates.view_height = sqrt(rho * rho + atmosphere.bottom_radius * atmosphere.bottom_radius);
-	
-	float d_min = atmosphere.top_radius - coordinates.view_height;
-	float d_max = rho + H;
-	float d     = d_min + x_mu * (d_max - d_min);
-	
-	coordinates.cos_view_zenith_angle = clamp(d == 0.0 ? 1.0 : (H * H - rho * rho - d * d) / (2.0 * coordinates.view_height * d), -1.0, +1.0);
-	
-	return coordinates;
-}
-
-float2 TransmittanceLutCoordinatesToUv(AtmosphereParameters atmosphere, TransmittanceLutCoordinates coordinates) {
-	float H   = sqrt(max(Pow2(atmosphere.top_radius)   - Pow2(atmosphere.bottom_radius), 0.0));
-	float rho = sqrt(max(Pow2(coordinates.view_height) - Pow2(atmosphere.bottom_radius), 0.0));
-	
-	float discriminant = Pow2(coordinates.view_height) * (Pow2(coordinates.cos_view_zenith_angle) - 1.0) + Pow2(atmosphere.top_radius);
-	float d = max(sqrt(discriminant) - coordinates.view_height * coordinates.cos_view_zenith_angle, 0.0); // Distance to atmosphere boundary.
-	
-	float d_min = atmosphere.top_radius - coordinates.view_height;
-	float d_max = rho + H;
-	float x_mu  = (d - d_min) / (d_max - d_min);
-	float x_r   = rho / H;
-	
-	return float2(x_mu, x_r);
-}
-
-
-struct SkyPanoramaLutCoordinates {
-	float cos_view_zenith_angle;
-	float cos_light_view_angle;
-};
-
-SkyPanoramaLutCoordinates UvToSkyPanoramaLutCoordinates(AtmosphereParameters atmosphere, float view_height, float2 uv) {
-	float vhorizon = sqrt(Pow2(view_height) - Pow2(atmosphere.bottom_radius));
-	float cos_beta = vhorizon / view_height;
-	float beta     = acos(cos_beta);
-	float zenith_horizon_angle = PI - beta;
-	
-	SkyPanoramaLutCoordinates coordinates;
-	
-	if (uv.y < 0.5) {
-		float coord = 1.0 - Pow2(1.0 - 2.0 * uv.y);
-		coordinates.cos_view_zenith_angle = cos(zenith_horizon_angle * coord);
-	} else {
-		float coord = Pow2(uv.y * 2.0 - 1.0);
-		coordinates.cos_view_zenith_angle = cos(zenith_horizon_angle + beta * coord);
-	}
-	
-	coordinates.cos_light_view_angle = 1.0 - Pow2(uv.x) * 2.0;
-	
-	return coordinates;
-}
-
-float2 SkyPanoramaLutCoordinatesToUv(AtmosphereParameters atmosphere, bool intersect_ground, SkyPanoramaLutCoordinates coordinates, float view_height) {
-	float vhorizon = sqrt(Pow2(view_height) - Pow2(atmosphere.bottom_radius));
-	float cos_beta = vhorizon / view_height;
-	float beta     = acos(clamp(cos_beta, -1.0, 1.0));
-	float zenith_horizon_angle = PI - beta;
-	
-	float2 uv;
-	if (intersect_ground == false) {
-		float coord = 1.0 - sqrt(max(1.0 - (acos(clamp(coordinates.cos_view_zenith_angle, -1.0, 1.0)) / zenith_horizon_angle), 0.0));
-		uv.y = coord * 0.5;
-	} else {
-		float coord = sqrt(max((acos(clamp(coordinates.cos_view_zenith_angle, -1.0, 1.0)) - zenith_horizon_angle) / beta, 0.0));
-		uv.y = coord * 0.5 + 0.5;
-	}
-	uv.x = sqrt(max(0.5 - coordinates.cos_light_view_angle * 0.5, 0.0));
-	
-	return uv;
-}
-
-
-float RaySphereIntersect(float3 ray_origin, float3 ray_direction, float radius) {
-	float b = 2.0 * dot(ray_direction, ray_origin);
-	float c = dot(ray_origin, ray_origin) - (radius * radius);
-	float delta = b * b - 4.0 * c;
-	
-	if (delta < 0.0) return -1.0;
-	
-	float root_0 = (-b - sqrt(delta)) * 0.5;
-	float root_1 = (-b + sqrt(delta)) * 0.5;
-	
-	if (root_0 < 0.0 && root_1 < 0.0) return -1.0;
-	
-	if (root_0 < 0.0) return max(root_1, 0.0);
-	if (root_1 < 0.0) return max(root_0, 0.0);
-	
-	return max(min(root_0, root_1), 0.0);
-}
-
 float3 ComputeScatteringIntegral(float3 slice_scattering, float3 slice_transmittance, float3 slice_extinction) {
 	// Integrate[Power[e, -x*a], {x, 0, l}]
 	float3 safe_slice_extinction = max(slice_extinction, 1e-6);
@@ -177,7 +63,7 @@ float3 ComputeScatteringIntegral(float3 slice_scattering, float3 slice_transmitt
 
 #if defined(TRANSMITTANCE_LUT)
 float3 IntegrateTransmittance(AtmosphereParameters atmosphere, float3 planet_space_position, float3 planet_space_direction) {
-	float t_max = RaySphereIntersect(planet_space_position, planet_space_direction, atmosphere.top_radius);
+	float t_max = RayAtmosphereIntersect(planet_space_position, planet_space_direction, atmosphere.top_radius);
 	
 	compile_const float sample_count        = 40.0;
 	compile_const float sample_index_offset = 0.3;
@@ -222,8 +108,8 @@ struct MultipleScatteringValues {
 };
 
 MultipleScatteringValues IntegrateMultipleScattering(AtmosphereParameters atmosphere, float3 planet_space_position, float3 planet_space_direction, float3 planet_space_sun_direction) {
-	float t_bottom = RaySphereIntersect(planet_space_position, planet_space_direction, atmosphere.bottom_radius);
-	float t_top = RaySphereIntersect(planet_space_position, planet_space_direction, atmosphere.top_radius);
+	float t_bottom = RayAtmosphereIntersect(planet_space_position, planet_space_direction, atmosphere.bottom_radius);
+	float t_top = RayAtmosphereIntersect(planet_space_position, planet_space_direction, atmosphere.top_radius);
 	float t_max = t_bottom >= 0.0 ? t_bottom : t_top;
 	
 	compile_const float sample_count        = 20.0;
@@ -252,8 +138,8 @@ MultipleScatteringValues IntegrateMultipleScattering(AtmosphereParameters atmosp
 		float3 up_vector = position / coordinates.view_height;
 		coordinates.cos_view_zenith_angle = dot(planet_space_sun_direction, up_vector);
 		
-		float2 uv = TransmittanceLutCoordinatesToUv(atmosphere, coordinates);
-		float3 transmittance_to_light = transmittance_lut.SampleLevel(sampler_linear_clamp, uv, 0).xyz;
+		float2 transmittance_lut_uv = TransmittanceLutCoordinatesToUv(atmosphere, coordinates);
+		float3 transmittance_to_light = transmittance_lut.SampleLevel(sampler_linear_clamp, transmittance_lut_uv, 0);
 		
 		float3 slice_scattering = transmittance_to_light * medium.scattering * (1.0 / (4.0 * PI));
 		result.multiple_scattering += ComputeScatteringIntegral(medium.scattering, slice_transmittance, medium.extinction) * transmittance;
@@ -262,7 +148,7 @@ MultipleScatteringValues IntegrateMultipleScattering(AtmosphereParameters atmosp
 		transmittance *= slice_transmittance;
 	}
 	
-#if 1
+#if 0
 	if (t_max == t_bottom && t_bottom > 0.0) {
 		// Account for light bounced off the ground.
 		float3 position = planet_space_position + t_bottom * planet_space_direction;
@@ -272,8 +158,8 @@ MultipleScatteringValues IntegrateMultipleScattering(AtmosphereParameters atmosp
 		float3 up_vector = position / coordinates.view_height;
 		coordinates.cos_view_zenith_angle = dot(planet_space_sun_direction, up_vector);
 		
-		float2 uv = TransmittanceLutCoordinatesToUv(atmosphere, coordinates);
-		float3 transmittance_to_light = transmittance_lut.SampleLevel(sampler_linear_clamp, uv, 0).xyz;
+		float2 transmittance_lut_uv = TransmittanceLutCoordinatesToUv(atmosphere, coordinates);
+		float3 transmittance_to_light = transmittance_lut.SampleLevel(sampler_linear_clamp, transmittance_lut_uv, 0);
 		
 		float n_dot_l = saturate(dot(normalize(up_vector), normalize(planet_space_sun_direction)));
 		
@@ -359,8 +245,8 @@ float3 SampleMultipleScatteringLut(AtmosphereParameters atmosphere, float3 plane
 }
 
 float3 IntegrateScattering(AtmosphereParameters atmosphere, float3 planet_space_position, float3 planet_space_direction, float3 planet_space_sun_direction) {
-	float t_bottom = RaySphereIntersect(planet_space_position, planet_space_direction, atmosphere.bottom_radius);
-	float t_top = RaySphereIntersect(planet_space_position, planet_space_direction, atmosphere.top_radius);
+	float t_bottom = RayAtmosphereIntersect(planet_space_position, planet_space_direction, atmosphere.bottom_radius);
+	float t_top = RayAtmosphereIntersect(planet_space_position, planet_space_direction, atmosphere.top_radius);
 	float t_max = t_bottom >= 0.0 ? t_bottom : t_top;
 	
 	compile_const float sample_count        = 30.0;
@@ -392,11 +278,11 @@ float3 IntegrateScattering(AtmosphereParameters atmosphere, float3 planet_space_
 		float3 up_vector = position / coordinates.view_height;
 		coordinates.cos_view_zenith_angle = dot(planet_space_sun_direction, up_vector);
 		
-		float2 uv = TransmittanceLutCoordinatesToUv(atmosphere, coordinates);
-		float3 transmittance_to_light = transmittance_lut.SampleLevel(sampler_linear_clamp, uv, 0).xyz;
+		float2 transmittance_lut_uv = TransmittanceLutCoordinatesToUv(atmosphere, coordinates);
+		float3 transmittance_to_light = transmittance_lut.SampleLevel(sampler_linear_clamp, transmittance_lut_uv, 0);
 		
 		// Planet shadow.
-		float t_planet = RaySphereIntersect(position - planet_radius_offset * up_vector, planet_space_sun_direction, atmosphere.bottom_radius);
+		float t_planet = RayAtmosphereIntersect(position - planet_radius_offset * up_vector, planet_space_sun_direction, atmosphere.bottom_radius);
 		float planet_shadow = t_planet >= 0.0 ? 0.0 : 1.0;
 		
 		float3 multiple_scattering = SampleMultipleScatteringLut(atmosphere, position, coordinates.cos_view_zenith_angle);
@@ -416,8 +302,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	uint2  thread_id = group_id * thread_group_size + MortonDecode(thread_index);
 	float2 thread_uv = (thread_id + 0.5) * inv_sky_panorama_lut_size;
 	
-	float3 planet_space_camera_position = float3(0.0, 0.0, 0.0);
-	float3 planet_space_position = planet_space_camera_position + float3(0, 0, atmosphere.bottom_radius + 0.1);
+	float3 planet_space_position = TransformWorldToPlanetSpace(scene.world_space_camera_position, atmosphere.bottom_radius);
 	float  view_height = length(planet_space_position);
 	
 	SkyPanoramaLutCoordinates coordinates = UvToSkyPanoramaLutCoordinates(atmosphere, view_height, thread_uv);
@@ -446,16 +331,18 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 [ThreadGroupSize(thread_group_size * thread_group_size, 1, 1)]
 void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	uint2  thread_id = group_id * thread_group_size + MortonDecode(thread_index);
-	float2 thread_uv = (thread_id + 0.5) * scene.inv_render_target_size;
+	float2 thread_uv = (thread_id + 0.5 - scene.jitter_offset_pixels) * scene.inv_render_target_size;
+	
+	float depth = depth_stencil[thread_id];
+	if (depth != 0.0) return;
 	
 	RayInfo view_space_ray = RayInfoFromScreenUv(thread_uv, scene.clip_to_view_coef);
 	float3 planet_space_direction = mul((float3x3)scene.view_to_world, view_space_ray.direction);
 	
-	float3 planet_space_camera_position = WorldToPlanetSpace(mul(scene.view_to_world, float4(view_space_ray.origin, 1.0)));
-	float3 planet_space_position = planet_space_camera_position + float3(0, 0, atmosphere.bottom_radius + 0.1);
+	float3 planet_space_position = TransformWorldToPlanetSpace(scene.world_space_camera_position, atmosphere.bottom_radius);
 	float  view_height = length(planet_space_position);
 	
-	float3 up_vector = normalize(planet_space_position);
+	float3 up_vector = planet_space_position / view_height;
 	
 	float3 world_space_sun_direction = atmosphere.world_space_sun_direction;
 	
@@ -467,10 +354,10 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	coordinates.cos_view_zenith_angle = dot(planet_space_direction, up_vector);
 	coordinates.cos_light_view_angle  = light_on_plane.x;
 	
-	bool intersect_ground = RaySphereIntersect(planet_space_position, planet_space_direction, atmosphere.bottom_radius) >= 0.0;
+	bool intersect_ground = RayAtmosphereIntersect(planet_space_position, planet_space_direction, atmosphere.bottom_radius) >= 0.0;
 	
-	float2 uv = SkyPanoramaLutCoordinatesToUv(atmosphere, intersect_ground, coordinates, view_height);
-	float4 sky_radiance = sky_panorama_lut.SampleLevel(sampler_linear_clamp, uv, 0);
+	float2 sky_panorama_lut_uv = SkyPanoramaLutCoordinatesToUv(atmosphere, intersect_ground, coordinates, view_height);
+	float3 sky_radiance = sky_panorama_lut.SampleLevel(sampler_linear_clamp, sky_panorama_lut_uv, 0);
 	
 	float sun_disk_mask = smoothstep(atmosphere.sun_disk_cos_outer_angle, atmosphere.sun_disk_cos_inner_angle, dot(planet_space_direction, world_space_sun_direction));
 	if (sun_disk_mask > 0.0 && intersect_ground == false) {
@@ -478,13 +365,27 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 		lut_coordinates.view_height           = view_height;
 		lut_coordinates.cos_view_zenith_angle = coordinates.cos_view_zenith_angle;
 		
-		float2 uv = TransmittanceLutCoordinatesToUv(atmosphere, lut_coordinates);
-		float3 transmittance_to_light = transmittance_lut.SampleLevel(sampler_linear_clamp, uv, 0).xyz;
+		float2 transmittance_lut_uv = TransmittanceLutCoordinatesToUv(atmosphere, lut_coordinates);
+		float3 transmittance_to_light = transmittance_lut.SampleLevel(sampler_linear_clamp, transmittance_lut_uv, 0);
 		
-		sky_radiance.xyz += sun_disk_mask * atmosphere.sun_disk_radiance * transmittance_to_light;
+		sky_radiance += sun_disk_mask * atmosphere.sun_disk_radiance * transmittance_to_light;
 	}
 	
-	scene_radiance[thread_id] = sky_radiance;
+	scene_radiance[thread_id] = float4(sky_radiance, 1.0);
+	
+	// Camera rotation and FOV change motion vectors for the sky. Camera translation is not accounted for since sky is at an infinite distance.
+	if (IsPerspectiveMatrix(scene.clip_to_view_coef)) {
+		float2 curr_ndc = ScreenUvToNdc((thread_id + 0.5) * scene.inv_render_target_size);
+		
+		float3 view_space_position      = TransformNdcToViewSpace(curr_ndc, 1.0, scene.clip_to_view_coef);
+		float3 world_space_position     = mul((float3x3)scene.view_to_world,      view_space_position);
+		float3 prev_view_space_position = mul((float3x3)scene.prev_world_to_view, world_space_position);
+		float4 prev_clip_space_position = TransformViewToClipSpace(prev_view_space_position, scene.prev_view_to_clip_coef);
+		
+		float2 prev_ndc = prev_clip_space_position.xy / prev_clip_space_position.w;
+		
+		motion_vectors[thread_id] = NdcToScreenUvDirection(prev_ndc - curr_ndc);
+	}
 }
 #endif // defined(ATMOSPHERE_COMPOSITE)
 

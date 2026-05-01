@@ -442,7 +442,7 @@ static void ValidateShaderCache(StackAllocator* alloc, ShaderCache& old_cache, S
 		HashTableAddOrFind(root_signature_filename_table, new_cache.root_signature_filenames[i], i);
 	}
 	
-	// Valudate shader definitions.
+	// Validate shader definitions.
 	for (auto& definition : old_cache.shader_definitions) {
 		auto* new_shader_id = HashTableFind(shader_definition_table, definition.filename);
 		if (new_shader_id == nullptr) continue;

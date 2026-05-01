@@ -384,8 +384,10 @@ void UpdateTextureStreamingFiles(TextureStreamingSystem* system, ThreadPool* thr
 				descriptor_allocation.index = AllocatePersistentSrvDescriptor(graphics_context);
 			}
 			
-			resource_allocation.resource = CreateTextureResource(graphics_context, layout.size, CreateResourceFlags::Sparse);
-			resource_allocation.sparse_layout = GetSparseTextureLayout(graphics_context, resource_allocation.resource);
+			if (runtime_file.file.handle != nullptr) {
+				resource_allocation.resource = CreateTextureResource(graphics_context, layout.size, CreateResourceFlags::Sparse);
+				resource_allocation.sparse_layout = GetSparseTextureLayout(graphics_context, resource_allocation.resource);
+			}
 			
 			CreateResourceDescriptor(record_context, HLSL::Texture2D<float4>((VirtualResourceID)0), descriptor_allocation.index);
 			system->descriptor_index_to_texture_entity_id[descriptor_allocation.index] = EntityID{ (u32)i };

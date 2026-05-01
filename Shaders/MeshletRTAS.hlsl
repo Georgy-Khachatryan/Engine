@@ -1,6 +1,7 @@
 #include "Basic.hlsl"
 #include "Generated/MeshData.hlsl"
 #include "Generated/MeshletRtasData.hlsl"
+#include "MeshletVertexDecoding.hlsl"
 
 // See license for NvAPI structures and enums in THIRD_PARTY_LICENSES.md
 // Translated from NVAPI_D3D12_RAYTRACING_ACCELERATION_STRUCTURE_MULTI_INDIRECT_TRIANGLE_CLUSTER_ARGS in nvapi.h
@@ -95,11 +96,11 @@ void MainCS(uint group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	GroupMemoryBarrierWithGroupSync();
 	
 	if (thread_index < meshlet.vertex_count) {
-		uint vertex_buffer_offset = meshlet_header_offset + sizeof(MeshletHeader);
-		MeshletVertex vertex = mesh_asset_buffer.Load<MeshletVertex>(vertex_buffer_offset + thread_index * sizeof(MeshletVertex));
+		MeshletBufferOffsets offsets = ComputeMeshletBufferOffsets(meshlet, meshlet_header_offset);
+		MeshletVertex vertex = LoadMeshletVertexBuffer(mesh_asset_buffer, offsets.vertex_buffer_offset, thread_index);
 		
 		GpuMeshAssetData mesh_asset = mesh_asset_data[inputs.mesh_asset_index];
-		float3 vertex_position = float3(vertex.position) * mesh_asset.rcp_quantization_scale + meshlet.position_offset;
+		float3 vertex_position = DecodeMeshletVertexPosition(vertex.position, mesh_asset, meshlet);
 		
 		scratch_buffer.Store(gs_scratch_vertex_buffer_offset + thread_index * sizeof(float3), vertex_position);
 	}
@@ -124,9 +125,7 @@ void MainCS(uint group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 		uint meshlet_header_offset = meshlet_culling_data_offset + meshlet_culling_data.meshlet_header_offset;
 		MeshletHeader meshlet = mesh_asset_buffer.Load<MeshletHeader>(meshlet_header_offset);
 		
-		uint vertex_buffer_offset = meshlet_header_offset + sizeof(MeshletHeader);
-		uint index_buffer_offset  = vertex_buffer_offset  + meshlet.vertex_count * sizeof(MeshletVertex);
-		
+		MeshletBufferOffsets offsets = ComputeMeshletBufferOffsets(meshlet, meshlet_header_offset);
 		uint scratch_vertex_buffer_offset = scratch_buffer.Load(inputs.vertex_buffer_offsets + meshlet_index * sizeof(uint));
 		
 		MeshletRtasBuildIndirectArguments arguments = (MeshletRtasBuildIndirectArguments)0;
@@ -138,7 +137,7 @@ void MainCS(uint group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 		arguments.base_geometry_flags  = MeshletGeometryFlags::Opaque;
 		arguments.index_buffer_stride  = 1;
 		arguments.vertex_buffer_stride = sizeof(float3);
-		arguments.index_buffer         = constants.mesh_asset_buffer_address + (u64)index_buffer_offset;
+		arguments.index_buffer         = constants.mesh_asset_buffer_address + (u64)offsets.index_buffer_offset;
 		arguments.vertex_buffer        = constants.scratch_buffer_address    + (u64)scratch_vertex_buffer_offset;
 		scratch_buffer.Store(inputs.indirect_arguments_offset + meshlet_index * sizeof(MeshletRtasBuildIndirectArguments), arguments);
 	}

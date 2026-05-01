@@ -290,6 +290,25 @@ float4 TransformViewToClipSpaceDirection(float3 view_space_position, float4 view
 	return result;
 }
 
+float3 TransformNdcToViewSpace(float2 ndc, float clip_space_depth, float4 clip_to_view_coef) {
+	float3 result;
+	
+	if (IsPerspectiveMatrix(clip_to_view_coef)) {
+		float view_space_depth = rcp(clip_space_depth * clip_to_view_coef.z);
+		result = float3(ndc * clip_to_view_coef.xy * view_space_depth, view_space_depth);
+	} else {
+		result.xy = ndc * clip_to_view_coef.xy;
+		result.z  = clip_space_depth * clip_to_view_coef.z - clip_to_view_coef.z;
+	}
+	
+	return result;
+}
+
+float3 TransformScreenUvToViewSpace(float2 uv, float clip_space_depth, float4 clip_to_view_coef, float2 jitter_offset_ndc = 0.0) {
+	return TransformNdcToViewSpace(ScreenUvToNdc(uv) - jitter_offset_ndc, clip_space_depth, clip_to_view_coef);
+}
+
+
 // Tom Duff, James Burgess, Per Christensen, Christophe Hery, Andrew Kensler, Max Liani, and Ryusuke Villemin.
 // 2017. Building an Orthonormal Basis, Revisited. https://jcgt.org/published/0006/01/01/
 float3x3 BuildOrthonormalBasis(float3 normal) {

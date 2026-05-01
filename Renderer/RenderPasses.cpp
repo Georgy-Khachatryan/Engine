@@ -33,7 +33,7 @@ static void BuildResourceTable(RecordContext* record_context, WorldEntitySystem*
 	
 	table.Set(ID::SceneRadiance,       TextureSize(TextureFormat::R16G16B16A16_FLOAT, render_target_size), Flags::UAV | Flags::RTV);
 	table.Set(ID::DepthStencil,        TextureSize(TextureFormat::D32_FLOAT,          render_target_size), Flags::DSV);
-	table.Set(ID::MotionVectors,       TextureSize(TextureFormat::R16G16_FLOAT,       render_target_size), Flags::RTV);
+	table.Set(ID::MotionVectors,       TextureSize(TextureFormat::R16G16_FLOAT,       render_target_size), Flags::UAV | Flags::RTV);
 	table.Set(ID::SceneRadianceResult, TextureSize(TextureFormat::R16G16B16A16_FLOAT, render_target_size), Flags::UAV);
 	
 	table.Set(ID::CullingHZB,           BuildHzbRenderPass::ComputeCullingHzbSize(render_target_size));
@@ -195,7 +195,6 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	render_passes.Add<TransmittanceLutRenderPass>().atmosphere = atmosphere_parameters_gpu_address;
 	render_passes.Add<MultipleScatteringLutRenderPass>().atmosphere = atmosphere_parameters_gpu_address;
 	render_passes.Add<SkyPanoramaLutRenderPass>().atmosphere = atmosphere_parameters_gpu_address;
-	render_passes.Add<AtmosphereCompositeRenderPass>().atmosphere = atmosphere_parameters_gpu_address;
 	
 	
 	render_passes.Add<MeshletAllocateStreamingFeedbackRenderPass>().asset_system = asset_system;
@@ -225,6 +224,8 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 		render_passes.Add<MeshletGroupCullingRenderPass>("RaytracingMeshletGroupCulling"_sl).pass = MeshletCullingPass::Raytracing;
 		render_passes.Add<MeshletCullingRenderPass>("RaytracingMeshletCulling"_sl).pass = MeshletCullingPass::Raytracing;
 	}
+	
+	render_passes.Add<AtmosphereCompositeRenderPass>().atmosphere = atmosphere_parameters_gpu_address;
 	
 	auto& copy_meshlet_culling_statistics = render_passes.Add<CopyMeshletCullingStatisticsRenderPass>();
 	copy_meshlet_culling_statistics.readback_queue = &renderer_world.meshlet_culling_statistics_readback_queue;
