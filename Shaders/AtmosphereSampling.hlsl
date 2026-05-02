@@ -122,4 +122,58 @@ float2 SkyPanoramaLutCoordinatesToUv(AtmosphereParameters atmosphere, bool inter
 	return uv;
 }
 
+float3 SampleSkyPanoramaLUT(AtmosphereParameters atmosphere, Texture2D<float3> sky_panorama_lut, Texture2D<float3> transmittance_lut, float3 world_space_position, float3 planet_space_direction, bool enable_sun_disk = true) {
+	float3 planet_space_position = TransformWorldToPlanetSpace(world_space_position, atmosphere.bottom_radius);
+	float  view_height = length(planet_space_position);
+	float3 up_vector   = planet_space_position / view_height;
+	
+	float3 world_space_sun_direction = atmosphere.world_space_sun_direction;
+	
+	float3 side_vector    = normalize(cross(up_vector, planet_space_direction)); // Assumes non parallel vectors.
+	float3 forward_vector = normalize(cross(side_vector, up_vector)); // Aligns toward the sun light but perpendicular to up vector.
+	float2 light_on_plane = normalize(float2(dot(world_space_sun_direction, forward_vector), dot(world_space_sun_direction, side_vector)));
+	
+	SkyPanoramaLutCoordinates coordinates;
+	coordinates.cos_view_zenith_angle = dot(planet_space_direction, up_vector);
+	coordinates.cos_light_view_angle  = light_on_plane.x;
+	
+	bool intersect_ground = RayAtmosphereIntersect(planet_space_position, planet_space_direction, atmosphere.bottom_radius) >= 0.0;
+	
+	float2 sky_panorama_lut_uv = SkyPanoramaLutCoordinatesToUv(atmosphere, intersect_ground, coordinates, view_height);
+	float3 sky_radiance = sky_panorama_lut.SampleLevel(sampler_linear_clamp, sky_panorama_lut_uv, 0);
+	
+	if (enable_sun_disk) {
+		float sun_disk_mask = smoothstep(atmosphere.sun_disk_cos_outer_angle, atmosphere.sun_disk_cos_inner_angle, dot(planet_space_direction, world_space_sun_direction));
+		if (sun_disk_mask > 0.0 && intersect_ground == false) {
+			TransmittanceLutCoordinates lut_coordinates;
+			lut_coordinates.view_height           = view_height;
+			lut_coordinates.cos_view_zenith_angle = coordinates.cos_view_zenith_angle;
+			
+			float2 transmittance_lut_uv = TransmittanceLutCoordinatesToUv(atmosphere, lut_coordinates);
+			float3 transmittance_to_light = transmittance_lut.SampleLevel(sampler_linear_clamp, transmittance_lut_uv, 0);
+			
+			sky_radiance += sun_disk_mask * atmosphere.sun_disk_radiance * transmittance_to_light;
+		}
+	}
+	
+	return sky_radiance;
+}
+
+float3 SampleTransmittanceLUT(AtmosphereParameters atmosphere, Texture2D<float3> transmittance_lut, float3 world_space_position) {
+	float3 planet_space_position  = TransformWorldToPlanetSpace(world_space_position, atmosphere.bottom_radius);
+	float3 planet_space_direction = atmosphere.world_space_sun_direction;
+	
+	float  view_height = length(planet_space_position);
+	float3 up_vector   = planet_space_position / view_height;
+	
+	TransmittanceLutCoordinates lut_coordinates;
+	lut_coordinates.view_height           = view_height;
+	lut_coordinates.cos_view_zenith_angle = dot(planet_space_direction, up_vector);
+	
+	float2 transmittance_lut_uv = TransmittanceLutCoordinatesToUv(atmosphere, lut_coordinates);
+	float3 transmittance_to_light = transmittance_lut.SampleLevel(sampler_linear_clamp, transmittance_lut_uv, 0);
+	
+	return transmittance_to_light;
+}
+
 #endif // ATMOSPHERESAMPLING_HLSL

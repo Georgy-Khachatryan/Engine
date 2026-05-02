@@ -82,6 +82,7 @@ float2 ComputeRandomUnorm16x2(inout uint hash) {
 #include "SDK/NvAPI/include/nvHLSLExtns.h"
 #include "MaterialSampling.hlsl"
 #include "MeshletVertexDecoding.hlsl"
+#include "AtmosphereSampling.hlsl"
 
 template<typename T>
 T BarycentricInterpolation(float3 barycentrics, T v0, T v1, T v2) {
@@ -221,12 +222,12 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 				float3x3 world_to_tangent = BuildOrthonormalBasis(world_space_normal);
 				float3x3 tangent_to_world = transpose(world_to_tangent);
 				
-				float3 light_direction = float3(0.0, 0.0, 1.0);
+				float3 light_direction = atmosphere.world_space_sun_direction;
 				float3 wi = mul(world_to_tangent, light_direction);
 				float3 wo = mul(world_to_tangent, -ray_desc.Direction);
 				float3 wh = normalize(wo + wi);
 				
-				float3 light_irradiance = 2.0;
+				float3 light_irradiance = atmosphere.sun_irradiance * SampleTransmittanceLUT(atmosphere, transmittance_lut, ray_desc.Origin);
 				float shadow = TraceShadowRay(ray_desc.Origin, light_direction);
 				float3 shadowed_light_irradiance = (throughput * light_irradiance) * (shadow * saturate(wi.z));
 				
@@ -297,7 +298,8 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 				}
 			}
 		} else {
-			float3 sky_radiance = 1.0;
+			float3 sky_radiance = SampleSkyPanoramaLUT(atmosphere, sky_panorama_lut, transmittance_lut, scene.world_space_camera_position, ray_desc.Direction, i == 0);
+			
 			radiance += throughput * sky_radiance;
 			i = max_path_length;
 		}

@@ -267,7 +267,7 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	
 	if (renderer_world.reference_path_tracer_percent != 0.f) {
 		render_passes.Add<EnergyCompensationLutRenderPass>();
-		render_passes.Add<ReferencePathTracerRenderPass>();
+		render_passes.Add<ReferencePathTracerRenderPass>().atmosphere = atmosphere_parameters_gpu_address;
 	}
 	
 	

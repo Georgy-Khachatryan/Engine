@@ -339,37 +339,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	RayInfo view_space_ray = RayInfoFromScreenUv(thread_uv, scene.clip_to_view_coef);
 	float3 planet_space_direction = mul((float3x3)scene.view_to_world, view_space_ray.direction);
 	
-	float3 planet_space_position = TransformWorldToPlanetSpace(scene.world_space_camera_position, atmosphere.bottom_radius);
-	float  view_height = length(planet_space_position);
-	
-	float3 up_vector = planet_space_position / view_height;
-	
-	float3 world_space_sun_direction = atmosphere.world_space_sun_direction;
-	
-	float3 side_vector    = normalize(cross(up_vector, planet_space_direction)); // Assumes non parallel vectors.
-	float3 forward_vector = normalize(cross(side_vector, up_vector)); // Aligns toward the sun light but perpendicular to up vector.
-	float2 light_on_plane = normalize(float2(dot(world_space_sun_direction, forward_vector), dot(world_space_sun_direction, side_vector)));
-	
-	SkyPanoramaLutCoordinates coordinates;
-	coordinates.cos_view_zenith_angle = dot(planet_space_direction, up_vector);
-	coordinates.cos_light_view_angle  = light_on_plane.x;
-	
-	bool intersect_ground = RayAtmosphereIntersect(planet_space_position, planet_space_direction, atmosphere.bottom_radius) >= 0.0;
-	
-	float2 sky_panorama_lut_uv = SkyPanoramaLutCoordinatesToUv(atmosphere, intersect_ground, coordinates, view_height);
-	float3 sky_radiance = sky_panorama_lut.SampleLevel(sampler_linear_clamp, sky_panorama_lut_uv, 0);
-	
-	float sun_disk_mask = smoothstep(atmosphere.sun_disk_cos_outer_angle, atmosphere.sun_disk_cos_inner_angle, dot(planet_space_direction, world_space_sun_direction));
-	if (sun_disk_mask > 0.0 && intersect_ground == false) {
-		TransmittanceLutCoordinates lut_coordinates;
-		lut_coordinates.view_height           = view_height;
-		lut_coordinates.cos_view_zenith_angle = coordinates.cos_view_zenith_angle;
-		
-		float2 transmittance_lut_uv = TransmittanceLutCoordinatesToUv(atmosphere, lut_coordinates);
-		float3 transmittance_to_light = transmittance_lut.SampleLevel(sampler_linear_clamp, transmittance_lut_uv, 0);
-		
-		sky_radiance += sun_disk_mask * atmosphere.sun_disk_radiance * transmittance_to_light;
-	}
+	float3 sky_radiance = SampleSkyPanoramaLUT(atmosphere, sky_panorama_lut, transmittance_lut, scene.world_space_camera_position, planet_space_direction);
 	
 	scene_radiance[thread_id] = float4(sky_radiance, 1.0);
 	

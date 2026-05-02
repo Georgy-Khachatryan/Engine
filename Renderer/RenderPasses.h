@@ -883,8 +883,12 @@ NOTES(Meta::RenderPass{})
 struct ReferencePathTracerRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
+	GpuAddress atmosphere;
+	
 	struct Descriptors : HLSL::BaseDescriptorTable {
 		HLSL::Texture2D<float2>                     ggx_single_scattering_energy_lut = VirtualResourceID::GgxSingleScatteringEnergyLUT;
+		HLSL::Texture2D<float3>                     sky_panorama_lut      = VirtualResourceID::SkyPanoramaLut;
+		HLSL::Texture2D<float3>                     transmittance_lut     = VirtualResourceID::TransmittanceLut;
 		HLSL::RegularBuffer<GpuTransform>           mesh_transforms       = VirtualResourceID::MeshEntityGpuTransform;
 		HLSL::RegularBuffer<GpuMeshAssetData>       mesh_asset_data       = VirtualResourceID::GpuMeshAssetData;
 		HLSL::RegularBuffer<GpuMeshEntityData>      mesh_entity_data      = VirtualResourceID::GpuMeshEntityData;
@@ -898,6 +902,7 @@ struct ReferencePathTracerRenderPass {
 	struct RootSignature : HLSL::BaseRootSignature {
 		HLSL::DescriptorTable<Descriptors> descriptor_table;
 		HLSL::ConstantBuffer<SceneConstants> scene;
+		HLSL::ConstantBuffer<AtmosphereParameters> atmosphere;
 	};
 	
 	inline static PipelineID pipeline_id;
