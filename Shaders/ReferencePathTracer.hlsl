@@ -20,7 +20,7 @@ float3 SampleVndfHemisphere(float2 u, float3 wo) {
 	return float3(x, y, z) + wo;
 }
 
-// Trowbridge Reitz (GGX) VNDF sampling. PDF = (G_1 * D) / (4.0 * cos_theta_o)
+// Trowbridge Reitz (GGX) VNDF sampling. PDF = (SmithVisibilityG1(cos_theta_o) * TrowbridgeReitzNDF(cos_theta_m)) / (4.0 * cos_theta_o)
 float3 SampleTrowbridgeReitzVNDF(float2 u, float3 wo, float2 alpha) {
 	// Warp to the hemisphere configuration.
 	float3 wo_standard = normalize(float3(wo.xy * alpha, wo.z));
@@ -32,12 +32,21 @@ float3 SampleTrowbridgeReitzVNDF(float2 u, float3 wo, float2 alpha) {
 	return normalize(float3(wm_standard.xy * alpha, wm_standard.z));
 }
 
-float FresnelSchlick(float f0, float cos_theta) {
+float TrowbridgeReitzNDF(float cos_theta_m, float alpha_square) {
+	return alpha_square * rcp(PI * Pow2(1.0 + Pow2(cos_theta_m) * (alpha_square - 1.0)));
+}
+
+template<typename T>
+T FresnelSchlick(T f0, float cos_theta) {
 	return f0 + (1.0 - f0) * Pow5(1.0 - cos_theta);
 }
 
-float3 FresnelSchlick(float3 f0, float cos_theta) {
-	return f0 + (1.0 - f0) * Pow5(1.0 - cos_theta);
+float3 FresnelConductor(float3 f0, float cos_theta) {
+	return FresnelSchlick<float3>(f0, cos_theta);
+}
+
+float FresnelDielectric(float f0, float cos_theta) {
+	return FresnelSchlick<float>(f0, cos_theta);
 }
 
 float SmithVisibilityLambda(float cos_theta, float alpha_square) {
@@ -46,13 +55,13 @@ float SmithVisibilityLambda(float cos_theta, float alpha_square) {
 }
 
 // Smith masking function.
-float SmithVisibilityG1(float3 w, float alpha_square) {
-	return rcp(1.0 + SmithVisibilityLambda(w.z, alpha_square));
+float SmithVisibilityG1(float cos_theta, float alpha_square) {
+	return rcp(1.0 + SmithVisibilityLambda(cos_theta, alpha_square));
 }
 
 // Smith masking-shadowing function.
-float SmithVisibilityG(float3 wo, float3 wi, float alpha_square) {
-	return rcp(1.0 + SmithVisibilityLambda(wo.z, alpha_square) + SmithVisibilityLambda(wi.z, alpha_square)); // Height correlated.
+float SmithVisibilityG(float cos_theta_o, float cos_theta_i, float alpha_square) {
+	return rcp(1.0 + SmithVisibilityLambda(cos_theta_o, alpha_square) + SmithVisibilityLambda(cos_theta_i, alpha_square)); // Height correlated.
 	// return G1(wo, alpha_square) * G1(wi, alpha_square); // Uncorrelated.
 }
 
@@ -86,6 +95,46 @@ float3 DecodeAndInterpolateUnitVector(float3 barycentrics, u16x2 v0, u16x2 v1, u
 	return BarycentricInterpolation(barycentrics, n0, n1, n2);
 }
 
+float TraceShadowRay(float3 ray_origin, float3 ray_direction) {
+	RayQuery<
+		RAY_FLAG_CULL_NON_OPAQUE |
+		RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES |
+		// RAY_FLAG_CULL_BACK_FACING_TRIANGLES |
+		RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH |
+		RAY_FLAG_NONE
+	> ray_query;
+	
+	RayDesc ray_desc;
+	ray_desc.Origin    = ray_origin;
+	ray_desc.Direction = ray_direction;
+	ray_desc.TMin      = 0.0;
+	ray_desc.TMax      = 1024.0;
+	
+	ray_query.TraceRayInline(scene_tlas, 0, 0xFF, ray_desc);
+	
+	while (ray_query.Proceed()) {
+		
+	}
+	
+	return ray_query.CommittedStatus() == COMMITTED_TRIANGLE_HIT ? 0.0 : 1.0;
+}
+
+// Based on "Practical multiple scattering compensation for microfacet models" by Emmanuel Turquin.
+float2 SampleGgxSingleScatteringEnergyLUT(float cos_theta, float roughness) {
+	float2 energy_compensation_lut_parameters = saturate(float2(cos_theta + energy_compensation_lut_cos_theta_bias, roughness));
+	float2 energy_compensation_lut_uv = LutParametersToUv(energy_compensation_lut_parameters, energy_compensation_lut_size);
+	
+	return ggx_single_scattering_energy_lut.SampleLevel(sampler_linear_clamp, energy_compensation_lut_uv, 0);
+}
+
+float3 ComputeConductorBrdfEnergyCompensation(float2 single_scattering_energy, float3 specular_fresnel) {
+	return (1.0 + specular_fresnel * (1.0 - single_scattering_energy.x) / single_scattering_energy.x);
+}
+
+float ComputeDielectricBrdfEnergyCompensation(float2 single_scattering_energy) {
+	return (1.0 / single_scattering_energy.y);
+}
+
 
 [ThreadGroupSize(32, 1, 1)]
 void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
@@ -112,7 +161,6 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 			RAY_FLAG_CULL_NON_OPAQUE |
 			RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES |
 			// RAY_FLAG_CULL_BACK_FACING_TRIANGLES |
-			// RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH |
 			RAY_FLAG_NONE
 		> ray_query;
 		
@@ -161,14 +209,51 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 			}
 			ray_desc.Origin += ray_desc.Direction * ray_query.CommittedRayT() + world_space_normal * (1.0 / 1024.0);
 			
+			
+			float  metalness    = properties.metalness;
+			float  roughness    = properties.roughness;
+			float3 metallic_f0  = properties.albedo;
+			float  alpha        = Pow2(roughness);
+			float  alpha_square = Pow2(alpha);
+			float3 diffuse_albedo = properties.albedo;
+			
 			{
-				float  metalness    = properties.metalness;
-				float  roughness    = properties.roughness;
-				float3 metallic_f0  = properties.albedo;
-				float  alpha        = Pow2(roughness);
-				float  alpha_square = Pow2(alpha);
-				float3 diffuse_albedo = properties.albedo;
+				float3x3 world_to_tangent = BuildOrthonormalBasis(world_space_normal);
+				float3x3 tangent_to_world = transpose(world_to_tangent);
 				
+				float3 light_direction = float3(0.0, 0.0, 1.0);
+				float3 wi = mul(world_to_tangent, light_direction);
+				float3 wo = mul(world_to_tangent, -ray_desc.Direction);
+				float3 wh = normalize(wo + wi);
+				
+				float3 light_irradiance = 2.0;
+				float shadow = TraceShadowRay(ray_desc.Origin, light_direction);
+				float3 shadowed_light_irradiance = (throughput * light_irradiance) * (shadow * saturate(wi.z));
+				
+				float2 single_scattering_energy = SampleGgxSingleScatteringEnergyLUT(wo.z, roughness);
+				
+				if (metalness != 0.0 && (wi.z * wo.z) > 0.0) {
+					float3 specular_fresnel = FresnelConductor(metallic_f0, dot(wi, wh));
+					float3 energy_compensation = ComputeConductorBrdfEnergyCompensation(single_scattering_energy, specular_fresnel) * metalness;
+					
+					float3 specular_brdf = specular_fresnel * SmithVisibilityG(wo.z, wi.z, alpha_square) * TrowbridgeReitzNDF(wh.z, alpha_square) * rcp(4.0 * wi.z * wo.z);
+					
+					radiance += shadowed_light_irradiance * (energy_compensation * specular_brdf);
+				}
+				
+				if (metalness != 1.0 && (wi.z * wo.z) > 0.0) {
+					float specular_fresnel = FresnelDielectric(dielectric_f0, dot(wi, wh));
+					float energy_compensation = ComputeDielectricBrdfEnergyCompensation(single_scattering_energy) * (1.0 - metalness);
+					
+					float specular_brdf = specular_fresnel * SmithVisibilityG(wo.z, wi.z, alpha_square) * TrowbridgeReitzNDF(wh.z, alpha_square) * rcp(4.0 * wi.z * wo.z);
+					float3 diffuse_brdf = diffuse_albedo * ((1.0 - specular_fresnel) * rcp(PI));
+					
+					radiance += shadowed_light_irradiance * (energy_compensation * specular_brdf);
+					radiance += shadowed_light_irradiance * (energy_compensation * diffuse_brdf);
+				}
+			}
+			
+			{
 				float3x3 world_to_tangent = BuildOrthonormalBasis(world_space_normal);
 				float3x3 tangent_to_world = transpose(world_to_tangent);
 				
@@ -179,21 +264,18 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 				if ((wi.z * wo.z) > 0.0) {
 					float2 mis_thresholds = ComputeRandomUnorm16x2(hash);
 					
-					// Based on "Practical multiple scattering compensation for microfacet models" by Emmanuel Turquin.
-					float2 energy_compensation_lut_parameters = saturate(float2(wo.z + energy_compensation_lut_cos_theta_bias, roughness));
-					float2 energy_compensation_lut_uv = LutParametersToUv(energy_compensation_lut_parameters, energy_compensation_lut_size);
-					float2 single_scattering_energy   = ggx_single_scattering_energy_lut.SampleLevel(sampler_linear_clamp, energy_compensation_lut_uv, 0);
+					float2 single_scattering_energy = SampleGgxSingleScatteringEnergyLUT(wo.z, roughness);
 					
 					if (mis_thresholds.x < metalness) {
-						float3 specular_fresnel = FresnelSchlick(metallic_f0, dot(wo, wh));
-						float3 energy_compensation = (1.0 + specular_fresnel * (1.0 - single_scattering_energy.x) / single_scattering_energy.x);
+						float3 specular_fresnel = FresnelConductor(metallic_f0, dot(wo, wh));
+						float3 energy_compensation = ComputeConductorBrdfEnergyCompensation(single_scattering_energy, specular_fresnel);
 						
 						ray_desc.Direction = mul(tangent_to_world, wi);
 						
-						throughput *= specular_fresnel * energy_compensation * (SmithVisibilityG(wo, wi, alpha_square) / SmithVisibilityG1(wo, alpha_square));
+						throughput *= specular_fresnel * energy_compensation * (SmithVisibilityG(wo.z, wi.z, alpha_square) / SmithVisibilityG1(wo.z, alpha_square));
 					} else {
-						float specular_fresnel = FresnelSchlick(dielectric_f0, dot(wo, wh));
-						float energy_compensation = 1.0 / single_scattering_energy.y;
+						float specular_fresnel = FresnelDielectric(dielectric_f0, dot(wo, wh));
+						float energy_compensation = ComputeDielectricBrdfEnergyCompensation(single_scattering_energy);
 						
 						float mis_specular_weight = specular_fresnel;
 						float mis_diffuse_weight  = dot(diffuse_albedo, rec709_luminance_coefficients) * (1.0 - mis_specular_weight);
@@ -203,7 +285,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 						if (mis_thresholds.y < normalized_mis_specular_weight) {
 							ray_desc.Direction = normalize(mul(tangent_to_world, wi));
 							
-							throughput *= specular_fresnel * energy_compensation * (SmithVisibilityG(wo, wi, alpha_square) / SmithVisibilityG1(wo, alpha_square)) / normalized_mis_specular_weight;
+							throughput *= specular_fresnel * (energy_compensation * (SmithVisibilityG(wo.z, wi.z, alpha_square) / SmithVisibilityG1(wo.z, alpha_square)) / normalized_mis_specular_weight);
 						} else {
 							ray_desc.Direction = normalize(mul(tangent_to_world, CosineWeightedHemisphereMapping(ComputeRandomUnorm16x2(hash))));
 							
@@ -215,7 +297,8 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 				}
 			}
 		} else {
-			radiance += throughput;
+			float3 sky_radiance = 1.0;
+			radiance += throughput * sky_radiance;
 			i = max_path_length;
 		}
 	}
@@ -262,7 +345,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 		float3 wi = reflect(-wo, wh);
 		
 		if ((wi.z * wo.z) > 0.0) {
-			float specular_sample = SmithVisibilityG(wo, wi, alpha_square) / SmithVisibilityG1(wo, alpha_square);
+			float specular_sample = SmithVisibilityG(wo.z, wi.z, alpha_square) / SmithVisibilityG1(wo.z, alpha_square);
 			single_scattering_energy.x += specular_sample; // Conductor
 			
 			float fresnel = FresnelSchlick(dielectric_f0, dot(wo, wh));
