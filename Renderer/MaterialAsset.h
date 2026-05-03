@@ -12,12 +12,16 @@ NOTES()
 struct MaterialTextureData {
 	TextureAssetGUID albedo;
 	TextureAssetGUID normal;
+	TextureAssetGUID roughness;
+	TextureAssetGUID metalness;
 };
 
 NOTES(Meta::HlslFile{ "MaterialData.hlsl"_sl })
 struct GpuMaterialTextureData {
-	u32 albedo = u32_max;
-	u32 normal = u32_max;
+	u32 albedo    = u32_max;
+	u32 normal    = u32_max;
+	u32 roughness = u32_max;
+	u32 metalness = u32_max;
 };
 
 NOTES()

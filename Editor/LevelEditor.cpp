@@ -745,6 +745,8 @@ static void AssetBrowserEntityView(StackAllocator* alloc, AssetEntitySystem& ass
 		auto* texture_data = entity.material_texture_data;
 		ImGui::TableEntityComboBox("Albedo", &asset_system, &texture_data->albedo.guid, ECS::GetEntityTypeID<TextureAssetType>::id);
 		ImGui::TableEntityComboBox("Normal", &asset_system, &texture_data->normal.guid, ECS::GetEntityTypeID<TextureAssetType>::id);
+		ImGui::TableEntityComboBox("Roughness", &asset_system, &texture_data->roughness.guid, ECS::GetEntityTypeID<TextureAssetType>::id);
+		ImGui::TableEntityComboBox("Metalness", &asset_system, &texture_data->metalness.guid, ECS::GetEntityTypeID<TextureAssetType>::id);
 	}
 	
 	

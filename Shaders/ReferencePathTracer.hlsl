@@ -226,27 +226,29 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 				float3 wi = mul(world_to_tangent, light_direction);
 				float3 wo = mul(world_to_tangent, -ray_desc.Direction);
 				float3 wh = normalize(wo + wi);
+				float abs_cos_theta_o = abs(wo.z);
+				float i_dot_h = saturate(dot(wi, wh));
 				
 				float3 light_irradiance = atmosphere.sun_irradiance * SampleTransmittanceLUT(atmosphere, transmittance_lut, ray_desc.Origin);
 				float shadow = TraceShadowRay(ray_desc.Origin, light_direction);
 				float3 shadowed_light_irradiance = (throughput * light_irradiance) * (shadow * saturate(wi.z));
 				
-				float2 single_scattering_energy = SampleGgxSingleScatteringEnergyLUT(wo.z, roughness);
+				float2 single_scattering_energy = SampleGgxSingleScatteringEnergyLUT(abs_cos_theta_o, roughness);
 				
-				if (metalness != 0.0 && (wi.z * wo.z) > 0.0) {
-					float3 specular_fresnel = FresnelConductor(metallic_f0, dot(wi, wh));
+				if (metalness != 0.0 && (wi.z * abs_cos_theta_o) > 0.0) {
+					float3 specular_fresnel = FresnelConductor(metallic_f0, i_dot_h);
 					float3 energy_compensation = ComputeConductorBrdfEnergyCompensation(single_scattering_energy, specular_fresnel) * metalness;
 					
-					float3 specular_brdf = specular_fresnel * SmithVisibilityG(wo.z, wi.z, alpha_square) * TrowbridgeReitzNDF(wh.z, alpha_square) * rcp(4.0 * wi.z * wo.z);
+					float3 specular_brdf = specular_fresnel * SmithVisibilityG(abs_cos_theta_o, wi.z, alpha_square) * TrowbridgeReitzNDF(wh.z, alpha_square) * rcp(4.0 * wi.z * abs_cos_theta_o);
 					
 					radiance += shadowed_light_irradiance * (energy_compensation * specular_brdf);
 				}
 				
-				if (metalness != 1.0 && (wi.z * wo.z) > 0.0) {
-					float specular_fresnel = FresnelDielectric(dielectric_f0, dot(wi, wh));
+				if (metalness != 1.0 && (wi.z * abs_cos_theta_o) > 0.0) {
+					float specular_fresnel = FresnelDielectric(dielectric_f0, i_dot_h);
 					float energy_compensation = ComputeDielectricBrdfEnergyCompensation(single_scattering_energy) * (1.0 - metalness);
 					
-					float specular_brdf = specular_fresnel * SmithVisibilityG(wo.z, wi.z, alpha_square) * TrowbridgeReitzNDF(wh.z, alpha_square) * rcp(4.0 * wi.z * wo.z);
+					float specular_brdf = specular_fresnel * SmithVisibilityG(abs_cos_theta_o, wi.z, alpha_square) * TrowbridgeReitzNDF(wh.z, alpha_square) * rcp(4.0 * wi.z * abs_cos_theta_o);
 					float3 diffuse_brdf = diffuse_albedo * ((1.0 - specular_fresnel) * rcp(PI));
 					
 					radiance += shadowed_light_irradiance * (energy_compensation * specular_brdf);
@@ -261,21 +263,23 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 				float3 wo = mul(world_to_tangent, -ray_desc.Direction);
 				float3 wh = SampleTrowbridgeReitzVNDF(ComputeRandomUnorm16x2(hash), wo, alpha);
 				float3 wi = reflect(-wo, wh);
+				float abs_cos_theta_o = abs(wo.z);
+				float i_dot_h = saturate(dot(wi, wh));
 				
-				if ((wi.z * wo.z) > 0.0) {
+				if ((wi.z * abs_cos_theta_o) > 0.0) {
 					float2 mis_thresholds = ComputeRandomUnorm16x2(hash);
 					
-					float2 single_scattering_energy = SampleGgxSingleScatteringEnergyLUT(wo.z, roughness);
+					float2 single_scattering_energy = SampleGgxSingleScatteringEnergyLUT(abs_cos_theta_o, roughness);
 					
 					if (mis_thresholds.x < metalness) {
-						float3 specular_fresnel = FresnelConductor(metallic_f0, dot(wo, wh));
+						float3 specular_fresnel = FresnelConductor(metallic_f0, i_dot_h);
 						float3 energy_compensation = ComputeConductorBrdfEnergyCompensation(single_scattering_energy, specular_fresnel);
 						
 						ray_desc.Direction = mul(tangent_to_world, wi);
 						
-						throughput *= specular_fresnel * energy_compensation * (SmithVisibilityG(wo.z, wi.z, alpha_square) / SmithVisibilityG1(wo.z, alpha_square));
+						throughput *= specular_fresnel * energy_compensation * (SmithVisibilityG(abs_cos_theta_o, wi.z, alpha_square) / SmithVisibilityG1(abs_cos_theta_o, alpha_square));
 					} else {
-						float specular_fresnel = FresnelDielectric(dielectric_f0, dot(wo, wh));
+						float specular_fresnel = FresnelDielectric(dielectric_f0, i_dot_h);
 						float energy_compensation = ComputeDielectricBrdfEnergyCompensation(single_scattering_energy);
 						
 						float mis_specular_weight = specular_fresnel;
@@ -286,7 +290,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 						if (mis_thresholds.y < normalized_mis_specular_weight) {
 							ray_desc.Direction = normalize(mul(tangent_to_world, wi));
 							
-							throughput *= specular_fresnel * (energy_compensation * (SmithVisibilityG(wo.z, wi.z, alpha_square) / SmithVisibilityG1(wo.z, alpha_square)) / normalized_mis_specular_weight);
+							throughput *= specular_fresnel * (energy_compensation * (SmithVisibilityG(abs_cos_theta_o, wi.z, alpha_square) / SmithVisibilityG1(abs_cos_theta_o, alpha_square)) / normalized_mis_specular_weight);
 						} else {
 							ray_desc.Direction = normalize(mul(tangent_to_world, CosineWeightedHemisphereMapping(ComputeRandomUnorm16x2(hash))));
 							

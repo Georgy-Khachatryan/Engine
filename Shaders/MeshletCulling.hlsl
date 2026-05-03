@@ -471,6 +471,15 @@ void AppendOccludedMeshlet(uint mesh_entity_index, uint meshlet_culling_data_off
 #endif // defined(MAIN_PASS) && defined(ENABLE_DISOCCLUSION_PASS)
 }
 
+#if defined(MAIN_PASS) || defined(DISOCCLUSION_PASS)
+void WriteTextureStreamingFeedback(u32 texture_index, float target_mip_level) {
+	if (texture_index != u32_max) {
+		InterlockedMin(texture_streaming_feedback[texture_index], asuint(target_mip_level));
+	}
+}
+#endif // defined(MAIN_PASS) || defined(DISOCCLUSION_PASS)
+
+
 [ThreadGroupSize(thread_group_size, 1, 1)]
 void MainCS(uint thread_id : SV_DispatchThreadID, uint thread_index : SV_GroupIndex) {
 #if defined(MAIN_PASS) || defined(RAYTRACING_PASS)
@@ -540,8 +549,10 @@ void MainCS(uint thread_id : SV_DispatchThreadID, uint thread_index : SV_GroupIn
 		// pixel_to_texel_scale is approximately the same as max(length(ddx(uv)), length(ddy(uv))) * texture_size_mip_0.
 		float target_mip_level = max(log2(pixel_to_texel_scale), 0.0);
 		
-		InterlockedMin(texture_streaming_feedback[material.albedo], asuint(target_mip_level));
-		InterlockedMin(texture_streaming_feedback[material.normal], asuint(target_mip_level));
+		WriteTextureStreamingFeedback(material.albedo, target_mip_level);
+		WriteTextureStreamingFeedback(material.normal, target_mip_level);
+		WriteTextureStreamingFeedback(material.roughness, target_mip_level);
+		WriteTextureStreamingFeedback(material.metalness, target_mip_level);
 	}
 #endif // defined(MAIN_PASS) || defined(DISOCCLUSION_PASS)
 	

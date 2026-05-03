@@ -20,6 +20,12 @@ struct MaterialTextureData {
 		albedo TextureAssetGUID 0;
 		normal TextureAssetGUID 0;
 	}
+	/*Version*/ 2 {
+		albedo TextureAssetGUID 0;
+		normal TextureAssetGUID 0;
+		roughness TextureAssetGUID 0;
+		metalness TextureAssetGUID 0;
+	}
 }
 
 struct TextureSourceData {

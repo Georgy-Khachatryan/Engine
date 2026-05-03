@@ -56,8 +56,10 @@ void UpdateRendererEntityGpuComponents(StackAllocator* alloc, ThreadPool* thread
 			auto& texture_data = streams.texture_data[i];
 			
 			GpuMaterialTextureData gpu_data;
-			gpu_data.albedo = find_texture_index(texture_data.albedo);
-			gpu_data.normal = find_texture_index(texture_data.normal);
+			gpu_data.albedo    = find_texture_index(texture_data.albedo);
+			gpu_data.normal    = find_texture_index(texture_data.normal);
+			gpu_data.roughness = find_texture_index(texture_data.roughness);
+			gpu_data.metalness = find_texture_index(texture_data.metalness);
 			AppendGpuTransferCommand(gpu_texture_data, i, gpu_data);
 		}
 		ArrayAppend(gpu_uploads, alloc, gpu_texture_data);

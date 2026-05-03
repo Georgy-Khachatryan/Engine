@@ -37,13 +37,13 @@ MaterialProperties SampleMaterial(u32 material_index, TexcoordStream texcoord_st
 		GpuMaterialTextureData material = material_texture_data[material_index];
 		result.albedo = SampleMaterialTexture(material.albedo, texcoord_stream, float16x3(0.5, 0.5, 0.5));
 		result.normal = DecodeHemiOctahedralMap01(SampleMaterialTexture(material.normal, texcoord_stream, float16x2(0.5, 0.5)));
-		result.roughness = 0.5;
-		result.metalness = 0.5;
+		result.roughness = SampleMaterialTexture(material.roughness, texcoord_stream, 0.5h);
+		result.metalness = SampleMaterialTexture(material.metalness, texcoord_stream, 0.0h);
 	} else {
 		result.albedo = float16x3(0.5, 0.5, 0.5);
 		result.normal = float16x3(0.0, 0.0, 1.0);
 		result.roughness = 0.5;
-		result.metalness = 0.5;
+		result.metalness = 0.0;
 	}
 	
 	return result;
