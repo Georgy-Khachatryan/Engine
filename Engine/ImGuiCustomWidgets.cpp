@@ -169,6 +169,25 @@ bool ImGui::DragFloatWithReset(const char* label, float* data, u32 component_cou
 	return value_changed;
 }
 
+bool ImGui::ColorEditN(const char* label, float* color, u32 component_count) {
+	if (component_count == 4) return ImGui::ColorEdit4(label, color, ImGuiColorEditFlags_Float | ImGuiColorEditFlags_NoInputs);
+	if (component_count == 3) return ImGui::ColorEdit3(label, color, ImGuiColorEditFlags_Float | ImGuiColorEditFlags_NoInputs);
+	
+	if (ImGui::ColorButton("##Color", ImVec4(*color, *color, *color, 1.f), ImGuiColorEditFlags_NoAlpha)) {
+		ImGui::OpenPopup("GrayscalePicker");
+		auto* context = ImGui::GetCurrentContext();
+		ImGui::SetNextWindowPos(context->LastItemData.Rect.GetBL() + ImVec2(0.f, ImGui::GetStyle().ItemSpacing.y));
+	}
+	
+	bool result = false;
+	if (ImGui::BeginPopup("GrayscalePicker")) {
+		result |= ImGui::SliderFloat("##GrayscalePicker", color, 0.f, 1.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+		ImGui::EndPopup();
+	}
+	
+	return result;
+}
+
 bool ImGui::EntityComboBox(const char* label, EntitySystemBase* entity_system, u64* selected_guid, EntityTypeID entity_type_id) {
 	auto* window = ImGui::GetCurrentWindow();
 	if (window->SkipItems) return false;
@@ -231,6 +250,18 @@ bool ImGui::EntityComboBox(const char* label, EntitySystemBase* entity_system, u
 	}
 	
 	return (current_guid != *selected_guid);
+}
+
+bool ImGui::EntityComboBoxWithColor(const char* label, EntitySystemBase* entity_system, float* color, u32 channel_count, u64* guid, EntityTypeID entity_type_id) {
+	ImGuiScopeID(label);
+	auto& style = ImGui::GetStyle();
+	
+	bool result = ImGui::ColorEditN("##Color", color, channel_count);
+	ImGui::SameLine(0.f, style.ItemInnerSpacing.x);
+	
+	result |= ImGui::EntityComboBox(label, entity_system, guid, entity_type_id);
+	
+	return result;
 }
 
 bool ImGui::EntityDragDropSource(EntityTypeID entity_type_id, u64 guid) {
@@ -340,6 +371,15 @@ bool ImGui::TableEntityComboBox(const char* label, EntitySystemBase* entity_syst
 	bool result = false;
 	if (ImGui::BeginTableItem(label)) {
 		result |= ImGui::EntityComboBox("", entity_system, guid, entity_type_id);
+		ImGui::EndTableItem();
+	}
+	return result;
+}
+
+bool ImGui::TableEntityComboBoxWithColor(const char* label, EntitySystemBase* entity_system, float* color, u32 channel_count, u64* guid, EntityTypeID entity_type_id) {
+	bool result = false;
+	if (ImGui::BeginTableItem(label)) {
+		result |= ImGui::EntityComboBoxWithColor("", entity_system, color, channel_count, guid, entity_type_id);
 		ImGui::EndTableItem();
 	}
 	return result;

@@ -200,6 +200,16 @@ namespace Math {
 	s16x2 EncodeR16G16_SNORM(const float2& value);
 	float16x4 EncodeR16G16B16A16_FLOAT(const float4& value);
 	float16x2 EncodeR16G16_FLOAT(const float2& value);
+	float16 EncodeR16_FLOAT(float value);
+	float DecodeR16_FLOAT(float16 value);
+	
+	u32 EncodeR10G10B10(const float3& value);
+	float3 DecodeR10G10B10(u32 encoded);
+	
+	float3 DecodeSRGB(const float3& x);
+	float3 EncodeSRGB(const float3& x);
+	float4 DecodeSRGB(const float4& x);
+	float4 EncodeSRGB(const float4& x);
 	
 	float2 EncodeOctahedralMap(const float3& value);
 	float3 DecodeOctahedralMap(const float2& value);

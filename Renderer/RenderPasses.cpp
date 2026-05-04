@@ -89,7 +89,7 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	auto& camera         = camera_entity.camera[0];
 	
 	// Clamp render target size to a reasonable minimum. Aspect ratio for view to clip is still computed using unclamped values.
-	uint2 render_target_size = uint2((u32)Math::Max(renderer_world.window_size.x, 16.f), (u32)Math::Max(renderer_world.window_size.y, 16.f));
+	uint2 render_target_size = uint2((u32)Math::Max(renderer_world.window_size.x, 32.f), (u32)Math::Max(renderer_world.window_size.y, 32.f));
 	
 	BuildResourceTable(record_context, world_system, asset_system, &renderer_world, render_target_size);
 	

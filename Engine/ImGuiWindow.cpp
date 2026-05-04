@@ -118,6 +118,13 @@ void ImGuiReleaseContext(GraphicsContext* graphics_context) {
 	ImGui_ImplWin32_Shutdown();
 	ImGui::DestroyContext3D();
 	ImGui::DestroyContext();
+	
+	// ImGui heap is deallocated before the globals are deallocated. Set dummy allocator callbacks to make sure we don't crash.
+	ImGui::SetAllocatorFunctions(
+		[](u64   size,   void* heap) { return (void*)nullptr; },
+		[](void* memory, void* heap) { return;         },
+		nullptr
+	);
 }
 
 static void ImGuiMainWindowMenuBar(SystemWindow* window) {

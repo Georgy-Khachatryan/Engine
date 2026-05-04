@@ -53,5 +53,5 @@ bool EndUndoRedoCommand(UndoRedoSystem& system, EntitySystemBase& entity_system,
 void UndoRedoRemoveEntity(UndoRedoSystem& system, EntitySystemBase& entity_system, u64 entity_guid);
 void UndoRedoCreateEntity(UndoRedoSystem& system, EntitySystemBase& entity_system, u64 entity_guid);
 
-void ExecuteUndo(UndoRedoSystem& system, EntitySystemBase& entity_system);
-void ExecuteRedo(UndoRedoSystem& system, EntitySystemBase& entity_system);
+bool ExecuteUndo(UndoRedoSystem& system, EntitySystemBase& entity_system);
+bool ExecuteRedo(UndoRedoSystem& system, EntitySystemBase& entity_system);

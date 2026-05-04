@@ -14,6 +14,10 @@ struct MaterialTextureData {
 	TextureAssetGUID normal;
 	TextureAssetGUID roughness;
 	TextureAssetGUID metalness;
+	
+	u32     default_albedo    = 0x3FFFFFFF; // (1, 1, 1), R10G10B10_UNORM, linear rec709.
+	float16 default_roughness = 0x3800;     // 0.5,       R16_FLOAT,       linear.
+	float16 default_metalness = 0x0000;     // 0.0,       R16_FLOAT,       linear.
 };
 
 NOTES(Meta::HlslFile{ "MaterialData.hlsl"_sl })
@@ -22,6 +26,12 @@ struct GpuMaterialTextureData {
 	u32 normal    = u32_max;
 	u32 roughness = u32_max;
 	u32 metalness = u32_max;
+};
+
+NOTES(Meta::HlslFile{ "MaterialData.hlsl"_sl })
+enum struct MaterialTextureIndexFlags : u32 {
+	None       = 0,
+	UseDefault = 1u << 31,
 };
 
 NOTES()

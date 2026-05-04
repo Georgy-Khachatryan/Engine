@@ -62,7 +62,7 @@ float SmithVisibilityG1(float cos_theta, float alpha_square) {
 // Smith masking-shadowing function.
 float SmithVisibilityG(float cos_theta_o, float cos_theta_i, float alpha_square) {
 	return rcp(1.0 + SmithVisibilityLambda(cos_theta_o, alpha_square) + SmithVisibilityLambda(cos_theta_i, alpha_square)); // Height correlated.
-	// return G1(wo, alpha_square) * G1(wi, alpha_square); // Uncorrelated.
+	// return SmithVisibilityG1(cos_theta_o, alpha_square) * SmithVisibilityG1(cos_theta_i, alpha_square); // Uncorrelated.
 }
 
 compile_const u32 energy_compensation_lut_size = 32u;
@@ -213,7 +213,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 			
 			float  metalness    = properties.metalness;
 			float  roughness    = properties.roughness;
-			float3 metallic_f0  = properties.albedo;
+			float3 conductor_f0 = properties.albedo;
 			float  alpha        = Pow2(roughness);
 			float  alpha_square = Pow2(alpha);
 			float3 diffuse_albedo = properties.albedo;
@@ -236,7 +236,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 				float2 single_scattering_energy = SampleGgxSingleScatteringEnergyLUT(abs_cos_theta_o, roughness);
 				
 				if (metalness != 0.0 && (wi.z * abs_cos_theta_o) > 0.0) {
-					float3 specular_fresnel = FresnelConductor(metallic_f0, i_dot_h);
+					float3 specular_fresnel = FresnelConductor(conductor_f0, i_dot_h);
 					float3 energy_compensation = ComputeConductorBrdfEnergyCompensation(single_scattering_energy, specular_fresnel) * metalness;
 					
 					float3 specular_brdf = specular_fresnel * SmithVisibilityG(abs_cos_theta_o, wi.z, alpha_square) * TrowbridgeReitzNDF(wh.z, alpha_square) * rcp(4.0 * wi.z * abs_cos_theta_o);
@@ -272,7 +272,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 					float2 single_scattering_energy = SampleGgxSingleScatteringEnergyLUT(abs_cos_theta_o, roughness);
 					
 					if (mis_thresholds.x < metalness) {
-						float3 specular_fresnel = FresnelConductor(metallic_f0, i_dot_h);
+						float3 specular_fresnel = FresnelConductor(conductor_f0, i_dot_h);
 						float3 energy_compensation = ComputeConductorBrdfEnergyCompensation(single_scattering_energy, specular_fresnel);
 						
 						ray_desc.Direction = mul(tangent_to_world, wi);

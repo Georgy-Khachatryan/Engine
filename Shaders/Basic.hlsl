@@ -127,6 +127,9 @@ float4 DecodeR8G8B8A8_UNORM_SRGB(uint encoded) { return DecodeSRGB(DecodeR8G8B8A
 float4 DecodeR16G16B16A16_SNORM(s16x4 encoded) { return float4(encoded) * (1.0 / s16_max); }
 float2 DecodeR16G16_SNORM(s16x2 encoded) { return float2(encoded) * (1.0 / s16_max); }
 
+template<typename T = float>
+vector<T, 3> DecodeR10G10B10(uint encoded) { return vector<T, 3>(uint3(encoded >> 0, encoded >> 10, encoded >> 20) & 0x3FF) / (T)1023.0; }
+
 float2 NdcToScreenUv(float2 ndc) { return float2(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5); }
 float2 ScreenUvToNdc(float2 uv)  { return float2(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0); }
 

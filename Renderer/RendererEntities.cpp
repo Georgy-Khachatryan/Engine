@@ -45,9 +45,10 @@ void UpdateRendererEntityGpuComponents(StackAllocator* alloc, ThreadPool* thread
 		u32 dirty_entity_count = (u32)BitArrayCountSetBits(entity_array->dirty_mask);
 		if (dirty_entity_count == 0) continue;
 		
-		auto find_texture_index = [&](TextureAssetGUID texture_asset_guid)-> u32 {
+		auto find_texture_index = [&](TextureAssetGUID texture_asset_guid, u32 default_value)-> u32 {
 			auto* element = HashTableFind(asset_system.entity_guid_to_entity_id, texture_asset_guid.guid);
-			return element ? texture_streams.descriptor_allocation[element->value.entity_id.index].index : u32_max;
+			if (element) return texture_streams.descriptor_allocation[element->value.entity_id.index].index;
+			return default_value | (u32)MaterialTextureIndexFlags::UseDefault;
 		};
 		
 		auto streams = ExtractComponentStreams<MaterialAssetType>(entity_array);
@@ -56,10 +57,10 @@ void UpdateRendererEntityGpuComponents(StackAllocator* alloc, ThreadPool* thread
 			auto& texture_data = streams.texture_data[i];
 			
 			GpuMaterialTextureData gpu_data;
-			gpu_data.albedo    = find_texture_index(texture_data.albedo);
-			gpu_data.normal    = find_texture_index(texture_data.normal);
-			gpu_data.roughness = find_texture_index(texture_data.roughness);
-			gpu_data.metalness = find_texture_index(texture_data.metalness);
+			gpu_data.albedo    = find_texture_index(texture_data.albedo,    texture_data.default_albedo);
+			gpu_data.normal    = find_texture_index(texture_data.normal,    0);
+			gpu_data.roughness = find_texture_index(texture_data.roughness, texture_data.default_roughness);
+			gpu_data.metalness = find_texture_index(texture_data.metalness, texture_data.default_metalness);
 			AppendGpuTransferCommand(gpu_texture_data, i, gpu_data);
 		}
 		ArrayAppend(gpu_uploads, alloc, gpu_texture_data);

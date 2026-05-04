@@ -11,7 +11,22 @@
 #include <SDK/imgui/imgui.h>
 #include <SDK/imgui/imgui_internal.h>
 
-static void CameraControls(CameraEntityType camera_entity, bool scene_focused, bool scene_hovered, ImGuiMouseLock& mouse_lock, float2 window_pos, float2 window_size) {
+
+static float4 CameraEntityViewToClip(CameraEntityType camera_entity, float2 window_size) {
+	float vertical_fov_degrees = camera_entity.camera->vertical_fov_degrees;
+	float near_depth           = camera_entity.camera->near_depth;
+	
+	float4 view_to_clip_coef;
+	if (camera_entity.camera->transform_type == CameraTransformType::Perspective) {
+		view_to_clip_coef = Math::PerspectiveViewToClip(vertical_fov_degrees * Math::degrees_to_radians, window_size, near_depth);
+	} else {
+		view_to_clip_coef = Math::OrthographicViewToClip(window_size * vertical_fov_degrees * (1.f / window_size.x), 1024.f);
+	}
+	
+	return view_to_clip_coef;
+}
+
+static void CameraControls(CameraEntityType camera_entity, bool scene_focused, bool scene_hovered, ImGuiMouseLock& mouse_lock, float2 mouse_uv, float2 window_size) {
 	auto& view_to_world_quat   = camera_entity.rotation->rotation;
 	auto& world_space_position = camera_entity.position->position;
 	
@@ -32,27 +47,16 @@ static void CameraControls(CameraEntityType camera_entity, bool scene_focused, b
 	}
 	
 	if (scene_hovered && io.MouseWheel != 0.f && mouse_lock.locked_mouse_button == ImGuiMouseButton_COUNT) {
-		float vertical_fov_degrees = camera_entity.camera->vertical_fov_degrees;
-		float near_depth           = camera_entity.camera->near_depth;
-		
-		float4 view_to_clip_coef;
-		if (camera_entity.camera->transform_type == CameraTransformType::Perspective) {
-			view_to_clip_coef = Math::PerspectiveViewToClip(vertical_fov_degrees * Math::degrees_to_radians, window_size, near_depth);
-		} else {
-			view_to_clip_coef = Math::OrthographicViewToClip(window_size * vertical_fov_degrees * (1.f / window_size.x), 1024.f);
-		}
+		auto view_to_clip_coef = CameraEntityViewToClip(camera_entity, window_size);
 		auto clip_to_view_coef = Math::ViewToClipInverse(view_to_clip_coef);
 		
-		auto uv = (float2(ImGui::GetMousePos()) - window_pos) / window_size;
-		auto ray_info = Math::RayInfoFromScreenUv(uv, clip_to_view_coef);
-		
-		auto view_to_world = Math::QuatToRotationMatrix(view_to_world_quat);
+		auto view_space_ray = Math::RayInfoFromScreenUv(mouse_uv, clip_to_view_coef);
 		
 		float meters_per_click = 1.f;
 		float sensetivity_scale = (ImGui::IsKeyDown(ImGuiMod_Shift) ? 5.f : 1.f) * (ImGui::IsKeyDown(ImGuiMod_Alt) ? 0.2f : 1.f);
 		
 		float move_distance = io.MouseWheel * meters_per_click * sensetivity_scale;
-		world_space_position += (view_to_world * ray_info.direction) * move_distance;
+		world_space_position += (view_to_world_quat * view_space_ray.direction) * move_distance;
 	}
 	
 	if (mouse_lock.locked_mouse_button == ImGuiMouseButton_Left && (io.MouseDelta.x != 0.f || io.MouseDelta.y != 0.f)) {
@@ -62,9 +66,8 @@ static void CameraControls(CameraEntityType camera_entity, bool scene_focused, b
 		auto world_space_up = view_to_world_quat * view_space_up;
 		view_to_world_quat = Math::AxisAngleToQuat(float3(0.f, 0.f, world_space_up.z < 0.f ? -1.f : 1.f), -io.MouseDelta.x * radians_per_pixel) * view_to_world_quat;
 		
-		// Compute view_to_world after we applied rotation around Z axis.
-		auto view_to_world = Math::QuatToRotationMatrix(view_to_world_quat);
-		view_to_world_quat = Math::AxisAngleToQuat(view_to_world * float3(1.f, 0.f, 0.f), -io.MouseDelta.y * radians_per_pixel) * view_to_world_quat;
+		// Use view_to_world_quat after we applied rotation around Z axis to it.
+		view_to_world_quat = Math::AxisAngleToQuat(view_to_world_quat * float3(1.f, 0.f, 0.f), -io.MouseDelta.y * radians_per_pixel) * view_to_world_quat;
 		
 		view_to_world_quat = Math::Normalize(view_to_world_quat);
 	} else if (mouse_lock.locked_mouse_button == ImGuiMouseButton_Right && (io.MouseDelta.x != 0.f || io.MouseDelta.y != 0.f)) {
@@ -77,8 +80,8 @@ static void CameraControls(CameraEntityType camera_entity, bool scene_focused, b
 	}
 }
 
-static void GizmoControls(CameraEntityType camera_entity, WorldEntitySystem& world_system, UndoRedoSystem& undo_redo_system, HashTable<u64, void>& selected_entities_hash_table, ImGuiDrawList3D* draw_list_3d, float2 window_pos, float2 window_size, bool& use_local_space_gizmo) {
-	if (selected_entities_hash_table.count != 1) return;
+static bool GizmoControls(CameraEntityType camera_entity, WorldEntitySystem& world_system, UndoRedoSystem& undo_redo_system, HashTable<u64, void>& selected_entities_hash_table, ImGuiDrawList3D* draw_list_3d, float2 mouse_uv, float2 window_size, bool& use_local_space_gizmo) {
+	if (selected_entities_hash_table.count != 1) return false;
 	
 	ImGui::Begin("Scene");
 	defer{ ImGui::End(); };
@@ -86,32 +89,22 @@ static void GizmoControls(CameraEntityType camera_entity, WorldEntitySystem& wor
 	ImGui::SetWindowDrawList3D(draw_list_3d);
 	
 	u64 entity_guid = (*selected_entities_hash_table.begin()).key;
-	if (entity_guid == camera_entity.guid->guid) return;
+	if (entity_guid == camera_entity.guid->guid) return false;
 	
 	auto typed_entity_id = FindEntityByGUID(world_system, entity_guid);
 	auto* array = &world_system.entity_type_arrays[typed_entity_id.entity_type_id.index];
 	auto entity = ExtractComponentStreams<EntityEditorQuery>(array, typed_entity_id.entity_id);
-	if (entity.position == nullptr || entity.rotation == nullptr) return;
+	if (entity.position == nullptr || entity.rotation == nullptr) return false;
 	
-	{
-		float vertical_fov_degrees = camera_entity.camera->vertical_fov_degrees;
-		float near_depth           = camera_entity.camera->near_depth;
-		
-		float4 view_to_clip_coef;
-		if (camera_entity.camera->transform_type == CameraTransformType::Perspective) {
-			view_to_clip_coef = Math::PerspectiveViewToClip(vertical_fov_degrees * Math::degrees_to_radians, float2(window_size), near_depth);
-		} else {
-			view_to_clip_coef = Math::OrthographicViewToClip(float2(window_size) * vertical_fov_degrees * (1.f / window_size.x), 1024.f);
-		}
-		auto clip_to_view_coef = Math::ViewToClipInverse(view_to_clip_coef);
-		
-		auto view_space_ray  = Math::RayInfoFromScreenUv((float2(ImGui::GetMousePos()) - float2(window_pos)) / float2(window_size), clip_to_view_coef);
-		auto world_space_ray = Math::TransformRayViewToWorld(view_space_ray, camera_entity.position->position, camera_entity.rotation->rotation);
-		
-		draw_list_3d->mouse_ray = world_space_ray;
-		
-		ImGui::PushScalingOrigin3D(entity.position->position, camera_entity.position->position, view_to_clip_coef, window_size.x, 96.f);
-	}
+	auto view_to_clip_coef = CameraEntityViewToClip(camera_entity, window_size);
+	auto clip_to_view_coef = Math::ViewToClipInverse(view_to_clip_coef);
+	
+	auto view_space_ray  = Math::RayInfoFromScreenUv(mouse_uv, clip_to_view_coef);
+	auto world_space_ray = Math::TransformRayViewToWorld(view_space_ray, camera_entity.position->position, camera_entity.rotation->rotation);
+	
+	draw_list_3d->mouse_ray = world_space_ray;
+	
+	ImGui::PushScalingOrigin3D(entity.position->position, camera_entity.position->position, view_to_clip_coef, window_size.x, 96.f);
 	defer{ ImGui::PopScalingOrigin3D(); };
 	
 	
@@ -172,6 +165,8 @@ static void GizmoControls(CameraEntityType camera_entity, WorldEntitySystem& wor
 	if (is_dirty) {
 		BitArraySetBit(array->dirty_mask, typed_entity_id.entity_id.index);
 	}
+	
+	return is_dirty;
 }
 
 static void DrawDebugFrustumCullingBounds(ImGuiDrawList3D* draw_list_3d, CameraEntityType camera_entity, WorldEntityType world_entity) {
@@ -372,7 +367,7 @@ static void LevelEditorSceneView(StackAllocator* alloc, WorldEntitySystem& world
 }
 
 
-static void LevelEditorEntityView(StackAllocator* alloc, WorldEntitySystem& world_system, AssetEntitySystem& asset_system, UndoRedoSystem& undo_redo_system, u64 world_entity_guid) {
+static bool LevelEditorEntityView(StackAllocator* alloc, WorldEntitySystem& world_system, AssetEntitySystem& asset_system, UndoRedoSystem& undo_redo_system, u64 world_entity_guid) {
 	auto world_entity = QueryEntityByGUID<WorldEntityType>(world_system, world_entity_guid);
 	auto& selected_entities_hash_table = world_entity.selection_state->selected_entities_hash_table;
 	
@@ -381,7 +376,7 @@ static void LevelEditorEntityView(StackAllocator* alloc, WorldEntitySystem& worl
 	
 	auto table_flags = ImGuiTableFlags_NoSavedSettings | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_PadOuterX | ImGuiTableFlags_ScrollY;
 	
-	if (ImGui::BeginTable("Components", 2, table_flags) == false) return;
+	if (ImGui::BeginTable("Components", 2, table_flags) == false) return false;
 	defer{ ImGui::EndTable(); };
 	
 	ImGui::TableSetupScrollFreeze(0, 1); // Freeze header row.
@@ -389,7 +384,7 @@ static void LevelEditorEntityView(StackAllocator* alloc, WorldEntitySystem& worl
 	ImGui::TableSetupColumn("Data", ImGuiTableColumnFlags_WidthStretch, 2.f);
 	ImGui::TableHeadersRow();
 	
-	if (selected_entities_hash_table.count == 0) return;
+	if (selected_entities_hash_table.count == 0) return false;
 	
 	
 	// Items should span full width of the column.
@@ -436,7 +431,7 @@ static void LevelEditorEntityView(StackAllocator* alloc, WorldEntitySystem& worl
 	if (entity.scale) {
 		const char* label = "S";
 		const float default_values = 1.f;
-		ImGui::TableDragFloatWithReset("Scale", &entity.scale->scale, 1, 0.1f, 0.f, 8.f, "%.3f", 0, &label, &default_values);
+		ImGui::TableDragFloatWithReset("Scale", &entity.scale->scale, 1, 0.01f, 0.f, 8.f, "%.3f", 0, &label, &default_values);
 	}
 	
 	if (entity.mesh_asset) {
@@ -459,6 +454,8 @@ static void LevelEditorEntityView(StackAllocator* alloc, WorldEntitySystem& worl
 	if (is_dirty) {
 		BitArraySetBit(array->dirty_mask, typed_entity_id.entity_id.index);
 	}
+	
+	return is_dirty;
 }
 
 static void DrawUndoRedoCommandRow(UndoRedoCommand& command) {
@@ -590,13 +587,13 @@ static void AssetBrowser(StackAllocator* alloc, AssetEntitySystem& asset_system,
 	ApplyEntitySelectionRequests(ms_io, typed_entity_ids, asset_system, selected_assets_hash_table);
 }
 
-static void AssetBrowserEntityView(StackAllocator* alloc, AssetEntitySystem& asset_system, HashTable<u64, void>& selected_assets_hash_table) {
+static bool AssetBrowserEntityView(StackAllocator* alloc, AssetEntitySystem& asset_system, HashTable<u64, void>& selected_assets_hash_table) {
 	ImGui::Begin("Asset Editor", nullptr, ImGuiWindowFlags_NoFocusOnAppearing);
 	defer{ ImGui::End(); };
 	
 	auto table_flags = ImGuiTableFlags_NoSavedSettings | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_PadOuterX | ImGuiTableFlags_ScrollY;
 	
-	if (ImGui::BeginTable("Components", 2, table_flags) == false) return;
+	if (ImGui::BeginTable("Components", 2, table_flags) == false) return false;
 	defer{ ImGui::EndTable(); };
 	
 	ImGui::TableSetupScrollFreeze(0, 1); // Freeze header row.
@@ -604,7 +601,7 @@ static void AssetBrowserEntityView(StackAllocator* alloc, AssetEntitySystem& ass
 	ImGui::TableSetupColumn("Data", ImGuiTableColumnFlags_WidthStretch, 2.f);
 	ImGui::TableHeadersRow();
 	
-	if (selected_assets_hash_table.count == 0) return;
+	if (selected_assets_hash_table.count == 0) return false;
 	
 	
 	// Items should span full width of the column.
@@ -621,20 +618,21 @@ static void AssetBrowserEntityView(StackAllocator* alloc, AssetEntitySystem& ass
 	auto* array = &asset_system.entity_type_arrays[typed_entity_id.entity_type_id.index];
 	auto entity = ExtractComponentStreams<AssetEditorQuery>(array, typed_entity_id.entity_id);
 	
+	bool is_dirty = false; // TODO: Add undo/redo support for asset editing.
 	
 	if (entity.guid) {
 		auto guid_string = StringFormat(alloc, "0x%"_sl, (void*)entity.guid->guid);
-		ImGui::TableInputText("GUID", guid_string, nullptr);
+		is_dirty |= ImGui::TableInputText("GUID", guid_string, nullptr);
 	}
 	
 	if (entity.name) {
 		auto& name = entity.name->name;
-		ImGui::TableInputText("Name", name, &asset_system.heap);
+		is_dirty |= ImGui::TableInputText("Name", name, &asset_system.heap);
 	}
 	
 	
 	if (entity.mesh_source_data) {
-		ImGui::TableInputText("Mesh Source Data", entity.mesh_source_data->filepath, &asset_system.heap);
+		is_dirty |= ImGui::TableInputText("Mesh Source Data", entity.mesh_source_data->filepath, &asset_system.heap);
 	}
 	
 	if (entity.mesh_runtime_data_layout) {
@@ -685,7 +683,7 @@ static void AssetBrowserEntityView(StackAllocator* alloc, AssetEntitySystem& ass
 		};
 		
 		if (ImGui::BeginTableItem("Encoding Format")) {
-			ImGui::Combo("", (s32*)&entity.texture_source_data->target_encoding, texture_asset_target_encoding_names, (s32)TextureAssetTargetEncoding::Count);
+			is_dirty |= ImGui::Combo("", (s32*)&entity.texture_source_data->target_encoding, texture_asset_target_encoding_names, (s32)TextureAssetTargetEncoding::Count);
 			ImGui::EndTableItem();
 		}
 	}
@@ -743,16 +741,38 @@ static void AssetBrowserEntityView(StackAllocator* alloc, AssetEntitySystem& ass
 	
 	if (entity.material_texture_data) {
 		auto* texture_data = entity.material_texture_data;
-		ImGui::TableEntityComboBox("Albedo", &asset_system, &texture_data->albedo.guid, ECS::GetEntityTypeID<TextureAssetType>::id);
-		ImGui::TableEntityComboBox("Normal", &asset_system, &texture_data->normal.guid, ECS::GetEntityTypeID<TextureAssetType>::id);
-		ImGui::TableEntityComboBox("Roughness", &asset_system, &texture_data->roughness.guid, ECS::GetEntityTypeID<TextureAssetType>::id);
-		ImGui::TableEntityComboBox("Metalness", &asset_system, &texture_data->metalness.guid, ECS::GetEntityTypeID<TextureAssetType>::id);
+		
+		float3 albedo = Math::EncodeSRGB(Math::DecodeR10G10B10(texture_data->default_albedo)); // Edit in SRGB, store in linear.
+		if (ImGui::TableEntityComboBoxWithColor("Albedo", &asset_system, &albedo.x, 3, &texture_data->albedo.guid, ECS::GetEntityTypeID<TextureAssetType>::id)) {
+			texture_data->default_albedo = Math::EncodeR10G10B10(Math::DecodeSRGB(albedo));
+			is_dirty |= true;
+		}
+		
+		is_dirty |= ImGui::TableEntityComboBox("Normal", &asset_system, &texture_data->normal.guid, ECS::GetEntityTypeID<TextureAssetType>::id);
+		
+		float roughness = Math::DecodeR16_FLOAT(texture_data->default_roughness);
+		if (ImGui::TableEntityComboBoxWithColor("Roughness", &asset_system, &roughness, 1, &texture_data->roughness.guid, ECS::GetEntityTypeID<TextureAssetType>::id)) {
+			texture_data->default_roughness = Math::EncodeR16_FLOAT(roughness);
+			is_dirty |= true;
+		}
+		
+		float metalness = Math::DecodeR16_FLOAT(texture_data->default_metalness);
+		if (ImGui::TableEntityComboBoxWithColor("Metalness", &asset_system, &metalness, 1, &texture_data->metalness.guid, ECS::GetEntityTypeID<TextureAssetType>::id)) {
+			texture_data->default_metalness = Math::EncodeR16_FLOAT(metalness);
+			is_dirty |= true;
+		}
 	}
 	
 	
 	if (entity.material_asset) {
-		ImGui::TableEntityComboBox("Material Asset", &asset_system, &entity.material_asset->guid, ECS::GetEntityTypeID<MaterialAssetType>::id);
+		is_dirty |= ImGui::TableEntityComboBox("Material Asset", &asset_system, &entity.material_asset->guid, ECS::GetEntityTypeID<MaterialAssetType>::id);
 	}
+	
+	if (is_dirty) {
+		BitArraySetBit(array->dirty_mask, typed_entity_id.entity_id.index);
+	}
+	
+	return is_dirty;
 }
 
 compile_const auto entities_save_load_path = "./Assets/Scene.csb"_sl;
@@ -815,8 +835,10 @@ void ReleaseLevelEditorContext(LevelEditorContext* editor_context) {
 void LevelEditorUpdate(LevelEditorContext* editor_context, StackAllocator* alloc, RecordContext* record_context, WorldEntitySystem& world_system, AssetEntitySystem& asset_system, u64 world_entity_guid) {
 	ProfilerScope("LevelEditorUpdate");
 	
+	bool reset_reference_path_tracer = false;
+	
 	AssetBrowser(alloc, asset_system, editor_context->selected_assets_hash_table);
-	AssetBrowserEntityView(alloc, asset_system, editor_context->selected_assets_hash_table);
+	reset_reference_path_tracer |= AssetBrowserEntityView(alloc, asset_system, editor_context->selected_assets_hash_table);
 	
 	auto& undo_redo_system = editor_context->undo_redo_system;
 	LevelEditorUndoRedoHistoryView(undo_redo_system);
@@ -850,10 +872,12 @@ void LevelEditorUpdate(LevelEditorContext* editor_context, StackAllocator* alloc
 	
 	
 	if (ImGui::Shortcut(ImGuiKey_Delete, ImGuiInputFlags_RouteGlobal)) {
+		reset_reference_path_tracer |= (selected_entities_hash_table.count != 0);
 		RemoveSelectedEntities(world_system, undo_redo_system, selected_entities_hash_table, world_entity_guid, world_entity.camera_entity->guid);
 	}
 	
 	if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_D, ImGuiInputFlags_RouteGlobal)) {
+		reset_reference_path_tracer |= (selected_entities_hash_table.count != 0);
 		DuplicateSelectedEntities(alloc, world_system, undo_redo_system, selected_entities_hash_table, world_entity_guid);
 	}
 	
@@ -864,11 +888,11 @@ void LevelEditorUpdate(LevelEditorContext* editor_context, StackAllocator* alloc
 	}
 	
 	if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_Z, ImGuiInputFlags_RouteGlobal | ImGuiInputFlags_Repeat)) {
-		ExecuteUndo(undo_redo_system, world_system);
+		reset_reference_path_tracer |= ExecuteUndo(undo_redo_system, world_system);
 	}
 	
 	if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_Y, ImGuiInputFlags_RouteGlobal | ImGuiInputFlags_Repeat)) {
-		ExecuteRedo(undo_redo_system, world_system);
+		reset_reference_path_tracer |= ExecuteRedo(undo_redo_system, world_system);
 	}
 	
 	
@@ -894,14 +918,12 @@ void LevelEditorUpdate(LevelEditorContext* editor_context, StackAllocator* alloc
 	}
 	
 	ImGui::SliderFloat("Meshlet Target Error Pixels", &world_entity.renderer_world->meshlet_target_error_pixels, 1.f, 128.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
-	bool reset_reference_path_tracer = ImGui::SliderFloat("Sun Elevation", &world_entity.renderer_world->sun_elevation_degrees, -10.f, +190.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+	reset_reference_path_tracer |= ImGui::SliderFloat("Sun Elevation", &world_entity.renderer_world->sun_elevation_degrees, -10.f, +190.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
 	ImGui::Checkbox("Enable Anti Aliasing", &world_entity.renderer_world->enable_anti_aliasing);
 	ImGui::Checkbox("Freeze Culling State", &world_entity.renderer_world->debug_freeze_culling_camera.enabled);
 	ImGui::SliderFloat("Reference Path Tracer Percent", &world_entity.renderer_world->reference_path_tracer_percent, 0.f, 1.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
 	ImGui::SetNextItemShortcut(ImGuiKey_R, ImGuiInputFlags_RouteGlobal | ImGuiInputFlags_RouteOverFocused | ImGuiInputFlags_Repeat);
-	if (ImGui::Button("Reset Reference Path Tracer") || reset_reference_path_tracer) {
-		world_entity.renderer_world->reset_reference_path_tracer = true;
-	}
+	reset_reference_path_tracer |= ImGui::Button("Reset Reference Path Tracer");
 	ImGui::Text("Window Size: %ux%u", (u32)window_size.x, (u32)window_size.y);
 	
 	ImGui::SetNextItemWidth(-FLT_MIN);
@@ -937,14 +959,15 @@ void LevelEditorUpdate(LevelEditorContext* editor_context, StackAllocator* alloc
 	LevelEditorSceneView(alloc, world_system, undo_redo_system, world_entity_guid);
 	ImGui::End();
 	
-	LevelEditorEntityView(alloc, world_system, asset_system, undo_redo_system, world_entity_guid);
+	reset_reference_path_tracer |= LevelEditorEntityView(alloc, world_system, asset_system, undo_redo_system, world_entity_guid);
 	
 	ImGuiDrawList3D draw_list_3d;
 	draw_list_3d.alloc = alloc;
 	
+	auto mouse_uv = float2((ImGui::GetMousePos() - window_pos) / window_size);
 	auto camera_entity = QueryEntityByGUID<CameraEntityType>(world_system, world_entity.camera_entity->guid);
-	CameraControls(camera_entity, scene_focused, scene_hovered, mouse_lock, float2(window_pos), float2(window_size));
-	GizmoControls(camera_entity, world_system, undo_redo_system, selected_entities_hash_table, &draw_list_3d, float2(window_pos), float2(window_size), editor_context->use_local_space_gizmo);
+	CameraControls(camera_entity, scene_focused, scene_hovered, mouse_lock, mouse_uv, float2(window_size));
+	reset_reference_path_tracer |= GizmoControls(camera_entity, world_system, undo_redo_system, selected_entities_hash_table, &draw_list_3d, mouse_uv, float2(window_size), editor_context->use_local_space_gizmo);
 	
 	if (world_entity.renderer_world->debug_freeze_culling_camera.enabled) {
 		DrawDebugFrustumCullingBounds(&draw_list_3d, camera_entity, world_entity);
@@ -953,4 +976,5 @@ void LevelEditorUpdate(LevelEditorContext* editor_context, StackAllocator* alloc
 	auto renderer_world = world_entity.renderer_world;
 	renderer_world->window_size = float2(window_size);
 	renderer_world->debug_mesh_instance_arrays = draw_list_3d.Flush();
+	renderer_world->reset_reference_path_tracer |= reset_reference_path_tracer;
 }

@@ -19,7 +19,7 @@ struct TexcoordStream {
 
 template<typename T>
 T SampleMaterialTexture(u32 texture_index, TexcoordStream texcoord_stream, T default_value) {
-	if (texture_index == u32_max) return default_value;
+	if (texture_index & MaterialTextureIndexFlags::UseDefault) return default_value;
 	
 #if defined(PIXEL_SHADER)
 	Texture2D<T> texture = ResourceDescriptorHeap[texture_index];
@@ -35,10 +35,10 @@ MaterialProperties SampleMaterial(u32 material_index, TexcoordStream texcoord_st
 	
 	if (material_index != u32_max) {
 		GpuMaterialTextureData material = material_texture_data[material_index];
-		result.albedo = SampleMaterialTexture(material.albedo, texcoord_stream, float16x3(0.5, 0.5, 0.5));
+		result.albedo = SampleMaterialTexture(material.albedo, texcoord_stream, DecodeR10G10B10<float16>(material.albedo));
 		result.normal = DecodeHemiOctahedralMap01(SampleMaterialTexture(material.normal, texcoord_stream, float16x2(0.5, 0.5)));
-		result.roughness = SampleMaterialTexture(material.roughness, texcoord_stream, 0.5h);
-		result.metalness = SampleMaterialTexture(material.metalness, texcoord_stream, 0.0h);
+		result.roughness = SampleMaterialTexture(material.roughness, texcoord_stream, asfloat16((u16)material.roughness));
+		result.metalness = SampleMaterialTexture(material.metalness, texcoord_stream, asfloat16((u16)material.metalness));
 	} else {
 		result.albedo = float16x3(0.5, 0.5, 0.5);
 		result.normal = float16x3(0.0, 0.0, 1.0);

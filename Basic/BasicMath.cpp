@@ -302,6 +302,38 @@ float16x2 Math::EncodeR16G16_FLOAT(const float2& value) {
 	return float16x2(_mm_extract_epi16(result, 0), _mm_extract_epi16(result, 1));
 }
 
+float16 Math::EncodeR16_FLOAT(float value) {
+	auto result = _mm_cvtps_ph(_mm_setr_ps(value, 0.f, 0.f, 0.f), 0);
+	return _mm_extract_epi16(result, 0);
+}
+
+float Math::DecodeR16_FLOAT(float16 value) {
+	auto result = _mm_cvtph_ps(_mm_setr_epi32(value, 0, 0, 0));
+	return _mm_cvtss_f32(result);
+}
+
+u32 Math::EncodeR10G10B10(const float3& value) {
+	auto scaled_value_float32 = _mm_mul_ps(_mm_setr_ps(value.x, value.y, value.z, 0.f), _mm_set_ps1(1023.f));
+	auto scaled_value_u32 = _mm_cvtps_epi32(scaled_value_float32);
+	return (_mm_extract_epi32(scaled_value_u32, 0) << 0) | (_mm_extract_epi32(scaled_value_u32, 1) << 10) | (_mm_extract_epi32(scaled_value_u32, 2) << 20);
+}
+
+float3 Math::DecodeR10G10B10(u32 encoded) {
+	auto scaled_value_u32 = _mm_and_si128(_mm_setr_epi32(encoded >> 0, encoded >> 10, encoded >> 20, 0), _mm_setr_epi32(0x3FF, 0x3FF, 0x3FF, 0));
+	auto scaled_value_float32 = _mm_mul_ps(_mm_cvtepi32_ps(scaled_value_u32), _mm_set_ps1(1.f / 1023.f));
+	alignas(16) float4 result;
+	_mm_store_ps(&result.x, scaled_value_float32);
+	return result.xyz;
+}
+
+always_inline static float EncodeSrgbChannel(float x) { return (x < 0.04045f ? (x / 12.92f) : powf((x + 0.055f) / 1.055f, 2.4f)); }
+always_inline static float DecodeSrgbChannel(float x) { return (x < 0.0031308f ? 12.92f * x : (1.055f * powf(x, 1.f / 2.4f) - 0.055f)); }
+
+float3 Math::DecodeSRGB(const float3& x) { return float3(DecodeSrgbChannel(x.x), DecodeSrgbChannel(x.y), DecodeSrgbChannel(x.z)); }
+float3 Math::EncodeSRGB(const float3& x) { return float3(EncodeSrgbChannel(x.x), EncodeSrgbChannel(x.y), EncodeSrgbChannel(x.z)); }
+float4 Math::DecodeSRGB(const float4& x) { return float4(DecodeSrgbChannel(x.x), DecodeSrgbChannel(x.y), DecodeSrgbChannel(x.z), x.w); }
+float4 Math::EncodeSRGB(const float4& x) { return float4(EncodeSrgbChannel(x.x), EncodeSrgbChannel(x.y), EncodeSrgbChannel(x.z), x.w); }
+
 
 // https://knarkowicz.wordpress.com/2014/04/16/octahedron-normal-vector-encoding/
 always_inline static float2 OctahedralWrap(const float2& value) {

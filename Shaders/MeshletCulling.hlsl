@@ -473,7 +473,7 @@ void AppendOccludedMeshlet(uint mesh_entity_index, uint meshlet_culling_data_off
 
 #if defined(MAIN_PASS) || defined(DISOCCLUSION_PASS)
 void WriteTextureStreamingFeedback(u32 texture_index, float target_mip_level) {
-	if (texture_index != u32_max) {
+	if ((texture_index & MaterialTextureIndexFlags::UseDefault) == MaterialTextureIndexFlags::None) {
 		InterlockedMin(texture_streaming_feedback[texture_index], asuint(target_mip_level));
 	}
 }

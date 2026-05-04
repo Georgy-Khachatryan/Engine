@@ -169,8 +169,8 @@ static UndoRedoCommandType ReverseUndoRedoCommandType(UndoRedoCommandType comman
 	}
 }
 
-static void ExecuteUndoRedoGroup(UndoRedoSystem& system, EntitySystemBase& entity_system, UndoRedoBuffer& src_buffer, UndoRedoBuffer& dst_buffer) {
-	if (src_buffer.commands.count == 0) return;
+static bool ExecuteUndoRedoGroup(UndoRedoSystem& system, EntitySystemBase& entity_system, UndoRedoBuffer& src_buffer, UndoRedoBuffer& dst_buffer) {
+	if (src_buffer.commands.count == 0) return false;
 	
 	u64 group_index = ArrayLastElement(src_buffer.commands).group_index;
 	do {
@@ -180,14 +180,16 @@ static void ExecuteUndoRedoGroup(UndoRedoSystem& system, EntitySystemBase& entit
 		ArrayAppend(dst_buffer.commands, system.heap, dst_command);
 		ExecuteUndoRedoCommand(src_buffer, entity_system, src_command);
 	} while (group_index && src_buffer.commands.count && ArrayLastElement(src_buffer.commands).group_index == group_index);
+	
+	return true;
 }
 
-void ExecuteUndo(UndoRedoSystem& system, EntitySystemBase& entity_system) {
-	if (system.cross_frame_command.entity_guid != 0) return; // Can't modify the undo_buffer while we have a cross_frame_command on it.
-	ExecuteUndoRedoGroup(system, entity_system, system.undo_buffer, system.redo_buffer);
+bool ExecuteUndo(UndoRedoSystem& system, EntitySystemBase& entity_system) {
+	if (system.cross_frame_command.entity_guid != 0) return false; // Can't modify the undo_buffer while we have a cross_frame_command on it.
+	return ExecuteUndoRedoGroup(system, entity_system, system.undo_buffer, system.redo_buffer);
 }
 
-void ExecuteRedo(UndoRedoSystem& system, EntitySystemBase& entity_system) {
-	if (system.cross_frame_command.entity_guid != 0) return; // Can't modify the undo_buffer while we have a cross_frame_command on it.
-	ExecuteUndoRedoGroup(system, entity_system, system.redo_buffer, system.undo_buffer);
+bool ExecuteRedo(UndoRedoSystem& system, EntitySystemBase& entity_system) {
+	if (system.cross_frame_command.entity_guid != 0) return false; // Can't modify the undo_buffer while we have a cross_frame_command on it.
+	return ExecuteUndoRedoGroup(system, entity_system, system.redo_buffer, system.undo_buffer);
 }
