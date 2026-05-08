@@ -256,8 +256,11 @@ bool ImGui::EntityComboBoxWithColor(const char* label, EntitySystemBase* entity_
 	ImGuiScopeID(label);
 	auto& style = ImGui::GetStyle();
 	
-	bool result = ImGui::ColorEditN("##Color", color, channel_count);
-	ImGui::SameLine(0.f, style.ItemInnerSpacing.x);
+	bool result = false;
+	if (*guid == 0) {
+		result |= ImGui::ColorEditN("##Color", color, channel_count);
+		ImGui::SameLine(0.f, style.ItemInnerSpacing.x);
+	}
 	
 	result |= ImGui::EntityComboBox(label, entity_system, guid, entity_type_id);
 	
@@ -312,13 +315,31 @@ bool ImGui::ImageButtonEx(const char* str_id, ImTextureRef tex_ref, const ImVec2
 	return pressed;
 }
 
+void ImGui::TableLabelText(const char* label) {
+	auto* window = ImGui::GetCurrentWindow();
+	if (window->SkipItems) return;
+	
+	auto& style = ImGui::GetStyle();
+	float width = ImGui::GetContentRegionAvail().x;
+	
+	auto label_size = ImGui::CalcTextSize(label);
+	ImRect bb(window->DC.CursorPos, window->DC.CursorPos + ImVec2(width, label_size.y + style.FramePadding.y * 2.f));
+	
+	ImGui::ItemSize(bb, style.FramePadding.y);
+	if (!ImGui::ItemAdd(bb, 0)) return;
+	
+	auto* draw_list = ImGui::GetWindowDrawList();
+	
+	// Right justify if there is space, otherwise left justify and add ellipsis on the right side.
+	ImGui::RenderTextEllipsis(draw_list, ImVec2(bb.Min.x + ImMax(width - label_size.x, 0.f), bb.Min.y + style.FramePadding.y), bb.Max, bb.Max.x, label, nullptr, &label_size);
+}
+
 bool ImGui::BeginTableItem(const char* label) {
 	ImGui::TableNextRow();
 	ImGui::PushID(label);
 	
 	if (ImGui::TableSetColumnIndex(0)) {
-		ImGui::AlignTextToFramePadding();
-		ImGui::TextUnformatted(label);
+		ImGui::TableLabelText(label);
 	}
 	
 	bool result = ImGui::TableSetColumnIndex(1);

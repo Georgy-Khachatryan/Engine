@@ -93,6 +93,32 @@ void UpdateEntityGpuComponents(StackAllocator* alloc, RecordContext* record_cont
 		}
 	}
 	
+	for (auto* entity_array : QueryEntities<LightEntityType>(alloc, world_system)) {
+		ProfilerScope("LightEntityGpuComponentUpdate");
+		auto streams = ExtractComponentStreams<LightEntityType>(entity_array);
+		
+		u64 dirty_entity_count = BitArrayCountSetBits(entity_array->dirty_mask);
+		if (dirty_entity_count != 0) {
+			auto gpu_light_entity_data = AllocateGpuComponentUploadBuffer(record_context, dirty_entity_count, streams.gpu_light_entity_data);
+			for (u64 i : BitArrayIt(entity_array->dirty_mask)) {
+				auto& light_component = streams.light[i];
+				
+				auto light_to_world_rotation = QuatToRotationMatrix(streams.rotation[i].rotation);
+				auto& position = streams.position[i].position;
+				
+				GpuLightEntityData light_entity;
+				light_entity.light_to_world.r0 = float4(light_to_world_rotation.r0, position.x);
+				light_entity.light_to_world.r1 = float4(light_to_world_rotation.r1, position.y);
+				light_entity.light_to_world.r2 = float4(light_to_world_rotation.r2, position.z);
+				light_entity.color      = Math::DecodeSRGB(light_component.color);
+				light_entity.irradiance = light_component.irradiance;
+				
+				AppendGpuTransferCommand(gpu_light_entity_data, i, light_entity);
+			}
+			ArrayAppend(gpu_uploads, alloc, gpu_light_entity_data);
+		}
+	}
+	
 	UpdateEntityAliveMasks(alloc, record_context, world_system, gpu_uploads);
 	UpdateEntityAliveMasks(alloc, record_context, asset_system, gpu_uploads);
 }

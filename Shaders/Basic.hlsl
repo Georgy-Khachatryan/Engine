@@ -161,7 +161,7 @@ float2 EncodeHemiOctahedralMap(float3 value) {
 template<typename T>
 vector<T, 3> DecodeHemiOctahedralMap(vector<T, 2> value) {
 	vector<T, 2> t = vector<T, 2>(value.x + value.y, value.x - value.y);
-	return normalize(vector<T, 3>(t, 2.0 - abs(t.x) - abs(t.y)));
+	return normalize(vector<T, 3>(t, (T)2.0 - abs(t.x) - abs(t.y)));
 }
 
 template<typename T>

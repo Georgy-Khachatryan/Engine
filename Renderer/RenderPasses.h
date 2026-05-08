@@ -13,13 +13,14 @@ enum struct VirtualResourceID : u32 {
 	None = 0,
 	
 	// GPU components:
+	GpuLightEntityData,
+	GpuMeshAssetData,
+	GpuMeshEntityData,
+	MaterialAssetTextureData,
+	MeshAssetAliveMask,
 	MeshEntityAliveMask,
 	MeshEntityGpuTransform,
 	MeshEntityPrevGpuTransform,
-	GpuMeshEntityData,
-	GpuMeshAssetData,
-	MeshAssetAliveMask,
-	MaterialAssetTextureData,
 	
 	// Streaming buffers:
 	MeshAssetBuffer,
@@ -87,7 +88,9 @@ struct AtmosphereParameters {
 	
 	float bottom_radius = 6360.f; // Radius of the planet (center to ground), km.
 	float top_radius    = 6460.f; // Maximum considered atmosphere height (center to atmosphere top), km.
-	uint2 padding_0 = 0;
+	
+	float sun_disk_cos_outer_angle = 0.9999572f; // cos(0.53dg)
+	float sun_disk_cos_inner_angle = 0.9999649f; // cos(0.48dg)
 	
 	// Rayleigh scattering exponential distribution scale in the atmosphere.
 	float  rayleigh_density_exp_scale = -1.f / 8.f;
@@ -108,10 +111,8 @@ struct AtmosphereParameters {
 	float3 world_space_sun_direction = float3(1.f, 0.f, 0.f);
 	float sun_irradiance = 30.f; // W/m^2
 	
-	float sun_disk_cos_outer_angle = 0.9999572f; // cos(0.53dg)
-	float sun_disk_cos_inner_angle = 0.9999649f; // cos(0.48dg)
-	float sun_disk_radiance        = 30.f; // W/(m^2*sr)
-	u32 padding_1 = 0;
+	float3 sun_color = 1.f;
+	float sun_disk_radiance = 30.f; // W/(m^2*sr)
 };
 
 
@@ -889,6 +890,7 @@ struct ReferencePathTracerRenderPass {
 		HLSL::Texture2D<float2>                     ggx_single_scattering_energy_lut = VirtualResourceID::GgxSingleScatteringEnergyLUT;
 		HLSL::Texture2D<float3>                     sky_panorama_lut      = VirtualResourceID::SkyPanoramaLut;
 		HLSL::Texture2D<float3>                     transmittance_lut     = VirtualResourceID::TransmittanceLut;
+		HLSL::RegularBuffer<GpuLightEntityData>     light_entity_data     = VirtualResourceID::GpuLightEntityData;
 		HLSL::RegularBuffer<GpuTransform>           mesh_transforms       = VirtualResourceID::MeshEntityGpuTransform;
 		HLSL::RegularBuffer<GpuMeshAssetData>       mesh_asset_data       = VirtualResourceID::GpuMeshAssetData;
 		HLSL::RegularBuffer<GpuMeshEntityData>      mesh_entity_data      = VirtualResourceID::GpuMeshEntityData;

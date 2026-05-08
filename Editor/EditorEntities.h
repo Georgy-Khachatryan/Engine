@@ -15,6 +15,8 @@ struct EntityEditorQuery {
 	MaterialAssetGUID* material_asset = nullptr;
 	
 	CameraComponent* camera = nullptr;
+	
+	LightComponent* light = nullptr;
 };
 
 NOTES(Meta::ComponentQuery{})

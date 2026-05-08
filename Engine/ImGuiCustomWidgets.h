@@ -42,6 +42,7 @@ namespace ImGui {
 	bool BeginTableItem(const char* label);
 	void EndTableItem();
 	
+	void TableLabelText(const char* label); // Right justified, clips with ellipsis on the right side.
 	bool TableInputText(const char* label, String& string, HeapAllocator* heap, ImGuiInputTextFlags flags = 0, ImGuiInputTextCallback callback = nullptr, void* user_data = nullptr);
 	bool TableDragFloatWithReset(const char* label, float* data, u32 component_count, float v_speed = 1.f, float v_min = 0.f, float v_max = 0.f, const char* format = "%.3f", ImGuiSliderFlags flags = 0, const char* const* component_labels = nullptr, const float* default_values = nullptr);
 	bool TableSliderFloat(const char* label, float* v, float v_min, float v_max, const char* format = "%.3f", ImGuiSliderFlags flags = 0);

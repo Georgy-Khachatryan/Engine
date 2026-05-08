@@ -90,6 +90,8 @@ namespace Math {
 		Quatf& operator*=(float other) { x *= other; y *= other; z *= other; w *= other; return *this; }
 		Quatf& operator/=(float other) { x /= other; y /= other; z /= other; w /= other; return *this; }
 		
+		Quatf operator-() const { return Quatf(-x, -y, -z, -w); }
+		
 		float& operator[](u32 index) { return (&x)[index]; }
 		const float& operator[](u32 index) const { return (&x)[index]; }
 		
@@ -103,6 +105,9 @@ namespace Math {
 	inline float Length(const Quatf& v) { return sqrtf(Dot(v, v)); }
 	inline Quatf Normalize(const Quatf& v) { return v * (1.f / Length(v)); }
 	inline Quatf Conjugate(const Quatf& v) { return Quatf(-v.x, -v.y, -v.z, v.w); }
+	
+	template<typename T>
+	T Clamp(const T& value, const T& min, const T& max) { return Math::Max(Math::Min(value, max), min); }
 }
 
 using float4 = Math::Vec4f;
@@ -154,10 +159,11 @@ inline uint4 DivideAndRoundUp(uint4 numerator, uint4 denominator) { return (nume
 
 
 namespace Math {
-	compile_const float PI  = 3.1415927f;
-	compile_const float TAU = 6.2831854f;
+	compile_const float HALF_PI = 1.5707964f;
+	compile_const float PI      = 3.1415927f;
+	compile_const float TAU     = 6.2831854f;
 	compile_const float degrees_to_radians = 0.017453292f;
-	compile_const float radians_to_degress = 57.29578f;
+	compile_const float radians_to_degrees = 57.29578f;
 	
 	struct RayInfo {
 		float3 origin;

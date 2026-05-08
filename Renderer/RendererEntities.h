@@ -66,10 +66,9 @@ struct RendererWorld {
 	SceneConstants scene_constants;
 	
 	float2 window_size = float2(1.f, 1.f);
-	float sun_elevation_degrees = 3.f;
 	float meshlet_target_error_pixels = 1.f;
 	float reference_path_tracer_percent = 0.f;
-	bool reset_reference_path_tracer = false;
+	bool  reset_reference_path_tracer   = false;
 	
 	DebugFreezeCullingCamera debug_freeze_culling_camera;
 	MeshletCullingStatistics meshlet_culling_statistics;
@@ -119,6 +118,25 @@ struct CameraEntityGUID {
 	u64 guid = 0;
 };
 
+NOTES()
+struct LightComponent {
+	float3 color     = 1.f; // SRGB rec709.
+	float irradiance = 1.f; // W/m^2
+};
+
+NOTES(Meta::HlslFile{ "LightData.hlsl"_sl })
+struct GpuLightEntityData {
+	float3x4 light_to_world;
+	float3 color     = 1.f; // Linear rec709.
+	float irradiance = 1.f; // W/m^2.
+};
+
+NOTES()
+struct LightEntityGUID {
+	u64 guid = 0;
+};
+
+
 compile_const String debug_geometry_data_filename = "DebugGeometryData.hlsl"_sl;
 
 NOTES(Meta::HlslFile{ debug_geometry_data_filename })
@@ -162,6 +180,13 @@ struct CameraEntityQuery {
 	ECS::Component<PositionComponent> position;
 	ECS::Component<RotationComponent> rotation;
 	ECS::Component<CameraComponent>   camera;
+};
+
+NOTES(Meta::ComponentQuery{})
+struct LightEntityQuery {
+	ECS::Component<PositionComponent> position;
+	ECS::Component<RotationComponent> rotation;
+	ECS::Component<LightComponent>    light;
 };
 
 struct RecordContext;

@@ -229,10 +229,11 @@ float3x3 Math::QuatToRotationMatrix(const quat& q) {
 
 // Evandro Bernardes, Stephane Viollet. 2022. Quaternion to Euler angles conversion: a direct, general and computationally efficient method.
 float3 Math::QuatToEulerXyzAngles(const quat& q) {
-	float a = q.w - q.y;
-	float b = q.x + q.z;
-	float c = q.y + q.w;
-	float d = q.z - q.x;
+	auto cq = q.w < 0.f ? -q : q;
+	float a = cq.w - cq.y;
+	float b = cq.x + cq.z;
+	float c = cq.y + cq.w;
+	float d = cq.z - cq.x;
 	
 	float theta_0 = 0.f;
 	float theta_1 = acosf(((a * a + b * b) / (a * a + b * b + c * c + d * d)) * 2.f - 1.f);
@@ -241,9 +242,8 @@ float3 Math::QuatToEulerXyzAngles(const quat& q) {
 	float theta_sum  = atan2f(b, a);
 	float theta_diff = atan2f(-d, c);
 	
-	compile_const float eps = (1.f / 128.f) * Math::degrees_to_radians;
-	bool is_safe_1 = fabsf(theta_1) >= eps;
-	bool is_safe_2 = fabsf(theta_1 - Math::PI) >= eps;
+	bool is_safe_1 = fabsf(theta_1) > 0.f;
+	bool is_safe_2 = fabsf(theta_1 - Math::PI) > 0.f;
 	
 	if (is_safe_1 == false) {
 		theta_0 = theta_sum * 2.f;
@@ -254,9 +254,7 @@ float3 Math::QuatToEulerXyzAngles(const quat& q) {
 		theta_2 = theta_sum - theta_diff;
 	}
 	
-	theta_1 -= Math::PI * 0.5f;
-	
-	return float3(theta_0, theta_1, theta_2);
+	return float3(theta_0, theta_1 - Math::HALF_PI, theta_2) + 0.f;
 }
 
 // https://en.wikipedia.org/wiki/Conversion_between_quaternions_and_Euler_angles
@@ -326,8 +324,8 @@ float3 Math::DecodeR10G10B10(u32 encoded) {
 	return result.xyz;
 }
 
-always_inline static float EncodeSrgbChannel(float x) { return (x < 0.04045f ? (x / 12.92f) : powf((x + 0.055f) / 1.055f, 2.4f)); }
-always_inline static float DecodeSrgbChannel(float x) { return (x < 0.0031308f ? 12.92f * x : (1.055f * powf(x, 1.f / 2.4f) - 0.055f)); }
+always_inline static float DecodeSrgbChannel(float x) { return (x < 0.04045f ? (x / 12.92f) : powf((x + 0.055f) / 1.055f, 2.4f)); }
+always_inline static float EncodeSrgbChannel(float x) { return (x < 0.0031308f ? 12.92f * x : (1.055f * powf(x, 1.f / 2.4f) - 0.055f)); }
 
 float3 Math::DecodeSRGB(const float3& x) { return float3(DecodeSrgbChannel(x.x), DecodeSrgbChannel(x.y), DecodeSrgbChannel(x.z)); }
 float3 Math::EncodeSRGB(const float3& x) { return float3(EncodeSrgbChannel(x.x), EncodeSrgbChannel(x.y), EncodeSrgbChannel(x.z)); }

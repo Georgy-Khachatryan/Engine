@@ -64,6 +64,20 @@ struct CameraEntityType {
 	ECS::Component<CameraComponent>   camera;
 };
 
+NOTES(Meta::EntityType{}, Meta::ComponentQuery{})
+struct LightEntityType {
+	ECS::Component<GuidComponent> guid;
+	ECS::Component<NameComponent> name;
+	
+	ECS::Component<PositionComponent> position;
+	ECS::Component<RotationComponent> rotation;
+	ECS::Component<LightComponent>    light;
+	
+	NOTES(VirtualResourceID::GpuLightEntityData)
+	ECS::GpuComponent<GpuLightEntityData> gpu_light_entity_data;
+};
+
+
 NOTES(Meta::ComponentQuery{})
 struct AliveEntityMaskQuery {
 	ECS::GpuMaskComponent<AliveEntityMask> alive_mask;

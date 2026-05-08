@@ -309,7 +309,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	
 	float3 up_vector = planet_space_position / view_height;
 	float cos_sun_zenith_angle = dot(up_vector, atmosphere.world_space_sun_direction);
-	float3 planet_space_sun_direction = normalize(float3(sqrt(1.0 - cos_sun_zenith_angle * cos_sun_zenith_angle), 0.0, cos_sun_zenith_angle));
+	float3 planet_space_sun_direction = normalize(float3(sqrt(saturate(1.0 - cos_sun_zenith_angle * cos_sun_zenith_angle)), 0.0, cos_sun_zenith_angle));
 	
 	planet_space_position = float3(0.0, 0.0, view_height);
 	
@@ -322,7 +322,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	
 	float3 scattering = IntegrateScattering(atmosphere, planet_space_position, planet_space_direction, planet_space_sun_direction);
 	
-	sky_panorama_lut[thread_id] = float4(scattering * atmosphere.sun_irradiance, 1.0);
+	sky_panorama_lut[thread_id] = float4(scattering * atmosphere.sun_color * atmosphere.sun_irradiance, 1.0);
 }
 #endif // defined(SKY_PANORAMA_LUT)
 

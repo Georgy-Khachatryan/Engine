@@ -381,7 +381,7 @@ static bool LevelEditorEntityView(StackAllocator* alloc, WorldEntitySystem& worl
 	
 	ImGui::TableSetupScrollFreeze(0, 1); // Freeze header row.
 	ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch, 1.f);
-	ImGui::TableSetupColumn("Data", ImGuiTableColumnFlags_WidthStretch, 2.f);
+	ImGui::TableSetupColumn("Data", ImGuiTableColumnFlags_WidthStretch, 3.f);
 	ImGui::TableHeadersRow();
 	
 	if (selected_entities_hash_table.count == 0) return false;
@@ -422,14 +422,15 @@ static bool LevelEditorEntityView(StackAllocator* alloc, WorldEntitySystem& worl
 	if (entity.rotation) {
 		auto& rotation = entity.rotation->rotation;
 		
-		auto euler_angles = Math::QuatToEulerXyzAngles(rotation) * Math::radians_to_degress;
+		auto euler_angles = Math::QuatToEulerXyzAngles(rotation) * Math::radians_to_degrees;
 		if (ImGui::TableDragFloatWithReset("Rotation", &euler_angles.x, 3, 1.f)) {
+			euler_angles.y = Math::Clamp(euler_angles.y, -90.f, 90.f);
 			rotation = Math::EulerXyzAnglesToQuat(euler_angles * Math::degrees_to_radians);
 		}
 	}
 	
 	if (entity.scale) {
-		const char* label = "S";
+		const char* label = "S"; // Reset scale.
 		const float default_values = 1.f;
 		ImGui::TableDragFloatWithReset("Scale", &entity.scale->scale, 1, 0.01f, 0.f, 8.f, "%.3f", 0, &label, &default_values);
 	}
@@ -446,6 +447,16 @@ static bool LevelEditorEntityView(StackAllocator* alloc, WorldEntitySystem& worl
 		ImGui::TableCombo("Camera Transform Type", (s32*)&entity.camera->transform_type, "Perspective\0Orthographic\0");
 		ImGui::TableSliderFloat("Vertical Field Of View", &entity.camera->vertical_fov_degrees, 10.f, 135.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
 		ImGui::TableSliderFloat("Camera Near Depth", &entity.camera->near_depth, 0.01f, 1.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+	}
+	
+	if (entity.light) {
+		const char* label = "R"; // Reset.
+		const float default_values = 1.f;
+		ImGui::TableDragFloatWithReset("Irradiance", &entity.light->irradiance, 1, 0.1f, 0.f, 2000.f, "%.1f", 0, &label, &default_values);
+		if (ImGui::BeginTableItem("Color")) {
+			ImGui::ColorEdit3("", &entity.light->color.x, ImGuiColorEditFlags_Float);
+			ImGui::EndTableItem();
+		}
 	}
 	
 	bool is_dragging = ImGui::IsAnyItemActive() && ImGui::IsWindowFocused();
@@ -598,7 +609,7 @@ static bool AssetBrowserEntityView(StackAllocator* alloc, AssetEntitySystem& ass
 	
 	ImGui::TableSetupScrollFreeze(0, 1); // Freeze header row.
 	ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch, 1.f);
-	ImGui::TableSetupColumn("Data", ImGuiTableColumnFlags_WidthStretch, 2.f);
+	ImGui::TableSetupColumn("Data", ImGuiTableColumnFlags_WidthStretch, 3.f);
 	ImGui::TableHeadersRow();
 	
 	if (selected_assets_hash_table.count == 0) return false;
@@ -918,7 +929,6 @@ void LevelEditorUpdate(LevelEditorContext* editor_context, StackAllocator* alloc
 	}
 	
 	ImGui::SliderFloat("Meshlet Target Error Pixels", &world_entity.renderer_world->meshlet_target_error_pixels, 1.f, 128.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
-	reset_reference_path_tracer |= ImGui::SliderFloat("Sun Elevation", &world_entity.renderer_world->sun_elevation_degrees, -10.f, +190.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
 	ImGui::Checkbox("Enable Anti Aliasing", &world_entity.renderer_world->enable_anti_aliasing);
 	ImGui::Checkbox("Freeze Culling State", &world_entity.renderer_world->debug_freeze_culling_camera.enabled);
 	ImGui::SliderFloat("Reference Path Tracer Percent", &world_entity.renderer_world->reference_path_tracer_percent, 0.f, 1.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
@@ -930,6 +940,7 @@ void LevelEditorUpdate(LevelEditorContext* editor_context, StackAllocator* alloc
 	if (ImGui::BeginCombo("##CreateEntity", "Create Entity")) {
 		EntityTypeID entity_type_ids[] = {
 			ECS::GetEntityTypeID<MeshEntityType>::id,
+			ECS::GetEntityTypeID<LightEntityType>::id,
 			ECS::GetEntityTypeID<CameraEntityType>::id,
 		};
 		

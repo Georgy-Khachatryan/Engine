@@ -89,7 +89,7 @@ T BarycentricInterpolation(float3 barycentrics, T v0, T v1, T v2) {
 	return v0 * barycentrics.x + v1 * barycentrics.y + v2 * barycentrics.z;
 }
 
-float3 DecodeAndInterpolateUnitVector(float3 barycentrics, u16x2 v0, u16x2 v1, u16x2 v2) {
+float3 DecodeAndInterpolateUnitVector(float3 barycentrics, s16x2 v0, s16x2 v1, s16x2 v2) {
 	float3 n0 = DecodeOctahedralMap(DecodeR16G16_SNORM(v0));
 	float3 n1 = DecodeOctahedralMap(DecodeR16G16_SNORM(v1));
 	float3 n2 = DecodeOctahedralMap(DecodeR16G16_SNORM(v2));
@@ -219,17 +219,19 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 			float3 diffuse_albedo = properties.albedo;
 			
 			{
+				GpuLightEntityData light = light_entity_data[0];
+				
 				float3x3 world_to_tangent = BuildOrthonormalBasis(world_space_normal);
 				float3x3 tangent_to_world = transpose(world_to_tangent);
 				
-				float3 light_direction = atmosphere.world_space_sun_direction;
+				float3 light_direction = mul((float3x3)light.light_to_world, float3(0.0, 0.0, 1.0));
 				float3 wi = mul(world_to_tangent, light_direction);
 				float3 wo = mul(world_to_tangent, -ray_desc.Direction);
 				float3 wh = normalize(wo + wi);
 				float abs_cos_theta_o = abs(wo.z);
 				float i_dot_h = saturate(dot(wi, wh));
 				
-				float3 light_irradiance = atmosphere.sun_irradiance * SampleTransmittanceLUT(atmosphere, transmittance_lut, ray_desc.Origin);
+				float3 light_irradiance = light.irradiance * light.color * SampleTransmittanceLUT(atmosphere, transmittance_lut, ray_desc.Origin);
 				float shadow = TraceShadowRay(ray_desc.Origin, light_direction);
 				float3 shadowed_light_irradiance = (throughput * light_irradiance) * (shadow * saturate(wi.z));
 				
@@ -354,7 +356,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 			float specular_sample = SmithVisibilityG(wo.z, wi.z, alpha_square) / SmithVisibilityG1(wo.z, alpha_square);
 			single_scattering_energy.x += specular_sample; // Conductor
 			
-			float fresnel = FresnelSchlick(dielectric_f0, dot(wo, wh));
+			float fresnel = FresnelDielectric(dielectric_f0, dot(wo, wh));
 			single_scattering_energy.y += fresnel * specular_sample + (1.0 - fresnel); // Dielectric
 		}
 	}

@@ -152,7 +152,7 @@ float3 SampleSkyPanoramaLUT(AtmosphereParameters atmosphere, Texture2D<float3> s
 			float2 transmittance_lut_uv = TransmittanceLutCoordinatesToUv(atmosphere, lut_coordinates);
 			float3 transmittance_to_light = transmittance_lut.SampleLevel(sampler_linear_clamp, transmittance_lut_uv, 0);
 			
-			sky_radiance += sun_disk_mask * atmosphere.sun_disk_radiance * transmittance_to_light;
+			sky_radiance += sun_disk_mask * atmosphere.sun_disk_radiance * atmosphere.sun_color * transmittance_to_light;
 		}
 	}
 	

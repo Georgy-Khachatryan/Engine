@@ -1,5 +1,12 @@
 // Generated SaveLoad Version History:
 
+struct LightComponent {
+	/*Version*/ 0 {
+		color float3 0;
+		irradiance float32 0;
+	}
+}
+
 struct TextureRuntimeDataLayout {
 	/*Version*/ 0 {
 		file_guid u64 0;

@@ -82,11 +82,12 @@ static void ReplayRenderPasses(RenderPassArray& array, RecordContext* record_con
 void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext* record_context, WorldEntitySystem* world_system, AssetEntitySystem* asset_system, u64 world_entity_guid) {
 	ProfilerScope("BuildRenderPassesForFrame");
 	
-	auto world_entity = QueryEntityByGUID<WorldEntityQuery>(*world_system, world_entity_guid);
+	auto world_entity  = QueryEntityByGUID<WorldEntityQuery>(*world_system, world_entity_guid);
 	auto camera_entity = QueryEntityByGUID<CameraEntityQuery>(*world_system, world_entity.camera_entity->guid);
+	auto sun_light_entity = ExtractComponentStreams<LightEntityQuery>(QueryEntities<LightEntityQuery>(record_context->alloc, *world_system)[0]);
 	
-	auto& renderer_world = world_entity.renderer_world[0];
-	auto& camera         = camera_entity.camera[0];
+	auto& renderer_world = *world_entity.renderer_world;
+	auto& camera         = *camera_entity.camera;
 	
 	// Clamp render target size to a reasonable minimum. Aspect ratio for view to clip is still computed using unclamped values.
 	uint2 render_target_size = uint2((u32)Math::Max(renderer_world.window_size.x, 32.f), (u32)Math::Max(renderer_world.window_size.y, 32.f));
@@ -172,8 +173,9 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	ArrayAppend(renderer_world.gpu_uploads, record_context->alloc, gpu_scene_constants);
 	
 	AtmosphereParameters atmosphere_parameters;
-	atmosphere_parameters.world_space_sun_direction.x = cosf(renderer_world.sun_elevation_degrees * Math::degrees_to_radians);
-	atmosphere_parameters.world_space_sun_direction.z = sinf(renderer_world.sun_elevation_degrees * Math::degrees_to_radians);
+	atmosphere_parameters.world_space_sun_direction = sun_light_entity.rotation->rotation * float3(0.f, 0.f, 1.f);
+	atmosphere_parameters.sun_color                 = sun_light_entity.light->color;
+	atmosphere_parameters.sun_irradiance            = sun_light_entity.light->irradiance;
 	
 	auto [atmosphere_parameters_gpu_address, atmosphere_parameters_cpu_address] = AllocateTransientUploadBuffer<AtmosphereParameters>(record_context);
 	*atmosphere_parameters_cpu_address = atmosphere_parameters;
