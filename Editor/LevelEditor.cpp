@@ -366,6 +366,7 @@ static void LevelEditorSceneView(StackAllocator* alloc, WorldEntitySystem& world
 	ApplyEntitySelectionRequests(ms_io, typed_entity_ids, world_system, undo_redo_system, selected_entities_hash_table, world_entity_guid);
 }
 
+bool SelectedEntityView(StackAllocator* alloc, WorldEntitySystem& world_system, AssetEntitySystem& asset_system, UndoRedoSystem& undo_redo_system, u64 entity_guid);
 
 static bool LevelEditorEntityView(StackAllocator* alloc, WorldEntitySystem& world_system, AssetEntitySystem& asset_system, UndoRedoSystem& undo_redo_system, u64 world_entity_guid) {
 	auto world_entity = QueryEntityByGUID<WorldEntityType>(world_system, world_entity_guid);
@@ -397,10 +398,36 @@ static bool LevelEditorEntityView(StackAllocator* alloc, WorldEntitySystem& worl
 	ImGui::BeginDisabled(selected_entities_hash_table.count >= 2);
 	defer{ ImGui::EndDisabled(); };
 	
+	return SelectedEntityView(alloc, world_system, asset_system, undo_redo_system, entity_guid);
+}
+
+static bool LevelEditorWorldEntityView(StackAllocator* alloc, WorldEntitySystem& world_system, AssetEntitySystem& asset_system, UndoRedoSystem& undo_redo_system, u64 world_entity_guid) {
+	ImGui::Begin("World Entity", nullptr, ImGuiWindowFlags_NoFocusOnAppearing);
+	defer{ ImGui::End(); };
+	
+	auto table_flags = ImGuiTableFlags_NoSavedSettings | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_PadOuterX | ImGuiTableFlags_ScrollY;
+	
+	if (ImGui::BeginTable("Components", 2, table_flags) == false) return false;
+	defer{ ImGui::EndTable(); };
+	
+	ImGui::TableSetupScrollFreeze(0, 1); // Freeze header row.
+	ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch, 1.f);
+	ImGui::TableSetupColumn("Data", ImGuiTableColumnFlags_WidthStretch, 3.f);
+	ImGui::TableHeadersRow();
+	
+	// Items should span full width of the column.
+	ImGui::PushItemWidth(-FLT_MIN);
+	defer{ ImGui::PopItemWidth(); };
+	
+	ImGuiScopeID((void*)world_entity_guid);
+	
+	return SelectedEntityView(alloc, world_system, asset_system, undo_redo_system, world_entity_guid);
+}
+
+bool SelectedEntityView(StackAllocator* alloc, WorldEntitySystem& world_system, AssetEntitySystem& asset_system, UndoRedoSystem& undo_redo_system, u64 entity_guid) {
 	auto typed_entity_id = FindEntityByGUID(world_system, entity_guid);
 	auto* array = &world_system.entity_type_arrays[typed_entity_id.entity_type_id.index];
 	auto entity = ExtractComponentStreams<EntityEditorQuery>(array, typed_entity_id.entity_id);
-	
 	
 	BeginUndoRedoCommand("Entity Editor"_sl, undo_redo_system, world_system, entity_guid);
 	
@@ -456,6 +483,36 @@ static bool LevelEditorEntityView(StackAllocator* alloc, WorldEntitySystem& worl
 		if (ImGui::BeginTableItem("Color")) {
 			ImGui::ColorEdit3("", &entity.light->color.x, ImGuiColorEditFlags_Float);
 			ImGui::EndTableItem();
+		}
+	}
+	
+	if (entity.anti_aliasing_settings) {
+		auto& settings = *entity.anti_aliasing_settings;
+		ImGui::TableCombo("Anti Aliasing Method", (s32*)&settings.method, "None\0DLSS\0XeSS\0", (s32)AntiAliasingMethod::Count);
+	}
+	
+	if (entity.tone_mapping_settings) {
+		auto& settings = *entity.tone_mapping_settings;
+		
+		ImGui::TableCombo("Tone Mapping Method", (s32*)&settings.method, "None\0GT7 HDR\0GT7 SDR\0Reinhard SDR\0", (s32)ToneMappingMethod::Count);
+		
+		if (settings.method == ToneMappingMethod::GT7_HDR) {
+			ImGui::TableSliderFloat("Target Luminance (cd/m^2)", &settings.physical_target_luminance_hdr, 80.f, 4000.f);
+		}
+		
+		if (settings.method == ToneMappingMethod::GT7_SDR) {
+			ImGui::TableSliderFloat("Target Luminance (cd/m^2)", &settings.physical_target_luminance_sdr, 80.f, 500.f);
+		}
+		
+		if (settings.method == ToneMappingMethod::GT7_HDR || settings.method == ToneMappingMethod::GT7_SDR) {
+			ImGui::TableSliderFloat("Alpha", &settings.alpha, 0.f, 1.f);
+			ImGui::TableSliderFloat("Mid Point", &settings.mid_point, 0.1f, 0.9f);
+			ImGui::TableSliderFloat("Linear Section", &settings.linear_section, 0.25f, 0.75f);
+			ImGui::TableSliderFloat("Toe Power", &settings.toe_power, 0.5f, 1.5f);
+			
+			ImGui::TableSliderFloat("Blend Ratio", &settings.blend_ratio, 0.f, 1.f);
+			ImGui::TableSliderFloat("Fade Start", &settings.fade_start, 0.f, 2.f);
+			ImGui::TableSliderFloat("Fade End", &settings.fade_end, 0.f, 2.f);
 		}
 	}
 	
@@ -928,44 +985,11 @@ void LevelEditorUpdate(LevelEditorContext* editor_context, StackAllocator* alloc
 	}
 	
 	ImGui::SliderFloat("Meshlet Target Error Pixels", &world_entity.renderer_world->meshlet_target_error_pixels, 1.f, 128.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
-	ImGui::Checkbox("Enable Anti Aliasing", &world_entity.renderer_world->enable_anti_aliasing);
 	ImGui::Checkbox("Freeze Culling State", &world_entity.renderer_world->debug_freeze_culling_camera.enabled);
 	ImGui::SliderFloat("Reference Path Tracer Percent", &world_entity.renderer_world->reference_path_tracer_percent, 0.f, 1.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
 	ImGui::SetNextItemShortcut(ImGuiKey_R, ImGuiInputFlags_RouteGlobal | ImGuiInputFlags_RouteOverFocused | ImGuiInputFlags_Repeat);
 	reset_reference_path_tracer |= ImGui::Button("Reset Reference Path Tracer");
 	ImGui::Text("Window Size: %ux%u", (u32)window_size.x, (u32)window_size.y);
-	
-	{
-		auto& settings = world_entity.renderer_world->tone_mapping_settings;
-		
-		compile_const char* tone_mapping_method_names[(u32)ToneMappingMethod::Count] = {
-			"None",
-			"GT7 HDR",
-			"GT7 SDR",
-			"Reinhard SDR",
-		};
-		
-		ImGui::Combo("Tone Mapping Method", (s32*)&settings.method, tone_mapping_method_names, (s32)ToneMappingMethod::Count);
-		
-		if (settings.method == ToneMappingMethod::GT7_HDR) {
-			ImGui::SliderFloat("Target Luminance (cd/m^2)", &settings.physical_target_luminance_hdr, 80.f, 4000.f);
-		}
-		
-		if (settings.method == ToneMappingMethod::GT7_SDR) {
-			ImGui::SliderFloat("Target Luminance (cd/m^2)", &settings.physical_target_luminance_sdr, 80.f, 500.f);
-		}
-		
-		if (settings.method == ToneMappingMethod::GT7_HDR || settings.method == ToneMappingMethod::GT7_SDR) {
-			ImGui::SliderFloat("Alpha", &settings.alpha, 0.f, 1.f);
-			ImGui::SliderFloat("Mid Point", &settings.mid_point, 0.1f, 0.9f);
-			ImGui::SliderFloat("Linear Section", &settings.linear_section, 0.25f, 0.75f);
-			ImGui::SliderFloat("Toe Power", &settings.toe_power, 0.5f, 1.5f);
-			
-			ImGui::SliderFloat("Blend Ratio", &settings.blend_ratio, 0.f, 1.f);
-			ImGui::SliderFloat("Fade Start", &settings.fade_start, 0.f, 2.f);
-			ImGui::SliderFloat("Fade End", &settings.fade_end, 0.f, 2.f);
-		}
-	}
 	
 	ImGui::SetNextItemWidth(-FLT_MIN);
 	if (ImGui::BeginCombo("##CreateEntity", "Create Entity")) {
@@ -1002,6 +1026,7 @@ void LevelEditorUpdate(LevelEditorContext* editor_context, StackAllocator* alloc
 	ImGui::End();
 	
 	reset_reference_path_tracer |= LevelEditorEntityView(alloc, world_system, asset_system, undo_redo_system, world_entity_guid);
+	reset_reference_path_tracer |= LevelEditorWorldEntityView(alloc, world_system, asset_system, undo_redo_system, world_entity_guid);
 	
 	ImGuiDrawList3D draw_list_3d;
 	draw_list_3d.alloc = alloc;

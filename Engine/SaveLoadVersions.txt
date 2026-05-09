@@ -44,6 +44,21 @@ struct MaterialTextureData {
 	}
 }
 
+struct ToneMappingSettings {
+	/*Version*/ 0 {
+		physical_target_luminance_hdr float32 0;
+		physical_target_luminance_sdr float32 0;
+		alpha float32 0;
+		mid_point float32 0;
+		linear_section float32 0;
+		toe_power float32 0;
+		blend_ratio float32 0;
+		fade_start float32 0;
+		fade_end float32 0;
+		method ToneMappingMethod 0;
+	}
+}
+
 struct TextureSourceData {
 	/*Version*/ 0 {
 		filepath String 0;
@@ -111,15 +126,40 @@ struct ScaleComponent {
 	}
 }
 
+enum ToneMappingMethod {
+	/*Version*/ 0 u32 {
+		None 0;
+		GT7_HDR 1;
+		GT7_SDR 2;
+		Reinhard_SDR 3;
+		Count 4;
+	}
+}
+
 struct MeshSourceData {
 	/*Version*/ 0 {
 		filepath String 0;
 	}
 }
 
+enum AntiAliasingMethod {
+	/*Version*/ 0 u32 {
+		None 0;
+		DLSS 1;
+		XeSS 2;
+		Count 3;
+	}
+}
+
 struct TextureSize {
 	/*Version*/ 0 {
 		packed u64 0;
+	}
+}
+
+struct AntiAliasingSettings {
+	/*Version*/ 0 {
+		method AntiAliasingMethod 0;
 	}
 }
 

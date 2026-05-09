@@ -188,6 +188,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
+
 ## Sample implementation of the GT7 Tone Mapping operator.
 Driving Toward Reality: Physically Based Tone Mapping and Perceptual Fidelity in Gran Turismo 7
 https://blog.selfshadow.com/publications/s2025-shading-course/pdi/supplemental/gt7_tone_mapping.cpp

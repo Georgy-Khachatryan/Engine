@@ -17,6 +17,9 @@ struct EntityEditorQuery {
 	CameraComponent* camera = nullptr;
 	
 	LightComponent* light = nullptr;
+	
+	ToneMappingSettings*  tone_mapping_settings  = nullptr;
+	AntiAliasingSettings* anti_aliasing_settings = nullptr;
 };
 
 NOTES(Meta::ComponentQuery{})

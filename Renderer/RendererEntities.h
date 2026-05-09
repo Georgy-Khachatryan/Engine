@@ -58,6 +58,7 @@ enum struct ToneMappingMethod : u32 {
 	Count
 };
 
+NOTES()
 struct ToneMappingSettings {
 	float physical_target_luminance_hdr = 500.f; // cd/m^2
 	float physical_target_luminance_sdr = 250.f; // cd/m^2, SDR Paper White
@@ -73,6 +74,21 @@ struct ToneMappingSettings {
 	
 	ToneMappingMethod method = ToneMappingMethod::GT7_HDR;
 };
+
+NOTES()
+enum struct AntiAliasingMethod : u32 {
+	None = 0,
+	DLSS = 1,
+	XeSS = 2,
+	
+	Count
+};
+
+NOTES()
+struct AntiAliasingSettings {
+	AntiAliasingMethod method = AntiAliasingMethod::DLSS;
+};
+
 
 struct DebugFreezeCullingCamera {
 	bool enabled = false;
@@ -96,15 +112,10 @@ struct RendererWorld {
 	float reference_path_tracer_percent = 0.f;
 	bool  reset_reference_path_tracer   = false;
 	
-	ToneMappingSettings tone_mapping_settings;
-	
 	u32 scene_descriptor_heap_offset = 0; // Descriptor index for the final image.
 	
 	DebugFreezeCullingCamera debug_freeze_culling_camera;
 	MeshletCullingStatistics meshlet_culling_statistics;
-	
-	bool enable_anti_aliasing = true;
-	u32 jitter_frame_index = 0;
 	
 	GpuReadbackQueue meshlet_streaming_feedback_queue;
 	GpuReadbackQueue mesh_streaming_feedback_queue;
@@ -195,9 +206,11 @@ struct DebugMeshInstanceArray {
 
 NOTES(Meta::ComponentQuery{})
 struct WorldEntityQuery {
-	ECS::Component<CameraEntityGUID> camera_entity;
-	ECS::Component<RendererWorld> renderer_world;
-	ECS::GpuComponent<SceneConstants> gpu_scene_constants;
+	ECS::Component<CameraEntityGUID>     camera_entity;
+	ECS::Component<RendererWorld>        renderer_world;
+	ECS::Component<ToneMappingSettings>  tone_mapping_settings;
+	ECS::Component<AntiAliasingSettings> anti_aliasing_settings;
+	ECS::GpuComponent<SceneConstants>    gpu_scene_constants;
 };
 
 NOTES(Meta::ComponentQuery{})

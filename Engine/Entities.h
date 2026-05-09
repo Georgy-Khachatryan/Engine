@@ -18,9 +18,13 @@ struct EditorSelectionState {
 NOTES(Meta::EntityType{ 1 }, Meta::ComponentQuery{})
 struct WorldEntityType {
 	ECS::Component<GuidComponent> guid;
+	ECS::Component<NameComponent> name;
 	
 	ECS::Component<CameraEntityGUID> camera_entity;
-	ECS::Component<RendererWorld> renderer_world;
+	ECS::Component<RendererWorld>    renderer_world;
+	
+	ECS::Component<ToneMappingSettings>  tone_mapping_settings;
+	ECS::Component<AntiAliasingSettings> anti_aliasing_settings;
 	
 	NOTES(VirtualResourceID::SceneConstants)
 	ECS::GpuComponent<SceneConstants> gpu_scene_constants;

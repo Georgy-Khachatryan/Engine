@@ -328,6 +328,10 @@ void ImGui::TableLabelText(const char* label) {
 	ImGui::ItemSize(bb, style.FramePadding.y);
 	if (!ImGui::ItemAdd(bb, 0)) return;
 	
+	if (width < label_size.x) {
+		ImGui::SetItemTooltip(label);
+	}
+	
 	auto* draw_list = ImGui::GetWindowDrawList();
 	
 	// Right justify if there is space, otherwise left justify and add ellipsis on the right side.
