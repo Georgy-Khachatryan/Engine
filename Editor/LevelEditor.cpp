@@ -366,7 +366,7 @@ static void LevelEditorSceneView(StackAllocator* alloc, WorldEntitySystem& world
 	ApplyEntitySelectionRequests(ms_io, typed_entity_ids, world_system, undo_redo_system, selected_entities_hash_table, world_entity_guid);
 }
 
-bool SelectedEntityView(StackAllocator* alloc, WorldEntitySystem& world_system, AssetEntitySystem& asset_system, UndoRedoSystem& undo_redo_system, u64 entity_guid);
+bool SelectedEntityView(StackAllocator* alloc, String undo_label, WorldEntitySystem& world_system, AssetEntitySystem& asset_system, UndoRedoSystem& undo_redo_system, u64 entity_guid);
 
 static bool LevelEditorEntityView(StackAllocator* alloc, WorldEntitySystem& world_system, AssetEntitySystem& asset_system, UndoRedoSystem& undo_redo_system, u64 world_entity_guid) {
 	auto world_entity = QueryEntityByGUID<WorldEntityType>(world_system, world_entity_guid);
@@ -398,7 +398,7 @@ static bool LevelEditorEntityView(StackAllocator* alloc, WorldEntitySystem& worl
 	ImGui::BeginDisabled(selected_entities_hash_table.count >= 2);
 	defer{ ImGui::EndDisabled(); };
 	
-	return SelectedEntityView(alloc, world_system, asset_system, undo_redo_system, entity_guid);
+	return SelectedEntityView(alloc, "Entity Editor"_sl, world_system, asset_system, undo_redo_system, entity_guid);
 }
 
 static bool LevelEditorWorldEntityView(StackAllocator* alloc, WorldEntitySystem& world_system, AssetEntitySystem& asset_system, UndoRedoSystem& undo_redo_system, u64 world_entity_guid) {
@@ -421,15 +421,15 @@ static bool LevelEditorWorldEntityView(StackAllocator* alloc, WorldEntitySystem&
 	
 	ImGuiScopeID((void*)world_entity_guid);
 	
-	return SelectedEntityView(alloc, world_system, asset_system, undo_redo_system, world_entity_guid);
+	return SelectedEntityView(alloc, "World Entity"_sl, world_system, asset_system, undo_redo_system, world_entity_guid);
 }
 
-bool SelectedEntityView(StackAllocator* alloc, WorldEntitySystem& world_system, AssetEntitySystem& asset_system, UndoRedoSystem& undo_redo_system, u64 entity_guid) {
+bool SelectedEntityView(StackAllocator* alloc, String undo_label, WorldEntitySystem& world_system, AssetEntitySystem& asset_system, UndoRedoSystem& undo_redo_system, u64 entity_guid) {
 	auto typed_entity_id = FindEntityByGUID(world_system, entity_guid);
 	auto* array = &world_system.entity_type_arrays[typed_entity_id.entity_type_id.index];
 	auto entity = ExtractComponentStreams<EntityEditorQuery>(array, typed_entity_id.entity_id);
 	
-	BeginUndoRedoCommand("Entity Editor"_sl, undo_redo_system, world_system, entity_guid);
+	BeginUndoRedoCommand(undo_label, undo_redo_system, world_system, entity_guid);
 	
 	if (entity.guid) {
 		auto guid_string = StringFormat(alloc, "0x%"_sl, (void*)entity.guid->guid);

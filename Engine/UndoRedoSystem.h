@@ -32,9 +32,11 @@ struct UndoRedoSystem {
 	UndoRedoBuffer undo_buffer;
 	UndoRedoBuffer redo_buffer;
 	
+	UndoRedoCommand initial_state_command;
+	UndoRedoCommand scope_begin_command;
 	UndoRedoCommand cross_frame_command;
-	UndoRedoCommand pending_command;
-	u64 pending_command_id     = 0;
+	
+	u64 scope_begin_command_id = 0;
 	u64 cross_frame_command_id = 0;
 	
 	// Zero group index means no group.

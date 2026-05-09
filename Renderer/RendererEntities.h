@@ -43,7 +43,7 @@ struct SceneConstants {
 	float3 world_space_camera_position;
 	
 	float texture_world_to_pixel_scale; // Used for texture streaming feedback.
-	u32 frame_index;
+	u32 frame_index = 0;
 	float reference_path_tracer_percent;
 	u32 path_tracer_accumulated_frame_count = 0;
 };

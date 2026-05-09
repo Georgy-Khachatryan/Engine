@@ -15,7 +15,7 @@ void ReleaseUndoRedoSystem(UndoRedoSystem& system) {
 }
 
 void ResetUndoRedoSystem(UndoRedoSystem& system) {
-	DebugAssert(system.pending_command_id == 0, "ResetUndoRedoSystem cannot be called while recording undo redo command.");
+	DebugAssert(system.scope_begin_command_id == 0, "ResetUndoRedoSystem cannot be called while recording undo redo command.");
 	
 	system.undo_buffer.commands.count = 0;
 	system.undo_buffer.save_load_buffer.data.count = 0;
@@ -103,48 +103,58 @@ void EndUndoRedoGroup(UndoRedoSystem& system) {
 }
 
 void BeginUndoRedoCommand(String label, UndoRedoSystem& system, EntitySystemBase& entity_system, u64 entity_guid) {
-	DebugAssert(system.pending_command.entity_guid == 0, "BeginUndoRedoCommand/EndUndoRedoCommand mismatch.");
+	DebugAssert(system.scope_begin_command_id == 0, "BeginUndoRedoCommand/EndUndoRedoCommand mismatch.");
 	
-	u64 id = ComputeHash(label); // IDs are used to distinguish between different Begin/End scopes that could edit the same entity.
-	system.pending_command_id = id;
+	u64 id = ComputeHash(label); // IDs are used to distinguish between different Begin/End scopes that edit the same entity.
+	system.scope_begin_command_id = id;
+	
+	system.scope_begin_command = CreateUndoRedoCommand(system.undo_buffer, entity_system, entity_guid, UndoRedoCommandType::SaveLoad, system.group_index);
 	
 	if ((system.cross_frame_command.entity_guid == entity_guid) && (system.cross_frame_command_id == id)) { // We already have a command stashed away.
-		system.pending_command = system.cross_frame_command;
+		system.initial_state_command = system.cross_frame_command;
 		system.cross_frame_command = {};
 	} else {
-		system.pending_command = CreateUndoRedoCommand(system.undo_buffer, entity_system, entity_guid, UndoRedoCommandType::SaveLoad, system.group_index);
+		system.initial_state_command = system.scope_begin_command;
 	}
 }
 
+static bool IsSaveLoadCommandDifferent(const u8* data, const UndoRedoCommand& lh, const UndoRedoCommand& rh) {
+	return (lh.size != rh.size) || (lh.size != 0 && memcmp(data + lh.offset, data + rh.offset, lh.size) != 0);
+}
+
 bool EndUndoRedoCommand(UndoRedoSystem& system, EntitySystemBase& entity_system, bool is_dragging) {
-	DebugAssert(system.pending_command.entity_guid != 0, "BeginUndoRedoCommand/EndUndoRedoCommand mismatch.");
+	DebugAssert(system.scope_begin_command_id != 0, "BeginUndoRedoCommand/EndUndoRedoCommand mismatch.");
 	
-	auto old_command = system.pending_command;
-	auto new_command = CreateUndoRedoCommand(system.undo_buffer, entity_system, old_command.entity_guid, UndoRedoCommandType::SaveLoad, system.group_index);
+	auto scope_end_command = CreateUndoRedoCommand(system.undo_buffer, entity_system, system.initial_state_command.entity_guid, UndoRedoCommandType::SaveLoad, system.group_index);
 	
-	u8* data = system.undo_buffer.save_load_buffer.data.data;
-	bool entity_changed = (old_command.size != new_command.size) || (new_command.size != 0 && memcmp(data + old_command.offset, data + new_command.offset, new_command.size) != 0);
+	u8* save_load_buffer_data = system.undo_buffer.save_load_buffer.data.data;
+	bool entity_changed = IsSaveLoadCommandDifferent(save_load_buffer_data, system.initial_state_command, scope_end_command);
 	
-	// Pop command data, it's never going to be used again.
-	system.undo_buffer.save_load_buffer.data.count = old_command.offset + old_command.size;
+	// When scope_begin_command and initial_state_command are the same, we don't need to call IsSaveLoadCommandDifferent twice.
+	bool entity_changed_this_frame = entity_changed;
+	if (system.scope_begin_command.offset != system.initial_state_command.offset) {
+		entity_changed_this_frame = IsSaveLoadCommandDifferent(save_load_buffer_data, system.scope_begin_command, scope_end_command);
+	}
+	
+	// Pop scope_end_command data (and scope_begin_command data if it's not the same as the initial_state_command data), it's not needed anymore.
+	system.undo_buffer.save_load_buffer.data.count = system.initial_state_command.offset + system.initial_state_command.size;
 	
 	if (is_dragging) { // Keep the pending command on the stack across frames.
 		FlushCrossFrameUndoCommand(system);
-		system.cross_frame_command = old_command;
-		system.cross_frame_command_id = system.pending_command_id;
+		system.cross_frame_command    = system.initial_state_command;
+		system.cross_frame_command_id = system.scope_begin_command_id;
 	} else if (entity_changed) { // Entity changed and we're not dragging, flush the whole undo stack.
 		FlushCrossFrameUndoCommand(system);
-		AppendUndoCommand(system, old_command);
-	} else { // We're not dragging and the entity haven't changed. Pop the pending command off the stack.
-		system.undo_buffer.save_load_buffer.data.count = old_command.offset;
+		AppendUndoCommand(system, system.initial_state_command);
+	} else { // We're not dragging and the entity hasn't changed, pop the pending command off the stack.
+		system.undo_buffer.save_load_buffer.data.count = system.initial_state_command.offset;
 	}
 	
-	system.pending_command = {};
-	system.pending_command_id = 0;
+	system.scope_begin_command    = {};
+	system.initial_state_command  = {};
+	system.scope_begin_command_id = 0;
 	
-	// TODO: Detect the case when we drag from some state to the old state and report it as entity_changed.
-	// For now always report that entity changes during dragging.
-	return entity_changed || is_dragging;
+	return entity_changed_this_frame;
 }
 
 void UndoRedoRemoveEntity(UndoRedoSystem& system, EntitySystemBase& entity_system, u64 entity_guid) {

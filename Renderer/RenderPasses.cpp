@@ -79,6 +79,16 @@ static void ReplayRenderPasses(RenderPassArray& array, RecordContext* record_con
 	}
 }
 
+static void CopyCurrentToPreviousSceneConstants(SceneConstants& scene) {
+	scene.prev_view_to_clip_coef = scene.view_to_clip_coef;
+	scene.prev_clip_to_view_coef = scene.clip_to_view_coef;
+	scene.prev_view_to_world     = scene.view_to_world;
+	scene.prev_world_to_view     = scene.world_to_view;
+	
+	scene.prev_render_target_size     = scene.render_target_size;
+	scene.inv_prev_render_target_size = scene.inv_render_target_size;
+}
+
 void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext* record_context, WorldEntitySystem* world_system, AssetEntitySystem* asset_system, u64 world_entity_guid) {
 	ProfilerScope("BuildRenderPassesForFrame");
 	
@@ -96,13 +106,8 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	
 	
 	auto& scene = renderer_world.scene_constants;
-	scene.prev_view_to_clip_coef = scene.view_to_clip_coef;
-	scene.prev_clip_to_view_coef = scene.clip_to_view_coef;
-	scene.prev_view_to_world     = scene.view_to_world;
-	scene.prev_world_to_view     = scene.world_to_view;
 	
-	scene.prev_render_target_size     = scene.render_target_size;
-	scene.inv_prev_render_target_size = scene.inv_render_target_size;
+	if (scene.frame_index != 0) CopyCurrentToPreviousSceneConstants(scene);
 	
 	scene.render_target_size     = float2(render_target_size);
 	scene.inv_render_target_size = float2(1.f) / scene.render_target_size;
@@ -125,6 +130,8 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	scene.world_to_view.r0 = float4(world_to_view_rotation.r0, -view_space_camera_position.x);
 	scene.world_to_view.r1 = float4(world_to_view_rotation.r1, -view_space_camera_position.y);
 	scene.world_to_view.r2 = float4(world_to_view_rotation.r2, -view_space_camera_position.z);
+	
+	if (scene.frame_index == 0) CopyCurrentToPreviousSceneConstants(scene);
 	
 	if (renderer_world.debug_freeze_culling_camera.enabled == false) {
 		scene.culling_prev_world_to_view     = scene.culling_world_to_view;
