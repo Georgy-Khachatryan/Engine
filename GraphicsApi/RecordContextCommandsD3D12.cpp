@@ -699,6 +699,10 @@ static void CmdDispatchDlssD3D12(CmdDispatchDlssPacket* packet, ID3D12GraphicsCo
 	command_list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 }
 
+static bool IsAccessTransitionRequiresBarrier(D3D12_BARRIER_ACCESS before, D3D12_BARRIER_ACCESS after) {
+	return (before != after) || ((before & D3D12_BARRIER_ACCESS_UNORDERED_ACCESS) && (after & D3D12_BARRIER_ACCESS_UNORDERED_ACCESS));
+}
+
 static void ResolveTextureAccess(D3D12_BARRIER_SYNC& sync, D3D12_BARRIER_ACCESS& access, D3D12_BARRIER_LAYOUT& layout, ResourceAccessDefinition* access_definition) {
 	u32 access_mask = access_definition ? (u32)access_definition->access_mask : 0;
 	u32 stages_mask = access_definition ? (u32)access_definition->stages_mask : 0;
@@ -768,7 +772,7 @@ static void CreateTextureBarrier(Array<D3D12_TEXTURE_BARRIER>& barriers, StackAl
 		ResolveTextureAccess(barrier.SyncBefore, barrier.AccessBefore, barrier.LayoutBefore, last_access);
 		ResolveTextureAccess(barrier.SyncAfter,  barrier.AccessAfter,  barrier.LayoutAfter,  next_access);
 		
-		if (barrier.AccessBefore != barrier.AccessAfter || barrier.LayoutBefore != barrier.LayoutAfter) {
+		if (IsAccessTransitionRequiresBarrier(barrier.AccessBefore, barrier.AccessAfter) || (barrier.LayoutBefore != barrier.LayoutAfter)) {
 			barrier.pResource = resource.texture.resource.d3d12;
 			barrier.Flags     = D3D12_TEXTURE_BARRIER_FLAG_NONE;
 			
@@ -808,7 +812,7 @@ static void CreateTextureBarrier(Array<D3D12_TEXTURE_BARRIER>& barriers, StackAl
 				ResolveTextureAccess(barrier.SyncBefore, barrier.AccessBefore, barrier.LayoutBefore, last_subresource_access);
 				ResolveTextureAccess(barrier.SyncAfter,  barrier.AccessAfter,  barrier.LayoutAfter,  next_access);
 				
-				if (barrier.AccessBefore != barrier.AccessAfter || barrier.LayoutBefore != barrier.LayoutAfter) {
+				if (IsAccessTransitionRequiresBarrier(barrier.AccessBefore, barrier.AccessAfter) || (barrier.LayoutBefore != barrier.LayoutAfter)) {
 					barrier.pResource = resource.texture.resource.d3d12;
 					barrier.Flags     = D3D12_TEXTURE_BARRIER_FLAG_NONE;
 					
@@ -859,7 +863,7 @@ static void CreateBufferBarrier(Array<D3D12_BUFFER_BARRIER>& barriers, VirtualRe
 	ResolveBufferAccess(barrier.SyncBefore, barrier.AccessBefore, last_access);
 	ResolveBufferAccess(barrier.SyncAfter,  barrier.AccessAfter,  next_access);
 	
-	if ((barrier.AccessBefore != barrier.AccessAfter) || ((barrier.AccessBefore & D3D12_BARRIER_ACCESS_UNORDERED_ACCESS) && (barrier.AccessAfter & D3D12_BARRIER_ACCESS_UNORDERED_ACCESS))) {
+	if (IsAccessTransitionRequiresBarrier(barrier.AccessBefore, barrier.AccessAfter)) {
 		barrier.pResource = resource.texture.resource.d3d12;
 		barrier.Offset    = 0;
 		barrier.Size      = u64_max;

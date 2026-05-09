@@ -857,8 +857,7 @@ void LevelEditorUpdate(LevelEditorContext* editor_context, StackAllocator* alloc
 	auto world_entity = QueryEntityByGUID<WorldEntityType>(world_system, world_entity_guid);
 	auto& selected_entities_hash_table = world_entity.selection_state->selected_entities_hash_table;
 	
-	auto scene_radiance_resource_id = world_entity.renderer_world->enable_anti_aliasing ? VirtualResourceID::SceneRadianceResult : VirtualResourceID::SceneRadiance;
-	u32 scene_descriptor_heap_offset = CreateResourceDescriptor(record_context, HLSL::Texture2D<float4>(scene_radiance_resource_id));
+	u32 scene_descriptor_heap_offset = AllocateTransientSrvDescriptorTable(record_context->context, 1);
 	
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.f, 0.f));
 	ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,  ImVec2(0.f, 0.f));
@@ -936,6 +935,38 @@ void LevelEditorUpdate(LevelEditorContext* editor_context, StackAllocator* alloc
 	reset_reference_path_tracer |= ImGui::Button("Reset Reference Path Tracer");
 	ImGui::Text("Window Size: %ux%u", (u32)window_size.x, (u32)window_size.y);
 	
+	{
+		auto& settings = world_entity.renderer_world->tone_mapping_settings;
+		
+		compile_const char* tone_mapping_method_names[(u32)ToneMappingMethod::Count] = {
+			"None",
+			"GT7 HDR",
+			"GT7 SDR",
+			"Reinhard SDR",
+		};
+		
+		ImGui::Combo("Tone Mapping Method", (s32*)&settings.method, tone_mapping_method_names, (s32)ToneMappingMethod::Count);
+		
+		if (settings.method == ToneMappingMethod::GT7_HDR) {
+			ImGui::SliderFloat("Target Luminance (cd/m^2)", &settings.physical_target_luminance_hdr, 80.f, 4000.f);
+		}
+		
+		if (settings.method == ToneMappingMethod::GT7_SDR) {
+			ImGui::SliderFloat("Target Luminance (cd/m^2)", &settings.physical_target_luminance_sdr, 80.f, 500.f);
+		}
+		
+		if (settings.method == ToneMappingMethod::GT7_HDR || settings.method == ToneMappingMethod::GT7_SDR) {
+			ImGui::SliderFloat("Alpha", &settings.alpha, 0.f, 1.f);
+			ImGui::SliderFloat("Mid Point", &settings.mid_point, 0.1f, 0.9f);
+			ImGui::SliderFloat("Linear Section", &settings.linear_section, 0.25f, 0.75f);
+			ImGui::SliderFloat("Toe Power", &settings.toe_power, 0.5f, 1.5f);
+			
+			ImGui::SliderFloat("Blend Ratio", &settings.blend_ratio, 0.f, 1.f);
+			ImGui::SliderFloat("Fade Start", &settings.fade_start, 0.f, 2.f);
+			ImGui::SliderFloat("Fade End", &settings.fade_end, 0.f, 2.f);
+		}
+	}
+	
 	ImGui::SetNextItemWidth(-FLT_MIN);
 	if (ImGui::BeginCombo("##CreateEntity", "Create Entity")) {
 		EntityTypeID entity_type_ids[] = {
@@ -988,4 +1019,5 @@ void LevelEditorUpdate(LevelEditorContext* editor_context, StackAllocator* alloc
 	renderer_world->window_size = float2(window_size);
 	renderer_world->debug_mesh_instance_arrays = draw_list_3d.Flush();
 	renderer_world->reset_reference_path_tracer |= reset_reference_path_tracer;
+	renderer_world->scene_descriptor_heap_offset = scene_descriptor_heap_offset;
 }

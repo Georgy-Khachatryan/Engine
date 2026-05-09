@@ -961,6 +961,52 @@ struct BasicMeshRenderPass {
 };
 
 
+NOTES(Meta::ShaderName{ "ToneMapping.hlsl"_sl })
+enum struct ToneMappingShaders : u32 {};
+SHADER_DEFINITION_GENERATED_CODE(ToneMappingShaders);
+
+NOTES(Meta::HlslFile{ "ToneMappingData.hlsl"_sl })
+struct ToneMappingGpuConstants {
+	compile_const float reference_luminance = 80.f; // Frame buffer value to cd/m^2.
+	
+	ToneMappingMethod method = ToneMappingMethod::GT7_HDR;
+	
+	float framebuffer_luminance_target = 0.f;
+	float sdr_correction_factor        = 0.f;
+	
+	float mid_point     = 0.f;
+	float toe_threshold = 0.f;
+	float toe_power     = 0.f;
+	float k_a           = 0.f;
+	float k_b           = 0.f;
+	float k_c           = 0.f;
+	
+	float blend_ratio = 0.f;
+	float fade_start  = 0.f;
+	float fade_end    = 0.f;
+};
+
+NOTES(Meta::RenderPass{})
+struct ToneMappingRenderPass {
+	RENDER_PASS_GENERATED_CODE();
+	
+	ToneMappingSettings tone_mapping_settings;
+	VirtualResourceID scene_radiance = VirtualResourceID::None;
+	
+	struct Descriptors : HLSL::BaseDescriptorTable {
+		HLSL::RWTexture2D<float4> scene_radiance;
+	};
+	
+	struct RootSignature : HLSL::BaseRootSignature {
+		HLSL::ConstantBuffer<SceneConstants> scene;
+		HLSL::ConstantBuffer<ToneMappingGpuConstants> constants;
+		HLSL::DescriptorTable<Descriptors> descriptor_table;
+	};
+	
+	inline static PipelineID pipeline_id;
+};
+
+
 NOTES(Meta::RenderPass{})
 struct DlssRenderPass {
 	RENDER_PASS_GENERATED_CODE();

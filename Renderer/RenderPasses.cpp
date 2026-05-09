@@ -277,9 +277,16 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	debug_geometry.debug_mesh_instance_arrays = renderer_world.debug_mesh_instance_arrays;
 	debug_geometry.debug_geometry_buffer      = &renderer_context->debug_geometry_buffer;
 	
-	// TODO: Select dynamically.
-	// render_passes.Add<XessRenderPass>().jitter_offset_pixels = scene.jitter_offset_pixels;
-	render_passes.Add<DlssRenderPass>().jitter_offset_pixels = scene.jitter_offset_pixels;
+	if (renderer_world.enable_anti_aliasing) {
+		// TODO: Select dynamically.
+		// render_passes.Add<XessRenderPass>().jitter_offset_pixels = scene.jitter_offset_pixels;
+		render_passes.Add<DlssRenderPass>().jitter_offset_pixels = scene.jitter_offset_pixels;
+	}
+	
+	auto& tone_mapping = render_passes.Add<ToneMappingRenderPass>();
+	tone_mapping.tone_mapping_settings = renderer_world.tone_mapping_settings;
+	tone_mapping.scene_radiance = renderer_world.enable_anti_aliasing ? VirtualResourceID::SceneRadianceResult : VirtualResourceID::SceneRadiance;
+	CreateResourceDescriptor(record_context, HLSL::Texture2D<float4>(tone_mapping.scene_radiance), renderer_world.scene_descriptor_heap_offset);
 	
 	render_passes.Add<ImGuiRenderPass>();
 	

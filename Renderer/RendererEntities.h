@@ -48,6 +48,32 @@ struct SceneConstants {
 	u32 path_tracer_accumulated_frame_count = 0;
 };
 
+NOTES(Meta::HlslFile{ "ToneMappingData.hlsl"_sl })
+enum struct ToneMappingMethod : u32 {
+	None         = 0,
+	GT7_HDR      = 1,
+	GT7_SDR      = 2,
+	Reinhard_SDR = 3,
+	
+	Count
+};
+
+struct ToneMappingSettings {
+	float physical_target_luminance_hdr = 500.f; // cd/m^2
+	float physical_target_luminance_sdr = 250.f; // cd/m^2, SDR Paper White
+	
+	float alpha          = 0.25f;
+	float mid_point      = 0.538f;
+	float linear_section = 0.444f;
+	float toe_power      = 1.28f;
+	
+	float blend_ratio    = 0.6f;
+	float fade_start     = 0.98f;
+	float fade_end       = 1.16f;
+	
+	ToneMappingMethod method = ToneMappingMethod::GT7_HDR;
+};
+
 struct DebugFreezeCullingCamera {
 	bool enabled = false;
 	quat view_to_world_rotation;
@@ -69,6 +95,10 @@ struct RendererWorld {
 	float meshlet_target_error_pixels = 1.f;
 	float reference_path_tracer_percent = 0.f;
 	bool  reset_reference_path_tracer   = false;
+	
+	ToneMappingSettings tone_mapping_settings;
+	
+	u32 scene_descriptor_heap_offset = 0; // Descriptor index for the final image.
 	
 	DebugFreezeCullingCamera debug_freeze_culling_camera;
 	MeshletCullingStatistics meshlet_culling_statistics;
