@@ -104,7 +104,8 @@ struct MeshSourceData {
 	String filepath;
 };
 
-NOTES()
+// No SaveLoad for tooling, MeshRuntimeDataLayout is part of the mesh file and should be kept in sync with it (and not go through Undo/Redo).
+NOTES(Meta::SaveLoadOptions{ SaveLoadFlags::SaveLoadToDisk })
 struct MeshRuntimeDataLayout {
 	compile_const u64 sequential_version = 46;
 	
@@ -128,12 +129,12 @@ struct MeshImportResult {
 	bool success = false;
 };
 
-NOTES(Meta::NoSaveLoad{})
+NOTES(Meta::SaveLoadOptions{ SaveLoadFlags::None })
 struct MeshRuntimeFile {
 	FileHandle file;
 };
 
-NOTES(Meta::NoSaveLoad{})
+NOTES(Meta::SaveLoadOptions{ SaveLoadFlags::None })
 struct MeshRuntimeAllocation {
 	NumaHeapAllocation allocation;
 	u32 offset = u32_max;

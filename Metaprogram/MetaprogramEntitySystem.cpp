@@ -12,9 +12,8 @@ compile_const auto asset_type_suffix  = "AssetType"_sl;
 
 struct ComponentTypeInfoKey {
 	TypeInfoStruct* type_info = nullptr;
-	ComponentType component_type = ComponentType::CPU;
-	bool generate_save_load_callback = false;
-	bool add_to_save_load_version_history = false;
+	ComponentType component_type  = ComponentType::CPU;
+	SaveLoadFlags save_load_flags = SaveLoadFlags::None;
 	u32 name_hash = 0;
 	
 	bool operator== (const ComponentTypeInfoKey& other) const { return type_info == other.type_info && component_type == other.component_type; }
@@ -104,15 +103,14 @@ void WriteEntitySystemMetadata(StackAllocator* alloc, ArrayView<TypeInfoStruct*>
 			}
 			ArrayAppend(entity_components, component_metadata);
 			
-			auto* no_save_load = FindNote<Meta::NoSaveLoad>(component_type_info);
-			auto* custom_save_load = FindNote<Meta::CustomSaveLoad>(component_type_info);
+			auto* save_load_options_note = FindNote<Meta::SaveLoadOptions>(component_type_info);
+			auto save_load_options = save_load_options_note ? *save_load_options_note : Meta::SaveLoadOptions{};
 			
 			ComponentTypeInfoKey component_type_info_key;
-			component_type_info_key.type_info      = component_type_info;
-			component_type_info_key.component_type = *component_type_note;
-			component_type_info_key.generate_save_load_callback = (no_save_load == nullptr);
-			component_type_info_key.add_to_save_load_version_history = (no_save_load == nullptr) && (custom_save_load == nullptr);
-			component_type_info_key.name_hash      = (u32)ComputeHash(component_type_info->name);
+			component_type_info_key.type_info       = component_type_info;
+			component_type_info_key.component_type  = *component_type_note;
+			component_type_info_key.save_load_flags = save_load_options.flags;
+			component_type_info_key.name_hash       = (u32)ComputeHash(component_type_info->name);
 			
 			auto [element, is_added] = HashTableAddOrFind(component_types, alloc, component_type_info_key, 0u);
 			if (is_added) {
@@ -312,18 +310,18 @@ void WriteEntitySystemMetadata(StackAllocator* alloc, ArrayView<TypeInfoStruct*>
 	builder.Indent();
 	for (auto& component : component_type_infos) {
 		u64 version = 0;
-		if (component.component_type == ComponentType::CPU && component.add_to_save_load_version_history) {
+		if (component.component_type == ComponentType::CPU && HasAnyFlags(component.save_load_flags, SaveLoadFlags::SaveLoadOptionsMask) && (HasAnyFlags(component.save_load_flags, SaveLoadFlags::CustomSaveLoadCallback) == false)) {
 			version = AddTypeInfoToSaveLoadHistory(alloc, version_history, component.type_info);
 		}
 		
-		auto component_type_value = PrintTypeValue(alloc, TypeInfoOf<ComponentType>(), &component.component_type); 
-		builder.Append("{ %, %, 0x%x, % },\n"_sl, component.type_info->size, version, ComputeHash(component.type_info->name), component_type_value);
+		auto component_type_value = PrintTypeValue(alloc, TypeInfoOf<ComponentType>(), &component.component_type);
+		builder.Append("{ %, %, 0x%x, %, (SaveLoadFlags)0x%x },\n"_sl, component.type_info->size, version, ComputeHash(component.type_info->name), component_type_value, (u32)component.save_load_flags);
 	}
 	builder.Unindent();
 	builder.Append("};\n\n"_sl);
 	
 	for (auto& component : cpu_component_type_infos) {
-		if (component.generate_save_load_callback) {
+		if (HasAnyFlags(component.save_load_flags, SaveLoadFlags::SaveLoadOptionsMask)) {
 			builder.Append("extern void SaveLoad(SaveLoadBuffer& buffer, %& component, u64 version);\n"_sl, component.type_info->name);
 		}
 	}
@@ -332,7 +330,7 @@ void WriteEntitySystemMetadata(StackAllocator* alloc, ArrayView<TypeInfoStruct*>
 	builder.Append("SaveLoadCallback component_save_load_callbacks_internal[] = {\n"_sl);
 	builder.Indent();
 	for (auto& component : cpu_component_type_infos) {
-		if (component.generate_save_load_callback) {
+		if (HasAnyFlags(component.save_load_flags, SaveLoadFlags::SaveLoadOptionsMask)) {
 			builder.Append("[](SaveLoadBuffer& buffer, void* data, u64 version) { SaveLoad(buffer, *(%*)data, version); },\n"_sl, component.type_info->name);
 		} else {
 			builder.Append("nullptr,\n"_sl);

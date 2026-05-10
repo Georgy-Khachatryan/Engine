@@ -25,7 +25,8 @@ struct TextureSourceData {
 	TextureAssetTargetEncoding target_encoding = TextureAssetTargetEncoding::BC1_UNORM_SRGB;
 };
 
-NOTES()
+// No SaveLoad for tooling, TextureRuntimeDataLayout is part of the texture file and should be kept in sync with it (and not go through Undo/Redo).
+NOTES(Meta::SaveLoadOptions{ SaveLoadFlags::SaveLoadToDisk })
 struct TextureRuntimeDataLayout {
 	compile_const u64 current_version = 1;
 	
@@ -40,17 +41,17 @@ struct TextureImportResult {
 	bool success = false;
 };
 
-NOTES(Meta::NoSaveLoad{})
+NOTES(Meta::SaveLoadOptions{ SaveLoadFlags::None })
 struct TextureRuntimeFile {
 	FileHandle file;
 };
 
-NOTES(Meta::NoSaveLoad{})
+NOTES(Meta::SaveLoadOptions{ SaveLoadFlags::None })
 struct TextureDescriptorAllocation {
 	u32 index = u32_max;
 };
 
-NOTES(Meta::NoSaveLoad{})
+NOTES(Meta::SaveLoadOptions{ SaveLoadFlags::None })
 struct TextureRuntimeAllocation {
 	NativeTextureResource resource;
 	SparseTextureLayout sparse_layout;

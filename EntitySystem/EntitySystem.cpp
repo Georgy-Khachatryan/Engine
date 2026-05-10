@@ -273,8 +273,7 @@ static void CreateComponentStreamTable(StackAllocator* alloc, HashTable<EntityCo
 		for (u32 component_stream_index = 0; component_stream_index < entity_type_info.cpu_component_count; component_stream_index += 1) {
 			auto  component_type_id   = entity_type_info.component_type_ids[component_stream_index];
 			auto& component_type_info = component_type_info_table[component_type_id.index];
-			auto  save_load_callback  = component_save_load_callbacks[component_type_id.index];
-			if (save_load_callback == nullptr) continue;
+			if (HasAnyFlags(component_type_info.save_load_flags, SaveLoadFlags::SaveLoadToDisk) == false) continue;
 			
 			EntityComponentStreamHash stream_hash;
 			stream_hash.entity_type_hash    = entity_type_info.type_hash;
@@ -382,8 +381,8 @@ void SaveLoadEntityForTooling(SaveLoadBuffer& buffer, EntityTypeArray* array, En
 		auto component_type_id = entity_type_info.component_type_ids[i];
 		auto type_info = component_type_info_table[component_type_id.index];
 		
-		auto save_load_callback = component_save_load_callbacks[component_type_id.index];
-		if (save_load_callback != nullptr && component_type_id.index != ECS::GetComponentTypeID<GuidComponent>::id.index) {
+		if (HasAnyFlags(type_info.save_load_flags, SaveLoadFlags::SaveLoadForTooling)) {
+			auto save_load_callback = component_save_load_callbacks[component_type_id.index];
 			u8* component_stream = array->component_streams[i].cpu.data;
 			save_load_callback(buffer, component_stream + entity_id.index * type_info.size_bytes, type_info.version);
 		}

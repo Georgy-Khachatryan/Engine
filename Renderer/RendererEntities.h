@@ -9,7 +9,7 @@ struct GpuComponentUploadBuffer;
 struct DebugMeshInstanceArray;
 struct DebugGeometryBuffer;
 
-NOTES(Meta::HlslFile{ "SceneData.hlsl"_sl }, Meta::NoSaveLoad{})
+NOTES(Meta::HlslFile{ "SceneData.hlsl"_sl })
 struct SceneConstants {
 	float2 render_target_size;
 	float2 inv_render_target_size;
@@ -106,7 +106,7 @@ struct MeshletCullingStatistics {
 	u32 meshlet_count_raytracing_pass   = 0;
 };
 
-NOTES(Meta::NoSaveLoad{})
+NOTES(Meta::SaveLoadOptions{ SaveLoadFlags::None })
 struct RendererWorld {
 	SceneConstants scene_constants;
 	

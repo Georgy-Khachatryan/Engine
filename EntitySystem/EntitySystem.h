@@ -56,9 +56,22 @@ union alignas(void*) ComponentStream {
 	ECS::GpuComponent<u8> gpu;
 };
 
+NOTES()
+enum struct SaveLoadFlags : u32 {
+	None = 0,
+	
+	SaveLoadToDisk      = 1u << 0,
+	SaveLoadForTooling  = 1u << 1, // SaveLoad for Undo/Redo and entity duplication.
+	SaveLoadOptionsMask = SaveLoadToDisk | SaveLoadForTooling,
+	
+	CustomSaveLoadCallback = 1u << 2, // Use a manually implemented SaveLoad(...) function instead of generating one.
+	
+	Default = SaveLoadToDisk | SaveLoadForTooling,
+};
+ENUM_FLAGS_OPERATORS(SaveLoadFlags);
+
 namespace Meta {
-	NOTES() struct CustomSaveLoad {};
-	NOTES() struct NoSaveLoad {};
+	NOTES() struct SaveLoadOptions { SaveLoadFlags flags = SaveLoadFlags::Default; };
 	NOTES() struct EntityType { u32 base_allocation_count = entity_system_base_allocation_count; };
 	NOTES() struct ComponentQuery {};
 }
@@ -82,7 +95,8 @@ struct ComponentTypeInfo {
 	u64 size_bytes = 0;
 	u64 version    = 0;
 	u64 type_hash  = 0;
-	ComponentType component_type = ComponentType::CPU;
+	ComponentType component_type  = ComponentType::CPU;
+	SaveLoadFlags save_load_flags = SaveLoadFlags::None;
 };
 
 using DefaultInitializeCallback = void (*)(void* data, u64 begin, u64 end);

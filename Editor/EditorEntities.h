@@ -2,7 +2,7 @@
 #include "Basic/Basic.h"
 #include "Engine/Entities.h"
 
-NOTES(Meta::CustomSaveLoad{})
+NOTES(Meta::SaveLoadOptions{ SaveLoadFlags::Default | SaveLoadFlags::CustomSaveLoadCallback })
 struct EditorSelectionStateComponent {
 	// TODO: Add support for hash table reflection and save/load.
 	HashTable<u64, void> selected_entities_hash_table;

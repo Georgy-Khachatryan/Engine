@@ -8,10 +8,21 @@ NOTES() struct PositionComponent { float3 position = {};  };
 NOTES() struct RotationComponent { quat   rotation = {};  };
 NOTES() struct ScaleComponent    { float  scale    = 1.f; };
 
-NOTES() struct GuidComponent { u64 guid = 0; };
-NOTES() struct NameComponent { String name;  };
+// No SaveLoad for tooling, GUID is supposed to be tracked elsewhere.
+NOTES(Meta::SaveLoadOptions{ SaveLoadFlags::SaveLoadToDisk })
+struct GuidComponent {
+	u64 guid = 0;
+};
 
-NOTES() struct AliveEntityMask { u64 mask = 0; };
+NOTES()
+struct NameComponent {
+	String name;
+};
+
+NOTES()
+struct AliveEntityMask {
+	u64 mask = 0;
+};
 
 NOTES()
 struct AabbComponent {
