@@ -7,6 +7,18 @@ struct LightComponent {
 	}
 }
 
+struct WorldSourceData {
+	/*Version*/ 0 {
+		file_guid u64 0;
+	}
+}
+
+struct LightEntityGUID {
+	/*Version*/ 0 {
+		guid u64 0;
+	}
+}
+
 struct TextureRuntimeDataLayout {
 	/*Version*/ 0 {
 		file_guid u64 0;

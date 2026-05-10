@@ -218,8 +218,8 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 			float  alpha_square = Pow2(alpha);
 			float3 diffuse_albedo = properties.albedo;
 			
-			{
-				GpuLightEntityData light = light_entity_data[0];
+			if (scene.global_light_entity_index != u32_max) {
+				GpuLightEntityData light = light_entity_data[scene.global_light_entity_index];
 				
 				float3x3 world_to_tangent = BuildOrthonormalBasis(world_space_normal);
 				float3x3 tangent_to_world = transpose(world_to_tangent);

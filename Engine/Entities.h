@@ -1,19 +1,20 @@
 #pragma once
 #include "Basic/Basic.h"
 #include "Basic/BasicString.h"
-#include "EntitySystem/EntitySystem.h"
 #include "EntitySystem/Components.h"
+#include "EntitySystem/EntitySystem.h"
 #include "Renderer/MaterialAsset.h"
 #include "Renderer/MeshAsset.h"
-#include "Renderer/TextureAsset.h"
 #include "Renderer/RendererEntities.h"
+#include "Renderer/TextureAsset.h"
+#include "WorldAsset.h"
 
 NOTES(Meta::EntityType{ 1 }, Meta::ComponentQuery{})
 struct WorldEntityType {
 	ECS::Component<GuidComponent> guid;
-	ECS::Component<NameComponent> name;
 	
 	ECS::Component<CameraEntityGUID> camera_entity;
+	ECS::Component<LightEntityGUID>  global_light_entity;
 	ECS::Component<RendererWorld>    renderer_world;
 	
 	ECS::Component<ToneMappingSettings>  tone_mapping_settings;
@@ -22,7 +23,6 @@ struct WorldEntityType {
 	NOTES(VirtualResourceID::SceneConstants)
 	ECS::GpuComponent<SceneConstants> gpu_scene_constants;
 };
-
 
 NOTES(Meta::EntityType{}, Meta::ComponentQuery{})
 struct MeshEntityType {

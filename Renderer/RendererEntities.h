@@ -46,6 +46,9 @@ struct SceneConstants {
 	u32 frame_index = 0;
 	float reference_path_tracer_percent;
 	u32 path_tracer_accumulated_frame_count = 0;
+	
+	u32 global_light_entity_index = 0;
+	uint3 padding;
 };
 
 NOTES(Meta::HlslFile{ "ToneMappingData.hlsl"_sl })
@@ -206,6 +209,7 @@ struct DebugMeshInstanceArray {
 
 NOTES(Meta::ComponentQuery{})
 struct WorldEntityQuery {
+	ECS::Component<LightEntityGUID>      global_light_entity;
 	ECS::Component<CameraEntityGUID>     camera_entity;
 	ECS::Component<RendererWorld>        renderer_world;
 	ECS::Component<ToneMappingSettings>  tone_mapping_settings;

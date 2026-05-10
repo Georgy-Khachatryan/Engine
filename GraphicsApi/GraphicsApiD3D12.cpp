@@ -114,6 +114,9 @@ GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
 		for (u32 i = 0; i < persistent_srv_descriptor_count; i += 1) {
 			context->srv_heap_free_indices[i] = (u16)(persistent_srv_descriptor_count - i - 1);
 		}
+		
+		// Start from 1 to make sure descriptor at index 0 is invalid, safe to use.
+		ArrayPopLast(context->srv_heap_free_indices);
 	}
 	
 	

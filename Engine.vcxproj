@@ -95,6 +95,7 @@
     <ClInclude Include="Engine/ImGuiCustomWidgets.h" />
     <ClInclude Include="Engine/SystemWindow.h" />
     <ClInclude Include="Engine/UndoRedoSystem.h" />
+    <ClInclude Include="Engine/WorldAsset.h" />
     
     <!-- Editor. -->
     <ClInclude Include="Editor/Entities.h" />

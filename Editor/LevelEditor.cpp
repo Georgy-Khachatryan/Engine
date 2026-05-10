@@ -21,10 +21,10 @@ static const EntityTypeID creatable_asset_entity_type_ids[] = {
 	ECS::GetEntityTypeID<MeshAssetType>::id,
 	ECS::GetEntityTypeID<TextureAssetType>::id,
 	ECS::GetEntityTypeID<MaterialAssetType>::id,
+	// ECS::GetEntityTypeID<WorldAssetType>::id,
 };
 
-compile_const auto entities_save_load_path = "./Assets/Scene.csb"_sl;
-compile_const auto assets_save_load_path   = "./Assets/Assets.csb"_sl;
+compile_const auto assets_save_load_path = "./Assets/Assets.csb"_sl;
 
 
 static float4 CameraEntityViewToClip(CameraEntityType camera_entity, float2 window_size) {
@@ -364,7 +364,7 @@ static void EntityViewTable(StackAllocator* alloc, EntitySystemBase& entity_syst
 	
 	ImGui::PushStyleColor(ImGuiCol_NavCursor, 0u);
 	while (clipper.Step()) {
-		for (s32 index =  clipper.DisplayStart; index < clipper.DisplayEnd; index += 1) {
+		for (s32 index = clipper.DisplayStart; index < clipper.DisplayEnd; index += 1) {
 			auto [entity_id, entity_type_id] = typed_entity_ids[index];
 			auto entity_type_name = entity_type_name_table[entity_type_id.index];
 			
@@ -465,6 +465,10 @@ static void WorldComponentEntityView(StackAllocator* alloc, WorldEntitySystem& w
 			ImGui::ColorEdit3("", &entity.light->color.x, ImGuiColorEditFlags_Float);
 			ImGui::EndTableItem();
 		}
+	}
+	
+	if (entity.light_entity) {
+		ImGui::TableEntityComboBox("Light Entity", &world_system, &entity.light_entity->guid, ECS::GetEntityTypeID<LightEntityType>::id);
 	}
 	
 	if (entity.anti_aliasing_settings) {
@@ -635,6 +639,13 @@ static bool AssetComponentEntityView(StackAllocator* alloc, AssetEntitySystem& a
 		ImGui::TableEntityComboBox("Material Asset", &asset_system, &entity.material_asset->guid, ECS::GetEntityTypeID<MaterialAssetType>::id);
 	}
 	
+	
+	if (entity.world_source_data) {
+		auto source_data_filename = StringFormat(alloc, "./Assets/%x..csb"_sl, entity.world_source_data->file_guid);
+		ImGui::TableInputText("World Source Data", source_data_filename, nullptr);
+	}
+	
+	
 	return should_recreate_asset;
 }
 
@@ -766,6 +777,35 @@ static void AssetBrowser(StackAllocator* alloc, AssetEntitySystem& asset_system,
 	ImGui::End();
 }
 
+
+static void CreateDefaultAssetSystem(AssetEntitySystem& asset_system) {
+	CreateEntity<EditorSelectionStateEntity>(asset_system);
+	
+	auto world_asset = CreateEntity<WorldAssetType>(asset_system);
+	world_asset.name->name = StringCopy(&asset_system.heap, "DefaultWorld"_sl);
+	world_asset.source_data->file_guid = GenerateRandomNumber64(asset_system.guid_random_seed);
+}
+
+static void CreateDefaultWorldSystem(WorldEntitySystem& world_system, u64 world_entity_guid) {
+	CreateEntity<EditorSelectionStateEntity>(world_system);
+	
+	auto world_entity  = CreateEntity<WorldEntityType>(world_system, world_entity_guid);
+	auto camera_entity = CreateEntity<CameraEntityType>(world_system);
+	auto mesh_entity   = CreateEntity<MeshEntityType>(world_system);
+	auto global_light_entity = CreateEntity<LightEntityType>(world_system);
+	
+	camera_entity.rotation->rotation =
+		Math::AxisAngleToQuat(float3(0.f, 0.f, 1.f), -90.f * Math::degrees_to_radians) *
+		Math::AxisAngleToQuat(float3(1.f, 0.f, 0.f), -90.f * Math::degrees_to_radians);
+	
+	camera_entity.name->name       = StringCopy(&world_system.heap, "DefaultCamera"_sl);
+	global_light_entity.name->name = StringCopy(&world_system.heap, "DefaultGlobalLight"_sl);
+	
+	world_entity.camera_entity->guid       = camera_entity.guid->guid;
+	world_entity.global_light_entity->guid = global_light_entity.guid->guid;
+}
+
+
 static bool SaveLoadEntitySystemToFile(StackAllocator* alloc, EntitySystemBase& entity_system, String filepath, bool is_loading) {
 	TempAllocationScope(alloc);
 	
@@ -780,25 +820,16 @@ static bool SaveLoadEntitySystemToFile(StackAllocator* alloc, EntitySystemBase& 
 	return success;
 }
 
-static void LoadOrCreateDefaultWorld(StackAllocator* alloc, WorldEntitySystem& world_system, AssetEntitySystem& asset_system) {
-	bool loaded_entities = SaveLoadEntitySystemToFile(alloc, world_system, entities_save_load_path, true);
-	bool loaded_assets   = SaveLoadEntitySystemToFile(alloc, asset_system, assets_save_load_path, true);
-	
-	if (loaded_entities == false) {
-		auto world_entity  = CreateEntity<WorldEntityType>(world_system);
-		auto camera_entity = CreateEntity<CameraEntityType>(world_system);
-		CreateEntity<EditorSelectionStateEntity>(world_system);
-		
-		camera_entity.rotation->rotation =
-			Math::AxisAngleToQuat(float3(0.f, 0.f, 1.f), -90.f * Math::degrees_to_radians) *
-			Math::AxisAngleToQuat(float3(1.f, 0.f, 0.f), -90.f * Math::degrees_to_radians);
-		
-		camera_entity.name->name = StringCopy(&world_system.heap, "DefaultCamera"_sl);
-		world_entity.camera_entity->guid = camera_entity.guid->guid;
+static void LoadOrCreateDefaultEntitySystems(StackAllocator* alloc, WorldEntitySystem& world_system, AssetEntitySystem& asset_system) {
+	if (SaveLoadEntitySystemToFile(alloc, asset_system, assets_save_load_path, true) == false) {
+		CreateDefaultAssetSystem(asset_system);
 	}
 	
-	if (loaded_assets == false) {
-		CreateEntity<EditorSelectionStateEntity>(asset_system);
+	auto world_asset = QueryFirstEntityByType<WorldAssetType>(asset_system);
+	auto entities_save_load_path = StringFormat(alloc, "./Assets/%x..csb"_sl, world_asset.source_data->file_guid);
+	
+	if (SaveLoadEntitySystemToFile(alloc, world_system, entities_save_load_path, true) == false) {
+		CreateDefaultWorldSystem(world_system, world_asset.source_data->file_guid);
 	}
 }
 
@@ -813,7 +844,7 @@ LevelEditorContext* CreateLevelEditorContext(StackAllocator* alloc, HeapAllocato
 	auto* editor_context = NewFromAlloc(alloc, LevelEditorContext);
 	InitializeUndoRedoSystem(editor_context->undo_redo_system, heap);
 	
-	LoadOrCreateDefaultWorld(alloc, world_system, asset_system);
+	LoadOrCreateDefaultEntitySystems(alloc, world_system, asset_system);
 	
 	return editor_context;
 }
@@ -897,8 +928,10 @@ void LevelEditorUpdate(LevelEditorContext* editor_context, StackAllocator* alloc
 	
 	
 	ImGui::Begin("Outliner");
-	ImGui::SetNextItemShortcut(ImGuiMod_Ctrl | ImGuiKey_S, ImGuiInputFlags_RouteGlobal | ImGuiInputFlags_RouteOverFocused);
-	bool should_save_scene = ImGui::Button("Save State");
+	
+	// Use Shortcut instead of SetNextItemShortcut to make sure Ctrl+S works even when the window is collapsed/hidden.
+	bool should_save_scene = ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_S, ImGuiInputFlags_RouteGlobal | ImGuiInputFlags_RouteOverFocused);
+	should_save_scene |= ImGui::Button("Save State");
 	
 	ImGui::SameLine();
 	
@@ -906,6 +939,7 @@ void LevelEditorUpdate(LevelEditorContext* editor_context, StackAllocator* alloc
 	bool should_load_scene = ImGui::Button("Load State") && (should_save_scene == false);
 	
 	if (should_save_scene || should_load_scene) {
+		auto entities_save_load_path = StringFormat(alloc, "./Assets/%x..csb"_sl, world_entity_guid);
 		SaveLoadEntitySystemToFile(alloc, world_system, entities_save_load_path, should_load_scene);
 		
 		if (should_save_scene) {
@@ -923,6 +957,7 @@ void LevelEditorUpdate(LevelEditorContext* editor_context, StackAllocator* alloc
 	ImGui::SetNextItemShortcut(ImGuiKey_R, ImGuiInputFlags_RouteGlobal | ImGuiInputFlags_RouteOverFocused | ImGuiInputFlags_Repeat);
 	reset_reference_path_tracer |= ImGui::Button("Reset Reference Path Tracer");
 	ImGui::Text("Window Size: %ux%u", (u32)window_size.x, (u32)window_size.y);
+	
 	
 	ImGui::SetNextItemWidth(-FLT_MIN);
 	EntityCreationComboBox("##CreateEntity", "Create Entity", world_system, undo_redo_system, world_selection_state_entity, ArrayViewCreate(creatable_world_entity_type_ids));

@@ -94,7 +94,6 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	
 	auto world_entity  = QueryEntityByGUID<WorldEntityQuery>(*world_system, world_entity_guid);
 	auto camera_entity = QueryEntityByGUID<CameraEntityQuery>(*world_system, world_entity.camera_entity->guid);
-	auto sun_light_entity = ExtractComponentStreams<LightEntityQuery>(QueryEntities<LightEntityQuery>(record_context->alloc, *world_system)[0]);
 	
 	auto& renderer_world = *world_entity.renderer_world;
 	auto& camera         = *camera_entity.camera;
@@ -106,6 +105,7 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	
 	
 	auto& scene = renderer_world.scene_constants;
+	AtmosphereParameters atmosphere_parameters;
 	
 	if (scene.frame_index != 0) CopyCurrentToPreviousSceneConstants(scene);
 	
@@ -173,14 +173,26 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 		scene.path_tracer_accumulated_frame_count += 1;
 	}
 	
+	if (world_entity.global_light_entity->guid != 0) {
+		auto typed_entity_id = FindEntityByGUID(*world_system, world_entity.global_light_entity->guid);
+		scene.global_light_entity_index = typed_entity_id.entity_id.index;
+		
+		auto* array = &world_system->entity_type_arrays[typed_entity_id.entity_type_id.index];
+		auto global_light_entity = ExtractComponentStreams<LightEntityQuery>(array, typed_entity_id.entity_id);
+		atmosphere_parameters.world_space_sun_direction = global_light_entity.rotation->rotation * float3(0.f, 0.f, 1.f);
+		atmosphere_parameters.sun_color                 = global_light_entity.light->color;
+		atmosphere_parameters.sun_irradiance            = global_light_entity.light->irradiance;
+	} else {
+		scene.global_light_entity_index = u32_max;
+		
+		atmosphere_parameters.sun_color      = 0.f;
+		atmosphere_parameters.sun_irradiance = 0.f;
+	}
+	
+	
 	auto gpu_scene_constants = AllocateGpuComponentUploadBuffer(record_context, 1, world_entity.gpu_scene_constants);
 	AppendGpuTransferCommand(gpu_scene_constants, 0, scene);
 	ArrayAppend(renderer_world.gpu_uploads, record_context->alloc, gpu_scene_constants);
-	
-	AtmosphereParameters atmosphere_parameters;
-	atmosphere_parameters.world_space_sun_direction = sun_light_entity.rotation->rotation * float3(0.f, 0.f, 1.f);
-	atmosphere_parameters.sun_color                 = sun_light_entity.light->color;
-	atmosphere_parameters.sun_irradiance            = sun_light_entity.light->irradiance;
 	
 	auto [atmosphere_parameters_gpu_address, atmosphere_parameters_cpu_address] = AllocateTransientUploadBuffer<AtmosphereParameters>(record_context);
 	*atmosphere_parameters_cpu_address = atmosphere_parameters;

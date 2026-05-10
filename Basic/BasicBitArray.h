@@ -36,6 +36,14 @@ inline void BitArraySetBitRange(ArrayView<u64> mask, u64 offset, u64 count) {
 	}
 }
 
+inline u64 BitArrayFindFirstSetBit(ArrayView<u64> mask) {
+	for (u64 i = 0; i < mask.count; i += 1) {
+		u64 qword = mask[i];
+		if (qword != 0) return FirstBitLow(mask[i]) + i * 64u;
+	}
+	return u64_max;
+}
+
 inline u64 BitArrayCountSetBits(ArrayView<u64> mask) {
 	u64 bit_count = 0;
 	for (u64 i = 0; i < mask.count; i += 1) {

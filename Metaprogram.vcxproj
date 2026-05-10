@@ -33,6 +33,7 @@
   <ItemGroup>
     <ReflectedFiles Include="Editor/EditorEntities.h" />
     <ReflectedFiles Include="Engine/Entities.h" />
+    <ReflectedFiles Include="Engine/WorldAsset.h" />
     <ReflectedFiles Include="EntitySystem/Components.h" />
     <ReflectedFiles Include="EntitySystem/EntitySystem.h" />
     <ReflectedFiles Include="GraphicsApi/GraphicsApiTypes.h" />

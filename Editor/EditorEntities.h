@@ -30,6 +30,8 @@ struct WorldEntityEditorQuery {
 	MeshAssetGUID*     mesh_asset     = nullptr;
 	MaterialAssetGUID* material_asset = nullptr;
 	
+	LightEntityGUID* light_entity = nullptr;
+	
 	CameraComponent* camera = nullptr;
 	
 	LightComponent* light = nullptr;
@@ -51,4 +53,6 @@ struct AssetEntityEditorQuery {
 	TextureDescriptorAllocation* texture_descriptor_allocation = nullptr;
 	
 	MaterialTextureData* material_texture_data = nullptr;
+	
+	WorldSourceData* world_source_data = nullptr;
 };

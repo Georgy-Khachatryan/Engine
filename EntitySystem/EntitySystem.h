@@ -1,6 +1,7 @@
 #pragma once
 #include "Basic/Basic.h"
 #include "Basic/BasicArray.h"
+#include "Basic/BasicBitArray.h"
 #include "Basic/BasicHashTable.h"
 #include "Basic/BasicMemory.h"
 #include "Basic/BasicString.h"
@@ -144,8 +145,8 @@ EntityTypeArray* QueryEntityTypeArray(EntitySystemBase& system) {
 }
 
 template<typename EntityTypeT>
-EntityTypeT CreateEntity(EntitySystemBase& system) {
-	auto entity_id = CreateEntity(system, ECS::GetEntityTypeID<EntityTypeT>::id);
+EntityTypeT CreateEntity(EntitySystemBase& system, u64 optional_guid = 0) {
+	auto entity_id = CreateEntity(system, ECS::GetEntityTypeID<EntityTypeT>::id, optional_guid);
 	return ExtractComponentStreams<EntityTypeT>(QueryEntityTypeArray<EntityTypeT>(system), entity_id);
 }
 
@@ -166,6 +167,19 @@ QueryTypeT QueryEntityByGUID(EntitySystemBase& system, u64 guid) {
 	auto typed_entity_id = FindEntityByGUID(system, guid);
 	auto& array = system.entity_type_arrays[typed_entity_id.entity_type_id.index];
 	return ExtractComponentStreams<QueryTypeT>(&array, typed_entity_id.entity_id);
+}
+
+inline TypedEntityID FindFirstEntityByType(EntitySystemBase& system, EntityTypeID entity_type_id) {
+	auto& array = system.entity_type_arrays[entity_type_id.index];
+	DebugAssert(array.count != 0, "Failed to find first entity.");
+	return TypedEntityID{ EntityID{ (u32)BitArrayFindFirstSetBit(array.alive_mask) }, entity_type_id };
+}
+
+template<typename EntityTypeT>
+inline EntityTypeT QueryFirstEntityByType(EntitySystemBase& system) {
+	auto typed_entity_id = FindFirstEntityByType(system, ECS::GetEntityTypeID<EntityTypeT>::id);
+	auto& array = system.entity_type_arrays[typed_entity_id.entity_type_id.index];
+	return ExtractComponentStreams<EntityTypeT>(&array, typed_entity_id.entity_id);
 }
 
 extern ArrayView<String> entity_type_name_table;
