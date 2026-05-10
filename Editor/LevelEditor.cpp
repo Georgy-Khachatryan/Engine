@@ -11,6 +11,17 @@
 #include <SDK/imgui/imgui.h>
 #include <SDK/imgui/imgui_internal.h>
 
+static const EntityTypeID creatable_world_entity_type_ids[] = {
+	ECS::GetEntityTypeID<MeshEntityType>::id,
+	ECS::GetEntityTypeID<LightEntityType>::id,
+	ECS::GetEntityTypeID<CameraEntityType>::id,
+};
+
+static const EntityTypeID creatable_asset_entity_type_ids[] = {
+	ECS::GetEntityTypeID<MeshAssetType>::id,
+	ECS::GetEntityTypeID<TextureAssetType>::id,
+	ECS::GetEntityTypeID<MaterialAssetType>::id,
+};
 
 static float4 CameraEntityViewToClip(CameraEntityType camera_entity, float2 window_size) {
 	float vertical_fov_degrees = camera_entity.camera->vertical_fov_degrees;
@@ -93,7 +104,7 @@ static bool GizmoControls(CameraEntityType camera_entity, WorldEntitySystem& wor
 	
 	auto typed_entity_id = FindEntityByGUID(world_system, entity_guid);
 	auto* array = &world_system.entity_type_arrays[typed_entity_id.entity_type_id.index];
-	auto entity = ExtractComponentStreams<EntityEditorQuery>(array, typed_entity_id.entity_id);
+	auto entity = ExtractComponentStreams<TransformComponentQuery>(array, typed_entity_id.entity_id);
 	if (entity.position == nullptr || entity.rotation == nullptr) return false;
 	
 	auto view_to_clip_coef = CameraEntityViewToClip(camera_entity, window_size);
@@ -366,79 +377,19 @@ static void LevelEditorSceneView(StackAllocator* alloc, WorldEntitySystem& world
 	ApplyEntitySelectionRequests(ms_io, typed_entity_ids, world_system, undo_redo_system, selection_state_entity);
 }
 
-bool SelectedEntityView(StackAllocator* alloc, String undo_label, WorldEntitySystem& world_system, AssetEntitySystem& asset_system, UndoRedoSystem& undo_redo_system, u64 entity_guid);
 
-static bool LevelEditorEntityView(StackAllocator* alloc, WorldEntitySystem& world_system, AssetEntitySystem& asset_system, UndoRedoSystem& undo_redo_system, EditorSelectionStateEntity selection_state_entity) {
-	auto& selected_entities_hash_table = selection_state_entity.selection_state->selected_entities_hash_table;
-	
-	ImGui::Begin("Entity Editor", nullptr, ImGuiWindowFlags_NoFocusOnAppearing);
-	defer{ ImGui::End(); };
-	
-	auto table_flags = ImGuiTableFlags_NoSavedSettings | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_PadOuterX | ImGuiTableFlags_ScrollY;
-	
-	if (ImGui::BeginTable("Components", 2, table_flags) == false) return false;
-	defer{ ImGui::EndTable(); };
-	
-	ImGui::TableSetupScrollFreeze(0, 1); // Freeze header row.
-	ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch, 1.f);
-	ImGui::TableSetupColumn("Data", ImGuiTableColumnFlags_WidthStretch, 3.f);
-	ImGui::TableHeadersRow();
-	
-	if (selected_entities_hash_table.count == 0) return false;
-	
-	
-	// Items should span full width of the column.
-	ImGui::PushItemWidth(-FLT_MIN);
-	defer{ ImGui::PopItemWidth(); };
-	
-	u64 entity_guid = (*selected_entities_hash_table.begin()).key;
-	ImGuiScopeID((void*)entity_guid);
-	
-	ImGui::BeginDisabled(selected_entities_hash_table.count >= 2);
-	defer{ ImGui::EndDisabled(); };
-	
-	return SelectedEntityView(alloc, "Entity Editor"_sl, world_system, asset_system, undo_redo_system, entity_guid);
-}
-
-static bool LevelEditorWorldEntityView(StackAllocator* alloc, WorldEntitySystem& world_system, AssetEntitySystem& asset_system, UndoRedoSystem& undo_redo_system, u64 world_entity_guid) {
-	ImGui::Begin("World Entity", nullptr, ImGuiWindowFlags_NoFocusOnAppearing);
-	defer{ ImGui::End(); };
-	
-	auto table_flags = ImGuiTableFlags_NoSavedSettings | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_PadOuterX | ImGuiTableFlags_ScrollY;
-	
-	if (ImGui::BeginTable("Components", 2, table_flags) == false) return false;
-	defer{ ImGui::EndTable(); };
-	
-	ImGui::TableSetupScrollFreeze(0, 1); // Freeze header row.
-	ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch, 1.f);
-	ImGui::TableSetupColumn("Data", ImGuiTableColumnFlags_WidthStretch, 3.f);
-	ImGui::TableHeadersRow();
-	
-	// Items should span full width of the column.
-	ImGui::PushItemWidth(-FLT_MIN);
-	defer{ ImGui::PopItemWidth(); };
-	
-	ImGuiScopeID((void*)world_entity_guid);
-	
-	return SelectedEntityView(alloc, "World Entity"_sl, world_system, asset_system, undo_redo_system, world_entity_guid);
-}
-
-bool SelectedEntityView(StackAllocator* alloc, String undo_label, WorldEntitySystem& world_system, AssetEntitySystem& asset_system, UndoRedoSystem& undo_redo_system, u64 entity_guid) {
-	auto typed_entity_id = FindEntityByGUID(world_system, entity_guid);
-	auto* array = &world_system.entity_type_arrays[typed_entity_id.entity_type_id.index];
-	auto entity = ExtractComponentStreams<EntityEditorQuery>(array, typed_entity_id.entity_id);
-	
-	BeginUndoRedoCommand(undo_label, undo_redo_system, world_system, entity_guid);
-	
+static void SharedComponentEntityView(StackAllocator* alloc, EntitySystemBase& entity_system, SharedEntityEditorQuery entity) {
 	if (entity.guid) {
 		auto guid_string = StringFormat(alloc, "0x%"_sl, (void*)entity.guid->guid);
 		ImGui::TableInputText("GUID", guid_string, nullptr);
 	}
 	
 	if (entity.name) {
-		ImGui::TableInputText("Name", entity.name->name, &world_system.heap);
+		ImGui::TableInputText("Name", entity.name->name, &entity_system.heap);
 	}
-	
+}
+
+static void WorldComponentEntityView(StackAllocator* alloc, WorldEntitySystem& world_system, AssetEntitySystem& asset_system, WorldEntityEditorQuery entity) {
 	if (entity.position) {
 		auto& position = entity.position->position;
 		ImGui::TableDragFloatWithReset("Position", &position.x, 3, 0.1f);
@@ -513,196 +464,10 @@ bool SelectedEntityView(StackAllocator* alloc, String undo_label, WorldEntitySys
 			ImGui::TableSliderFloat("Fade End", &settings.fade_end, 0.f, 2.f);
 		}
 	}
-	
-	bool is_dragging = ImGui::IsAnyItemActive() && ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows);
-	bool is_dirty = EndUndoRedoCommand(undo_redo_system, is_dragging);
-	
-	if (is_dirty) {
-		BitArraySetBit(array->dirty_mask, typed_entity_id.entity_id.index);
-	}
-	
-	return is_dirty;
 }
 
-static void DrawUndoRedoCommandRow(UndoRedoCommand& command) {
-	compile_const char* command_type_names[3] = { "LoadEntityState", "CreateEntity", "RemoveEntity" };
-	
-	ImGui::TableNextRow();
-	if (ImGui::TableSetColumnIndex(0)) ImGui::Text("0x%016llX", command.entity_guid);
-	if (ImGui::TableSetColumnIndex(1)) ImGui::Text("%u", command.group_index);
-	if (ImGui::TableSetColumnIndex(2)) ImGui::Text("%llu", command.offset);
-	if (ImGui::TableSetColumnIndex(3)) ImGui::Text("%llu", command.size);
-	if (ImGui::TableSetColumnIndex(4)) ImGui::TextUnformatted(command_type_names[(u32)command.command_type]);
-}
-
-static void LevelEditorUndoRedoHistoryView(UndoRedoSystem& undo_redo_system) {
-	ImGui::Begin("Undo/Redo History");
-	defer{ ImGui::End(); };
-	
-	ImGui::Text("Undo/Redo Buffer Size: %llu", undo_redo_system.undo_buffer.save_load_buffer.data.count + undo_redo_system.redo_buffer.save_load_buffer.data.count);
-	
-	auto table_flags = ImGuiTableFlags_NoSavedSettings | ImGuiTableFlags_Resizable | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_PadOuterX | ImGuiTableFlags_ScrollY;
-	if (ImGui::BeginTable("Components", 5, table_flags) == false) return;
-	defer{ ImGui::EndTable(); };
-		
-	ImGui::TableSetupScrollFreeze(0, 1); // Freeze header row.
-	ImGui::TableSetupColumn("GUID",    ImGuiTableColumnFlags_WidthStretch, 4.f);
-	ImGui::TableSetupColumn("GroupID", ImGuiTableColumnFlags_WidthStretch, 2.f);
-	ImGui::TableSetupColumn("Offset",  ImGuiTableColumnFlags_WidthStretch, 1.f);
-	ImGui::TableSetupColumn("Size",    ImGuiTableColumnFlags_WidthStretch, 1.f);
-	ImGui::TableSetupColumn("Type",    ImGuiTableColumnFlags_WidthStretch, 3.f);
-	ImGui::TableHeadersRow();
-	
-	auto& undo_commands = undo_redo_system.undo_buffer.commands;
-	for (s64 i = 0; i < (s64)undo_commands.count; i += 1) {
-		DrawUndoRedoCommandRow(undo_commands[i]);
-	}
-	
-	ImGui::TableNextRow();
-	if (ImGui::TableSetColumnIndex(0)) {
-		ImGui::CollapsingHeader("^^^ Undo Commands ^^^ | vvv Redo Commands vvv ", ImGuiTreeNodeFlags_SpanAllColumns | ImGuiTreeNodeFlags_LabelSpanAllColumns | ImGuiTreeNodeFlags_Leaf);
-	}
-	
-	auto& redo_commands = undo_redo_system.redo_buffer.commands;
-	for (s64 i = redo_commands.count - 1; i >= 0; i -= 1) {
-		DrawUndoRedoCommandRow(redo_commands[i]);
-	}
-}
-
-static void AssetBrowser(StackAllocator* alloc, AssetEntitySystem& asset_system, UndoRedoSystem& undo_redo_system, EditorSelectionStateEntity selection_state_entity) {
-	ImGui::Begin("AssetBrowser");
-	defer{ ImGui::End(); };
-	
-	auto& selected_assets_hash_table = selection_state_entity.selection_state->selected_entities_hash_table;
-	ImGui::SetNextItemWidth(-FLT_MIN);
-	if (ImGui::BeginCombo("##CreateAsset", "Create Asset")) {
-		EntityTypeID entity_type_ids[] = {
-			ECS::GetEntityTypeID<MeshAssetType>::id,
-			ECS::GetEntityTypeID<TextureAssetType>::id,
-			ECS::GetEntityTypeID<MaterialAssetType>::id,
-		};
-		
-		for (auto entity_type_id : entity_type_ids) {
-			auto name = entity_type_name_table[entity_type_id.index];
-			
-			ImGuiScopeID(entity_type_id.index);
-			if (ImGui::Selectable(name.data, false)) {
-				auto entity_id = CreateEntity(asset_system, entity_type_id);
-				auto entity = ExtractComponentStreams<GuidNameQuery>(&asset_system.entity_type_arrays[entity_type_id.index], entity_id);
-				entity.name->name = StringCopy(&asset_system.heap, name);
-				
-				BeginUndoRedoGroup(undo_redo_system);
-				UndoRedoCreateEntity(undo_redo_system, asset_system, entity.guid->guid);
-				
-				BeginUndoRedoCommand("Select Created Asset"_sl, undo_redo_system, asset_system, selection_state_entity.guid->guid);
-				HashTableClear(selected_assets_hash_table);
-				HashTableAddOrFind(selected_assets_hash_table, &asset_system.heap, entity.guid->guid);
-				EndUndoRedoCommand(undo_redo_system);
-				
-				EndUndoRedoGroup(undo_redo_system);
-			}
-		}
-		ImGui::EndCombo();
-	}
-	
-	auto flags = ImGuiTableFlags_Resizable | ImGuiTableFlags_NoSavedSettings | ImGuiTableFlags_BordersInner | ImGuiTableFlags_PadOuterX | ImGuiTableFlags_ScrollY;
-	if (ImGui::BeginTable("SceneView", 3, flags) == false) return;
-	defer{ ImGui::EndTable(); };
-	
-	ImGui::TableSetupScrollFreeze(0, 1); // Freeze header row.
-	ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch, 2.f);
-	ImGui::TableSetupColumn("GUID", ImGuiTableColumnFlags_WidthStretch, 2.f);
-	ImGui::TableSetupColumn("Type", ImGuiTableColumnFlags_WidthStretch, 1.f);
-	ImGui::TableHeadersRow();
-	
-	auto typed_entity_ids = EntityQueryToArrayView(QueryEntities<GuidNameQuery>(alloc, asset_system), alloc);
-	
-	auto* ms_io = ImGui::BeginMultiSelect(ImGuiMultiSelectFlags_ClearOnClickVoid | ImGuiMultiSelectFlags_BoxSelect1d, (s32)selected_assets_hash_table.count, (s32)typed_entity_ids.count);
-	ApplyEntitySelectionRequests(ms_io, typed_entity_ids, asset_system, undo_redo_system, selection_state_entity);
-	
-	ImGuiListClipper clipper;
-	clipper.Begin((s32)typed_entity_ids.count);
-	
-	ImGui::PushStyleColor(ImGuiCol_NavCursor, 0u);
-	while (clipper.Step()) {
-		for (s32 index =  clipper.DisplayStart; index < clipper.DisplayEnd; index += 1) {
-			auto [entity_id, entity_type_id] = typed_entity_ids[index];
-			auto entity_type_name = entity_type_name_table[entity_type_id.index];
-			
-			auto streams = ExtractComponentStreams<GuidNameQuery>(&asset_system.entity_type_arrays[entity_type_id.index], entity_id);
-			auto& [guid] = *streams.guid;
-			auto& [name] = *streams.name;
-			
-			ImGui::TableNextRow();
-			ImGuiScopeID((void*)guid);
-			
-			if (ImGui::TableSetColumnIndex(0)) {
-				ImGui::Bullet();
-				ImGui::SameLine();
-				
-				bool is_selected = HashTableFind(selected_assets_hash_table, guid) != nullptr;
-				ImGui::SetNextItemSelectionUserData(index);
-				ImGui::Selectable(name.count ? name.data : entity_type_name.data, is_selected, ImGuiSelectableFlags_SpanAllColumns);
-				ImGui::EntityDragDropSource(entity_type_id, guid);
-			}
-			
-			if (ImGui::TableSetColumnIndex(1)) {
-				ImGui::Text("0x%016llX", guid);
-			}
-			
-			if (ImGui::TableSetColumnIndex(2)) {
-				ImGui::TextUnformatted(entity_type_name.data);
-			}
-		}
-	}
-	ImGui::PopStyleColor();
-	
-	ms_io = ImGui::EndMultiSelect();
-	ApplyEntitySelectionRequests(ms_io, typed_entity_ids, asset_system, undo_redo_system, selection_state_entity);
-}
-
-static bool AssetBrowserEntityView(StackAllocator* alloc, AssetEntitySystem& asset_system, UndoRedoSystem& undo_redo_system, EditorSelectionStateEntity selection_state_entity) {
-	ImGui::Begin("Asset Editor", nullptr, ImGuiWindowFlags_NoFocusOnAppearing);
-	defer{ ImGui::End(); };
-	
-	auto table_flags = ImGuiTableFlags_NoSavedSettings | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_PadOuterX | ImGuiTableFlags_ScrollY;
-	
-	if (ImGui::BeginTable("Components", 2, table_flags) == false) return false;
-	defer{ ImGui::EndTable(); };
-	
-	ImGui::TableSetupScrollFreeze(0, 1); // Freeze header row.
-	ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch, 1.f);
-	ImGui::TableSetupColumn("Data", ImGuiTableColumnFlags_WidthStretch, 3.f);
-	ImGui::TableHeadersRow();
-	
-	auto& selected_assets_hash_table = selection_state_entity.selection_state->selected_entities_hash_table;
-	if (selected_assets_hash_table.count == 0) return false;
-	
-	
-	// Items should span full width of the column.
-	ImGui::PushItemWidth(-FLT_MIN);
-	defer{ ImGui::PopItemWidth(); };
-	
-	u64 entity_guid = (*selected_assets_hash_table.begin()).key;
-	ImGuiScopeID((void*)entity_guid);
-	
-	ImGui::BeginDisabled(selected_assets_hash_table.count >= 2);
-	defer{ ImGui::EndDisabled(); };
-	
-	auto typed_entity_id = FindEntityByGUID(asset_system, entity_guid);
-	auto* array = &asset_system.entity_type_arrays[typed_entity_id.entity_type_id.index];
-	auto entity = ExtractComponentStreams<AssetEditorQuery>(array, typed_entity_id.entity_id);
-	
-	BeginUndoRedoCommand("Asset Editor"_sl, undo_redo_system, asset_system, entity_guid);
-	
-	if (entity.guid) {
-		auto guid_string = StringFormat(alloc, "0x%"_sl, (void*)entity.guid->guid);
-		ImGui::TableInputText("GUID", guid_string, nullptr);
-	}
-	
-	if (entity.name) {
-		ImGui::TableInputText("Name", entity.name->name, &asset_system.heap);
-	}
+static bool AssetComponentEntityView(StackAllocator* alloc, AssetEntitySystem& asset_system, AssetEntityEditorQuery entity) {
+	bool should_recreate_asset = false;
 	
 	if (entity.mesh_source_data) {
 		ImGui::TableInputText("Mesh Source Data", entity.mesh_source_data->filepath, &asset_system.heap);
@@ -736,7 +501,7 @@ static bool AssetBrowserEntityView(StackAllocator* alloc, AssetEntitySystem& ass
 	if (entity.mesh_runtime_data_layout) {
 		if (ImGui::BeginTableItem("Reload From Source")) {
 			if (ImGui::Button("Reload", ImVec2(ImGui::GetContentRegionAvail().x, 0.f))) {
-				BitArraySetBit(array->created_mask, typed_entity_id.entity_id.index);
+				should_recreate_asset = true;
 				entity.mesh_runtime_data_layout->version = 0;
 			}
 			ImGui::EndTableItem();
@@ -804,7 +569,7 @@ static bool AssetBrowserEntityView(StackAllocator* alloc, AssetEntitySystem& ass
 	if (entity.texture_runtime_data_layout) {
 		if (ImGui::BeginTableItem("Reload From Source")) {
 			if (ImGui::Button("Reload", ImVec2(ImGui::GetContentRegionAvail().x, 0.f))) {
-				BitArraySetBit(array->created_mask, typed_entity_id.entity_id.index);
+				should_recreate_asset = true;
 				entity.texture_runtime_data_layout->version = 0;
 			}
 			ImGui::EndTableItem();
@@ -838,6 +603,30 @@ static bool AssetBrowserEntityView(StackAllocator* alloc, AssetEntitySystem& ass
 		ImGui::TableEntityComboBox("Material Asset", &asset_system, &entity.material_asset->guid, ECS::GetEntityTypeID<MaterialAssetType>::id);
 	}
 	
+	return should_recreate_asset;
+}
+
+
+static bool ComponentEntityView(StackAllocator* alloc, String undo_label, WorldEntitySystem* world_system, AssetEntitySystem& asset_system, UndoRedoSystem& undo_redo_system, u64 entity_guid) {
+	auto& entity_system = world_system != nullptr ? (EntitySystemBase&)*world_system : (EntitySystemBase&)asset_system;
+	
+	auto typed_entity_id = FindEntityByGUID(entity_system, entity_guid);
+	auto* array = &entity_system.entity_type_arrays[typed_entity_id.entity_type_id.index];
+	bool should_recreate_asset = false;
+	
+	BeginUndoRedoCommand(undo_label, undo_redo_system, entity_system, entity_guid);
+	
+	auto shared_entity_components = ExtractComponentStreams<SharedEntityEditorQuery>(array, typed_entity_id.entity_id);
+	SharedComponentEntityView(alloc, entity_system, shared_entity_components);
+	
+	if (world_system != nullptr) {
+		auto world_entity_components = ExtractComponentStreams<WorldEntityEditorQuery>(array, typed_entity_id.entity_id);
+		WorldComponentEntityView(alloc, *world_system, asset_system, world_entity_components);
+	} else {
+		auto asset_entity_components = ExtractComponentStreams<AssetEntityEditorQuery>(array, typed_entity_id.entity_id);
+		should_recreate_asset = AssetComponentEntityView(alloc, asset_system, asset_entity_components);
+	}
+	
 	bool is_dragging = ImGui::IsAnyItemActive() && ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows);
 	bool is_dirty = EndUndoRedoCommand(undo_redo_system, is_dragging);
 	
@@ -845,7 +634,184 @@ static bool AssetBrowserEntityView(StackAllocator* alloc, AssetEntitySystem& ass
 		BitArraySetBit(array->dirty_mask, typed_entity_id.entity_id.index);
 	}
 	
+	if (should_recreate_asset) {
+		BitArraySetBit(array->created_mask, typed_entity_id.entity_id.index);
+	}
+	
 	return is_dirty;
+}
+
+static bool SingleEntityView(String label, StackAllocator* alloc, WorldEntitySystem* world_system, AssetEntitySystem& asset_system, UndoRedoSystem& undo_redo_system, u64 entity_guid, bool is_disabled = false) {
+	ImGui::Begin(label.data, nullptr, ImGuiWindowFlags_NoFocusOnAppearing);
+	defer{ ImGui::End(); };
+	
+	auto table_flags = ImGuiTableFlags_NoSavedSettings | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_PadOuterX | ImGuiTableFlags_ScrollY;
+	
+	if (ImGui::BeginTable("Components", 2, table_flags) == false) return false;
+	defer{ ImGui::EndTable(); };
+	
+	ImGui::TableSetupScrollFreeze(0, 1); // Freeze header row.
+	ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch, 1.f);
+	ImGui::TableSetupColumn("Data", ImGuiTableColumnFlags_WidthStretch, 3.f);
+	ImGui::TableHeadersRow();
+	
+	if (entity_guid == 0) return false;
+	
+	// Items should span full width of the column.
+	ImGui::PushItemWidth(-FLT_MIN);
+	defer{ ImGui::PopItemWidth(); };
+	
+	ImGuiScopeID((void*)entity_guid);
+	
+	ImGui::BeginDisabled(is_disabled);
+	defer{ ImGui::EndDisabled(); };
+	
+	return ComponentEntityView(alloc, label, world_system, asset_system, undo_redo_system, entity_guid);
+}
+
+static bool MultiEntityView(String label, StackAllocator* alloc, WorldEntitySystem* world_system, AssetEntitySystem& asset_system, UndoRedoSystem& undo_redo_system, EditorSelectionStateEntity selection_state_entity) {
+	auto& selected_entities_hash_table = selection_state_entity.selection_state->selected_entities_hash_table;
+	
+	u64  entity_guid = selected_entities_hash_table.count != 0 ? (*selected_entities_hash_table.begin()).key : 0;
+	bool is_disabled = selected_entities_hash_table.count >= 2;
+	
+	return SingleEntityView(label, alloc, world_system, asset_system, undo_redo_system, entity_guid, is_disabled);
+}
+
+static void DrawUndoRedoCommandRow(UndoRedoCommand& command) {
+	compile_const char* command_type_names[3] = { "LoadEntityState", "CreateEntity", "RemoveEntity" };
+	
+	ImGui::TableNextRow();
+	if (ImGui::TableSetColumnIndex(0)) ImGui::Text("0x%016llX", command.entity_guid);
+	if (ImGui::TableSetColumnIndex(1)) ImGui::Text("%u", command.group_index);
+	if (ImGui::TableSetColumnIndex(2)) ImGui::Text("%llu", command.offset);
+	if (ImGui::TableSetColumnIndex(3)) ImGui::Text("%llu", command.size);
+	if (ImGui::TableSetColumnIndex(4)) ImGui::TextUnformatted(command_type_names[(u32)command.command_type]);
+}
+
+static void LevelEditorUndoRedoHistoryView(UndoRedoSystem& undo_redo_system) {
+	ImGui::Begin("Undo/Redo History");
+	defer{ ImGui::End(); };
+	
+	ImGui::Text("Undo/Redo Buffer Size: %llu", undo_redo_system.undo_buffer.save_load_buffer.data.count + undo_redo_system.redo_buffer.save_load_buffer.data.count);
+	
+	auto table_flags = ImGuiTableFlags_NoSavedSettings | ImGuiTableFlags_Resizable | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_PadOuterX | ImGuiTableFlags_ScrollY;
+	if (ImGui::BeginTable("Components", 5, table_flags) == false) return;
+	defer{ ImGui::EndTable(); };
+		
+	ImGui::TableSetupScrollFreeze(0, 1); // Freeze header row.
+	ImGui::TableSetupColumn("GUID",    ImGuiTableColumnFlags_WidthStretch, 4.f);
+	ImGui::TableSetupColumn("GroupID", ImGuiTableColumnFlags_WidthStretch, 2.f);
+	ImGui::TableSetupColumn("Offset",  ImGuiTableColumnFlags_WidthStretch, 1.f);
+	ImGui::TableSetupColumn("Size",    ImGuiTableColumnFlags_WidthStretch, 1.f);
+	ImGui::TableSetupColumn("Type",    ImGuiTableColumnFlags_WidthStretch, 3.f);
+	ImGui::TableHeadersRow();
+	
+	auto& undo_commands = undo_redo_system.undo_buffer.commands;
+	for (s64 i = 0; i < (s64)undo_commands.count; i += 1) {
+		DrawUndoRedoCommandRow(undo_commands[i]);
+	}
+	
+	ImGui::TableNextRow();
+	if (ImGui::TableSetColumnIndex(0)) {
+		ImGui::CollapsingHeader("^^^ Undo Commands ^^^ | vvv Redo Commands vvv ", ImGuiTreeNodeFlags_SpanAllColumns | ImGuiTreeNodeFlags_LabelSpanAllColumns | ImGuiTreeNodeFlags_Leaf);
+	}
+	
+	auto& redo_commands = undo_redo_system.redo_buffer.commands;
+	for (s64 i = redo_commands.count - 1; i >= 0; i -= 1) {
+		DrawUndoRedoCommandRow(redo_commands[i]);
+	}
+}
+
+static void EntityCreationComboBox(const char* label, const char* hint, EntitySystemBase& entity_system, UndoRedoSystem& undo_redo_system, EditorSelectionStateEntity selection_state_entity, ArrayView<const EntityTypeID> entity_type_ids) {
+	if (ImGui::BeginCombo(label, hint) == false) return;
+	defer{ ImGui::EndCombo(); };
+	
+	for (auto entity_type_id : entity_type_ids) {
+		auto name = entity_type_name_table[entity_type_id.index];
+		
+		ImGuiScopeID(entity_type_id.index);
+		if (ImGui::Selectable(name.data, false)) {
+			auto entity_id = CreateEntity(entity_system, entity_type_id);
+			auto entity = ExtractComponentStreams<GuidNameQuery>(&entity_system.entity_type_arrays[entity_type_id.index], entity_id);
+			entity.name->name = StringCopy(&entity_system.heap, name);
+			
+			BeginUndoRedoGroup(undo_redo_system);
+			UndoRedoCreateEntity(undo_redo_system, entity_system, entity.guid->guid);
+			
+			auto& selected_entities_hash_table = selection_state_entity.selection_state->selected_entities_hash_table;
+			BeginUndoRedoCommand("Select Created Entity"_sl, undo_redo_system, entity_system, selection_state_entity.guid->guid);
+			HashTableClear(selected_entities_hash_table);
+			HashTableAddOrFind(selected_entities_hash_table, &entity_system.heap, entity.guid->guid);
+			EndUndoRedoCommand(undo_redo_system);
+			
+			EndUndoRedoGroup(undo_redo_system);
+		}
+	}
+}
+
+static void AssetBrowser(StackAllocator* alloc, AssetEntitySystem& asset_system, UndoRedoSystem& undo_redo_system, EditorSelectionStateEntity selection_state_entity) {
+	ImGui::Begin("AssetBrowser");
+	defer{ ImGui::End(); };
+	
+	ImGui::SetNextItemWidth(-FLT_MIN);
+	EntityCreationComboBox("##CreateAsset", "Create Asset", asset_system, undo_redo_system, selection_state_entity, ArrayViewCreate(creatable_asset_entity_type_ids));
+	
+	auto flags = ImGuiTableFlags_Resizable | ImGuiTableFlags_NoSavedSettings | ImGuiTableFlags_BordersInner | ImGuiTableFlags_PadOuterX | ImGuiTableFlags_ScrollY;
+	if (ImGui::BeginTable("SceneView", 3, flags) == false) return;
+	defer{ ImGui::EndTable(); };
+	
+	ImGui::TableSetupScrollFreeze(0, 1); // Freeze header row.
+	ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch, 2.f);
+	ImGui::TableSetupColumn("GUID", ImGuiTableColumnFlags_WidthStretch, 2.f);
+	ImGui::TableSetupColumn("Type", ImGuiTableColumnFlags_WidthStretch, 1.f);
+	ImGui::TableHeadersRow();
+	
+	auto typed_entity_ids = EntityQueryToArrayView(QueryEntities<GuidNameQuery>(alloc, asset_system), alloc);
+	
+	auto& selected_assets_hash_table = selection_state_entity.selection_state->selected_entities_hash_table;
+	auto* ms_io = ImGui::BeginMultiSelect(ImGuiMultiSelectFlags_ClearOnClickVoid | ImGuiMultiSelectFlags_BoxSelect1d, (s32)selected_assets_hash_table.count, (s32)typed_entity_ids.count);
+	ApplyEntitySelectionRequests(ms_io, typed_entity_ids, asset_system, undo_redo_system, selection_state_entity);
+	
+	ImGuiListClipper clipper;
+	clipper.Begin((s32)typed_entity_ids.count);
+	
+	ImGui::PushStyleColor(ImGuiCol_NavCursor, 0u);
+	while (clipper.Step()) {
+		for (s32 index =  clipper.DisplayStart; index < clipper.DisplayEnd; index += 1) {
+			auto [entity_id, entity_type_id] = typed_entity_ids[index];
+			auto entity_type_name = entity_type_name_table[entity_type_id.index];
+			
+			auto streams = ExtractComponentStreams<GuidNameQuery>(&asset_system.entity_type_arrays[entity_type_id.index], entity_id);
+			auto& [guid] = *streams.guid;
+			auto& [name] = *streams.name;
+			
+			ImGui::TableNextRow();
+			ImGuiScopeID((void*)guid);
+			
+			if (ImGui::TableSetColumnIndex(0)) {
+				ImGui::Bullet();
+				ImGui::SameLine();
+				
+				bool is_selected = HashTableFind(selected_assets_hash_table, guid) != nullptr;
+				ImGui::SetNextItemSelectionUserData(index);
+				ImGui::Selectable(name.count ? name.data : entity_type_name.data, is_selected, ImGuiSelectableFlags_SpanAllColumns);
+				ImGui::EntityDragDropSource(entity_type_id, guid);
+			}
+			
+			if (ImGui::TableSetColumnIndex(1)) {
+				ImGui::Text("0x%016llX", guid);
+			}
+			
+			if (ImGui::TableSetColumnIndex(2)) {
+				ImGui::TextUnformatted(entity_type_name.data);
+			}
+		}
+	}
+	ImGui::PopStyleColor();
+	
+	ms_io = ImGui::EndMultiSelect();
+	ApplyEntitySelectionRequests(ms_io, typed_entity_ids, asset_system, undo_redo_system, selection_state_entity);
 }
 
 compile_const auto entities_save_load_path = "./Assets/Scene.csb"_sl;
@@ -917,7 +883,7 @@ void LevelEditorUpdate(LevelEditorContext* editor_context, StackAllocator* alloc
 	auto asset_selection_state_entity = ExtractComponentStreams<EditorSelectionStateEntity>(QueryEntityTypeArray<EditorSelectionStateEntity>(asset_system));
 	
 	AssetBrowser(alloc, asset_system, undo_redo_system, asset_selection_state_entity);
-	reset_reference_path_tracer |= AssetBrowserEntityView(alloc, asset_system, undo_redo_system, asset_selection_state_entity);
+	reset_reference_path_tracer |= MultiEntityView("Asset Editor"_sl, alloc, nullptr, asset_system, undo_redo_system, asset_selection_state_entity);
 	
 	LevelEditorUndoRedoHistoryView(undo_redo_system);
 	
@@ -1010,41 +976,13 @@ void LevelEditorUpdate(LevelEditorContext* editor_context, StackAllocator* alloc
 	ImGui::Text("Window Size: %ux%u", (u32)window_size.x, (u32)window_size.y);
 	
 	ImGui::SetNextItemWidth(-FLT_MIN);
-	if (ImGui::BeginCombo("##CreateEntity", "Create Entity")) {
-		EntityTypeID entity_type_ids[] = {
-			ECS::GetEntityTypeID<MeshEntityType>::id,
-			ECS::GetEntityTypeID<LightEntityType>::id,
-			ECS::GetEntityTypeID<CameraEntityType>::id,
-		};
-		
-		for (auto entity_type_id : entity_type_ids) {
-			auto name = entity_type_name_table[entity_type_id.index];
-			
-			ImGuiScopeID(entity_type_id.index);
-			if (ImGui::Selectable(name.data, false)) {
-				auto entity_id = CreateEntity(world_system, entity_type_id);
-				auto entity = ExtractComponentStreams<GuidNameQuery>(&world_system.entity_type_arrays[entity_type_id.index], entity_id);
-				entity.name->name = StringCopy(&world_system.heap, name);
-				
-				BeginUndoRedoGroup(undo_redo_system);
-				UndoRedoCreateEntity(undo_redo_system, world_system, entity.guid->guid);
-				
-				BeginUndoRedoCommand("Select Created Entity"_sl, undo_redo_system, world_system, world_selection_state_entity.guid->guid);
-				HashTableClear(selected_entities_hash_table);
-				HashTableAddOrFind(selected_entities_hash_table, &world_system.heap, entity.guid->guid);
-				EndUndoRedoCommand(undo_redo_system);
-				
-				EndUndoRedoGroup(undo_redo_system);
-			}
-		}
-		ImGui::EndCombo();
-	}
+	EntityCreationComboBox("##CreateEntity", "Create Entity", world_system, undo_redo_system, world_selection_state_entity, ArrayViewCreate(creatable_world_entity_type_ids));
 	
 	LevelEditorSceneView(alloc, world_system, undo_redo_system, world_entity_guid, world_selection_state_entity);
 	ImGui::End();
 	
-	reset_reference_path_tracer |= LevelEditorEntityView(alloc, world_system, asset_system, undo_redo_system, world_selection_state_entity);
-	reset_reference_path_tracer |= LevelEditorWorldEntityView(alloc, world_system, asset_system, undo_redo_system, world_entity_guid);
+	reset_reference_path_tracer |= MultiEntityView("Entity Editor"_sl, alloc, &world_system, asset_system, undo_redo_system, world_selection_state_entity);
+	reset_reference_path_tracer |= SingleEntityView("World Entity"_sl, alloc, &world_system, asset_system, undo_redo_system, world_entity_guid);
 	
 	ImGuiDrawList3D draw_list_3d;
 	draw_list_3d.alloc = alloc;

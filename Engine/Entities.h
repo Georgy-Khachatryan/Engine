@@ -72,6 +72,13 @@ struct LightEntityType {
 	ECS::GpuComponent<GpuLightEntityData> gpu_light_entity_data;
 };
 
+NOTES(Meta::ComponentQuery{})
+struct TransformComponentQuery {
+	PositionComponent* position = nullptr;
+	RotationComponent* rotation = nullptr;
+	ScaleComponent*    scale    = nullptr;
+};
+
 
 NOTES(Meta::ComponentQuery{})
 struct AliveEntityMaskQuery {

@@ -167,6 +167,12 @@ ArrayView<T> ArrayViewAllocate(AllocatorT* alloc, u64 count) {
 	return result;
 }
 
+template<typename T, u64 size>
+ArrayView<T> ArrayViewCreate(T(&array)[size]) { return ArrayView<T>{ array, size }; }
+
+template<typename T, u64 size>
+ArrayView<const T> ArrayViewCreate(const T(&array)[size]) { return ArrayView<const T>{ array, size }; }
+
 
 template<typename T, typename LessThan = typename bool(*)(const T&, const T&)>
 void HeapSort(ArrayView<T> array, LessThan&& less = [](const T& lh, const T& rh)-> bool { return lh < rh; }) {

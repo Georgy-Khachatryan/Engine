@@ -16,10 +16,13 @@ struct EditorSelectionStateEntity {
 
 
 NOTES(Meta::ComponentQuery{})
-struct EntityEditorQuery {
+struct SharedEntityEditorQuery {
 	GuidComponent* guid = nullptr;
 	NameComponent* name = nullptr;
-	
+};
+
+NOTES(Meta::ComponentQuery{})
+struct WorldEntityEditorQuery {
 	PositionComponent* position = nullptr;
 	RotationComponent* rotation = nullptr;
 	ScaleComponent*    scale    = nullptr;
@@ -36,10 +39,7 @@ struct EntityEditorQuery {
 };
 
 NOTES(Meta::ComponentQuery{})
-struct AssetEditorQuery {
-	GuidComponent* guid = nullptr;
-	NameComponent* name = nullptr;
-	
+struct AssetEntityEditorQuery {
 	MaterialAssetGUID* material_asset = nullptr;
 	
 	MeshSourceData* mesh_source_data = nullptr;
