@@ -49,6 +49,7 @@
     <ClCompile Include="Engine/Entities.cpp" />
     
     <!-- Editor. -->
+    <ClCompile Include="Editor/EditorEntities.cpp" />
     <ClCompile Include="Editor/LevelEditor.cpp" />
     
     <!-- Entity System. -->

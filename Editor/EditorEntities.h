@@ -2,6 +2,19 @@
 #include "Basic/Basic.h"
 #include "Engine/Entities.h"
 
+NOTES(Meta::CustomSaveLoad{})
+struct EditorSelectionStateComponent {
+	// TODO: Add support for hash table reflection and save/load.
+	HashTable<u64, void> selected_entities_hash_table;
+};
+
+NOTES(Meta::EntityType{ 1 }, Meta::ComponentQuery{})
+struct EditorSelectionStateEntity {
+	ECS::Component<GuidComponent> guid;
+	ECS::Component<EditorSelectionStateComponent> selection_state;
+};
+
+
 NOTES(Meta::ComponentQuery{})
 struct EntityEditorQuery {
 	GuidComponent* guid = nullptr;

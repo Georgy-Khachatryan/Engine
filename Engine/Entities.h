@@ -8,13 +8,6 @@
 #include "Renderer/TextureAsset.h"
 #include "Renderer/RendererEntities.h"
 
-
-NOTES(Meta::CustomSaveLoad{})
-struct EditorSelectionState {
-	// TODO: Add support for hash table reflection and save/load.
-	HashTable<u64, void> selected_entities_hash_table;
-};
-
 NOTES(Meta::EntityType{ 1 }, Meta::ComponentQuery{})
 struct WorldEntityType {
 	ECS::Component<GuidComponent> guid;
@@ -28,8 +21,6 @@ struct WorldEntityType {
 	
 	NOTES(VirtualResourceID::SceneConstants)
 	ECS::GpuComponent<SceneConstants> gpu_scene_constants;
-	
-	ECS::Component<EditorSelectionState> selection_state;
 };
 
 

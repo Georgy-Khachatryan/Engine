@@ -142,11 +142,3 @@ void ReleaseEntityComponents(StackAllocator* alloc, WorldEntitySystem& world_sys
 	ReleaseNameComponents(alloc, world_system);
 	ReleaseNameComponents(alloc, asset_system);
 }
-
-static void SaveLoad(SaveLoadBuffer& buffer, HashTableElement<u64, void>& element, u64 version) {
-	SaveLoad(buffer, element.key);
-}
-
-void SaveLoad(SaveLoadBuffer& buffer, EditorSelectionState& data, u64 version) {
-	SaveLoad(buffer, data.selected_entities_hash_table);
-}

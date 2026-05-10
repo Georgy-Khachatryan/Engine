@@ -159,8 +159,8 @@ static bool GizmoControls(CameraEntityType camera_entity, WorldEntitySystem& wor
 	}
 	draw_list_3d->AddSphere(entity.position->position, 0.1f * draw_list_3d->scale, 0xCCFFFFFF);
 	
-	bool is_dragging = ImGui::IsAnyItemActive() && ImGui::IsWindowFocused();
-	bool is_dirty = EndUndoRedoCommand(undo_redo_system, world_system, is_dragging);
+	bool is_dragging = ImGui::IsAnyItemActive() && ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows);
+	bool is_dirty = EndUndoRedoCommand(undo_redo_system, is_dragging);
 	
 	if (is_dirty) {
 		BitArraySetBit(array->dirty_mask, typed_entity_id.entity_id.index);
@@ -182,13 +182,14 @@ static void DrawDebugFrustumCullingBounds(ImGuiDrawList3D* draw_list_3d, CameraE
 	}
 }
 
-static void DuplicateSelectedEntities(StackAllocator* alloc, WorldEntitySystem& world_system, UndoRedoSystem& undo_redo_system, HashTable<u64, void>& selected_entities_hash_table, u64 selection_state_entity) {
+static void DuplicateSelectedEntities(StackAllocator* alloc, WorldEntitySystem& world_system, UndoRedoSystem& undo_redo_system, EditorSelectionStateEntity selection_state_entity) {
 	TempAllocationScope(alloc);
 	
 	SaveLoadBuffer buffer;
 	OpenSaveLoadBuffer(alloc, String{}, false, buffer);
 	buffer.heap = &world_system.heap;
 	
+	auto& selected_entities_hash_table = selection_state_entity.selection_state->selected_entities_hash_table;
 	for (auto [guid] : selected_entities_hash_table) {
 		auto typed_entity_id = FindEntityByGUID(world_system, guid);
 		auto* entity_array = &world_system.entity_type_arrays[typed_entity_id.entity_type_id.index];
@@ -215,17 +216,19 @@ static void DuplicateSelectedEntities(StackAllocator* alloc, WorldEntitySystem& 
 	}
 	
 	
-	BeginUndoRedoCommand("Select Duplicated Entities"_sl, undo_redo_system, world_system, selection_state_entity);
+	BeginUndoRedoCommand("Select Duplicated Entities"_sl, undo_redo_system, world_system, selection_state_entity.guid->guid);
 	HashTableClear(selected_entities_hash_table);
 	for (u64 guid : new_entity_guids) {
 		HashTableAddOrFind(selected_entities_hash_table, guid);
 	}
-	EndUndoRedoCommand(undo_redo_system, world_system);
+	EndUndoRedoCommand(undo_redo_system);
 	
 	EndUndoRedoGroup(undo_redo_system);
 }
 
-static void RemoveSelectedEntities(WorldEntitySystem& world_system, UndoRedoSystem& undo_redo_system, HashTable<u64, void>& selected_entities_hash_table, u64 selection_state_entity, u64 camera_entity_guid) {
+static void RemoveSelectedEntities(WorldEntitySystem& world_system, UndoRedoSystem& undo_redo_system, EditorSelectionStateEntity selection_state_entity, u64 camera_entity_guid) {
+	auto& selected_entities_hash_table = selection_state_entity.selection_state->selected_entities_hash_table;
+	
 	BeginUndoRedoGroup(undo_redo_system);
 	HashTableRemove(selected_entities_hash_table, camera_entity_guid); // Don't remove the active camera.
 	
@@ -234,14 +237,17 @@ static void RemoveSelectedEntities(WorldEntitySystem& world_system, UndoRedoSyst
 		RemoveEntityByGUID(world_system, guid);
 	}
 	
-	BeginUndoRedoCommand("Deselect Removed Entities"_sl, undo_redo_system, world_system, selection_state_entity);
+	BeginUndoRedoCommand("Deselect Removed Entities"_sl, undo_redo_system, world_system, selection_state_entity.guid->guid);
 	HashTableClear(selected_entities_hash_table);
-	EndUndoRedoCommand(undo_redo_system, world_system);
+	EndUndoRedoCommand(undo_redo_system);
 	
 	EndUndoRedoGroup(undo_redo_system);
 }
 
-static void ApplyEntitySelectionRequests(ImGuiMultiSelectIO* ms_io, ArrayView<TypedEntityID> typed_entity_ids, EntitySystemBase& entity_system, HashTable<u64, void>& selected_entities_hash_table) {
+static void ApplyEntitySelectionRequests(ImGuiMultiSelectIO* ms_io, ArrayView<TypedEntityID> typed_entity_ids, EntitySystemBase& entity_system, UndoRedoSystem& undo_redo_system, EditorSelectionStateEntity selection_state_entity) {
+	BeginUndoRedoCommand("Select Entities"_sl, undo_redo_system, entity_system, selection_state_entity.guid->guid);
+	
+	auto& selected_entities_hash_table = selection_state_entity.selection_state->selected_entities_hash_table;
 	for (auto& request : ms_io->Requests) {
 		if (request.Type == ImGuiSelectionRequestType_SetAll) {
 			if (request.Selected) {
@@ -264,15 +270,9 @@ static void ApplyEntitySelectionRequests(ImGuiMultiSelectIO* ms_io, ArrayView<Ty
 			}
 		}
 	}
-}
-
-static void ApplyEntitySelectionRequests(ImGuiMultiSelectIO* ms_io, ArrayView<TypedEntityID> typed_entity_ids, WorldEntitySystem& world_system, UndoRedoSystem& undo_redo_system, HashTable<u64, void>& selected_entities_hash_table, u64 world_entity_guid) {
-	BeginUndoRedoCommand("Select Entities"_sl, undo_redo_system, world_system, world_entity_guid);
 	
-	ApplyEntitySelectionRequests(ms_io, typed_entity_ids, world_system, selected_entities_hash_table);
-	
-	bool is_dragging = ImGui::IsAnyItemActive() && ImGui::IsWindowFocused();
-	EndUndoRedoCommand(undo_redo_system, world_system, is_dragging);
+	bool is_dragging = ImGui::IsAnyItemActive() && ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows);
+	EndUndoRedoCommand(undo_redo_system, is_dragging);
 }
 
 static ArrayView<TypedEntityID> EntityQueryToArrayView(ArrayView<EntityTypeArray*> entity_view, StackAllocator* alloc) {
@@ -294,7 +294,7 @@ static ArrayView<TypedEntityID> EntityQueryToArrayView(ArrayView<EntityTypeArray
 	return typed_entity_ids;
 }
 
-static void LevelEditorSceneView(StackAllocator* alloc, WorldEntitySystem& world_system, UndoRedoSystem& undo_redo_system, u64 world_entity_guid) {
+static void LevelEditorSceneView(StackAllocator* alloc, WorldEntitySystem& world_system, UndoRedoSystem& undo_redo_system, u64 world_entity_guid, EditorSelectionStateEntity selection_state_entity) {
 	ProfilerScope("SceneView");
 	TempAllocationScope(alloc);
 	
@@ -309,12 +309,11 @@ static void LevelEditorSceneView(StackAllocator* alloc, WorldEntitySystem& world
 	ImGui::TableHeadersRow();
 	
 	
-	auto world_entity = QueryEntityByGUID<WorldEntityType>(world_system, world_entity_guid);
-	auto& selected_entities_hash_table = world_entity.selection_state->selected_entities_hash_table;
+	auto& selected_entities_hash_table = selection_state_entity.selection_state->selected_entities_hash_table;
 	auto typed_entity_ids = EntityQueryToArrayView(QueryEntities<GuidNameQuery>(alloc, world_system), alloc);
 	
 	auto* ms_io = ImGui::BeginMultiSelect(ImGuiMultiSelectFlags_ClearOnClickVoid | ImGuiMultiSelectFlags_BoxSelect1d, (s32)selected_entities_hash_table.count, (s32)typed_entity_ids.count);
-	ApplyEntitySelectionRequests(ms_io, typed_entity_ids, world_system, undo_redo_system, selected_entities_hash_table, world_entity_guid);
+	ApplyEntitySelectionRequests(ms_io, typed_entity_ids, world_system, undo_redo_system, selection_state_entity);
 	
 	
 	ImGuiListClipper clipper;
@@ -345,8 +344,9 @@ static void LevelEditorSceneView(StackAllocator* alloc, WorldEntitySystem& world
 				if (ImGui::IsItemClicked(ImGuiMouseButton_Left) && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
 					if (entity_type_id.index == ECS::GetEntityTypeID<CameraEntityType>::id.index) {
 						BeginUndoRedoCommand("Select Active Camera"_sl, undo_redo_system, world_system, world_entity_guid);
+						auto world_entity = QueryEntityByGUID<WorldEntityQuery>(world_system, world_entity_guid);
 						world_entity.camera_entity->guid = guid;
-						EndUndoRedoCommand(undo_redo_system, world_system);
+						EndUndoRedoCommand(undo_redo_system);
 					}
 				}
 			}
@@ -363,14 +363,13 @@ static void LevelEditorSceneView(StackAllocator* alloc, WorldEntitySystem& world
 	ImGui::PopStyleColor();
 	
 	ms_io = ImGui::EndMultiSelect();
-	ApplyEntitySelectionRequests(ms_io, typed_entity_ids, world_system, undo_redo_system, selected_entities_hash_table, world_entity_guid);
+	ApplyEntitySelectionRequests(ms_io, typed_entity_ids, world_system, undo_redo_system, selection_state_entity);
 }
 
 bool SelectedEntityView(StackAllocator* alloc, String undo_label, WorldEntitySystem& world_system, AssetEntitySystem& asset_system, UndoRedoSystem& undo_redo_system, u64 entity_guid);
 
-static bool LevelEditorEntityView(StackAllocator* alloc, WorldEntitySystem& world_system, AssetEntitySystem& asset_system, UndoRedoSystem& undo_redo_system, u64 world_entity_guid) {
-	auto world_entity = QueryEntityByGUID<WorldEntityType>(world_system, world_entity_guid);
-	auto& selected_entities_hash_table = world_entity.selection_state->selected_entities_hash_table;
+static bool LevelEditorEntityView(StackAllocator* alloc, WorldEntitySystem& world_system, AssetEntitySystem& asset_system, UndoRedoSystem& undo_redo_system, EditorSelectionStateEntity selection_state_entity) {
+	auto& selected_entities_hash_table = selection_state_entity.selection_state->selected_entities_hash_table;
 	
 	ImGui::Begin("Entity Editor", nullptr, ImGuiWindowFlags_NoFocusOnAppearing);
 	defer{ ImGui::End(); };
@@ -437,8 +436,7 @@ bool SelectedEntityView(StackAllocator* alloc, String undo_label, WorldEntitySys
 	}
 	
 	if (entity.name) {
-		auto& name = entity.name->name;
-		ImGui::TableInputText("Name", name, &world_system.heap);
+		ImGui::TableInputText("Name", entity.name->name, &world_system.heap);
 	}
 	
 	if (entity.position) {
@@ -516,8 +514,8 @@ bool SelectedEntityView(StackAllocator* alloc, String undo_label, WorldEntitySys
 		}
 	}
 	
-	bool is_dragging = ImGui::IsAnyItemActive() && ImGui::IsWindowFocused();
-	bool is_dirty = EndUndoRedoCommand(undo_redo_system, world_system, is_dragging);
+	bool is_dragging = ImGui::IsAnyItemActive() && ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows);
+	bool is_dirty = EndUndoRedoCommand(undo_redo_system, is_dragging);
 	
 	if (is_dirty) {
 		BitArraySetBit(array->dirty_mask, typed_entity_id.entity_id.index);
@@ -571,10 +569,11 @@ static void LevelEditorUndoRedoHistoryView(UndoRedoSystem& undo_redo_system) {
 	}
 }
 
-static void AssetBrowser(StackAllocator* alloc, AssetEntitySystem& asset_system, HashTable<u64, void>& selected_assets_hash_table) {
+static void AssetBrowser(StackAllocator* alloc, AssetEntitySystem& asset_system, UndoRedoSystem& undo_redo_system, EditorSelectionStateEntity selection_state_entity) {
 	ImGui::Begin("AssetBrowser");
 	defer{ ImGui::End(); };
 	
+	auto& selected_assets_hash_table = selection_state_entity.selection_state->selected_entities_hash_table;
 	ImGui::SetNextItemWidth(-FLT_MIN);
 	if (ImGui::BeginCombo("##CreateAsset", "Create Asset")) {
 		EntityTypeID entity_type_ids[] = {
@@ -592,8 +591,15 @@ static void AssetBrowser(StackAllocator* alloc, AssetEntitySystem& asset_system,
 				auto entity = ExtractComponentStreams<GuidNameQuery>(&asset_system.entity_type_arrays[entity_type_id.index], entity_id);
 				entity.name->name = StringCopy(&asset_system.heap, name);
 				
+				BeginUndoRedoGroup(undo_redo_system);
+				UndoRedoCreateEntity(undo_redo_system, asset_system, entity.guid->guid);
+				
+				BeginUndoRedoCommand("Select Created Asset"_sl, undo_redo_system, asset_system, selection_state_entity.guid->guid);
 				HashTableClear(selected_assets_hash_table);
 				HashTableAddOrFind(selected_assets_hash_table, &asset_system.heap, entity.guid->guid);
+				EndUndoRedoCommand(undo_redo_system);
+				
+				EndUndoRedoGroup(undo_redo_system);
 			}
 		}
 		ImGui::EndCombo();
@@ -612,7 +618,7 @@ static void AssetBrowser(StackAllocator* alloc, AssetEntitySystem& asset_system,
 	auto typed_entity_ids = EntityQueryToArrayView(QueryEntities<GuidNameQuery>(alloc, asset_system), alloc);
 	
 	auto* ms_io = ImGui::BeginMultiSelect(ImGuiMultiSelectFlags_ClearOnClickVoid | ImGuiMultiSelectFlags_BoxSelect1d, (s32)selected_assets_hash_table.count, (s32)typed_entity_ids.count);
-	ApplyEntitySelectionRequests(ms_io, typed_entity_ids, asset_system, selected_assets_hash_table);
+	ApplyEntitySelectionRequests(ms_io, typed_entity_ids, asset_system, undo_redo_system, selection_state_entity);
 	
 	ImGuiListClipper clipper;
 	clipper.Begin((s32)typed_entity_ids.count);
@@ -652,10 +658,10 @@ static void AssetBrowser(StackAllocator* alloc, AssetEntitySystem& asset_system,
 	ImGui::PopStyleColor();
 	
 	ms_io = ImGui::EndMultiSelect();
-	ApplyEntitySelectionRequests(ms_io, typed_entity_ids, asset_system, selected_assets_hash_table);
+	ApplyEntitySelectionRequests(ms_io, typed_entity_ids, asset_system, undo_redo_system, selection_state_entity);
 }
 
-static bool AssetBrowserEntityView(StackAllocator* alloc, AssetEntitySystem& asset_system, HashTable<u64, void>& selected_assets_hash_table) {
+static bool AssetBrowserEntityView(StackAllocator* alloc, AssetEntitySystem& asset_system, UndoRedoSystem& undo_redo_system, EditorSelectionStateEntity selection_state_entity) {
 	ImGui::Begin("Asset Editor", nullptr, ImGuiWindowFlags_NoFocusOnAppearing);
 	defer{ ImGui::End(); };
 	
@@ -669,6 +675,7 @@ static bool AssetBrowserEntityView(StackAllocator* alloc, AssetEntitySystem& ass
 	ImGui::TableSetupColumn("Data", ImGuiTableColumnFlags_WidthStretch, 3.f);
 	ImGui::TableHeadersRow();
 	
+	auto& selected_assets_hash_table = selection_state_entity.selection_state->selected_entities_hash_table;
 	if (selected_assets_hash_table.count == 0) return false;
 	
 	
@@ -686,21 +693,19 @@ static bool AssetBrowserEntityView(StackAllocator* alloc, AssetEntitySystem& ass
 	auto* array = &asset_system.entity_type_arrays[typed_entity_id.entity_type_id.index];
 	auto entity = ExtractComponentStreams<AssetEditorQuery>(array, typed_entity_id.entity_id);
 	
-	bool is_dirty = false; // TODO: Add undo/redo support for asset editing.
+	BeginUndoRedoCommand("Asset Editor"_sl, undo_redo_system, asset_system, entity_guid);
 	
 	if (entity.guid) {
 		auto guid_string = StringFormat(alloc, "0x%"_sl, (void*)entity.guid->guid);
-		is_dirty |= ImGui::TableInputText("GUID", guid_string, nullptr);
+		ImGui::TableInputText("GUID", guid_string, nullptr);
 	}
 	
 	if (entity.name) {
-		auto& name = entity.name->name;
-		is_dirty |= ImGui::TableInputText("Name", name, &asset_system.heap);
+		ImGui::TableInputText("Name", entity.name->name, &asset_system.heap);
 	}
 	
-	
 	if (entity.mesh_source_data) {
-		is_dirty |= ImGui::TableInputText("Mesh Source Data", entity.mesh_source_data->filepath, &asset_system.heap);
+		ImGui::TableInputText("Mesh Source Data", entity.mesh_source_data->filepath, &asset_system.heap);
 	}
 	
 	if (entity.mesh_runtime_data_layout) {
@@ -751,7 +756,7 @@ static bool AssetBrowserEntityView(StackAllocator* alloc, AssetEntitySystem& ass
 		};
 		
 		if (ImGui::BeginTableItem("Encoding Format")) {
-			is_dirty |= ImGui::Combo("", (s32*)&entity.texture_source_data->target_encoding, texture_asset_target_encoding_names, (s32)TextureAssetTargetEncoding::Count);
+			ImGui::Combo("", (s32*)&entity.texture_source_data->target_encoding, texture_asset_target_encoding_names, (s32)TextureAssetTargetEncoding::Count);
 			ImGui::EndTableItem();
 		}
 	}
@@ -813,28 +818,28 @@ static bool AssetBrowserEntityView(StackAllocator* alloc, AssetEntitySystem& ass
 		float3 albedo = Math::EncodeSRGB(Math::DecodeR10G10B10(texture_data->default_albedo)); // Edit in SRGB, store in linear.
 		if (ImGui::TableEntityComboBoxWithColor("Albedo", &asset_system, &albedo.x, 3, &texture_data->albedo.guid, ECS::GetEntityTypeID<TextureAssetType>::id)) {
 			texture_data->default_albedo = Math::EncodeR10G10B10(Math::DecodeSRGB(albedo));
-			is_dirty |= true;
 		}
 		
-		is_dirty |= ImGui::TableEntityComboBox("Normal", &asset_system, &texture_data->normal.guid, ECS::GetEntityTypeID<TextureAssetType>::id);
+		ImGui::TableEntityComboBox("Normal", &asset_system, &texture_data->normal.guid, ECS::GetEntityTypeID<TextureAssetType>::id);
 		
 		float roughness = Math::DecodeR16_FLOAT(texture_data->default_roughness);
 		if (ImGui::TableEntityComboBoxWithColor("Roughness", &asset_system, &roughness, 1, &texture_data->roughness.guid, ECS::GetEntityTypeID<TextureAssetType>::id)) {
 			texture_data->default_roughness = Math::EncodeR16_FLOAT(roughness);
-			is_dirty |= true;
 		}
 		
 		float metalness = Math::DecodeR16_FLOAT(texture_data->default_metalness);
 		if (ImGui::TableEntityComboBoxWithColor("Metalness", &asset_system, &metalness, 1, &texture_data->metalness.guid, ECS::GetEntityTypeID<TextureAssetType>::id)) {
 			texture_data->default_metalness = Math::EncodeR16_FLOAT(metalness);
-			is_dirty |= true;
 		}
 	}
 	
 	
 	if (entity.material_asset) {
-		is_dirty |= ImGui::TableEntityComboBox("Material Asset", &asset_system, &entity.material_asset->guid, ECS::GetEntityTypeID<MaterialAssetType>::id);
+		ImGui::TableEntityComboBox("Material Asset", &asset_system, &entity.material_asset->guid, ECS::GetEntityTypeID<MaterialAssetType>::id);
 	}
+	
+	bool is_dragging = ImGui::IsAnyItemActive() && ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows);
+	bool is_dirty = EndUndoRedoCommand(undo_redo_system, is_dragging);
 	
 	if (is_dirty) {
 		BitArraySetBit(array->dirty_mask, typed_entity_id.entity_id.index);
@@ -865,10 +870,9 @@ static void LoadOrCreateDefaultWorld(StackAllocator* alloc, WorldEntitySystem& w
 	bool loaded_assets   = SaveLoadEntitySystemToFile(alloc, asset_system, assets_save_load_path, true);
 	
 	if (loaded_entities == false) {
-		TempAllocationScope(alloc);
-		
 		auto world_entity  = CreateEntity<WorldEntityType>(world_system);
 		auto camera_entity = CreateEntity<CameraEntityType>(world_system);
+		CreateEntity<EditorSelectionStateEntity>(world_system);
 		
 		camera_entity.rotation->rotation =
 			Math::AxisAngleToQuat(float3(0.f, 0.f, 1.f), -90.f * Math::degrees_to_radians) *
@@ -877,11 +881,14 @@ static void LoadOrCreateDefaultWorld(StackAllocator* alloc, WorldEntitySystem& w
 		camera_entity.name->name = StringCopy(&world_system.heap, "DefaultCamera"_sl);
 		world_entity.camera_entity->guid = camera_entity.guid->guid;
 	}
+	
+	if (loaded_assets == false) {
+		CreateEntity<EditorSelectionStateEntity>(asset_system);
+	}
 }
 
 struct LevelEditorContext {
 	UndoRedoSystem undo_redo_system;
-	HashTable<u64, void> selected_assets_hash_table;
 	
 	ImGuiMouseLock mouse_lock;
 	bool use_local_space_gizmo = true;
@@ -903,16 +910,19 @@ void ReleaseLevelEditorContext(LevelEditorContext* editor_context) {
 void LevelEditorUpdate(LevelEditorContext* editor_context, StackAllocator* alloc, RecordContext* record_context, WorldEntitySystem& world_system, AssetEntitySystem& asset_system, u64 world_entity_guid) {
 	ProfilerScope("LevelEditorUpdate");
 	
-	bool reset_reference_path_tracer = false;
-	
-	AssetBrowser(alloc, asset_system, editor_context->selected_assets_hash_table);
-	reset_reference_path_tracer |= AssetBrowserEntityView(alloc, asset_system, editor_context->selected_assets_hash_table);
-	
 	auto& undo_redo_system = editor_context->undo_redo_system;
+	
+	bool reset_reference_path_tracer = false;
+	auto world_selection_state_entity = ExtractComponentStreams<EditorSelectionStateEntity>(QueryEntityTypeArray<EditorSelectionStateEntity>(world_system));
+	auto asset_selection_state_entity = ExtractComponentStreams<EditorSelectionStateEntity>(QueryEntityTypeArray<EditorSelectionStateEntity>(asset_system));
+	
+	AssetBrowser(alloc, asset_system, undo_redo_system, asset_selection_state_entity);
+	reset_reference_path_tracer |= AssetBrowserEntityView(alloc, asset_system, undo_redo_system, asset_selection_state_entity);
+	
 	LevelEditorUndoRedoHistoryView(undo_redo_system);
 	
+	auto& selected_entities_hash_table = world_selection_state_entity.selection_state->selected_entities_hash_table;
 	auto world_entity = QueryEntityByGUID<WorldEntityType>(world_system, world_entity_guid);
-	auto& selected_entities_hash_table = world_entity.selection_state->selected_entities_hash_table;
 	
 	u32 scene_descriptor_heap_offset = AllocateTransientSrvDescriptorTable(record_context->context, 1);
 	
@@ -940,26 +950,34 @@ void LevelEditorUpdate(LevelEditorContext* editor_context, StackAllocator* alloc
 	
 	if (ImGui::Shortcut(ImGuiKey_Delete, ImGuiInputFlags_RouteGlobal)) {
 		reset_reference_path_tracer |= (selected_entities_hash_table.count != 0);
-		RemoveSelectedEntities(world_system, undo_redo_system, selected_entities_hash_table, world_entity_guid, world_entity.camera_entity->guid);
+		RemoveSelectedEntities(world_system, undo_redo_system, world_selection_state_entity, world_entity.camera_entity->guid);
 	}
 	
 	if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_D, ImGuiInputFlags_RouteGlobal)) {
 		reset_reference_path_tracer |= (selected_entities_hash_table.count != 0);
-		DuplicateSelectedEntities(alloc, world_system, undo_redo_system, selected_entities_hash_table, world_entity_guid);
+		DuplicateSelectedEntities(alloc, world_system, undo_redo_system, world_selection_state_entity);
 	}
 	
 	if (ImGui::Shortcut(ImGuiKey_Escape, ImGuiInputFlags_RouteGlobal)) {
-		BeginUndoRedoCommand("Deselect Entities"_sl, undo_redo_system, world_system, world_entity_guid);
-		HashTableClear(selected_entities_hash_table);
-		EndUndoRedoCommand(undo_redo_system, world_system);
+		BeginUndoRedoGroup(undo_redo_system);
+		
+		BeginUndoRedoCommand("Deselect Entities"_sl, undo_redo_system, world_system, world_selection_state_entity.guid->guid);
+		HashTableClear(world_selection_state_entity.selection_state->selected_entities_hash_table);
+		EndUndoRedoCommand(undo_redo_system);
+		
+		BeginUndoRedoCommand("Deselect Assets"_sl, undo_redo_system, asset_system, asset_selection_state_entity.guid->guid);
+		HashTableClear(asset_selection_state_entity.selection_state->selected_entities_hash_table);
+		EndUndoRedoCommand(undo_redo_system);
+		
+		EndUndoRedoGroup(undo_redo_system);
 	}
 	
 	if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_Z, ImGuiInputFlags_RouteGlobal | ImGuiInputFlags_Repeat)) {
-		reset_reference_path_tracer |= ExecuteUndo(undo_redo_system, world_system);
+		reset_reference_path_tracer |= ExecuteUndo(undo_redo_system);
 	}
 	
 	if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_Y, ImGuiInputFlags_RouteGlobal | ImGuiInputFlags_Repeat)) {
-		reset_reference_path_tracer |= ExecuteRedo(undo_redo_system, world_system);
+		reset_reference_path_tracer |= ExecuteRedo(undo_redo_system);
 	}
 	
 	
@@ -1011,10 +1029,10 @@ void LevelEditorUpdate(LevelEditorContext* editor_context, StackAllocator* alloc
 				BeginUndoRedoGroup(undo_redo_system);
 				UndoRedoCreateEntity(undo_redo_system, world_system, entity.guid->guid);
 				
-				BeginUndoRedoCommand("Select Created Entity"_sl, undo_redo_system, world_system, world_entity_guid);
+				BeginUndoRedoCommand("Select Created Entity"_sl, undo_redo_system, world_system, world_selection_state_entity.guid->guid);
 				HashTableClear(selected_entities_hash_table);
 				HashTableAddOrFind(selected_entities_hash_table, &world_system.heap, entity.guid->guid);
-				EndUndoRedoCommand(undo_redo_system, world_system);
+				EndUndoRedoCommand(undo_redo_system);
 				
 				EndUndoRedoGroup(undo_redo_system);
 			}
@@ -1022,10 +1040,10 @@ void LevelEditorUpdate(LevelEditorContext* editor_context, StackAllocator* alloc
 		ImGui::EndCombo();
 	}
 	
-	LevelEditorSceneView(alloc, world_system, undo_redo_system, world_entity_guid);
+	LevelEditorSceneView(alloc, world_system, undo_redo_system, world_entity_guid, world_selection_state_entity);
 	ImGui::End();
 	
-	reset_reference_path_tracer |= LevelEditorEntityView(alloc, world_system, asset_system, undo_redo_system, world_entity_guid);
+	reset_reference_path_tracer |= LevelEditorEntityView(alloc, world_system, asset_system, undo_redo_system, world_selection_state_entity);
 	reset_reference_path_tracer |= LevelEditorWorldEntityView(alloc, world_system, asset_system, undo_redo_system, world_entity_guid);
 	
 	ImGuiDrawList3D draw_list_3d;

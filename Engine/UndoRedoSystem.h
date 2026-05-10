@@ -18,6 +18,8 @@ struct UndoRedoCommand {
 	
 	EntityTypeID entity_type_id;
 	UndoRedoCommandType command_type = UndoRedoCommandType::SaveLoad;
+	
+	EntitySystemBase* entity_system = nullptr;
 };
 
 struct UndoRedoBuffer {
@@ -51,9 +53,9 @@ void ResetUndoRedoSystem(UndoRedoSystem& system);
 void BeginUndoRedoGroup(UndoRedoSystem& system);
 void EndUndoRedoGroup(UndoRedoSystem& system);
 void BeginUndoRedoCommand(String label, UndoRedoSystem& system, EntitySystemBase& entity_system, u64 entity_guid);
-bool EndUndoRedoCommand(UndoRedoSystem& system, EntitySystemBase& entity_system, bool is_dragging = false);
+bool EndUndoRedoCommand(UndoRedoSystem& system, bool is_dragging = false);
 void UndoRedoRemoveEntity(UndoRedoSystem& system, EntitySystemBase& entity_system, u64 entity_guid);
 void UndoRedoCreateEntity(UndoRedoSystem& system, EntitySystemBase& entity_system, u64 entity_guid);
 
-bool ExecuteUndo(UndoRedoSystem& system, EntitySystemBase& entity_system);
-bool ExecuteRedo(UndoRedoSystem& system, EntitySystemBase& entity_system);
+bool ExecuteUndo(UndoRedoSystem& system);
+bool ExecuteRedo(UndoRedoSystem& system);
