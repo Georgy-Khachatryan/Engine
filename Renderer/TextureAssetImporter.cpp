@@ -11,6 +11,9 @@
 #define STB_DXT_IMPLEMENTATION
 #define STBI_NO_STDIO
 #define STBIR_FORCE_MINIMUM_SCANLINES_FOR_SPLITS 256
+#define STBIR_MALLOC(size, user_data) (((StackAllocator*)(user_data))->Allocate(size, texture_row_pitch_alignment))
+#define STBIR_FREE(size, user_data) ((void)(user_data))
+// TODO: #define STBI_MALLOC(...)
 
 #include <SDK/stb/stb_image.h>
 #include <SDK/stb/stb_image_resize2.h>
@@ -227,6 +230,7 @@ TextureImportResult ImportTextureFile(StackAllocator* alloc, ThreadPool* thread_
 		
 		auto* mip_data = (u8*)alloc->Allocate(mip_row_pitch * AlignUp(mip_size.y, 1u << format.block_size_log2.y), texture_row_pitch_alignment);
 		
+		TempAllocationScope(alloc);
 		STBIR_RESIZE resize_state = {};
 		
 		stbir_resize_init(
@@ -237,12 +241,16 @@ TextureImportResult ImportTextureFile(StackAllocator* alloc, ThreadPool* thread_
 			output_format == TextureFormat::BC1_UNORM_SRGB ? STBIR_TYPE_UINT8_SRGB : STBIR_TYPE_UINT8
 		);
 		
+		stbir_set_user_data(&resize_state, alloc);
+		
 		s32 split_count = stbir_build_samplers_with_splits(&resize_state, 8);
 		
 		ParallelFor(thread_pool, 0, split_count, 1, [&](u64 split_index, u32 thread_index) {
 			stbir_resize_extended_split(&resize_state, (s32)split_index, 1);
 		});
 		
+		// Technically not needed because of the TempAllocationScope.
+		stbir_free_samplers(&resize_state);
 		
 		last_mip_data      = mip_data;
 		last_mip_row_pitch = mip_row_pitch;

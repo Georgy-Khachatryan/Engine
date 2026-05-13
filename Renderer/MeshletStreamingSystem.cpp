@@ -1,9 +1,10 @@
-#include "MeshletStreamingSystem.h"
 #include "Basic/BasicArray.h"
 #include "Basic/BasicBitArray.h"
-#include "RenderPasses.h"
-#include "GraphicsApi/RecordContext.h"
 #include "GraphicsApi/AsyncTransferQueue.h"
+#include "GraphicsApi/RecordContext.h"
+#include "MeshletStreamingSystem.h"
+#include "RenderPasses.h"
+#include "StreamingSystem.h"
 
 enum struct MeshletRuntimePageState : u32 {
 	Free         = 0,
@@ -65,6 +66,8 @@ static u64 EncodeMeshletSubresourceID(u32 mesh_asset_index, u32 asset_page_index
 }
 
 static ArrayView<u64> ProcessMeshletStreamingFeedback(RecordContext* record_context, GpuReadbackQueue* meshlet_streaming_feedback_queue, ECS::Component<MeshRuntimeAllocation> allocation_stream) {
+	ProfilerScope("ProcessMeshletStreamingFeedback");
+	
 	auto element = meshlet_streaming_feedback_queue->Load(record_context->frame_index);
 	if (element.data == nullptr) return {};
 	
@@ -100,6 +103,8 @@ static ArrayView<u64> ProcessMeshletStreamingFeedback(RecordContext* record_cont
 }
 
 void UpdateMeshletStreamingSystem(MeshletStreamingSystem* system, AsyncTransferQueue* async_transfer_queue, RecordContext* record_context, AssetEntitySystem* asset_system, GpuReadbackQueue* meshlet_streaming_feedback_queue) {
+	ProfilerScope("UpdateMeshletStreamingSystem");
+	
 	compile_const u32 runtime_page_count = MeshletPageHeader::runtime_page_count;
 	
 	auto entity_array = QueryEntityTypeArray<MeshAssetType>(*asset_system);
@@ -136,18 +141,33 @@ void UpdateMeshletStreamingSystem(MeshletStreamingSystem* system, AsyncTransferQ
 	// Update page states:
 	for (u32 runtime_page_index = 0; runtime_page_index < runtime_pages.count; runtime_page_index += 1) {
 		auto& page = runtime_pages[runtime_page_index];
+		if (page.state == MeshletRuntimePageState::Free) continue;
 		
-		if (page.state != MeshletRuntimePageState::Free) {
-			auto& allocation = streams.allocation[page.mesh_asset_index];
-			if (allocation.offset == u32_max) {
-				page.state = MeshletRuntimePageState::PageOut; // TODO: Might need to wait for file reads to finish before paging out?
-				page.wait_index = (u32)current_frame_index;
+		// Invalidate all pages that don't have a valid mesh asset allocation (it contains all of the data structures needed to render meshlets).
+		if (page.state != MeshletRuntimePageState::PageOut && streams.allocation[page.mesh_asset_index].offset == u32_max) {
+			// @InvalidateDuringFileRead:
+			// If the page is in FileRead state, we only need to wait for the file read to complete because the page was never used on the GPU.
+			// Otherwise we should wait for the current GPU frame to complete (technically waiting for the last GPU frame to complete would be
+			// sufficient since it's the last frame that could've accessed the page).
+			if (page.state != MeshletRuntimePageState::FileRead) {
+				page.wait_index = EncodeGpuFrameWaitIndex(current_frame_index);
+			}
+			page.state = MeshletRuntimePageState::PageOut;
+			
+			// @DeallocateRTAS:
+			// To prevent memory compaction from moving RTAS after it's invalidated, we deallocate it immediately.
+			// RTAS can be deallocated immediately because it's accessed only from the GPU timeline. For example if the same memory is allocated
+			// by another page it won't get clobbered by a write from a different timeline (e.g. a file read) while it's still in use.
+			if (page.rtas_allocation.index != u32_max) {
+				system->rtas_heap.Deallocate(page.rtas_allocation);
+				system->rtas_allocation_index_to_page_index[page.rtas_allocation.index] = u32_max;
+				page.rtas_allocation = {};
 			}
 		}
 		
-		if (page.state == MeshletRuntimePageState::FileRead && page.wait_index <= completed_file_read_index) {
+		if (page.state == MeshletRuntimePageState::FileRead && IsWaitComplete(page.wait_index, current_frame_index, completed_file_read_index)) {
 			page.state      = MeshletRuntimePageState::PageIn;
-			page.wait_index = current_frame_index + number_of_frames_in_flight;
+			page.wait_index = EncodeGpuFrameWaitIndex(current_frame_index);
 			
 			MeshletRuntimePageUpdateCommand page_table_update_command;
 			page_table_update_command.type               = MeshletPageUpdateCommandType::PageIn;
@@ -158,9 +178,9 @@ void UpdateMeshletStreamingSystem(MeshletStreamingSystem* system, AsyncTransferQ
 			ArrayAppend(page_table_update_commands, page_table_update_command);
 		}
 		
-		if (page.state == MeshletRuntimePageState::PageIn && page.wait_index <= current_frame_index) {
+		if (page.state == MeshletRuntimePageState::PageIn && IsWaitComplete(page.wait_index, current_frame_index, completed_file_read_index)) {
 			page.page_header = *(MeshletPageHeader*)page.readback;
-			page.readback = nullptr;
+			page.readback    = nullptr;
 			
 			page.state      = MeshletRuntimePageState::AllocateRTAS;
 			page.wait_index = 0;
@@ -214,19 +234,20 @@ void UpdateMeshletStreamingSystem(MeshletStreamingSystem* system, AsyncTransferQ
 					meshlet_rtas_scratch_offset += meshlet_descs_scratch_size + indirect_arguments_scratch_size + build_and_move_scratch_size;
 					meshlet_rtas_scratch_size   -= total_scratch_size;
 					
-					page.wait_index = current_frame_index + number_of_frames_in_flight;
 					page.state      = MeshletRuntimePageState::BuildRTAS;
+					page.wait_index = EncodeGpuFrameWaitIndex(current_frame_index);
 				}
 			}
 		}
 		
-		if (page.state == MeshletRuntimePageState::BuildRTAS && page.wait_index <= current_frame_index) {
+		if (page.state == MeshletRuntimePageState::BuildRTAS && IsWaitComplete(page.wait_index, current_frame_index, completed_file_read_index)) {
 			u32 final_rtas_size = *(u32*)page.readback;
-			
 			system->rtas_heap.ReallocateShrink(page.rtas_allocation, final_rtas_size);
 			
 			page.state      = MeshletRuntimePageState::Ready;
 			page.wait_index = 0;
+			
+			// Don't allow deallocating this page while we have an outstanding page table update command.
 			page.cache_frame_index = (u32)current_frame_index;
 			
 			MeshletRuntimePageUpdateCommand page_table_update_command;
@@ -238,7 +259,7 @@ void UpdateMeshletStreamingSystem(MeshletStreamingSystem* system, AsyncTransferQ
 		}
 		
 		if (page.state == MeshletRuntimePageState::PageOut) {
-			if (page.wait_index <= current_frame_index) {
+			if (IsWaitComplete(page.wait_index, current_frame_index, completed_file_read_index)) {
 				page = {};
 				ArrayAppend(free_page_indices, runtime_page_index);
 			} else {
@@ -261,6 +282,7 @@ void UpdateMeshletStreamingSystem(MeshletStreamingSystem* system, AsyncTransferQ
 		system->meshlet_streaming_commands.page_header_readback_count = page_in_command_count;
 	}
 	
+	// Allocate final RTAS size readback for RTAS build commands.
 	if (meshlet_rtas_build_commands.count != 0) {
 		auto [gpu_address, cpu_address] = AllocateTransientReadbackBuffer<u32, 16u>(record_context, (u32)meshlet_rtas_build_commands.count);
 		
@@ -281,22 +303,17 @@ void UpdateMeshletStreamingSystem(MeshletStreamingSystem* system, AsyncTransferQ
 		
 		for (u32 runtime_page_index = 0; runtime_page_index < runtime_pages.count; runtime_page_index += 1) {
 			auto& page = runtime_pages[runtime_page_index];
-			if (page.state != MeshletRuntimePageState::Free) {
-				u32 runtime_page_index_for_cache_update = page.state == MeshletRuntimePageState::Ready ? runtime_page_index : u32_max;
-				u64 subresource_id = EncodeMeshletSubresourceID(page.mesh_asset_index, page.asset_page_index);
-				
-				HashTableAddOrFind(allocated_page_subresource_id_to_index, subresource_id, runtime_page_index_for_cache_update);
-			}
+			if (page.state == MeshletRuntimePageState::Free) continue;
+			
+			u64 subresource_id = EncodeMeshletSubresourceID(page.mesh_asset_index, page.asset_page_index);
+			HashTableAddOrFind(allocated_page_subresource_id_to_index, subresource_id, runtime_page_index);
 		}
 		
 		for (u32 i = 0; i < requests.count;) {
-			u64 subresource_id = requests[i];
-			auto* element = HashTableFind(allocated_page_subresource_id_to_index, subresource_id);
+			auto* element = HashTableFind(allocated_page_subresource_id_to_index, requests[i]);
 			
 			if (element != nullptr) {
-				if (element->value != u32_max) {
-					runtime_pages[element->value].cache_frame_index = (u32)current_frame_index;
-				}
+				runtime_pages[element->value].cache_frame_index = (u32)current_frame_index;
 				ArrayEraseSwapLast(requests, i);
 			} else {
 				i += 1;
@@ -329,9 +346,10 @@ void UpdateMeshletStreamingSystem(MeshletStreamingSystem* system, AsyncTransferQ
 		for (u32 runtime_page_index = 0; runtime_page_index < runtime_pages.count; runtime_page_index += 1) {
 			auto& page = runtime_pages[runtime_page_index];
 			
-			// TODO: Should we try to deallocate currently used pages with lower priority than the newly requested pages?
-			// TODO: Allow deallocating pages in AllocateRTAS/BuildRTAS states.
-			if (page.state != MeshletRuntimePageState::Ready || page.cache_frame_index == (u32)current_frame_index) continue;
+			// TODO: Deallocate currently used pages with lower priority than the newly requested pages.
+			// Make sure pages with outstanding commands are not deallocated.
+			bool can_deallocate_state = (page.state == MeshletRuntimePageState::Ready) || (page.state == MeshletRuntimePageState::AllocateRTAS);
+			if ((can_deallocate_state == false) || (page.cache_frame_index == (u32)current_frame_index)) continue;
 			
 			MeshletPageOutCandidate candidate;
 			candidate.asset_page_index   = page.asset_page_index;
@@ -350,12 +368,14 @@ void UpdateMeshletStreamingSystem(MeshletStreamingSystem* system, AsyncTransferQ
 			auto& page = runtime_pages[candidate.runtime_page_index];
 			
 			page.state      = MeshletRuntimePageState::PageOut;
-			page.wait_index = current_frame_index + number_of_frames_in_flight;
+			page.wait_index = EncodeGpuFrameWaitIndex(current_frame_index);
 			
-			// Meshlet RTAS must be deallocated here, otherwise memory compaction may try to move this block.
-			system->rtas_heap.Deallocate(page.rtas_allocation);
-			system->rtas_allocation_index_to_page_index[page.rtas_allocation.index] = u32_max;
-			page.rtas_allocation = {};
+			// See @DeallocateRTAS for reference.
+			if (page.rtas_allocation.index != u32_max) {
+				system->rtas_heap.Deallocate(page.rtas_allocation);
+				system->rtas_allocation_index_to_page_index[page.rtas_allocation.index] = u32_max;
+				page.rtas_allocation = {};
+			}
 			
 			MeshletRuntimePageUpdateCommand page_table_update_command;
 			page_table_update_command.type               = MeshletPageUpdateCommandType::PageOut;
@@ -388,7 +408,7 @@ void UpdateMeshletStreamingSystem(MeshletStreamingSystem* system, AsyncTransferQ
 		page.state            = MeshletRuntimePageState::FileRead;
 		page.mesh_asset_index = mesh_asset_index;
 		page.asset_page_index = asset_page_index;
-		page.wait_index       = wait_file_index;
+		page.wait_index       = EncodeFileReadWaitIndex(wait_file_index);
 	}
 	
 	
@@ -404,6 +424,9 @@ void UpdateMeshletStreamingSystem(MeshletStreamingSystem* system, AsyncTransferQ
 	for (auto& command : move_commands) {
 		u32 runtime_page_index = system->rtas_allocation_index_to_page_index[command.allocation.index];
 		
+		// States before BuildRTAS don't have a RTAS allocation and shouldn't end up here. Pages in PageOut state are
+		// assumed to contain invalid data, so we shouldn't try to move their RTASes. This is enforced by deallocating
+		// RTASes when transitioning pages to PageOut state, see @DeallocateRTAS for reference.
 		auto& page = runtime_pages[runtime_page_index];
 		DebugAssert(page.state == MeshletRuntimePageState::BuildRTAS || page.state == MeshletRuntimePageState::Ready, "Cannot move meshlet RTAS page in state '%'.", (u32)page.state);
 		

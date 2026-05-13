@@ -140,6 +140,8 @@ RecordContext* BeginRecordContext(StackAllocator* alloc, RendererContext* contex
 }
 
 void UpdateStreamingSystems(RendererContext* renderer_context, ThreadPool* thread_pool, RecordContext* record_context, WorldEntitySystem* world_system, AssetEntitySystem* asset_system, u64 world_entity_guid) {
+	ProfilerScope("UpdateStreamingSystems");
+	
 	auto world_entity = QueryEntityByGUID<WorldEntityQuery>(*world_system, world_entity_guid);
 	auto& renderer_world = *world_entity.renderer_world;
 	

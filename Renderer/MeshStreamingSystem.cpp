@@ -1,9 +1,10 @@
-#include "MeshStreamingSystem.h"
 #include "Basic/BasicArray.h"
 #include "Basic/BasicBitArray.h"
-#include "RenderPasses.h"
-#include "GraphicsApi/RecordContext.h"
 #include "GraphicsApi/AsyncTransferQueue.h"
+#include "GraphicsApi/RecordContext.h"
+#include "MeshStreamingSystem.h"
+#include "RenderPasses.h"
+#include "StreamingSystem.h"
 
 enum struct MeshRuntimeState : u32 {
 	Free       = 0,
@@ -19,6 +20,7 @@ struct MeshAssetRuntimeData {
 	u32 cache_priority    = 0;
 	MeshRuntimeState state = MeshRuntimeState::Free;
 	u64 wait_index = 0;
+	NumaHeapAllocation allocation;
 };
 
 struct MeshDeallocationCandidate {
@@ -52,6 +54,8 @@ MeshStreamingSystem* CreateMeshStreamingSystem(StackAllocator* alloc, u64 buffer
 }
 
 static ArrayView<u64> ProcessMeshStreamingFeedback(RecordContext* record_context, GpuReadbackQueue* mesh_streaming_feedback_queue) {
+	ProfilerScope("ProcessMeshStreamingFeedback");
+	
 	auto element = mesh_streaming_feedback_queue->Load(record_context->frame_index);
 	if (element.data == nullptr) return {};
 	
@@ -83,7 +87,9 @@ static u32 ComputeRuntimeMeshSize(const MeshRuntimeDataLayout& layout) {
 }
 
 void UpdateMeshStreamingSystem(MeshStreamingSystem* system, AsyncTransferQueue* async_transfer_queue, RecordContext* record_context, AssetEntitySystem* asset_system, GpuReadbackQueue* mesh_streaming_feedback_queue) {
-	auto entity_array = QueryEntityTypeArray<MeshAssetType>(*asset_system);
+	ProfilerScope("UpdateMeshStreamingSystem");
+	
+	auto* entity_array = QueryEntityTypeArray<MeshAssetType>(*asset_system);
 	auto streams = ExtractComponentStreams<MeshAssetType>(entity_array);
 	
 	auto& mesh_asset_buffer = GetVirtualResource(record_context, VirtualResourceID::MeshAssetBuffer);
@@ -105,22 +111,17 @@ void UpdateMeshStreamingSystem(MeshStreamingSystem* system, AsyncTransferQueue* 
 	for (u32 runtime_mesh_index = 0; runtime_mesh_index < runtime_meshes.count; runtime_mesh_index += 1) {
 		auto& mesh = runtime_meshes[runtime_mesh_index];
 		
-		switch (mesh.state) {
-		case MeshRuntimeState::Allocate: {
+		if (mesh.state == MeshRuntimeState::Allocate) {
 			auto& layout = streams.runtime_data_layout[mesh.mesh_asset_index];
 			u32 mesh_size = ComputeRuntimeMeshSize(layout);
 			
 			auto heap_allocation = system->heap.Allocate(mesh_size);
 			if (heap_allocation.index != u32_max) {
-				mesh.state = MeshRuntimeState::FileRead;
+				mesh.allocation = heap_allocation;
 				
 				system->total_allocated_size += system->heap.GetMemoryBlockSize(heap_allocation);
 				
-				auto& allocation = streams.allocation[mesh.mesh_asset_index];
-				allocation.allocation = heap_allocation;
-				allocation.offset     = u32_max;
-				
-				mesh.wait_index = AsyncCopyFileToBuffer(
+				u64 file_read_index = AsyncCopyFileToBuffer(
 					async_transfer_queue,
 					mesh_asset_buffer.buffer.resource,
 					system->heap.GetMemoryBlockOffset(heap_allocation) + base_allocation_offset,
@@ -129,33 +130,32 @@ void UpdateMeshStreamingSystem(MeshStreamingSystem* system, AsyncTransferQueue* 
 					layout.page_count * MeshletPageHeader::page_size,
 					mesh_size
 				);
-			}
-			break;
-		} case MeshRuntimeState::FileRead: {
-			if (mesh.wait_index <= completed_file_read_index) {
-				mesh.state = MeshRuntimeState::Ready;
 				
-				auto& allocation = streams.allocation[mesh.mesh_asset_index];
-				allocation.offset = (u32)(system->heap.GetMemoryBlockOffset(allocation.allocation) + base_allocation_offset);
-				
-				BitArraySetBit(entity_array->dirty_mask, mesh.mesh_asset_index);
+				mesh.state      = MeshRuntimeState::FileRead;
+				mesh.wait_index = EncodeFileReadWaitIndex(file_read_index);
 			}
-			break;
-		} case MeshRuntimeState::Deallocate: {
-			if (mesh.wait_index <= current_frame_index) {
-				auto& allocation = streams.allocation[mesh.mesh_asset_index];
-				system->total_allocated_size -= system->heap.GetMemoryBlockSize(allocation.allocation);
-				system->heap.Deallocate(allocation.allocation);
-				allocation = {};
+		}
+		
+		if (mesh.state == MeshRuntimeState::FileRead && IsWaitComplete(mesh.wait_index, current_frame_index, completed_file_read_index)) {
+			mesh.state      = MeshRuntimeState::Ready;
+			mesh.wait_index = 0;
+			
+			auto& allocation = streams.allocation[mesh.mesh_asset_index];
+			allocation.offset = (u32)(system->heap.GetMemoryBlockOffset(mesh.allocation) + base_allocation_offset);
+			
+			BitArraySetBit(entity_array->dirty_mask, mesh.mesh_asset_index);
+		}
+		
+		if (mesh.state == MeshRuntimeState::Deallocate) {
+			if (IsWaitComplete(mesh.wait_index, current_frame_index, completed_file_read_index)) {
+				system->total_allocated_size -= system->heap.GetMemoryBlockSize(mesh.allocation);
+				system->heap.Deallocate(mesh.allocation);
 				
 				mesh = {};
 				ArrayAppend(free_mesh_indices, runtime_mesh_index);
 			} else {
-				auto& layout = streams.runtime_data_layout[mesh.mesh_asset_index];
-				in_flight_deallocate_memory_size += ComputeRuntimeMeshSize(layout);
+				in_flight_deallocate_memory_size += system->heap.GetMemoryBlockSize(mesh.allocation);
 			}
-			break;
-		}
 		}
 		
 	}
@@ -180,8 +180,10 @@ void UpdateMeshStreamingSystem(MeshStreamingSystem* system, AsyncTransferQueue* 
 		
 		u64 memory_size_for_all_requests = 0;
 		u64 allocate_memory_size = 0;
-		for (u64 packed_request : requests) {
-			u32 mesh_asset_index = (u32)packed_request;
+		for (u64 i = 0; (i < requests.count) && (memory_size_for_all_requests < buffer_size); i += 1) {
+			u64 request = requests[i];
+			
+			u32 mesh_asset_index = (u32)request;
 			auto* element = HashTableFind(mesh_asset_id_to_runtime_mesh_index, mesh_asset_index);
 			
 			u32 runtime_mesh_index = 0;
@@ -191,27 +193,23 @@ void UpdateMeshStreamingSystem(MeshStreamingSystem* system, AsyncTransferQueue* 
 				runtime_mesh_index = ArrayPopLast(free_mesh_indices);
 				
 				auto& mesh = runtime_meshes[runtime_mesh_index];
-				mesh.state             = MeshRuntimeState::Allocate;
-				mesh.mesh_asset_index  = mesh_asset_index;
+				mesh.state            = MeshRuntimeState::Allocate;
+				mesh.mesh_asset_index = mesh_asset_index;
 			} else {
 				continue;
 			}
 			
 			u32 mesh_size = ComputeRuntimeMeshSize(streams.runtime_data_layout[mesh_asset_index]);
-			
 			memory_size_for_all_requests += mesh_size;
-			if (memory_size_for_all_requests > buffer_size) {
-				// After overflow we know that no more meshes will fit. Break here so their frame
-				// index and priority are not updated and they become eligible for deallocation.
-				break;
-			}
 			
-			auto& mesh = runtime_meshes[runtime_mesh_index];
-			mesh.cache_frame_index = (u32)current_frame_index;
-			mesh.cache_priority    = (u32)(packed_request >> 32);
-			
-			if (mesh.state == MeshRuntimeState::Allocate) {
-				allocate_memory_size += mesh_size;
+			if (memory_size_for_all_requests <= buffer_size) {
+				auto& mesh = runtime_meshes[runtime_mesh_index];
+				mesh.cache_frame_index = (u32)current_frame_index;
+				mesh.cache_priority    = (u32)(request >> 32);
+				
+				if (mesh.state == MeshRuntimeState::Allocate) {
+					allocate_memory_size += mesh_size;
+				}
 			}
 		}
 		
@@ -249,13 +247,12 @@ void UpdateMeshStreamingSystem(MeshStreamingSystem* system, AsyncTransferQueue* 
 		for (u64 i = 0; i < deallocation_candidates.count && deallocated_memory_size < deallocate_memory_size; i += 1) {
 			auto& candidate = deallocation_candidates[i];
 			auto& mesh = runtime_meshes[candidate.runtime_mesh_index];
+			
 			mesh.state      = MeshRuntimeState::Deallocate;
-			mesh.wait_index = current_frame_index + number_of_frames_in_flight;
+			mesh.wait_index = EncodeGpuFrameWaitIndex(current_frame_index);
 			
-			deallocated_memory_size += ComputeRuntimeMeshSize(streams.runtime_data_layout[mesh.mesh_asset_index]);
-			
-			auto& allocation = streams.allocation[mesh.mesh_asset_index];
-			allocation.offset = u32_max;
+			deallocated_memory_size += system->heap.GetMemoryBlockSize(mesh.allocation);
+			streams.allocation[mesh.mesh_asset_index] = {};
 			
 			BitArraySetBit(entity_array->dirty_mask, mesh.mesh_asset_index);
 		}
@@ -266,17 +263,21 @@ static void InvalidateMeshStreaming(MeshStreamingSystem* system, RecordContext* 
 	for (auto& mesh : system->runtime_meshes) {
 		if (mesh.state == MeshRuntimeState::Free || mesh.mesh_asset_index != mesh_asset_index) continue;
 		
-		mesh.state      = MeshRuntimeState::Deallocate;
-		mesh.wait_index = record_context->frame_index + number_of_frames_in_flight;
+		// See @InvalidateDuringFileRead for reference.
+		if (mesh.state != MeshRuntimeState::FileRead) {
+			mesh.wait_index = EncodeGpuFrameWaitIndex(record_context->frame_index);
+		}
+		mesh.state = MeshRuntimeState::Deallocate;
 	}
 	
-	auto& allocation = streams.allocation[mesh_asset_index];
-	allocation.offset = u32_max;
+	streams.allocation[mesh_asset_index] = {};
 	
 	BitArraySetBit(entity_array->dirty_mask, mesh_asset_index);
 }
 
 void UpdateMeshStreamingFiles(MeshStreamingSystem* system, ThreadPool* thread_pool, RecordContext* record_context, AssetEntitySystem* asset_system) {
+	ProfilerScope("UpdateMeshStreamingFiles");
+	
 	extern MeshImportResult ImportMeshFile(StackAllocator* alloc, ThreadPool* thread_pool, const MeshSourceData& source_data, u64 runtime_data_guid);
 	
 	auto* alloc = record_context->alloc;

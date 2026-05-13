@@ -49,6 +49,7 @@ struct TextureRuntimeFile {
 NOTES(Meta::SaveLoadOptions{ SaveLoadFlags::None })
 struct TextureDescriptorAllocation {
 	u32 index = u32_max;
+	u32 mip_level_mask = 0;
 };
 
 NOTES(Meta::SaveLoadOptions{ SaveLoadFlags::None })

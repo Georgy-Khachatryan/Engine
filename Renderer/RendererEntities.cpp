@@ -38,6 +38,26 @@ void UpdateRendererEntityGpuComponents(StackAllocator* alloc, ThreadPool* thread
 		ArrayAppend(gpu_uploads, alloc, gpu_mesh_asset_data);
 	}
 	
+	for (auto* entity_array : QueryEntities<TextureAssetType>(alloc, asset_system)) {
+		ProfilerScope("TextureAssetTypeGpuComponentUpdate");
+		auto streams = ExtractComponentStreams<TextureAssetType>(entity_array);
+		
+		auto* resource_table = record_context->resource_table;
+		for (u64 i : BitArrayIt(entity_array->dirty_mask)) {
+			auto& descriptor_allocation = streams.descriptor_allocation[i];
+			
+			auto texture_descriptor = HLSL::Texture2D<float4>((VirtualResourceID)0);
+			if (descriptor_allocation.mip_level_mask != 0) {
+				auto texture_id = resource_table->AddTransient(streams.resource_allocation[i].resource, streams.runtime_data_layout[i].size);
+				texture_descriptor = HLSL::Texture2D<float4>(texture_id, FirstBitLow32(descriptor_allocation.mip_level_mask));
+			}
+			
+			// Perfectly descriptor updates should be staged similar to the regular GPU component
+			// updates, but D3D12 doesn't support updating descriptors in the GPU timeline.
+			CreateResourceDescriptor(record_context, texture_descriptor, descriptor_allocation.index);
+		}
+	}
+	
 	auto texture_streams = ExtractComponentStreams<TextureAssetType>(QueryEntityTypeArray<TextureAssetType>(asset_system));
 	for (auto* entity_array : QueryEntities<MaterialAssetType>(alloc, asset_system)) {
 		ProfilerScope("MaterialAssetTypeGpuComponentUpdate");

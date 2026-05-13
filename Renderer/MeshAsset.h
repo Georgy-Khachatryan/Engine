@@ -136,7 +136,6 @@ struct MeshRuntimeFile {
 
 NOTES(Meta::SaveLoadOptions{ SaveLoadFlags::None })
 struct MeshRuntimeAllocation {
-	NumaHeapAllocation allocation;
 	u32 offset = u32_max;
 };
 
