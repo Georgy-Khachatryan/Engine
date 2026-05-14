@@ -103,11 +103,59 @@ static u64 ComputeMipLevelOffset(TextureSize size, u32 mip_index, const TextureF
 	return offset;
 }
 
+static ArrayView<u64> ProcessTextureStreamingFeedback(TextureStreamingSystem* system, RecordContext* record_context, GpuReadbackQueue* texture_streaming_feedback_queue, TextureAssetType streams) {
+	ProfilerScope("ProcessTextureStreamingFeedback");
+	
+	auto element = texture_streaming_feedback_queue->Load(record_context->frame_index);
+	if (element.data == nullptr) return {};
+	
+	auto* alloc = record_context->alloc;
+	
+	Array<u64> requests;
+	ArrayReserve(requests, alloc, persistent_srv_descriptor_count);
+	
+	u32* texture_streaming_feedback_data = (u32*)element.data;
+	for (u32 descriptor_index = 0; descriptor_index < persistent_srv_descriptor_count; descriptor_index += 1) {
+		u32 packed_feedback = texture_streaming_feedback_data[descriptor_index];
+		if (packed_feedback == u32_max) continue;
+		
+		auto entity_id = system->descriptor_index_to_texture_entity_id[descriptor_index];
+		auto& texture = system->runtime_textures[descriptor_index];
+		
+		auto& layout = streams.runtime_data_layout[entity_id.index];
+		auto sparse_layout = streams.resource_allocation[entity_id.index].sparse_layout;
+		
+		u32 begin_mip_level = (u32)*(float*)&packed_feedback;
+		if (sparse_layout.packed_mip_count != 0) {
+			begin_mip_level = Math::Min((u32)sparse_layout.regular_mip_count, begin_mip_level);
+		}
+		u32 end_mip_index = sparse_layout.regular_mip_count + (sparse_layout.packed_mip_count != 0 ? 1 : 0);
+		
+		for (u32 mip_index = begin_mip_level; mip_index < end_mip_index; mip_index += 1) {
+			auto mip_size_texels = Math::Max(uint2(layout.size) >> mip_index, 1u);
+			auto mip_size_tiles  = DivideAndRoundUp(mip_size_texels, uint2(sparse_layout.tile_shape));
+			
+			u32 tile_count = mip_index >= sparse_layout.regular_mip_count ? sparse_layout.packed_tile_count : mip_size_tiles.x * mip_size_tiles.y;
+			
+			ArrayAppend(requests, alloc, EncodeTextureSubresourceID(descriptor_index, mip_index, tile_count));
+		}
+		
+		texture.cache_mip_index = layout.size.mips;
+	}
+	
+	return requests;
+}
+
 void UpdateTextureStreamingSystem(TextureStreamingSystem* system, AsyncTransferQueue* async_transfer_queue, RecordContext* record_context, AssetEntitySystem* asset_system, GpuReadbackQueue* texture_streaming_feedback_queue) {
 	ProfilerScope("UpdateTextureStreamingSystem");
 	
 	auto* graphics_context = record_context->context;
 	auto* alloc = record_context->alloc;
+	
+	auto* entity_array = QueryEntityTypeArray<TextureAssetType>(*asset_system);
+	auto streams = ExtractComponentStreams<TextureAssetType>(entity_array);
+	
+	auto requests = ProcessTextureStreamingFeedback(system, record_context, texture_streaming_feedback_queue, streams);
 	
 	u64 current_frame_index = record_context->frame_index;
 	u64 completed_file_read_index = CompletedGpuAsyncTransferIndex(async_transfer_queue);
@@ -127,9 +175,6 @@ void UpdateTextureStreamingSystem(TextureStreamingSystem* system, AsyncTransferQ
 			}
 		}
 	}
-	
-	auto* entity_array = QueryEntityTypeArray<TextureAssetType>(*asset_system);
-	auto streams = ExtractComponentStreams<TextureAssetType>(entity_array);
 	
 	for (u32 descriptor_index = 0; descriptor_index < persistent_srv_descriptor_count; descriptor_index += 1) {
 		auto& texture = system->runtime_textures[descriptor_index];
@@ -208,46 +253,10 @@ void UpdateTextureStreamingSystem(TextureStreamingSystem* system, AsyncTransferQ
 		}
 	}
 	
-	Array<u64> requests;
-	auto element = texture_streaming_feedback_queue->Load(record_context->frame_index);
-	if (element.data != nullptr) {
-		ProfilerScope("ProcessTextureStreamingFeedback");
-		
-		ArrayReserve(requests, alloc, persistent_srv_descriptor_count);
-		
-		u32* texture_streaming_feedback_data = (u32*)element.data;
-		for (u32 descriptor_index = 0; descriptor_index < persistent_srv_descriptor_count; descriptor_index += 1) {
-			u32 packed_feedback = texture_streaming_feedback_data[descriptor_index];
-			if (packed_feedback == u32_max) continue;
-			
-			auto entity_id = system->descriptor_index_to_texture_entity_id[descriptor_index];
-			auto& texture = system->runtime_textures[descriptor_index];
-			
-			auto& layout = streams.runtime_data_layout[entity_id.index];
-			auto sparse_layout = streams.resource_allocation[entity_id.index].sparse_layout;
-			
-			u32 begin_mip_level = (u32)*(float*)&packed_feedback;
-			if (sparse_layout.packed_mip_count != 0) {
-				begin_mip_level = Math::Min((u32)sparse_layout.regular_mip_count, begin_mip_level);
-			}
-			u32 end_mip_index = sparse_layout.regular_mip_count + (sparse_layout.packed_mip_count != 0 ? 1 : 0);
-			
-			for (u32 mip_index = begin_mip_level; mip_index < end_mip_index; mip_index += 1) {
-				auto mip_size_texels = Math::Max(uint2(layout.size) >> mip_index, 1u);
-				auto mip_size_tiles  = DivideAndRoundUp(mip_size_texels, uint2(sparse_layout.tile_shape));
-				
-				u32 tile_count = mip_index >= sparse_layout.regular_mip_count ? sparse_layout.packed_tile_count : mip_size_tiles.x * mip_size_tiles.y;
-				
-				ArrayAppend(requests, alloc, EncodeTextureSubresourceID(descriptor_index, mip_index, tile_count));
-			}
-			
-			texture.cache_mip_index = layout.size.mips;
-		}
-	}
 	
 	u32 deallocate_tile_count = 0;
 	if (requests.count != 0) {
-		HeapSort<u64>(requests);
+		HeapSort(requests);
 		
 		u32 total_tile_count = (u32)system->free_tile_indices.capacity;
 		

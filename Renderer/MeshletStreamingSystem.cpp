@@ -294,7 +294,7 @@ void UpdateMeshletStreamingSystem(MeshletStreamingSystem* system, AsyncTransferQ
 	}
 	
 	
-	// Update cache frame indices of already allocated pages and remove them from the request array.
+	u64 deallocate_page_count = 0;
 	if (requests.count != 0) {
 		TempAllocationScope(alloc);
 		
@@ -309,35 +309,49 @@ void UpdateMeshletStreamingSystem(MeshletStreamingSystem* system, AsyncTransferQ
 			HashTableAddOrFind(allocated_page_subresource_id_to_index, subresource_id, runtime_page_index);
 		}
 		
-		for (u32 i = 0; i < requests.count;) {
-			auto* element = HashTableFind(allocated_page_subresource_id_to_index, requests[i]);
+		HeapSort(requests);
+		
+		requests.count = Math::Min(requests.count, free_page_indices.capacity);
+		
+		auto& mesh_asset_buffer = GetVirtualResource(record_context, VirtualResourceID::MeshAssetBuffer);
+		for (u64 subresource_id : requests) {
+			auto* element = HashTableFind(allocated_page_subresource_id_to_index, subresource_id);
 			
 			if (element != nullptr) {
 				runtime_pages[element->value].cache_frame_index = (u32)current_frame_index;
-				ArrayEraseSwapLast(requests, i);
+			} else if (free_page_indices.count != 0) {
+				u32 mesh_asset_index = (u32)(subresource_id >> 0);
+				u32 asset_page_index = (u32)(subresource_id >> 32);
+				u32 runtime_page_index = ArrayPopLast(free_page_indices);
+				
+				u64 wait_file_index = AsyncCopyFileToBuffer(
+					async_transfer_queue,
+					mesh_asset_buffer.buffer.resource,
+					runtime_page_index * MeshletPageHeader::page_size,
+					mesh_asset_buffer.buffer.size,
+					streams.runtime_file[mesh_asset_index].file,
+					asset_page_index * MeshletPageHeader::page_size,
+					MeshletPageHeader::page_size
+				);
+				
+				auto& page = runtime_pages[runtime_page_index];
+				page.state            = MeshletRuntimePageState::FileRead;
+				page.mesh_asset_index = mesh_asset_index;
+				page.asset_page_index = asset_page_index;
+				page.wait_index       = EncodeFileReadWaitIndex(wait_file_index);
+				page.cache_frame_index = (u32)current_frame_index;
 			} else {
-				i += 1;
+				// Failed to allocate a page, ask for one page to be deallocated so this page can be allocated.
+				deallocate_page_count += 1;
 			}
 		}
+		
+		// Make sure we account for any in flight deallocations, we can expect them to be ready soon.
+		deallocate_page_count -= Math::Min(in_flight_page_out_count, deallocate_page_count);
 	}
 	
-	
-	// At this point we only have requests that don't already have an allocated page. Remove any page requests that won't fit.
-	u64 page_out_count = 0;
-	if (requests.count > free_page_indices.count) {
-		HeapSort(requests);
-		
-		u64 remove_request_count = requests.count - free_page_indices.count;
-		requests.count -= remove_request_count; // We know we won't be able to fulfill these requests this frame.
-		
-		// Make sure we account for any in flight page outs, we can expect them to be ready soon.
-		page_out_count = remove_request_count - Math::Min(in_flight_page_out_count, remove_request_count);
-	}
-	DebugAssert(free_page_indices.count >= requests.count, "Overflowing page requests didn't get correctly removed. (%/%).", free_page_indices.count, requests.count);
-	
-	
-	// Try to page out pages that are no longer used.
-	if (page_out_count != 0) {
+	// Try to deallocate pages that are no longer used.
+	if (deallocate_page_count != 0) {
 		TempAllocationScope(alloc);
 		
 		Array<MeshletPageOutCandidate> page_out_candidates;
@@ -346,8 +360,6 @@ void UpdateMeshletStreamingSystem(MeshletStreamingSystem* system, AsyncTransferQ
 		for (u32 runtime_page_index = 0; runtime_page_index < runtime_pages.count; runtime_page_index += 1) {
 			auto& page = runtime_pages[runtime_page_index];
 			
-			// TODO: Deallocate currently used pages with lower priority than the newly requested pages.
-			// Make sure pages with outstanding commands are not deallocated.
 			bool can_deallocate_state = (page.state == MeshletRuntimePageState::Ready) || (page.state == MeshletRuntimePageState::AllocateRTAS);
 			if ((can_deallocate_state == false) || (page.cache_frame_index == (u32)current_frame_index)) continue;
 			
@@ -357,11 +369,11 @@ void UpdateMeshletStreamingSystem(MeshletStreamingSystem* system, AsyncTransferQ
 			ArrayAppend(page_out_candidates, candidate);
 		}
 		
-		// Try to remove page_out_count least significant pages.
+		// Try to remove deallocate_page_count least significant pages.
 		HeapSort<MeshletPageOutCandidate>(page_out_candidates, [](const MeshletPageOutCandidate& lh, const MeshletPageOutCandidate& rh)-> bool {
 			return lh.asset_page_index > rh.asset_page_index;
 		});
-		page_out_candidates.count = Math::Min(page_out_candidates.count, page_out_count);
+		page_out_candidates.count = Math::Min(page_out_candidates.count, deallocate_page_count);
 		
 		for (u64 i = 0; i < page_out_candidates.count; i += 1) {
 			auto& candidate = page_out_candidates[i];
@@ -384,31 +396,6 @@ void UpdateMeshletStreamingSystem(MeshletStreamingSystem* system, AsyncTransferQ
 			page_table_update_command.asset_page_index   = page.asset_page_index;
 			ArrayAppend(page_table_update_commands, page_table_update_command);
 		}
-	}
-	
-	auto& mesh_asset_buffer = GetVirtualResource(record_context, VirtualResourceID::MeshAssetBuffer);
-	
-	// Allocate and read newly requested pages.
-	for (u64 subresource_id : requests) {
-		u32 mesh_asset_index = (u32)subresource_id;
-		u32 asset_page_index = (u32)(subresource_id >> 32);
-		u32 runtime_page_index = ArrayPopLast(free_page_indices);
-		
-		u64 wait_file_index = AsyncCopyFileToBuffer(
-			async_transfer_queue,
-			mesh_asset_buffer.buffer.resource,
-			runtime_page_index * MeshletPageHeader::page_size,
-			mesh_asset_buffer.buffer.size,
-			streams.runtime_file[mesh_asset_index].file,
-			asset_page_index * MeshletPageHeader::page_size,
-			MeshletPageHeader::page_size
-		);
-		
-		auto& page = runtime_pages[runtime_page_index];
-		page.state            = MeshletRuntimePageState::FileRead;
-		page.mesh_asset_index = mesh_asset_index;
-		page.asset_page_index = asset_page_index;
-		page.wait_index       = EncodeFileReadWaitIndex(wait_file_index);
 	}
 	
 	

@@ -169,9 +169,9 @@ void UpdateMeshStreamingSystem(MeshStreamingSystem* system, AsyncTransferQueue* 
 		
 		for (u32 runtime_mesh_index = 0; runtime_mesh_index < runtime_meshes.count; runtime_mesh_index += 1) {
 			auto& mesh = runtime_meshes[runtime_mesh_index];
-			if (mesh.state != MeshRuntimeState::Free) {
-				HashTableAddOrFind(mesh_asset_id_to_runtime_mesh_index, mesh.mesh_asset_index, runtime_mesh_index);
-			}
+			if (mesh.state == MeshRuntimeState::Free) continue;
+			
+			HashTableAddOrFind(mesh_asset_id_to_runtime_mesh_index, mesh.mesh_asset_index, runtime_mesh_index);
 		}
 		
 		// Process mesh requests in order of priority. Only the first X meshes that fit in
@@ -182,8 +182,9 @@ void UpdateMeshStreamingSystem(MeshStreamingSystem* system, AsyncTransferQueue* 
 		u64 allocate_memory_size = 0;
 		for (u64 i = 0; (i < requests.count) && (memory_size_for_all_requests < buffer_size); i += 1) {
 			u64 request = requests[i];
+			u32 mesh_asset_index = (u32)(request >> 0);
+			u32 cache_priority   = (u32)(request >> 32);
 			
-			u32 mesh_asset_index = (u32)request;
 			auto* element = HashTableFind(mesh_asset_id_to_runtime_mesh_index, mesh_asset_index);
 			
 			u32 runtime_mesh_index = 0;
@@ -205,7 +206,7 @@ void UpdateMeshStreamingSystem(MeshStreamingSystem* system, AsyncTransferQueue* 
 			if (memory_size_for_all_requests <= buffer_size) {
 				auto& mesh = runtime_meshes[runtime_mesh_index];
 				mesh.cache_frame_index = (u32)current_frame_index;
-				mesh.cache_priority    = (u32)(request >> 32);
+				mesh.cache_priority    = cache_priority;
 				
 				if (mesh.state == MeshRuntimeState::Allocate) {
 					allocate_memory_size += mesh_size;
