@@ -100,7 +100,7 @@ void ImGuiInitializeContext(HeapAllocator* heap) {
 	ImFontConfig font_config = {};
 	font_config.GlyphOffset.y = -1.f;
 	io.Fonts->Flags |= ImFontAtlasFlags_NoMouseCursors;
-	io.Fonts->AddFontFromFileTTF("./Assets/OpenSans-Regular.ttf", 18.f, &font_config);
+	io.Fonts->AddFontFromFileTTF("./Assets/Source/Fonts/OpenSans/OpenSans-Regular.ttf", 18.f, &font_config);
 	
 	ImGuiSetCustomStyle();
 }
