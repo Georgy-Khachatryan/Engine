@@ -296,13 +296,13 @@ void SaveLoadEntitySystem(SaveLoadBuffer& buffer, EntitySystemBase& system) {
 	
 	HashTable<EntityComponentStreamHash, EntitySaveLoadStreamID> new_component_stream_table;
 	HashTable<EntityComponentStreamHash, EntitySaveLoadStreamID> old_component_stream_table;
-	CreateComponentStreamTable(buffer.alloc, new_component_stream_table, buffer.is_saving ? &system : nullptr);
+	CreateComponentStreamTable(buffer.alloc, new_component_stream_table, buffer.direction == SaveLoadDirection::Saving ? &system : nullptr);
 	
 	buffer.heap = nullptr;
-	if (buffer.is_saving) {
+	if (buffer.direction == SaveLoadDirection::Saving) {
 		SaveLoad(buffer, new_component_stream_table); // At this point we don't know component stream offsets, this SaveLoad just reserves space.
 		old_component_stream_table = new_component_stream_table;
-	} else if (buffer.is_loading) {
+	} else if (buffer.direction == SaveLoadDirection::Loading) {
 		SaveLoad(buffer, old_component_stream_table); // HeapAllocator is set to null, this table would get allocated using StackAllocator.
 		ResetEntitySystem(system);
 	}
@@ -310,7 +310,7 @@ void SaveLoadEntitySystem(SaveLoadBuffer& buffer, EntitySystemBase& system) {
 	
 	u32 loaded_entity_count = 0;
 	for (auto& old_stream : old_component_stream_table) {
-		auto* new_stream = buffer.is_saving ? &old_stream : HashTableFind(new_component_stream_table, old_stream.key);
+		auto* new_stream = buffer.direction == SaveLoadDirection::Saving ? &old_stream : HashTableFind(new_component_stream_table, old_stream.key);
 		if (new_stream == nullptr) continue;
 		
 		auto& old_stream_id = old_stream.value;
@@ -320,7 +320,7 @@ void SaveLoadEntitySystem(SaveLoadBuffer& buffer, EntitySystemBase& system) {
 		auto& entity_type_info    = entity_type_info_table[new_stream_id.entity_type_id.index];
 		auto& component_type_info = component_type_info_table[new_stream_id.component_type_id.index];
 		
-		if (buffer.is_loading) {
+		if (buffer.direction == SaveLoadDirection::Loading) {
 			buffer.data.count = old_stream_id.offset_bytes + buffer_base_offset;
 			
 			if (array.count != old_stream_id.entity_count) {
@@ -341,7 +341,7 @@ void SaveLoadEntitySystem(SaveLoadBuffer& buffer, EntitySystemBase& system) {
 				
 				loaded_entity_count += array.count;
 			}
-		} else if (buffer.is_saving) {
+		} else if (buffer.direction == SaveLoadDirection::Saving) {
 			new_stream_id.offset_bytes = (u32)(buffer.data.count - buffer_base_offset);
 			new_stream_id.entity_count = array.count;
 		}
@@ -354,7 +354,7 @@ void SaveLoadEntitySystem(SaveLoadBuffer& buffer, EntitySystemBase& system) {
 		}
 	}
 	
-	if (buffer.is_loading) {
+	if (buffer.direction == SaveLoadDirection::Loading) {
 		HashTableReserve(system.entity_guid_to_entity_id, &system.heap, loaded_entity_count);
 		
 		for (auto* entity_array : QueryEntities<GuidQuery>(buffer.alloc, system)) {
@@ -366,7 +366,7 @@ void SaveLoadEntitySystem(SaveLoadBuffer& buffer, EntitySystemBase& system) {
 				HashTableAddOrFind(system.entity_guid_to_entity_id, guid, TypedEntityID{ EntityID{ entity_index }, entity_type_id });
 			}
 		}
-	} else if (buffer.is_saving) {
+	} else if (buffer.direction == SaveLoadDirection::Saving) {
 		u64 old_count = buffer.data.count;
 		buffer.data.count = buffer_base_offset;
 		

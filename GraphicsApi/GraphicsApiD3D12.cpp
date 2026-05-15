@@ -167,7 +167,7 @@ GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
 		ArrayResize(context->pipeline_state_table, alloc, context->pipeline_definitions.count);
 		
 		context->shader_compiler = CreateShaderCompiler(alloc, root_signature_filenames, shader_definition_table, context->pipeline_definitions);
-		SaveLoadShaderCache(context->shader_compiler, alloc, true);
+		SaveLoadShaderCache(context->shader_compiler, alloc, SaveLoadDirection::Loading);
 		
 		BuildRootSignatures(context, alloc, root_signature_streams);
 		BuildPipelineStates(context, alloc, false);
@@ -612,7 +612,7 @@ void ReleaseGraphicsContext(GraphicsContext* api_context, StackAllocator* alloc)
 	ProfilerScope("ReleaseGraphicsContext");
 	auto* context = (GraphicsContextD3D12*)api_context;
 	
-	SaveLoadShaderCache(context->shader_compiler, alloc, false);
+	SaveLoadShaderCache(context->shader_compiler, alloc, SaveLoadDirection::Saving);
 	ReleaseShaderCompiler(context->shader_compiler);
 	
 	for (auto& root_signature : context->root_signature_table) SafeRelease(root_signature);

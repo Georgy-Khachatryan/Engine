@@ -53,8 +53,7 @@ static UndoRedoCommand CreateUndoRedoCommand(UndoRedoBuffer& undo_redo_buffer, E
 		auto typed_entity_id = FindEntityByGUID(entity_system, entity_guid);
 		auto* entity_array = &entity_system.entity_type_arrays[typed_entity_id.entity_type_id.index];
 		
-		undo_redo_buffer.save_load_buffer.is_saving  = true;
-		undo_redo_buffer.save_load_buffer.is_loading = false;
+		undo_redo_buffer.save_load_buffer.direction = SaveLoadDirection::Saving;
 		
 		command.entity_type_id = typed_entity_id.entity_type_id;
 		command.offset = undo_redo_buffer.save_load_buffer.data.count;
@@ -80,8 +79,7 @@ static void ExecuteUndoRedoCommand(UndoRedoBuffer& undo_redo_buffer, UndoRedoCom
 		
 		undo_redo_buffer.save_load_buffer.heap       = &entity_system.heap;
 		undo_redo_buffer.save_load_buffer.data.count = command.offset;
-		undo_redo_buffer.save_load_buffer.is_saving  = false;
-		undo_redo_buffer.save_load_buffer.is_loading = true;
+		undo_redo_buffer.save_load_buffer.direction  = SaveLoadDirection::Loading;
 		
 		SaveLoadEntityForTooling(undo_redo_buffer.save_load_buffer, entity_array, typed_entity_id.entity_id);
 		u64 size = undo_redo_buffer.save_load_buffer.data.count - command.offset;

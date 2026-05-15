@@ -3,17 +3,16 @@
 #include "BasicFiles.h"
 
 
-bool OpenSaveLoadBuffer(StackAllocator* alloc, String filepath, bool is_loading, SaveLoadBuffer& buffer) {
+bool OpenSaveLoadBuffer(StackAllocator* alloc, String filepath, SaveLoadDirection direction, SaveLoadBuffer& buffer) {
 	ProfilerScope("OpenSaveLoadBuffer");
 	
 	buffer = {};
-	buffer.alloc      = alloc;
-	buffer.is_saving  = is_loading == false;
-	buffer.is_loading = is_loading;
-	buffer.filepath   = filepath;
+	buffer.alloc     = alloc;
+	buffer.direction = direction;
+	buffer.filepath  = filepath;
 	
 	bool success = true;
-	if (is_loading) {
+	if (direction == SaveLoadDirection::Loading) {
 		auto file = SystemOpenFile(alloc, filepath, OpenFileFlags::Read);
 		if (file.handle == nullptr) return false;
 		defer{ SystemCloseFile(file); };
@@ -33,7 +32,7 @@ bool CloseSaveLoadBuffer(SaveLoadBuffer& buffer) {
 	ProfilerScope("CloseSaveLoadBuffer");
 	
 	bool success = true;
-	if (buffer.is_saving) {
+	if (buffer.direction == SaveLoadDirection::Saving) {
 		auto file = SystemOpenFile(buffer.alloc, buffer.filepath, OpenFileFlags::Write);
 		if (file.handle == nullptr) return false;
 		defer{ SystemCloseFile(file); };

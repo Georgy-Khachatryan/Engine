@@ -524,12 +524,12 @@ static void SaveLoad(SaveLoadBuffer& buffer, ShaderCache& cache) {
 	SaveLoad(buffer, cache.shaders);
 }
 
-void SaveLoadShaderCache(ShaderCompiler* compiler, StackAllocator* alloc, bool should_load_shader_cache) {
+void SaveLoadShaderCache(ShaderCompiler* compiler, StackAllocator* alloc, SaveLoadDirection direction) {
 	ProfilerScope("SaveLoadShaderCache");
 	TempAllocationScope(alloc);
 	
 	SaveLoadBuffer buffer;
-	if (!OpenSaveLoadBuffer(alloc, shader_cache_filepath, should_load_shader_cache, buffer)) return;
+	if (!OpenSaveLoadBuffer(alloc, shader_cache_filepath, direction, buffer)) return;
 	defer{ CloseSaveLoadBuffer(buffer); };
 	
 	ShaderCache old_cache;
@@ -539,9 +539,9 @@ void SaveLoadShaderCache(ShaderCompiler* compiler, StackAllocator* alloc, bool s
 	new_cache.shader_definitions       = compiler->shader_definitions;
 	new_cache.shader_permutation_table = compiler->shader_permutation_table;
 	new_cache.shaders                  = compiler->shaders;
-	SaveLoad(buffer, should_load_shader_cache ? old_cache : new_cache);
+	SaveLoad(buffer, direction == SaveLoadDirection::Loading ? old_cache : new_cache);
 	
-	if (should_load_shader_cache) {
+	if (direction == SaveLoadDirection::Loading) {
 		ValidateShaderCache(alloc, old_cache, new_cache);
 		
 		auto* heap = &compiler->heap;

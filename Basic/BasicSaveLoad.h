@@ -12,14 +12,13 @@ struct alignas(64) SaveLoadBuffer {
 	HeapAllocator*  heap  = nullptr;
 	Array<u8>       data  = {};
 	
-	bool is_saving  = false;
-	bool is_loading = false;
+	SaveLoadDirection direction = SaveLoadDirection::None;
 	
 	String filepath;
 	
 	
 	u8* ReserveSaveBytes(u64 size) {
-		DebugAssert(is_saving, "Trying to write to SaveLoad buffer with no write flag.");
+		DebugAssert(direction == SaveLoadDirection::Saving, "Trying to write to SaveLoad buffer with save load direction '%'.", (u32)direction);
 		
 		if (data.count + size > data.capacity) {
 			u64 new_capacity = Math::Max(data.capacity * 3 / 2 + 1, minimum_entry_size);
@@ -34,7 +33,7 @@ struct alignas(64) SaveLoadBuffer {
 	}
 	
 	u8* ReserveLoadBytes(u64 size) {
-		DebugAssert(is_loading, "Trying to read from SaveLoad buffer with no read flag.");
+		DebugAssert(direction == SaveLoadDirection::Loading, "Trying to read from SaveLoad buffer with save load direction '%'.", (u32)direction);
 		DebugAssert(data.count + size <= data.capacity, "SaveLoad buffer overflowed when loading %0 bytes. (%0 > %1).", size, data.capacity - data.count);
 		
 		u8* result = data.data + data.count;
@@ -45,9 +44,9 @@ struct alignas(64) SaveLoadBuffer {
 	
 	always_inline u8* ReserveSaveLoadBytes(u64 size) {
 		u8* result = nullptr;
-		if (is_loading) {
+		if (direction == SaveLoadDirection::Loading) {
 			result = ReserveLoadBytes(size);
-		} else if (is_saving) {
+		} else if (direction == SaveLoadDirection::Saving) {
 			result = ReserveSaveBytes(size);
 		}
 		return result;
@@ -62,16 +61,16 @@ struct alignas(64) SaveLoadBuffer {
 	}
 	
 	always_inline void SaveLoadBytes(void* data, u64 size) {
-		if (is_loading) {
+		if (direction == SaveLoadDirection::Loading) {
 			LoadBytes(data, size);
-		} else if (is_saving) {
+		} else if (direction == SaveLoadDirection::Saving) {
 			SaveBytes(data, size);
 		}
 	}
 };
 static_assert(sizeof(SaveLoadBuffer) == 64, "Incorrect SaveLoad buffer size.");
 
-bool OpenSaveLoadBuffer(StackAllocator* alloc, String filepath, bool is_loading, SaveLoadBuffer& buffer);
+bool OpenSaveLoadBuffer(StackAllocator* alloc, String filepath, SaveLoadDirection direction, SaveLoadBuffer& buffer);
 bool CloseSaveLoadBuffer(SaveLoadBuffer& buffer);
 
 
@@ -84,7 +83,7 @@ always_inline void SaveLoad(SaveLoadBuffer& buffer, String& value, u64 version =
 	u64 count = value.count;
 	SaveLoad(buffer, count);
 	
-	if (buffer.is_loading) {
+	if (buffer.direction == SaveLoadDirection::Loading) {
 		if (buffer.heap && value.data) {
 			buffer.heap->Deallocate(value.data);
 		}
@@ -96,7 +95,7 @@ always_inline void SaveLoad(SaveLoadBuffer& buffer, String& value, u64 version =
 		} else if (count) {
 			value = { (char*)buffer.ReserveLoadBytes(count), count };
 		}
-	} else if (buffer.is_saving) {
+	} else if (buffer.direction == SaveLoadDirection::Saving) {
 		buffer.SaveBytes(value.data, count);
 	}
 }
@@ -106,7 +105,7 @@ void SaveLoad(SaveLoadBuffer& buffer, Array<T>& array, u64 version = 0) {
 	u64 count = array.count;
 	SaveLoad(buffer, count);
 	
-	if (buffer.is_loading) {
+	if (buffer.direction == SaveLoadDirection::Loading) {
 		if (buffer.heap && array.data) {
 			buffer.heap->Deallocate(array.data);
 		}
@@ -121,7 +120,7 @@ void SaveLoad(SaveLoadBuffer& buffer, Array<T>& array, u64 version = 0) {
 		for (auto& value : array) {
 			SaveLoad(buffer, value, version);
 		}
-	} else if (buffer.is_saving) {
+	} else if (buffer.direction == SaveLoadDirection::Saving) {
 		for (auto& value : array) {
 			SaveLoad(buffer, value, version);
 		}
@@ -133,7 +132,7 @@ void SaveLoad(SaveLoadBuffer& buffer, ArrayView<T>& array, u64 version = 0) {
 	u64 count = array.count;
 	SaveLoad(buffer, count);
 	
-	if (buffer.is_loading) {
+	if (buffer.direction == SaveLoadDirection::Loading) {
 		if (buffer.heap && array.data) {
 			buffer.heap->Deallocate(array.data);
 		}
@@ -148,7 +147,7 @@ void SaveLoad(SaveLoadBuffer& buffer, ArrayView<T>& array, u64 version = 0) {
 		for (auto& value : array) {
 			SaveLoad(buffer, value, version);
 		}
-	} else if (buffer.is_saving) {
+	} else if (buffer.direction == SaveLoadDirection::Saving) {
 		for (auto& value : array) {
 			SaveLoad(buffer, value, version);
 		}
@@ -160,7 +159,7 @@ void SaveLoad(SaveLoadBuffer& buffer, HashTable<KeyT, ValueT>& hash_table, u64 v
 	u64 count = hash_table.count;
 	SaveLoad(buffer, count);
 	
-	if (buffer.is_loading) {
+	if (buffer.direction == SaveLoadDirection::Loading) {
 		if (buffer.heap && hash_table.metadata) {
 			HashTableDeallocate(hash_table, buffer.heap);
 		}
@@ -177,7 +176,7 @@ void SaveLoad(SaveLoadBuffer& buffer, HashTable<KeyT, ValueT>& hash_table, u64 v
 			SaveLoad(buffer, element, version);
 			HashTableAddOrFindElement(hash_table, element);
 		}
-	} else if (buffer.is_saving) {
+	} else if (buffer.direction == SaveLoadDirection::Saving) {
 		for (auto& element : hash_table) {
 			SaveLoad(buffer, element, version);
 		}

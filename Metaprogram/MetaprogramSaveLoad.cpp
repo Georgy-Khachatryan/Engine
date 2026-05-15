@@ -164,9 +164,9 @@ void WriteSaveLoadCallbacks(StackAllocator* alloc, HashTable<String, VersionedTy
 			if (type.versions.count != 1) {
 				if (is_latest_version) {
 					if (type.generate_save_load_callback) {
-						builder.Append("DebugAssert(version == % || buffer.is_loading, \"Old versions can only be loaded.\");\n"_sl, version.version);
+						builder.Append("DebugAssert(version == % || buffer.direction == SaveLoadDirection::Loading, \"Old versions can only be loaded.\");\n"_sl, version.version);
 					} else {
-						builder.Append("DebugAssert(buffer.is_loading, \"Old versions can only be loaded.\");\n"_sl);
+						builder.Append("DebugAssert(buffer.direction == SaveLoadDirection::Loading, \"Old versions can only be loaded.\");\n"_sl);
 					}
 					builder.Append("if (version == %) {\n"_sl, version.version);
 				} else {

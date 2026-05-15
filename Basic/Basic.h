@@ -170,6 +170,12 @@ SAVE_LOAD_AS_BYTES(s64);
 SAVE_LOAD_AS_BYTES(float32);
 SAVE_LOAD_AS_BYTES(float64);
 
+enum struct SaveLoadDirection : u8 {
+	None    = 0,
+	Loading = 1,
+	Saving  = 2,
+};
+
 
 extern void ProfilerBeginScope(const char* label);
 extern void ProfilerEndScope();

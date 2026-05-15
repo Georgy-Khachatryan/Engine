@@ -21,4 +21,4 @@ ShaderCompiler* CreateShaderCompiler(StackAllocator* alloc, ArrayView<String> ro
 void ReleaseShaderCompiler(ShaderCompiler* compiler);
 bool CheckShaderFileChanges(ShaderCompiler* compiler, StackAllocator* alloc);
 
-void SaveLoadShaderCache(ShaderCompiler* compiler, StackAllocator* alloc, bool should_load_shader_cache);
+void SaveLoadShaderCache(ShaderCompiler* compiler, StackAllocator* alloc, SaveLoadDirection direction);

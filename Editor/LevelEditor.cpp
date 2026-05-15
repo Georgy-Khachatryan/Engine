@@ -201,8 +201,9 @@ static void DuplicateSelectedEntities(StackAllocator* alloc, WorldEntitySystem& 
 	TempAllocationScope(alloc);
 	
 	SaveLoadBuffer buffer;
-	OpenSaveLoadBuffer(alloc, String{}, false, buffer);
-	buffer.heap = &world_system.heap;
+	buffer.alloc = alloc;
+	buffer.heap  = &world_system.heap;
+	buffer.direction = SaveLoadDirection::Saving;
 	
 	auto& selected_entities_hash_table = selection_state_entity.selection_state->selected_entities_hash_table;
 	for (auto [guid] : selected_entities_hash_table) {
@@ -212,8 +213,7 @@ static void DuplicateSelectedEntities(StackAllocator* alloc, WorldEntitySystem& 
 	}
 	
 	buffer.data.count = 0;
-	buffer.is_saving  = false;
-	buffer.is_loading = true;
+	buffer.direction  = SaveLoadDirection::Loading;
 	
 	Array<u64> new_entity_guids;
 	ArrayReserve(new_entity_guids, alloc, selected_entities_hash_table.count);
@@ -812,11 +812,11 @@ static void CreateDefaultWorldSystem(WorldEntitySystem& world_system, u64 world_
 }
 
 
-static bool SaveLoadEntitySystemToFile(StackAllocator* alloc, EntitySystemBase& entity_system, String filepath, bool is_loading) {
+static bool SaveLoadEntitySystemToFile(StackAllocator* alloc, EntitySystemBase& entity_system, String filepath, SaveLoadDirection direction) {
 	TempAllocationScope(alloc);
 	
 	SaveLoadBuffer buffer;
-	bool success = OpenSaveLoadBuffer(alloc, filepath, is_loading, buffer);
+	bool success = OpenSaveLoadBuffer(alloc, filepath, direction, buffer);
 	
 	if (success) {
 		SaveLoadEntitySystem(buffer, entity_system);
@@ -829,7 +829,7 @@ static bool SaveLoadEntitySystemToFile(StackAllocator* alloc, EntitySystemBase& 
 static void LoadOrCreateDefaultEntitySystems(StackAllocator* alloc, WorldEntitySystem& world_system, AssetEntitySystem& asset_system, u64& world_entity_guid) {
 	TempAllocationScope(alloc);
 	
-	if (SaveLoadEntitySystemToFile(alloc, asset_system, assets_save_load_path, true) == false) {
+	if (SaveLoadEntitySystemToFile(alloc, asset_system, assets_save_load_path, SaveLoadDirection::Loading) == false) {
 		CreateDefaultAssetSystem(asset_system);
 	}
 	
@@ -837,7 +837,7 @@ static void LoadOrCreateDefaultEntitySystems(StackAllocator* alloc, WorldEntityS
 	world_entity_guid = world_asset.source_data->world_entity_guid;
 	
 	auto entities_save_load_path = StringFormat(alloc, "./Assets/%x..csb"_sl, world_entity_guid);
-	if (SaveLoadEntitySystemToFile(alloc, world_system, entities_save_load_path, true) == false) {
+	if (SaveLoadEntitySystemToFile(alloc, world_system, entities_save_load_path, SaveLoadDirection::Loading) == false) {
 		CreateDefaultWorldSystem(world_system, world_entity_guid);
 	}
 }
@@ -992,8 +992,8 @@ void LevelEditorUpdate(LevelEditorContext* editor_context, StackAllocator* alloc
 	if (should_save_scene || should_load_scene) {
 		TempAllocationScope(alloc);
 		auto entities_save_load_path = StringFormat(alloc, "./Assets/%x..csb"_sl, world_entity_guid);
-		SaveLoadEntitySystemToFile(alloc, world_system, entities_save_load_path, false);
-		SaveLoadEntitySystemToFile(alloc, asset_system, assets_save_load_path,   false);
+		SaveLoadEntitySystemToFile(alloc, world_system, entities_save_load_path, SaveLoadDirection::Saving);
+		SaveLoadEntitySystemToFile(alloc, asset_system, assets_save_load_path,   SaveLoadDirection::Saving);
 	}
 	
 	if (should_load_scene) {
@@ -1010,7 +1010,7 @@ void LevelEditorUpdate(LevelEditorContext* editor_context, StackAllocator* alloc
 		
 		if (world_entity_guid_to_load != 0) {
 			auto entities_save_load_path = StringFormat(alloc, "./Assets/%x..csb"_sl, world_entity_guid_to_load);
-			if (SaveLoadEntitySystemToFile(alloc, world_system, entities_save_load_path, true) == false) {
+			if (SaveLoadEntitySystemToFile(alloc, world_system, entities_save_load_path, SaveLoadDirection::Loading) == false) {
 				ResetEntitySystem(world_system);
 				CreateDefaultWorldSystem(world_system, world_entity_guid_to_load);
 			}
