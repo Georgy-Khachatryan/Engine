@@ -213,10 +213,25 @@ quat Math::AxisAngleToQuat(const float3& axis, float angle) {
 	return quat(axis * sin_half_angle, cos_half_angle);
 }
 
-quat Math::AxisAxisToQuat(const float3& axis_0, const float3& axis_1) {
-	float quat_w = Math::Dot(axis_0, axis_1) + 1.f;
-	compile_const float eps = 1.f / (1024.f * 1024.f);
-	return fabsf(quat_w) > eps ? Math::Normalize(quat(Math::Cross(axis_0, axis_1), quat_w)) : quat(Math::BuildOrthonormalBasis(axis_0).r0, 0.f);
+quat Math::AxisAxisZToQuat(const float3& normal) {
+	quat result;
+	
+	// Similar idea to "Building an Orthonormal Basis, Revisited". Instead of checking
+	// if the normal is close to -Z axis, use a different transform for each hemisphere.
+	if (normal.z >= 0.f) {
+		// Rotate the normal in the upper hemisphere directly using half way quaternion:
+		// quat(cross(normal, z), dot(normal, z)) + quat(0.f, 0.f, 0.f, 1.f)
+		result = quat(normal.y, -normal.x, 0.f, 1.f + normal.z); // 1.f + normal.z >= 1.f
+	} else {
+		// In the negative hemisphere first rotate the normal to -Z axis using half way quaternion,
+		// and then rotate it around X axis by 180dg:
+		// quat(1.f, 0.f, 0.f, 0.f) * (quat(cross(normal, -z), dot(normal, -z)) + quat(0.f, 0.f, 0.f, 1.f))
+		result = quat(1.f - normal.z, 0.f, normal.x, normal.y); // 1.f - normal.z > 1.f
+	}
+	
+	// Normalization is needed because we're using half way quaternions,
+	// i.e. the average between 2x rotation and the identity rotation.
+	return Math::Normalize(result);
 }
 
 float3x3 Math::QuatToRotationMatrix(const quat& q) {

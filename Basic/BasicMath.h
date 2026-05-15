@@ -197,7 +197,7 @@ namespace Math {
 	
 	float3x3 BuildOrthonormalBasis(const float3& normal);
 	quat AxisAngleToQuat(const float3& axis, float angle);
-	quat AxisAxisToQuat(const float3& axis_0, const float3& axis_1); // Quaternion that rotates axis_0 to axis_1.
+	quat AxisAxisZToQuat(const float3& axis); // Quaternion that rotates axis to float3(0.f, 0.f, 1.f).
 	float3x3 QuatToRotationMatrix(const quat& q);
 	float3 QuatToEulerXyzAngles(const quat& q); // Extrinsic XYZ angles, the same as intrinsic ZYX angles. float3(Roll, Pitch, Yaw)
 	quat EulerXyzAnglesToQuat(const float3& e);

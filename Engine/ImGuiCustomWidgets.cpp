@@ -637,7 +637,7 @@ bool ImGui::DragKnob3D(const char* label, quat& rotation, const float3& position
 		hovered = ImGui::IsItemHovered() || ImGui::IsItemActive();
 	}
 	
-	auto torus_rotation = Math::AxisAxisToQuat(float3(0.f, 0.f, 1.f), direction);
+	auto torus_rotation = Math::Conjugate(Math::AxisAxisZToQuat(direction));
 	float hovered_scale = (hovered ? 1.125f : 1.f);
 	draw_list_3d->AddTorus(position, torus_rotation, scaled_major_radius, scaled_minor_radius * hovered_scale, hovered ? 0xFF00FFFF : color);
 	
@@ -699,7 +699,7 @@ void ImGuiDrawList3D::AddTorus(const float3& position, const quat& rotation, flo
 }
 
 void ImGuiDrawList3D::AddArrow(const float3& position, const float3& direction, float length, float radius, u32 color) {
-	auto rotation = Math::AxisAxisToQuat(float3(0.f, 0.f, 1.f), direction);
+	auto rotation = Math::Conjugate(Math::AxisAxisZToQuat(direction));
 	
 	float arrow_head_radius  = radius * 2.f;
 	float arrow_head_length  = arrow_head_radius * 3.f; // 3:1 arrow_head_length to arrow_head_diameter ratio.
