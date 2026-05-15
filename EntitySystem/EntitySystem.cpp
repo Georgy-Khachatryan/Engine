@@ -60,7 +60,7 @@ EntityID CreateEntity(EntitySystemBase& system, EntityTypeID entity_type_id, u64
 		ProfilerScope("ReallocateComponentStreams");
 		
 		u32 old_capacity = array.capacity;
-		u32 new_capacity = AlignUp(old_capacity ? old_capacity * 3 / 2 : 1, type_info.base_allocation_count);
+		u32 new_capacity = AlignUp(old_capacity ? (old_capacity * 3 / 2 + 1) : 1, type_info.base_allocation_count);
 		
 		AllocateEntityMapStreams(array, system.heap, old_capacity, new_capacity);
 		AllocateComponentStreams(array.component_streams, type_info, system.heap, old_capacity, new_capacity);
@@ -199,6 +199,7 @@ static void CreateEntityTypeArrays(EntitySystemBase& system) {
 	}
 	
 	system.entity_type_arrays = entity_type_arrays;
+	system.clear_gpu_mask_component_streams = true;
 }
 
 void InitializeEntitySystem(EntitySystemBase& system) {
@@ -210,7 +211,7 @@ void InitializeEntitySystem(EntitySystemBase& system) {
 	CreateEntityTypeArrays(system);
 }
 
-static void ResetEntitySystem(EntitySystemBase& system) {
+void ResetEntitySystem(EntitySystemBase& system) {
 	system.entity_guid_to_entity_id = {};
 	system.entity_type_arrays = {};
 	ResetHeapAllocator(system.heap);

@@ -22,7 +22,7 @@ struct alignas(64) SaveLoadBuffer {
 		DebugAssert(is_saving, "Trying to write to SaveLoad buffer with no write flag.");
 		
 		if (data.count + size > data.capacity) {
-			u64 new_capacity = Math::Max(data.capacity * 3 / 2, minimum_entry_size);
+			u64 new_capacity = Math::Max(data.capacity * 3 / 2 + 1, minimum_entry_size);
 			data.data     = (u8*)alloc->Reallocate(data.data, data.capacity, new_capacity);
 			data.capacity = new_capacity;
 		}
@@ -73,7 +73,6 @@ static_assert(sizeof(SaveLoadBuffer) == 64, "Incorrect SaveLoad buffer size.");
 
 bool OpenSaveLoadBuffer(StackAllocator* alloc, String filepath, bool is_loading, SaveLoadBuffer& buffer);
 bool CloseSaveLoadBuffer(SaveLoadBuffer& buffer);
-void ResetSaveLoadBuffer(SaveLoadBuffer& buffer, u64 new_count);
 
 
 template<typename T, typename ValueType = typename SaveLoadAsBytes<T>::ValueType>

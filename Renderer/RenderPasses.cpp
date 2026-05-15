@@ -89,7 +89,7 @@ static void CopyCurrentToPreviousSceneConstants(SceneConstants& scene) {
 	scene.inv_prev_render_target_size = scene.inv_render_target_size;
 }
 
-void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext* record_context, WorldEntitySystem* world_system, AssetEntitySystem* asset_system, u64 world_entity_guid) {
+void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext* record_context, WorldEntitySystem* world_system, AssetEntitySystem* asset_system, u64 world_entity_guid, Array<GpuComponentUploadBuffer> gpu_uploads) {
 	ProfilerScope("BuildRenderPassesForFrame");
 	
 	auto world_entity  = QueryEntityByGUID<WorldEntityQuery>(*world_system, world_entity_guid);
@@ -192,7 +192,7 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	
 	auto gpu_scene_constants = AllocateGpuComponentUploadBuffer(record_context, 1, world_entity.gpu_scene_constants);
 	AppendGpuTransferCommand(gpu_scene_constants, 0, scene);
-	ArrayAppend(renderer_world.gpu_uploads, record_context->alloc, gpu_scene_constants);
+	ArrayAppend(gpu_uploads, record_context->alloc, gpu_scene_constants);
 	
 	auto [atmosphere_parameters_gpu_address, atmosphere_parameters_cpu_address] = AllocateTransientUploadBuffer<AtmosphereParameters>(record_context);
 	*atmosphere_parameters_cpu_address = atmosphere_parameters;
@@ -204,8 +204,7 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	auto& entity_system_update = render_passes.Add<EntitySystemUpdateRenderPass>();
 	entity_system_update.world_system = world_system;
 	entity_system_update.asset_system = asset_system;
-	entity_system_update.upload_buffers = renderer_world.gpu_uploads;
-	renderer_world.gpu_uploads = {};
+	entity_system_update.upload_buffers = gpu_uploads;
 	
 	auto& update_meshlet_page_table = render_passes.Add<UpdateMeshletPageTableRenderPass>();
 	update_meshlet_page_table.meshlet_streaming_system = renderer_context->meshlet_streaming_system;

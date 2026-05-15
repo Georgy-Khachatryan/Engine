@@ -21,7 +21,7 @@ static const EntityTypeID creatable_asset_entity_type_ids[] = {
 	ECS::GetEntityTypeID<MeshAssetType>::id,
 	ECS::GetEntityTypeID<TextureAssetType>::id,
 	ECS::GetEntityTypeID<MaterialAssetType>::id,
-	// ECS::GetEntityTypeID<WorldAssetType>::id,
+	ECS::GetEntityTypeID<WorldAssetType>::id,
 };
 
 compile_const auto assets_save_load_path = "./Assets/Assets.csb"_sl;
@@ -211,7 +211,9 @@ static void DuplicateSelectedEntities(StackAllocator* alloc, WorldEntitySystem& 
 		SaveLoadEntityForTooling(buffer, entity_array, typed_entity_id.entity_id);
 	}
 	
-	ResetSaveLoadBuffer(buffer, 0);
+	buffer.data.count = 0;
+	buffer.is_saving  = false;
+	buffer.is_loading = true;
 	
 	Array<u64> new_entity_guids;
 	ArrayReserve(new_entity_guids, alloc, selected_entities_hash_table.count);
@@ -390,6 +392,10 @@ static void EntityViewTable(StackAllocator* alloc, EntitySystemBase& entity_syst
 						auto world_entity = QueryEntityByGUID<WorldEntityQuery>(entity_system, world_entity_guid);
 						world_entity.camera_entity->guid = guid;
 						EndUndoRedoCommand(undo_redo_system);
+					}
+					
+					if (entity_type_id.index == ECS::GetEntityTypeID<WorldAssetType>::id.index) {
+						// TODO: Load world on double click
 					}
 				}
 			}
@@ -641,7 +647,7 @@ static bool AssetComponentEntityView(StackAllocator* alloc, AssetEntitySystem& a
 	
 	
 	if (entity.world_source_data) {
-		auto source_data_filename = StringFormat(alloc, "./Assets/%x..csb"_sl, entity.world_source_data->file_guid);
+		auto source_data_filename = StringFormat(alloc, "./Assets/%x..csb"_sl, entity.world_source_data->world_entity_guid);
 		ImGui::TableInputText("World Source Data", source_data_filename, nullptr);
 	}
 	
@@ -783,7 +789,7 @@ static void CreateDefaultAssetSystem(AssetEntitySystem& asset_system) {
 	
 	auto world_asset = CreateEntity<WorldAssetType>(asset_system);
 	world_asset.name->name = StringCopy(&asset_system.heap, "DefaultWorld"_sl);
-	world_asset.source_data->file_guid = GenerateRandomNumber64(asset_system.guid_random_seed);
+	world_asset.source_data->world_entity_guid = GenerateRandomNumber64(asset_system.guid_random_seed);
 }
 
 static void CreateDefaultWorldSystem(WorldEntitySystem& world_system, u64 world_entity_guid) {
@@ -820,16 +826,19 @@ static bool SaveLoadEntitySystemToFile(StackAllocator* alloc, EntitySystemBase& 
 	return success;
 }
 
-static void LoadOrCreateDefaultEntitySystems(StackAllocator* alloc, WorldEntitySystem& world_system, AssetEntitySystem& asset_system) {
+static void LoadOrCreateDefaultEntitySystems(StackAllocator* alloc, WorldEntitySystem& world_system, AssetEntitySystem& asset_system, u64& world_entity_guid) {
+	TempAllocationScope(alloc);
+	
 	if (SaveLoadEntitySystemToFile(alloc, asset_system, assets_save_load_path, true) == false) {
 		CreateDefaultAssetSystem(asset_system);
 	}
 	
 	auto world_asset = QueryFirstEntityByType<WorldAssetType>(asset_system);
-	auto entities_save_load_path = StringFormat(alloc, "./Assets/%x..csb"_sl, world_asset.source_data->file_guid);
+	world_entity_guid = world_asset.source_data->world_entity_guid;
 	
+	auto entities_save_load_path = StringFormat(alloc, "./Assets/%x..csb"_sl, world_entity_guid);
 	if (SaveLoadEntitySystemToFile(alloc, world_system, entities_save_load_path, true) == false) {
-		CreateDefaultWorldSystem(world_system, world_asset.source_data->file_guid);
+		CreateDefaultWorldSystem(world_system, world_entity_guid);
 	}
 }
 
@@ -840,11 +849,11 @@ struct LevelEditorContext {
 	bool use_local_space_gizmo = true;
 };
 
-LevelEditorContext* CreateLevelEditorContext(StackAllocator* alloc, HeapAllocator* heap, WorldEntitySystem& world_system, AssetEntitySystem& asset_system) {
+LevelEditorContext* CreateLevelEditorContext(StackAllocator* alloc, HeapAllocator* heap, WorldEntitySystem& world_system, AssetEntitySystem& asset_system, u64& world_entity_guid) {
 	auto* editor_context = NewFromAlloc(alloc, LevelEditorContext);
 	InitializeUndoRedoSystem(editor_context->undo_redo_system, heap);
 	
-	LoadOrCreateDefaultEntitySystems(alloc, world_system, asset_system);
+	LoadOrCreateDefaultEntitySystems(alloc, world_system, asset_system, world_entity_guid);
 	
 	return editor_context;
 }
@@ -853,21 +862,23 @@ void ReleaseLevelEditorContext(LevelEditorContext* editor_context) {
 	ReleaseUndoRedoSystem(editor_context->undo_redo_system);
 }
 
-void LevelEditorUpdate(LevelEditorContext* editor_context, StackAllocator* alloc, RecordContext* record_context, WorldEntitySystem& world_system, AssetEntitySystem& asset_system, u64 world_entity_guid) {
+void LevelEditorUpdate(LevelEditorContext* editor_context, StackAllocator* alloc, RecordContext* record_context, WorldEntitySystem& world_system, AssetEntitySystem& asset_system, u64& world_entity_guid) {
 	ProfilerScope("LevelEditorUpdate");
 	
 	auto& undo_redo_system = editor_context->undo_redo_system;
 	
 	bool reset_reference_path_tracer = false;
-	auto world_selection_state_entity = ExtractComponentStreams<EditorSelectionStateEntity>(QueryEntityTypeArray<EditorSelectionStateEntity>(world_system));
-	auto asset_selection_state_entity = ExtractComponentStreams<EditorSelectionStateEntity>(QueryEntityTypeArray<EditorSelectionStateEntity>(asset_system));
+	auto world_selection_state_entity = QueryFirstEntityByType<EditorSelectionStateEntity>(world_system);
+	auto asset_selection_state_entity = QueryFirstEntityByType<EditorSelectionStateEntity>(asset_system);
 	
 	AssetBrowser(alloc, asset_system, undo_redo_system, asset_selection_state_entity);
 	reset_reference_path_tracer |= MultiEntityView("Asset Editor"_sl, alloc, nullptr, asset_system, undo_redo_system, asset_selection_state_entity);
 	
 	LevelEditorUndoRedoHistoryView(undo_redo_system);
 	
-	auto& selected_entities_hash_table = world_selection_state_entity.selection_state->selected_entities_hash_table;
+	auto& selected_world_entities_hash_table = world_selection_state_entity.selection_state->selected_entities_hash_table;
+	auto& selected_asset_entities_hash_table = asset_selection_state_entity.selection_state->selected_entities_hash_table;
+	
 	auto world_entity = QueryEntityByGUID<WorldEntityType>(world_system, world_entity_guid);
 	
 	u32 scene_descriptor_heap_offset = AllocateTransientSrvDescriptorTable(record_context->context, 1);
@@ -895,12 +906,12 @@ void LevelEditorUpdate(LevelEditorContext* editor_context, StackAllocator* alloc
 	
 	
 	if (ImGui::Shortcut(ImGuiKey_Delete, ImGuiInputFlags_RouteGlobal)) {
-		reset_reference_path_tracer |= (selected_entities_hash_table.count != 0);
+		reset_reference_path_tracer |= (selected_world_entities_hash_table.count != 0);
 		RemoveSelectedEntities(world_system, undo_redo_system, world_selection_state_entity, world_entity.camera_entity->guid);
 	}
 	
 	if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_D, ImGuiInputFlags_RouteGlobal)) {
-		reset_reference_path_tracer |= (selected_entities_hash_table.count != 0);
+		reset_reference_path_tracer |= (selected_world_entities_hash_table.count != 0);
 		DuplicateSelectedEntities(alloc, world_system, undo_redo_system, world_selection_state_entity);
 	}
 	
@@ -908,11 +919,11 @@ void LevelEditorUpdate(LevelEditorContext* editor_context, StackAllocator* alloc
 		BeginUndoRedoGroup(undo_redo_system);
 		
 		BeginUndoRedoCommand("Deselect Entities"_sl, undo_redo_system, world_system, world_selection_state_entity.guid->guid);
-		HashTableClear(world_selection_state_entity.selection_state->selected_entities_hash_table);
+		HashTableClear(selected_world_entities_hash_table);
 		EndUndoRedoCommand(undo_redo_system);
 		
 		BeginUndoRedoCommand("Deselect Assets"_sl, undo_redo_system, asset_system, asset_selection_state_entity.guid->guid);
-		HashTableClear(asset_selection_state_entity.selection_state->selected_entities_hash_table);
+		HashTableClear(selected_asset_entities_hash_table);
 		EndUndoRedoCommand(undo_redo_system);
 		
 		EndUndoRedoGroup(undo_redo_system);
@@ -938,18 +949,6 @@ void LevelEditorUpdate(LevelEditorContext* editor_context, StackAllocator* alloc
 	ImGui::SetNextItemShortcut(ImGuiMod_Ctrl | ImGuiKey_L, ImGuiInputFlags_RouteGlobal | ImGuiInputFlags_RouteOverFocused);
 	bool should_load_scene = ImGui::Button("Load State") && (should_save_scene == false);
 	
-	if (should_save_scene || should_load_scene) {
-		auto entities_save_load_path = StringFormat(alloc, "./Assets/%x..csb"_sl, world_entity_guid);
-		SaveLoadEntitySystemToFile(alloc, world_system, entities_save_load_path, should_load_scene);
-		
-		if (should_save_scene) {
-			SaveLoadEntitySystemToFile(alloc, asset_system, assets_save_load_path, should_load_scene);
-		}
-		
-		if (should_load_scene) {
-			ResetUndoRedoSystem(undo_redo_system);
-		}
-	}
 	
 	ImGui::SliderFloat("Meshlet Target Error Pixels", &world_entity.renderer_world->meshlet_target_error_pixels, 1.f, 128.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
 	ImGui::Checkbox("Freeze Culling State", &world_entity.renderer_world->debug_freeze_culling_camera.enabled);
@@ -974,7 +973,7 @@ void LevelEditorUpdate(LevelEditorContext* editor_context, StackAllocator* alloc
 	auto mouse_uv = float2((ImGui::GetMousePos() - window_pos) / window_size);
 	auto camera_entity = QueryEntityByGUID<CameraEntityType>(world_system, world_entity.camera_entity->guid);
 	CameraControls(camera_entity, scene_focused, scene_hovered, mouse_lock, mouse_uv, float2(window_size));
-	reset_reference_path_tracer |= GizmoControls(camera_entity, world_system, undo_redo_system, selected_entities_hash_table, &draw_list_3d, mouse_uv, float2(window_size), editor_context->use_local_space_gizmo);
+	reset_reference_path_tracer |= GizmoControls(camera_entity, world_system, undo_redo_system, selected_world_entities_hash_table, &draw_list_3d, mouse_uv, float2(window_size), editor_context->use_local_space_gizmo);
 	
 	if (world_entity.renderer_world->debug_freeze_culling_camera.enabled) {
 		DrawDebugFrustumCullingBounds(&draw_list_3d, camera_entity, world_entity);
@@ -985,4 +984,38 @@ void LevelEditorUpdate(LevelEditorContext* editor_context, StackAllocator* alloc
 	renderer_world->debug_mesh_instance_arrays = draw_list_3d.Flush();
 	renderer_world->reset_reference_path_tracer |= reset_reference_path_tracer;
 	renderer_world->scene_descriptor_heap_offset = scene_descriptor_heap_offset;
+	
+	UpdateEditorEntityComponents(alloc, world_system, asset_system);
+	
+	
+	// Save the current scene before loading another one.
+	if (should_save_scene || should_load_scene) {
+		TempAllocationScope(alloc);
+		auto entities_save_load_path = StringFormat(alloc, "./Assets/%x..csb"_sl, world_entity_guid);
+		SaveLoadEntitySystemToFile(alloc, world_system, entities_save_load_path, false);
+		SaveLoadEntitySystemToFile(alloc, asset_system, assets_save_load_path,   false);
+	}
+	
+	if (should_load_scene) {
+		TempAllocationScope(alloc);
+		u64 world_entity_guid_to_load = 0;
+		
+		if (selected_asset_entities_hash_table.count == 1) {
+			u64 selected_asset_guid = (*selected_asset_entities_hash_table.begin()).key;
+			auto selected_world_asset = QueryEntityByGUID<WorldAssetType>(asset_system, selected_asset_guid);
+			if (selected_world_asset.source_data.data) {
+				world_entity_guid_to_load = selected_world_asset.source_data->world_entity_guid;
+			}
+		}
+		
+		if (world_entity_guid_to_load != 0) {
+			auto entities_save_load_path = StringFormat(alloc, "./Assets/%x..csb"_sl, world_entity_guid_to_load);
+			if (SaveLoadEntitySystemToFile(alloc, world_system, entities_save_load_path, true) == false) {
+				ResetEntitySystem(world_system);
+				CreateDefaultWorldSystem(world_system, world_entity_guid_to_load);
+			}
+			ResetUndoRedoSystem(undo_redo_system);
+			world_entity_guid = world_entity_guid_to_load;
+		}
+	}
 }

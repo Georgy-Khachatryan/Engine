@@ -56,11 +56,9 @@ s32 main() {
 	InitializeEntitySystem(asset_system);
 	defer{ ReleaseHeapAllocator(asset_system.heap); };
 	
-	auto* editor_context = CreateLevelEditorContext(&alloc, &imgui_heap, world_system, asset_system);
+	u64 world_entity_guid = 0;
+	auto* editor_context = CreateLevelEditorContext(&alloc, &imgui_heap, world_system, asset_system, world_entity_guid);
 	defer{ ReleaseLevelEditorContext(editor_context); };
-	
-	auto world_entity = ExtractComponentStreams<WorldEntityType>(QueryEntityTypeArray<WorldEntityType>(world_system));
-	u64 world_entity_guid = world_entity.guid->guid;
 	
 	u64 frame_allocation_size = 0;
 	u64 transient_upload_allocation_size = 0;
@@ -74,21 +72,24 @@ s32 main() {
 		WindowSwapChainBeginFrame(swap_chain, graphics_context, &alloc);
 		ImGuiBeginFrame(window);
 		
-		auto& meshlet_culling_statistics = world_entity.renderer_world->meshlet_culling_statistics;
-		
-		ImGui::Begin("Stats");
-		ImGui::Text("Initial Alloc Size: %llu", frame_initial_size);
-		ImGui::Text("Frame Alloc Size: %llu", frame_allocation_size);
-		ImGui::Text("Upload Alloc Size: %llu", transient_upload_allocation_size);
-		ImGui::Text("ImGui Heap Size: %llu", imgui_heap.ComputeTotalMemoryUsage());
-		ImGui::Text("World System Heap Size: %llu", world_system.heap.ComputeTotalMemoryUsage());
-		ImGui::Text("Asset System Heap Size: %llu", asset_system.heap.ComputeTotalMemoryUsage());
-		ImGui::Text("Meshlet Count Raster Passes: %llu", meshlet_culling_statistics.meshlet_count);
-		ImGui::Text("Meshlet Count Main Pass: %llu", meshlet_culling_statistics.meshlet_count_main_pass);
-		ImGui::Text("Meshlet Count Disocclusion Pass: %llu", meshlet_culling_statistics.meshlet_count_disocclusion_pass);
-		ImGui::Text("Meshlet Count Raytracing Pass: %llu", meshlet_culling_statistics.meshlet_count_raytracing_pass);
-		ImGui::Combo("Swap Chain Format", &swap_chain_format_index, "HDR\0SDR\0");
-		ImGui::End();
+		{
+			auto world_entity = QueryEntityByGUID<WorldEntityType>(world_system, world_entity_guid);
+			auto& meshlet_culling_statistics = world_entity.renderer_world->meshlet_culling_statistics;
+			
+			ImGui::Begin("Stats");
+			ImGui::Text("Initial Alloc Size: %llu", frame_initial_size);
+			ImGui::Text("Frame Alloc Size: %llu", frame_allocation_size);
+			ImGui::Text("Upload Alloc Size: %llu", transient_upload_allocation_size);
+			ImGui::Text("ImGui Heap Size: %llu", imgui_heap.ComputeTotalMemoryUsage());
+			ImGui::Text("World System Heap Size: %llu", world_system.heap.ComputeTotalMemoryUsage());
+			ImGui::Text("Asset System Heap Size: %llu", asset_system.heap.ComputeTotalMemoryUsage());
+			ImGui::Text("Meshlet Count Raster Passes: %llu", meshlet_culling_statistics.meshlet_count);
+			ImGui::Text("Meshlet Count Main Pass: %llu", meshlet_culling_statistics.meshlet_count_main_pass);
+			ImGui::Text("Meshlet Count Disocclusion Pass: %llu", meshlet_culling_statistics.meshlet_count_disocclusion_pass);
+			ImGui::Text("Meshlet Count Raytracing Pass: %llu", meshlet_culling_statistics.meshlet_count_raytracing_pass);
+			ImGui::Combo("Swap Chain Format", &swap_chain_format_index, "HDR\0SDR\0");
+			ImGui::End();
+		}
 		
 		auto* record_context = BeginRecordContext(&alloc, renderer_context, swap_chain, resource_table);
 		LevelEditorUpdate(editor_context, &alloc, record_context, world_system, asset_system, world_entity_guid);
@@ -99,9 +100,7 @@ s32 main() {
 		UpdateRendererEntityGpuComponents(&alloc, thread_pool, renderer_context->async_transfer_queue, record_context, asset_system, gpu_uploads);
 		UpdateAsyncTransferQueue(renderer_context->async_transfer_queue);
 		
-		world_entity.renderer_world->gpu_uploads = gpu_uploads;
-		
-		BuildRenderPassesForFrame(renderer_context, record_context, &world_system, &asset_system, world_entity_guid);
+		BuildRenderPassesForFrame(renderer_context, record_context, &world_system, &asset_system, world_entity_guid, gpu_uploads);
 		WindowSwapChainEndFrame(swap_chain, graphics_context, &alloc, record_context);
 		
 		ReleaseEntityComponents(&alloc, world_system, asset_system);

@@ -3,9 +3,9 @@
 #include "EntitySystem/EntitySystem.h"
 #include "EntitySystem/Components.h"
 
-NOTES()
+NOTES(Meta::SaveLoadOptions{ SaveLoadFlags::SaveLoadToDisk })
 struct WorldSourceData {
-	u64 file_guid = 0;
+	u64 world_entity_guid = 0;
 };
 
 NOTES(Meta::EntityType{ 32 }, Meta::ComponentQuery{})

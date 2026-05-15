@@ -43,11 +43,3 @@ bool CloseSaveLoadBuffer(SaveLoadBuffer& buffer) {
 	
 	return true;
 }
-
-void ResetSaveLoadBuffer(SaveLoadBuffer& buffer, u64 new_count) {
-	DebugAssert(new_count <= buffer.data.count, "Resetting SaveLoad buffer to a higher count than before. (%/%).", new_count, buffer.data.count);
-	
-	buffer.data.count = new_count;
-	buffer.is_saving  = !buffer.is_saving;
-	buffer.is_loading = !buffer.is_loading;
-}

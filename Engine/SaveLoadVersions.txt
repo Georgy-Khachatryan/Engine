@@ -9,7 +9,7 @@ struct LightComponent {
 
 struct WorldSourceData {
 	/*Version*/ 0 {
-		file_guid u64 0;
+		world_entity_guid u64 0;
 	}
 }
 

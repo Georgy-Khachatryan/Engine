@@ -121,6 +121,7 @@ struct EntitySystemBase {
 	HashTable<u64, TypedEntityID> entity_guid_to_entity_id;
 	ArrayView<EntityTypeArray> entity_type_arrays;
 	u64 guid_random_seed = 0x7C7C4065B00D53D3ull;
+	bool clear_gpu_mask_component_streams = false;
 	
 	HeapAllocator heap;
 };
@@ -131,6 +132,7 @@ struct AssetEntitySystem : EntitySystemBase {};
 
 void InitializeEntitySystem(EntitySystemBase& system);
 void SaveLoadEntitySystem(SaveLoadBuffer& buffer, EntitySystemBase& system);
+void ResetEntitySystem(EntitySystemBase& system);
 void ClearEntityMasks(EntitySystemBase& system);
 void SaveLoadEntityForTooling(SaveLoadBuffer& buffer, EntityTypeArray* array, EntityID entity_id);
 

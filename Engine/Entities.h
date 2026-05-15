@@ -87,6 +87,7 @@ struct AliveEntityMaskQuery {
 
 
 struct RecordContext;
+struct GpuComponentUploadBuffer;
 void UpdateEntityGpuComponents(StackAllocator* alloc, RecordContext* record_context, WorldEntitySystem& world_system, AssetEntitySystem& asset_system, Array<GpuComponentUploadBuffer>& gpu_uploads);
 
 void ReleaseEntityComponents(StackAllocator* alloc, WorldEntitySystem& world_system, AssetEntitySystem& asset_system);

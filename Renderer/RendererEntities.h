@@ -5,7 +5,6 @@
 #include "EntitySystem/Components.h"
 #include "GraphicsApi/GraphicsApiTypes.h"
 
-struct GpuComponentUploadBuffer;
 struct DebugMeshInstanceArray;
 struct DebugGeometryBuffer;
 
@@ -125,8 +124,6 @@ struct RendererWorld {
 	GpuReadbackQueue texture_streaming_feedback_queue;
 	GpuReadbackQueue meshlet_culling_statistics_readback_queue;
 	
-	Array<GpuComponentUploadBuffer> gpu_uploads;
-	
 	ArrayView<DebugMeshInstanceArray> debug_mesh_instance_arrays;
 };
 
@@ -239,5 +236,6 @@ struct LightEntityQuery {
 struct RecordContext;
 struct AsyncTransferQueue;
 struct ThreadPool;
+struct GpuComponentUploadBuffer;
 void UpdateRendererEntityGpuComponents(StackAllocator* alloc, ThreadPool* thread_pool, AsyncTransferQueue* async_transfer_queue, RecordContext* record_context, AssetEntitySystem& asset_system, Array<GpuComponentUploadBuffer>& gpu_uploads);
 void ReleaseTextureAssets(StackAllocator* alloc, GraphicsContext* graphics_context, AssetEntitySystem& asset_system);

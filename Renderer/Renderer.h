@@ -4,6 +4,7 @@
 
 struct AssetEntitySystem;
 struct AsyncTransferQueue;
+struct GpuComponentUploadBuffer;
 struct GraphicsContext;
 struct MeshletStreamingSystem;
 struct MeshStreamingSystem;
@@ -71,6 +72,6 @@ VirtualResourceTable* CreateResourceTable(StackAllocator* alloc);
 void ReleaseResourceTable(GraphicsContext* graphics_context, VirtualResourceTable* resource_table);
 
 RecordContext* BeginRecordContext(StackAllocator* alloc, RendererContext* context, WindowSwapChain* swap_chain, VirtualResourceTable* resource_table);
-void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext* record_context, WorldEntitySystem* world_system, AssetEntitySystem* asset_system, u64 world_entity_guid);
+void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext* record_context, WorldEntitySystem* world_system, AssetEntitySystem* asset_system, u64 world_entity_guid, Array<GpuComponentUploadBuffer> gpu_uploads);
 
 void UpdateStreamingSystems(RendererContext* renderer_context, ThreadPool* thread_pool, RecordContext* record_context, WorldEntitySystem* world_system, AssetEntitySystem* asset_system, u64 world_entity_guid);

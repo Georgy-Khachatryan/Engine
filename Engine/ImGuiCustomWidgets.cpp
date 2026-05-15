@@ -61,7 +61,7 @@ static s32 InputTextHeapStringCallback(ImGuiInputTextCallbackData* data) {
 	
 	if (data->EventFlag == ImGuiInputTextFlags_CallbackResize) {
 		if (data->BufTextLen + 1 > callback_data.capacity) {
-			u64 new_capacity = Math::Max((u64)data->BufTextLen + 1, callback_data.capacity * 3 / 2);
+			u64 new_capacity = Math::Max((u64)data->BufTextLen + 1, callback_data.capacity * 3 / 2 + 1);
 			callback_data.string.data = (char*)callback_data.heap->Reallocate(callback_data.string.data, callback_data.capacity, new_capacity);
 			callback_data.capacity = new_capacity;
 		}
@@ -290,6 +290,7 @@ bool ImGui::EntityDragDropTarget(EntityTypeID entity_type_id, u64* guid) {
 		if (auto* payload = ImGui::AcceptDragDropPayload(type_string)) {
 			memcpy(guid, payload->Data, sizeof(u64));
 		}
+		ImGui::EndDragDropTarget();
 	}
 	return (current_guid != *guid);
 }
@@ -454,6 +455,8 @@ void ImGui::PopScalingOrigin3D() {
 
 bool ImGui::DragVector3D(const char* label, float3& position, const float3& offset, float3 direction, float length, float radius, u32 color) {
 	auto* draw_list_3d = ImGui::GetWindowDrawList3D();
+	if (draw_list_3d->scale < FLT_EPSILON) return false;
+	
 	auto* context = ImGui::GetCurrentContext3D();
 	
 	bool is_item_active = ImGui::GetID(label) == ImGui::GetActiveID();
@@ -517,6 +520,8 @@ bool ImGui::DragVector3D(const char* label, float3& position, const float3& offs
 
 bool ImGui::DragPlane3D(const char* label, float3& position, const float3& offset, const float3& direction, const quat& rotation, const float3& half_extent, u32 color) {
 	auto* draw_list_3d = ImGui::GetWindowDrawList3D();
+	if (draw_list_3d->scale < FLT_EPSILON) return false;
+	
 	auto* context = ImGui::GetCurrentContext3D();
 	
 	bool is_item_active = ImGui::GetID(label) == ImGui::GetActiveID();
@@ -570,6 +575,8 @@ bool ImGui::DragPlane3D(const char* label, float3& position, const float3& offse
 
 bool ImGui::DragKnob3D(const char* label, quat& rotation, const float3& position, const float3& direction, float major_radius, float minor_radius, u32 color) {
 	auto* draw_list_3d = ImGui::GetWindowDrawList3D();
+	if (draw_list_3d->scale < FLT_EPSILON) return false;
+	
 	auto* context = ImGui::GetCurrentContext3D();
 	
 	bool is_item_active = ImGui::GetID(label) == ImGui::GetActiveID();

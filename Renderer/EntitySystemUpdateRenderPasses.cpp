@@ -7,6 +7,9 @@ static void AllocateGpuComponentStreams(RecordContext* record_context, EntitySys
 	extern ArrayView<EntityTypeInfo>    entity_type_info_table;
 	extern ArrayView<ComponentTypeInfo> component_type_info_table;
 	
+	bool clear_gpu_mask_component_streams = entity_system->clear_gpu_mask_component_streams;
+	entity_system->clear_gpu_mask_component_streams = false;
+	
 	auto* resource_table = record_context->resource_table;
 	for (auto& array : entity_system->entity_type_arrays) {
 		auto& entity_type_info = entity_type_info_table[array.entity_type_id.index];
@@ -22,21 +25,23 @@ static void AllocateGpuComponentStreams(RecordContext* record_context, EntitySys
 			auto& virtual_resource = resource_table->virtual_resources[(u32)resource_id];
 			u32 capacity = type_info.component_type == ComponentType::GpuMask ? DivideAndRoundUp(array.capacity, 64u) : array.capacity;
 			
+			// TODO: Fill buffer with zeroes instead of recreating it.
+			bool clear_component_stream = clear_gpu_mask_component_streams && type_info.component_type == ComponentType::GpuMask && capacity != 0;
+			
 			u32 new_size = (u32)(capacity * type_info.size_bytes);
 			u32 old_size = virtual_resource.buffer.size;
-			if (new_size <= old_size) continue;
+			if (new_size <= old_size && clear_component_stream == false) continue;
 			
 			auto new_resource = CreateBufferResource(record_context->context, new_size, CreateResourceFlags::UAV);
 			auto old_resource = virtual_resource.buffer.resource;
 			
 			resource_table->Set(resource_id, new_resource, new_size);
+			ReleaseBufferResource(record_context->context, old_resource, ResourceReleaseCondition::EndOfThisGpuFrame);
 			
-			if (old_resource.handle == nullptr) continue;
+			if (old_resource.handle == nullptr || clear_component_stream) continue;
 			
 			auto old_resource_id = resource_table->AddTransient(old_resource, old_size);
 			CmdCopyBufferToBuffer(record_context, old_resource_id, resource_id, old_size);
-			
-			ReleaseBufferResource(record_context->context, old_resource, ResourceReleaseCondition::EndOfThisGpuFrame);
 		}
 	}
 }

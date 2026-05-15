@@ -56,3 +56,5 @@ struct AssetEntityEditorQuery {
 	
 	WorldSourceData* world_source_data = nullptr;
 };
+
+void UpdateEditorEntityComponents(StackAllocator* alloc, WorldEntitySystem& world_system, AssetEntitySystem& asset_system);
