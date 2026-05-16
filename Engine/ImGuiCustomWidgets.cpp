@@ -29,10 +29,24 @@ static void ImGuiWrapMousePosition(ImVec2 inclusive_wrap_rect_min, ImVec2 inclus
 	}
 }
 
-void ImGuiMouseLock::Update(ImGuiMouseButton button, bool should_lock_mouse, ImVec2 inclusive_lock_rect_min, ImVec2 inclusive_lock_rect_max) {
+ImGuiMouseLock ImGui::BeginMouseLock(bool should_lock_mouse, ImVec2 inclusive_lock_rect_min, ImVec2 inclusive_lock_rect_max) {
+	auto* storage = ImGui::GetStateStorage();
+	
+	ImGuiMouseLock lock;
+	lock.inclusive_lock_rect_min = inclusive_lock_rect_min;
+	lock.inclusive_lock_rect_max = inclusive_lock_rect_max;
+	lock.should_lock_mouse       = should_lock_mouse;
+	lock.locked_mouse_button     = storage->GetInt(ImGui::GetID("locked_mouse_button"), ImGuiMouseButton_COUNT);
+	lock.locked_mouse_pos.x      = storage->GetFloat(ImGui::GetID("locked_mouse_pos.x"));
+	lock.locked_mouse_pos.y      = storage->GetFloat(ImGui::GetID("locked_mouse_pos.y"));
+	
+	return lock;
+}
+
+void ImGuiMouseLock::Update(ImGuiMouseButton button) {
 	if (should_lock_mouse && locked_mouse_button == ImGuiMouseButton_COUNT && ImGui::IsMouseClicked(button)) {
 		locked_mouse_button = button;
-		locked_mouse_pos = ImGui::GetMousePos();
+		locked_mouse_pos    = ImGui::GetMousePos();
 	}
 	
 	if (locked_mouse_button == button && ImGui::IsMouseDown(button) == false) {
@@ -44,6 +58,15 @@ void ImGuiMouseLock::Update(ImGuiMouseButton button, bool should_lock_mouse, ImV
 		ImGuiWrapMousePosition(inclusive_lock_rect_min, inclusive_lock_rect_max);
 		ImGui::SetMouseCursor(ImGuiMouseCursor_None);
 	}
+}
+
+ImGuiMouseButton ImGui::EndMouseLock(ImGuiMouseLock& lock) {
+	auto* storage = ImGui::GetStateStorage();
+	storage->SetInt(ImGui::GetID("locked_mouse_button"),  lock.locked_mouse_button);
+	storage->SetFloat(ImGui::GetID("locked_mouse_pos.x"), lock.locked_mouse_pos.x);
+	storage->SetFloat(ImGui::GetID("locked_mouse_pos.y"), lock.locked_mouse_pos.y);
+	
+	return lock.locked_mouse_button;
 }
 
 

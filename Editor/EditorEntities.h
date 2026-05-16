@@ -36,6 +36,8 @@ struct WorldEntityEditorQuery {
 	
 	LightComponent* light = nullptr;
 	
+	RendererWorld* renderer_world = nullptr;
+	
 	ToneMappingSettings*  tone_mapping_settings  = nullptr;
 	AntiAliasingSettings* anti_aliasing_settings = nullptr;
 };

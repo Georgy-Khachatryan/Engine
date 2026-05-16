@@ -376,6 +376,20 @@ void SaveLoadEntitySystem(SaveLoadBuffer& buffer, EntitySystemBase& system) {
 	}
 }
 
+bool SaveLoadEntitySystemToFile(StackAllocator* alloc, EntitySystemBase& system, String filepath, SaveLoadDirection direction) {
+	TempAllocationScope(alloc);
+	
+	SaveLoadBuffer buffer;
+	bool success = OpenSaveLoadBuffer(alloc, filepath, direction, buffer);
+	
+	if (success) {
+		SaveLoadEntitySystem(buffer, system);
+		CloseSaveLoadBuffer(buffer);
+	}
+	
+	return success;
+}
+
 void SaveLoadEntityForTooling(SaveLoadBuffer& buffer, EntityTypeArray* array, EntityID entity_id) {
 	auto& entity_type_info = entity_type_info_table[array->entity_type_id.index];
 	for (u32 i = 0; i < entity_type_info.cpu_component_count; i += 1) {

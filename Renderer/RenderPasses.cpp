@@ -163,7 +163,7 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	scene.frame_index = (u32)record_context->frame_index;
 	scene.reference_path_tracer_percent = renderer_world.reference_path_tracer_percent;
 	
-	bool should_reset_path_tracer = renderer_world.reset_reference_path_tracer || memcmp(&scene.view_to_world, &scene.prev_view_to_world, sizeof(float3x4)) != 0 || memcmp(&scene.render_target_size, &scene.prev_render_target_size, sizeof(float2)) != 0;
+	bool should_reset_path_tracer = renderer_world.reset_reference_path_tracer || memcmp(&scene.view_to_world, &scene.prev_view_to_world, sizeof(float3x4)) != 0 || memcmp(&scene.render_target_size, &scene.prev_render_target_size, sizeof(float2)) != 0 || gpu_uploads.count != 0;
 	if (should_reset_path_tracer) {
 		renderer_world.reset_reference_path_tracer = false;
 		scene.path_tracer_accumulated_frame_count = 0;

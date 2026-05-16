@@ -132,6 +132,7 @@ struct AssetEntitySystem : EntitySystemBase {};
 
 void InitializeEntitySystem(EntitySystemBase& system);
 void SaveLoadEntitySystem(SaveLoadBuffer& buffer, EntitySystemBase& system);
+bool SaveLoadEntitySystemToFile(StackAllocator* alloc, EntitySystemBase& system, String filepath, SaveLoadDirection direction);
 void ResetEntitySystem(EntitySystemBase& system);
 void ClearEntityMasks(EntitySystemBase& system);
 void SaveLoadEntityForTooling(SaveLoadBuffer& buffer, EntityTypeArray* array, EntityID entity_id);

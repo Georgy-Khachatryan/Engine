@@ -1,6 +1,7 @@
 #pragma once
 #include "Basic/Basic.h"
 #include "Basic/BasicMath.h"
+#include "Basic/BasicArray.h"
 #include <SDK/imgui/imgui.h>
 
 
@@ -20,10 +21,14 @@ void ImGuiBeginFrame(SystemWindow* window);
 
 
 struct ImGuiMouseLock {
+	ImVec2 inclusive_lock_rect_min;
+	ImVec2 inclusive_lock_rect_max;
+	bool should_lock_mouse = false;
+	
 	ImGuiMouseButton locked_mouse_button = ImGuiMouseButton_COUNT;
 	ImVec2 locked_mouse_pos;
 	
-	void Update(ImGuiMouseButton button, bool should_lock_mouse, ImVec2 inclusive_lock_rect_min, ImVec2 inclusive_lock_rect_max);
+	void Update(ImGuiMouseButton button);
 };
 
 #define ImGuiScopeID(...) ImGui::PushID(__VA_ARGS__); defer{ ImGui::PopID(); }
@@ -50,6 +55,8 @@ namespace ImGui {
 	bool TableEntityComboBox(const char* label, EntitySystemBase* entity_system, u64* guid, EntityTypeID entity_type_id);
 	bool TableEntityComboBoxWithColor(const char* label, EntitySystemBase* entity_system, float* color, u32 channel_count, u64* guid, EntityTypeID entity_type_id);
 	
+	ImGuiMouseLock BeginMouseLock(bool should_lock_mouse, ImVec2 inclusive_lock_rect_min, ImVec2 inclusive_lock_rect_max);
+	ImGuiMouseButton EndMouseLock(ImGuiMouseLock& lock);
 	
 	void CreateContext3D();
 	void DestroyContext3D();
