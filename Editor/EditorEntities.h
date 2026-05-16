@@ -6,6 +6,8 @@ NOTES(Meta::SaveLoadOptions{ SaveLoadFlags::Default | SaveLoadFlags::CustomSaveL
 struct EditorSelectionStateComponent {
 	// TODO: Add support for hash table reflection and save/load.
 	HashTable<u64, void> selected_entities_hash_table;
+	
+	String search_pattern; // Not saved.
 };
 
 NOTES(Meta::EntityType{ 1 }, Meta::ComponentQuery{})

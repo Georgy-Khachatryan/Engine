@@ -35,6 +35,7 @@ struct ImGuiMouseLock {
 
 namespace ImGui {
 	bool InputText(const char* label, String& string, HeapAllocator* heap, ImGuiInputTextFlags flags = 0, ImGuiInputTextCallback callback = nullptr, void* user_data = nullptr);
+	bool InputTextWithHint(const char* label, const char* hint, String& string, HeapAllocator* heap, ImGuiInputTextFlags flags = 0, ImGuiInputTextCallback callback = nullptr, void* user_data = nullptr);
 	bool DragFloatWithReset(const char* label, float* data, u32 component_count, float v_speed = 1.f, float v_min = 0.f, float v_max = 0.f, const char* format = "%.3f", ImGuiSliderFlags flags = 0, const char* const* component_labels = nullptr, const float* default_values = nullptr);
 	bool ColorEditN(const char* label, float* color, u32 component_count);
 	bool EntityComboBox(const char* label, EntitySystemBase* entity_system, u64* guid, EntityTypeID entity_type_id);

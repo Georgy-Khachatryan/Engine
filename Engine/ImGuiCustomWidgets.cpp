@@ -99,7 +99,7 @@ static s32 InputTextHeapStringCallback(ImGuiInputTextCallbackData* data) {
 	return 0;
 }
 
-bool ImGui::InputText(const char* label, String& string, HeapAllocator* heap, ImGuiInputTextFlags flags, ImGuiInputTextCallback callback, void* user_data) {
+static bool ImGuiInputTextEx(const char* label, const char* hint, String& string, HeapAllocator* heap, ImGuiInputTextFlags flags, ImGuiInputTextCallback callback, void* user_data) {
 	if (heap == nullptr) flags |= ImGuiInputTextFlags_ReadOnly;
 	
 	InputTextHeapStringCallbackData callback_data;
@@ -114,10 +114,12 @@ bool ImGui::InputText(const char* label, String& string, HeapAllocator* heap, Im
 	// This is similar to what ImGuiTextBuffer does.
 	char dummy_string_data = '\0';
 	
-	bool result = ImGui::InputText(
+	bool result = ImGui::InputTextEx(
 		label,
+		hint,
 		string.data ? string.data : &dummy_string_data,
-		string.data ? callback_data.capacity : 1,
+		string.data ? (s32)callback_data.capacity : 1,
+		ImVec2(0.f, 0.f),
 		flags | ImGuiInputTextFlags_CallbackResize,
 		&InputTextHeapStringCallback,
 		&callback_data
@@ -125,6 +127,14 @@ bool ImGui::InputText(const char* label, String& string, HeapAllocator* heap, Im
 	string = callback_data.string;
 	
 	return result;
+}
+
+bool ImGui::InputText(const char* label, String& string, HeapAllocator* heap, ImGuiInputTextFlags flags, ImGuiInputTextCallback callback, void* user_data) {
+	return ImGuiInputTextEx(label, nullptr, string, heap, flags, callback, user_data);
+}
+
+bool ImGui::InputTextWithHint(const char* label, const char* hint, String& string, HeapAllocator* heap, ImGuiInputTextFlags flags, ImGuiInputTextCallback callback, void* user_data) {
+	return ImGuiInputTextEx(label, hint, string, heap, flags, callback, user_data);
 }
 
 // Based on ImGui::DragScalarN(...).

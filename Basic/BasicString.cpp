@@ -510,3 +510,144 @@ u64 StringFormatToMemory(String output, String format, ArrayView<StringFormatArg
 	return output_size;
 }
 
+
+// Based on fts_fuzzy_match (public domain).
+bool StringFuzzyMatchRecursive(const char* pattern, const char* string, s32& result_score, const char* string_begin, const u8* src_matches, u8* matches, s32 max_matches, s32 next_match, s32& recursion_depth, s32 recursion_limit) {
+	
+	// Count recursions.
+	recursion_depth += 1;
+	if (recursion_depth >= recursion_limit) return false;
+	
+	// Detect end of strings.
+	if (*pattern == '\0' || *string == '\0') return false;
+	
+	// Recursion parameters.
+	bool recursive_match = false;
+	u8 best_recursive_matches[256];
+	s32 best_recursive_score = -1;
+	
+	// Loop through pattern and string looking for a match
+	bool first_match = true;
+	while (*pattern != '\0' && *string != '\0') {
+		// Found match.
+		if (CharToLowerCase(*pattern) == CharToLowerCase(*string)) {
+			// Supplied matches buffer was too short
+			if (next_match >= max_matches) {
+				return false;
+			}
+			
+			// Copy-on-Write src_matches into matches.
+			if (first_match && src_matches) {
+				memcpy(matches, src_matches, next_match);
+				first_match = false;
+			}
+			
+			// Recursive call that "skips" this match
+			u8 recursive_matches[256];
+			s32 recursive_score = -1;
+			if (StringFuzzyMatchRecursive(pattern, string + 1, recursive_score, string_begin, matches, recursive_matches, sizeof(recursive_matches), next_match, recursion_depth, recursion_limit)) {
+				// Pick best recursive score
+				if (recursive_match == false || recursive_score > best_recursive_score) {
+					memcpy(best_recursive_matches, recursive_matches, sizeof(recursive_matches));
+					best_recursive_score = recursive_score;
+				}
+				recursive_match = true;
+			}
+			
+			// Advance
+			matches[next_match] = (u8)Math::Min(string - string_begin, (s64)u8_max);
+			
+			next_match += 1;
+			pattern    += 1;
+		}
+		
+		string += 1;
+	}
+	
+	// Determine if full pattern was matched
+	bool matched = (*pattern == '\0');
+	
+	// Calculate score
+	if (matched) {
+		compile_const s32 sequential_bonus   = 15; // Bonus for adjacent matches.
+		compile_const s32 separator_bonus    = 30; // Bonus if match occurs after a separator.
+		compile_const s32 camel_bonus        = 30; // Bonus if match is uppercase and prev is lower.
+		compile_const s32 first_letter_bonus = 15; // Bonus if the first letter is matched.
+		
+		compile_const s32 leading_letter_penalty     = -5;  // Penalty applied for every letter in string before the first match.
+		compile_const s32 max_leading_letter_penalty = -15; // Maximum penalty for leading letters.
+		compile_const s32 unmatched_letter_penalty   = -1;  // Penalty for every letter that doesn't matter.
+		
+		// Iterate string to end.
+		while (*string != '\0') {
+			string += 1;
+		}
+		
+		// Initialize score
+		result_score = 100;
+		
+		// Apply leading letter penalty
+		s32 penalty = leading_letter_penalty * matches[0];
+		if (penalty < max_leading_letter_penalty) {
+			penalty = max_leading_letter_penalty;
+		}
+		result_score += penalty;
+		
+		// Apply unmatched penalty
+		s32 unmatched = (s32)(string - string_begin) - next_match;
+		result_score += unmatched_letter_penalty * unmatched;
+		
+		// Apply ordering bonuses
+		for (s32 i = 0; i < next_match; i += 1) {
+			u8 current_index = matches[i];
+			
+			if (i > 0) {
+				u8 prev_idx = matches[i - 1];
+				
+				// Sequential
+				if (current_index == (prev_idx + 1)) {
+					result_score += sequential_bonus;
+				}
+			}
+			
+			// Check for bonuses based on neighbor character value
+			if (current_index > 0) {
+				// Camel case.
+				char neighbor = string_begin[current_index - 1];
+				char curr = string_begin[current_index];
+				if (CharIsLowerCase(neighbor) && CharIsUpperCase(curr)) {
+					result_score += camel_bonus;
+				}
+				
+				// Separator.
+				bool neighbor_separator = (neighbor == '_') || (neighbor == ' ');
+				if (neighbor_separator) {
+					result_score += separator_bonus;
+				}
+			} else {
+				// First letter.
+				result_score += first_letter_bonus;
+			}
+		}
+	}
+	
+	// Return best result.
+	if (recursive_match && (matched == false || best_recursive_score > result_score)) {
+		// Recursive score is better than "this"
+		memcpy(matches, best_recursive_matches, max_matches);
+		result_score = best_recursive_score;
+		return true;
+	}
+	
+	return matched; // This score is better than recursive.
+}
+
+s32 StringFuzzyMatch(char const* pattern, char const* string) {
+	s32 score = -1;
+	u8 matches[256];
+	s32 recursion_depth = 0;
+	
+	StringFuzzyMatchRecursive(pattern, string, score, string, nullptr, matches, sizeof(matches), 0, recursion_depth, 10);
+	
+	return score;
+}
