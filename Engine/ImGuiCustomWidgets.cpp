@@ -221,7 +221,12 @@ bool ImGui::ColorEditN(const char* label, float* color, u32 component_count) {
 	return result;
 }
 
-bool ImGui::EntityComboBox(const char* label, EntitySystemBase* entity_system, u64* selected_guid, EntityTypeID entity_type_id) {
+struct EntityComboBoxEntry {
+	EntityID entity_id;
+	s32 score = 0;
+};
+
+bool ImGui::EntityComboBox(StackAllocator* alloc, const char* label, EntitySystemBase* entity_system, u64* selected_guid, EntityTypeID entity_type_id) {
 	auto* window = ImGui::GetCurrentWindow();
 	if (window->SkipItems) return false;
 	
@@ -245,31 +250,69 @@ bool ImGui::EntityComboBox(const char* label, EntitySystemBase* entity_system, u
 	
 	ImGui::SetNextItemWidth(combo_width);
 	if (ImGui::BeginCombo(label, current_name)) {
+		TempAllocationScope(alloc);
+		
 		auto* array = &entity_system->entity_type_arrays[entity_type_id.index];
 		auto streams = ExtractComponentStreams<GuidNameQuery>(array);
+		
+		if (ImGui::IsWindowAppearing()) {
+			ImGui::SetKeyboardFocusHere();
+		}
+		
+		ImGui::SetNextItemWidth(-FLT_MIN);
+		
+		char search_pattern_buffer[256] = {}; // We can rely on the internal ImGui string buffer used for editing strings.
+		bool accept_highest_scoring_entry = ImGui::InputTextWithHint("##SearchEntities", "Search", search_pattern_buffer, sizeof(search_pattern_buffer), ImGuiInputTextFlags_EnterReturnsTrue);
+		
+		Array<EntityComboBoxEntry> combo_box_entries;
+		ArrayReserve(combo_box_entries, alloc, array->count);
+		
+		auto search_pattern = StringFromCString(search_pattern_buffer);
+		for (u64 i : BitArrayIt(array->alive_mask)) {
+			auto& [name] = streams.name[i];
+			
+			s32 score = search_pattern.count == 0 || name.count == 0 ? 0 : StringFuzzyMatch(search_pattern.data, name.data);
+			if (score >= 0) {
+				auto& entry = ArrayEmplace(combo_box_entries);
+				entry.entity_id = EntityID{ (u32)i };
+				entry.score     = score;
+			}
+		}
+		
+		if (search_pattern.count != 0) {
+			HeapSort<EntityComboBoxEntry>(combo_box_entries, [](const EntityComboBoxEntry& lh, const EntityComboBoxEntry& rh)-> bool {
+				return lh.score > rh.score;
+			});
+		}
 		
 		auto entity_type_name = entity_type_name_table[entity_type_id.index];
 		
 		ImGuiListClipper clipper;
-		clipper.Begin(array->count);
+		clipper.Begin((s32)combo_box_entries.count);
 		
 		while (clipper.Step()) {
-			s32 index = 0;
-			for (u64 i : BitArrayIt(array->alive_mask)) {
-				defer{ index += 1; };
-				if (index < clipper.DisplayStart) continue;
-				if (index >= clipper.DisplayEnd) break;
+			for (s32 index = clipper.DisplayStart; index < clipper.DisplayEnd; index += 1) {
+				auto [entity_id, score] = combo_box_entries[index];
 				
-				auto& [guid] = streams.guid[i];
-				auto& [name] = streams.name[i];
+				auto& [guid] = streams.guid[entity_id.index];
+				auto& [name] = streams.name[entity_id.index];
 				
 				ImGuiScopeID((void*)guid);
 				
 				bool is_selected = (guid == current_guid);
-				if (ImGui::Selectable(name.count ? name.data : entity_type_name.data, is_selected)) {
+				if (ImGui::Selectable(name.count ? name.data : entity_type_name.data, is_selected, ImGuiSelectableFlags_SelectOnClick)) {
 					*selected_guid = guid;
 				}
 			}
+		}
+		
+		if (accept_highest_scoring_entry && combo_box_entries.count != 0) {
+			*selected_guid = streams.guid[combo_box_entries[0].entity_id.index].guid;
+			ImGui::CloseCurrentPopup();
+		}
+		
+		if (ImGui::Shortcut(ImGuiKey_Escape)) {
+			ImGui::CloseCurrentPopup();
 		}
 		
 		ImGui::EndCombo();
@@ -285,7 +328,7 @@ bool ImGui::EntityComboBox(const char* label, EntitySystemBase* entity_system, u
 	return (current_guid != *selected_guid);
 }
 
-bool ImGui::EntityComboBoxWithColor(const char* label, EntitySystemBase* entity_system, float* color, u32 channel_count, u64* guid, EntityTypeID entity_type_id) {
+bool ImGui::EntityComboBoxWithColor(StackAllocator* alloc, const char* label, EntitySystemBase* entity_system, float* color, u32 channel_count, u64* guid, EntityTypeID entity_type_id) {
 	ImGuiScopeID(label);
 	auto& style = ImGui::GetStyle();
 	
@@ -295,7 +338,7 @@ bool ImGui::EntityComboBoxWithColor(const char* label, EntitySystemBase* entity_
 		ImGui::SameLine(0.f, style.ItemInnerSpacing.x);
 	}
 	
-	result |= ImGui::EntityComboBox(label, entity_system, guid, entity_type_id);
+	result |= ImGui::EntityComboBox(alloc, label, entity_system, guid, entity_type_id);
 	
 	return result;
 }
@@ -426,19 +469,19 @@ bool ImGui::TableCombo(const char* label, s32* current_item, const char* items_s
 	return result;
 }
 
-bool ImGui::TableEntityComboBox(const char* label, EntitySystemBase* entity_system, u64* guid, EntityTypeID entity_type_id) {
+bool ImGui::TableEntityComboBox(StackAllocator* alloc, const char* label, EntitySystemBase* entity_system, u64* guid, EntityTypeID entity_type_id) {
 	bool result = false;
 	if (ImGui::BeginTableItem(label)) {
-		result |= ImGui::EntityComboBox("", entity_system, guid, entity_type_id);
+		result |= ImGui::EntityComboBox(alloc, "", entity_system, guid, entity_type_id);
 		ImGui::EndTableItem();
 	}
 	return result;
 }
 
-bool ImGui::TableEntityComboBoxWithColor(const char* label, EntitySystemBase* entity_system, float* color, u32 channel_count, u64* guid, EntityTypeID entity_type_id) {
+bool ImGui::TableEntityComboBoxWithColor(StackAllocator* alloc, const char* label, EntitySystemBase* entity_system, float* color, u32 channel_count, u64* guid, EntityTypeID entity_type_id) {
 	bool result = false;
 	if (ImGui::BeginTableItem(label)) {
-		result |= ImGui::EntityComboBoxWithColor("", entity_system, color, channel_count, guid, entity_type_id);
+		result |= ImGui::EntityComboBoxWithColor(alloc, "", entity_system, color, channel_count, guid, entity_type_id);
 		ImGui::EndTableItem();
 	}
 	return result;

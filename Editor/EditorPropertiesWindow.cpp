@@ -38,11 +38,11 @@ static void WorldComponentEntityView(StackAllocator* alloc, WorldEntitySystem& w
 	}
 	
 	if (entity.mesh_asset) {
-		ImGui::TableEntityComboBox("Mesh Asset", &asset_system, &entity.mesh_asset->guid, ECS::GetEntityTypeID<MeshAssetType>::id);
+		ImGui::TableEntityComboBox(alloc, "Mesh Asset", &asset_system, &entity.mesh_asset->guid, ECS::GetEntityTypeID<MeshAssetType>::id);
 	}
 	
 	if (entity.material_asset) {
-		ImGui::TableEntityComboBox("Material Asset", &asset_system, &entity.material_asset->guid, ECS::GetEntityTypeID<MaterialAssetType>::id);
+		ImGui::TableEntityComboBox(alloc, "Material Asset", &asset_system, &entity.material_asset->guid, ECS::GetEntityTypeID<MaterialAssetType>::id);
 	}
 	
 	if (entity.camera) {
@@ -62,7 +62,7 @@ static void WorldComponentEntityView(StackAllocator* alloc, WorldEntitySystem& w
 	}
 	
 	if (entity.light_entity) {
-		ImGui::TableEntityComboBox("Light Entity", &world_system, &entity.light_entity->guid, ECS::GetEntityTypeID<LightEntityType>::id);
+		ImGui::TableEntityComboBox(alloc, "Light Entity", &world_system, &entity.light_entity->guid, ECS::GetEntityTypeID<LightEntityType>::id);
 	}
 	
 	if (entity.renderer_world) {
@@ -232,25 +232,25 @@ static bool AssetComponentEntityView(StackAllocator* alloc, AssetEntitySystem& a
 		auto* texture_data = entity.material_texture_data;
 		
 		float3 albedo = Math::EncodeSRGB(Math::DecodeR10G10B10(texture_data->default_albedo)); // Edit in SRGB, store in linear.
-		if (ImGui::TableEntityComboBoxWithColor("Albedo", &asset_system, &albedo.x, 3, &texture_data->albedo.guid, ECS::GetEntityTypeID<TextureAssetType>::id)) {
+		if (ImGui::TableEntityComboBoxWithColor(alloc, "Albedo", &asset_system, &albedo.x, 3, &texture_data->albedo.guid, ECS::GetEntityTypeID<TextureAssetType>::id)) {
 			texture_data->default_albedo = Math::EncodeR10G10B10(Math::DecodeSRGB(albedo));
 		}
 		
-		ImGui::TableEntityComboBox("Normal", &asset_system, &texture_data->normal.guid, ECS::GetEntityTypeID<TextureAssetType>::id);
+		ImGui::TableEntityComboBox(alloc, "Normal", &asset_system, &texture_data->normal.guid, ECS::GetEntityTypeID<TextureAssetType>::id);
 		
 		float roughness = Math::DecodeR16_FLOAT(texture_data->default_roughness);
-		if (ImGui::TableEntityComboBoxWithColor("Roughness", &asset_system, &roughness, 1, &texture_data->roughness.guid, ECS::GetEntityTypeID<TextureAssetType>::id)) {
+		if (ImGui::TableEntityComboBoxWithColor(alloc, "Roughness", &asset_system, &roughness, 1, &texture_data->roughness.guid, ECS::GetEntityTypeID<TextureAssetType>::id)) {
 			texture_data->default_roughness = Math::EncodeR16_FLOAT(roughness);
 		}
 		
 		float metalness = Math::DecodeR16_FLOAT(texture_data->default_metalness);
-		if (ImGui::TableEntityComboBoxWithColor("Metalness", &asset_system, &metalness, 1, &texture_data->metalness.guid, ECS::GetEntityTypeID<TextureAssetType>::id)) {
+		if (ImGui::TableEntityComboBoxWithColor(alloc, "Metalness", &asset_system, &metalness, 1, &texture_data->metalness.guid, ECS::GetEntityTypeID<TextureAssetType>::id)) {
 			texture_data->default_metalness = Math::EncodeR16_FLOAT(metalness);
 		}
 	}
 	
 	if (entity.material_asset) {
-		ImGui::TableEntityComboBox("Material Asset", &asset_system, &entity.material_asset->guid, ECS::GetEntityTypeID<MaterialAssetType>::id);
+		ImGui::TableEntityComboBox(alloc, "Material Asset", &asset_system, &entity.material_asset->guid, ECS::GetEntityTypeID<MaterialAssetType>::id);
 	}
 	
 	
