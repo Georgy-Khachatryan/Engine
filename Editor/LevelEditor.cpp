@@ -198,6 +198,8 @@ void LevelEditorUpdate(StackAllocator* alloc, GraphicsContext* graphics_context,
 	
 	EditorUndoRedoHistoryWindow(undo_redo_system);
 	
+	EditorShaderStatisticsWindow(alloc, graphics_context);
+	
 	EditorOutlinerWindow(alloc, undo_redo_system, world_system, world_selection_state_entity, world_entity_guid);
 	
 	EditorAssetBrowserWindow(alloc, undo_redo_system, asset_system, asset_selection_state_entity);

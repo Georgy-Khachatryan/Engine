@@ -52,6 +52,7 @@
     <ClCompile Include="Editor/EditorEntities.cpp" />
     <ClCompile Include="Editor/EditorOutlinerWindow.cpp" />
     <ClCompile Include="Editor/EditorPropertiesWindow.cpp" />
+    <ClCompile Include="Editor/EditorShaderStatisticsWindow.cpp" />
     <ClCompile Include="Editor/EditorUndoRedoHistoryWindow.cpp" />
     <ClCompile Include="Editor/EditorViewportWindow.cpp" />
     <ClCompile Include="Editor/LevelEditor.cpp" />

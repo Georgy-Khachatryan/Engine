@@ -327,6 +327,33 @@ String GetShaderPermutationName(StackAllocator* alloc, const ShaderDefinition& d
 	return StringJoin(alloc, strings, "-"_sl);
 }
 
+ShaderCompilerStatistics GetShaderCompilerStatistics(ShaderCompiler* compiler, StackAllocator* alloc) {
+	Array<PipelineStateStatistics> pipeline_statistics;
+	ArrayResize(pipeline_statistics, alloc, compiler->pipeline_definitions.count);
+	
+	ShaderCompilerStatistics statistics;
+	statistics.pipeline_statistics = pipeline_statistics;
+	
+	for (u64 pipeline_definition_index = 0; pipeline_definition_index < pipeline_statistics.count; pipeline_definition_index += 1) {
+		auto& pipeline_definition     = compiler->pipeline_definitions[pipeline_definition_index];
+		auto& pipeline_shader_indices = compiler->pipeline_shader_indices[pipeline_definition_index];
+		auto& shader_definition       = compiler->shader_definitions[pipeline_definition.shader_id.index];
+		
+		pipeline_statistics[pipeline_definition_index].name = GetShaderPermutationName(alloc, shader_definition, pipeline_definition.permutation);
+		
+		bool is_dirty = false;
+		for (u32 shader_type_index : BitScanLow32((u32)pipeline_definition.shader_type_mask)) {
+			u32 shader_index = pipeline_shader_indices[shader_type_index];
+			is_dirty |= compiler->shaders[shader_index].is_dirty;
+		}
+		pipeline_statistics[pipeline_definition_index].is_dirty = is_dirty;
+		
+		statistics.dirty_pipeline_count += is_dirty ? 1u : 0u;
+	}
+	
+	return statistics;
+}
+
 ShaderCompiler* CreateShaderCompiler(StackAllocator* alloc, ArrayView<String> root_signature_filenames, ArrayView<ShaderDefinition> shader_definitions, ArrayView<PipelineDefinition> pipeline_definitions) {
 	ProfilerScope("CreateShaderCompiler");
 	

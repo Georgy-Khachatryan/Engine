@@ -13,6 +13,8 @@ struct RecordContext;
 struct GraphicsContext {
 	u64 frame_submit_index = 0; // Signaled each frame after submitting work to frame queues and then incremented.
 	u64 async_submit_index = 0; // Signaled in SubmitAsyncCopyCommands after submitting work and then incremented.
+	
+	struct ShaderCompiler* shader_compiler = nullptr;
 };
 
 struct WindowSwapChain {

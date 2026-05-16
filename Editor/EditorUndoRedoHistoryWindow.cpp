@@ -21,7 +21,7 @@ void EditorUndoRedoHistoryWindow(UndoRedoSystem& undo_redo_system) {
 	ImGui::Text("Undo/Redo Buffer Size: %llu", undo_redo_system.undo_buffer.save_load_buffer.data.count + undo_redo_system.redo_buffer.save_load_buffer.data.count);
 	
 	auto table_flags = ImGuiTableFlags_NoSavedSettings | ImGuiTableFlags_Resizable | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_PadOuterX | ImGuiTableFlags_ScrollY;
-	if (ImGui::BeginTable("Components", 5, table_flags) == false) return;
+	if (ImGui::BeginTable("UndoRedoHistory", 5, table_flags) == false) return;
 	defer{ ImGui::EndTable(); };
 	
 	ImGui::TableSetupScrollFreeze(0, 1); // Freeze header row.
