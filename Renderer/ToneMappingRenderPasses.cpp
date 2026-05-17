@@ -68,12 +68,17 @@ void AutomaticExposureRenderPass::RecordPass(RecordContext* record_context) {
 	
 	auto constants = InitializeAutomaticExposureGpuConstants(exposure_settings, thread_group_count, delta_time);
 	
-	auto [gpu_address, cpu_address] = AllocateTransientUploadBuffer<ToneMappingGpuConstants>(record_context);
-	memcpy(cpu_address, &constants, sizeof(constants));
+	auto gpu_constants = AllocateTransientUploadBuffer<ToneMappingGpuConstants>(record_context);
+	memcpy(gpu_constants.cpu_address, &constants, sizeof(constants));
+	
+	auto histogram_readback = AllocateTransientReadbackBuffer(record_context, sizeof(AutomaticExposureHistogram));
+	descriptor_table.luminance_histogram_readback.Bind(histogram_readback.gpu_address, sizeof(AutomaticExposureHistogram));
+	
+	automatic_exposure_readback_queue->Store(histogram_readback.cpu_address, record_context->frame_index);
 	
 	CmdSetRootSignature(record_context, root_signature);
 	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
-	CmdSetRootArgument(record_context, root_signature.constants, gpu_address);
+	CmdSetRootArgument(record_context, root_signature.constants, gpu_constants.gpu_address);
 	CmdSetRootArgument(record_context, root_signature.scene, VirtualResourceID::SceneConstants);
 	CmdSetPipelineState(record_context, pipeline_id);
 	

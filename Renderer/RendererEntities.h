@@ -60,6 +60,8 @@ enum struct ExposureMethod : u32 {
 
 NOTES()
 struct ExposureSettings {
+	compile_const u32 histogram_bucket_count = 256;
+	
 	float manual_exposure_offset_ev    = 0.f;
 	float automatic_exposure_offset_ev = 0.f;
 	
@@ -134,6 +136,13 @@ struct MeshletCullingStatistics {
 	u32 meshlet_count_raytracing_pass   = 0;
 };
 
+struct AutomaticExposureHistogram {
+	compile_const u32 histogram_bucket_count = ExposureSettings::histogram_bucket_count;
+	
+	float histogram[histogram_bucket_count];
+	float final_ev = 0.f;
+};
+
 NOTES(Meta::SaveLoadOptions{ SaveLoadFlags::None })
 struct RendererWorld {
 	SceneConstants scene_constants;
@@ -149,11 +158,13 @@ struct RendererWorld {
 	
 	DebugFreezeCullingCamera debug_freeze_culling_camera;
 	MeshletCullingStatistics meshlet_culling_statistics;
+	AutomaticExposureHistogram automatic_exposure_histogram;
 	
 	GpuReadbackQueue meshlet_streaming_feedback_queue;
 	GpuReadbackQueue mesh_streaming_feedback_queue;
 	GpuReadbackQueue texture_streaming_feedback_queue;
 	GpuReadbackQueue meshlet_culling_statistics_readback_queue;
+	GpuReadbackQueue automatic_exposure_readback_queue;
 	
 	ArrayView<DebugMeshInstanceArray> debug_mesh_instance_arrays;
 };

@@ -110,6 +110,26 @@ static void WorldComponentEntityView(StackAllocator* alloc, WorldEntitySystem& w
 			ImGui::TableSliderFloat("Histogram Max Cutoff", &settings.histogram_max_cutoff, 0.f, 1.f);
 			ImGui::TableSliderFloat("Histogram Min (EV)", &settings.histogram_min_ev, -32.f, +32.f);
 			ImGui::TableSliderFloat("Histogram Max (EV)", &settings.histogram_max_ev, -32.f, +32.f);
+			
+			if (entity.renderer_world && ImGui::BeginTableItem("Exposure Histogram")) {
+				auto& histogram = entity.renderer_world->automatic_exposure_histogram;
+				ImGui::PlotHistogram("##Histogram", histogram.histogram, histogram.histogram_bucket_count);
+				
+				AutomaticExposureHistogram histogram_with_cutoff;
+				
+				float prefix_sum = 0.f;
+				for (u32 bucket_index = 0; bucket_index < histogram.histogram_bucket_count; bucket_index += 1) {
+					float bucket_weight = histogram.histogram[bucket_index];
+					float clamped_bucket_weight = Math::Min(prefix_sum + bucket_weight, settings.histogram_max_cutoff) - Math::Max(prefix_sum, settings.histogram_min_cutoff);
+					histogram_with_cutoff.histogram[bucket_index] = Math::Max(clamped_bucket_weight, 0.f);
+					prefix_sum += bucket_weight;
+				}
+				ImGui::PlotHistogram("##HistogramWithCutoff", histogram_with_cutoff.histogram, histogram_with_cutoff.histogram_bucket_count);
+				
+				ImGui::Text("EV: %.3f, Exposure: %.3f", histogram.final_ev, exp2f(-histogram.final_ev));
+				
+				ImGui::EndTableItem();
+			}
 		}
 	}
 	

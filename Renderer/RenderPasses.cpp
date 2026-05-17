@@ -42,7 +42,7 @@ static void BuildResourceTable(RecordContext* record_context, WorldEntitySystem*
 	table.Set(ID::CullingHZB,           BuildHzbRenderPass::ComputeCullingHzbSize(render_target_size));
 	table.Set(ID::CullingHzbBuildState, BuildHzbRenderPass::culling_hzb_build_state_size);
 	
-	table.Set(ID::LuminanceHistogram, (256 + 1) * sizeof(u32));
+	table.Set(ID::LuminanceHistogram, ExposureSettings::histogram_bucket_count * sizeof(u32) + sizeof(u32));
 	table.Set(ID::Exposure,           sizeof(float));
 	
 	table.Set(ID::DebugGeometryDepthStencil, TextureSize(TextureFormat::D32_FLOAT, render_target_size), Flags::DSV);
@@ -307,6 +307,7 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 		auto& automatic_exposure = render_passes.Add<AutomaticExposureRenderPass>();
 		automatic_exposure.exposure_settings = *world_entity.exposure_settings;
 		automatic_exposure.delta_time        = renderer_world.delta_time;
+		automatic_exposure.automatic_exposure_readback_queue = &renderer_world.automatic_exposure_readback_queue;
 	}
 	
 	auto& tone_mapping = render_passes.Add<ToneMappingRenderPass>();

@@ -147,7 +147,12 @@ void UpdateStreamingSystems(RendererContext* renderer_context, ThreadPool* threa
 	
 	auto meshlet_culling_statistics = renderer_world.meshlet_culling_statistics_readback_queue.Load(record_context->frame_index);
 	if (meshlet_culling_statistics.data != nullptr) {
-		renderer_world.meshlet_culling_statistics = *(MeshletCullingStatistics*)meshlet_culling_statistics.data;
+		memcpy(&renderer_world.meshlet_culling_statistics, meshlet_culling_statistics.data, sizeof(MeshletCullingStatistics));
+	}
+	
+	auto automatic_exposure_histogram = renderer_world.automatic_exposure_readback_queue.Load(record_context->frame_index);
+	if (automatic_exposure_histogram.data != nullptr) {
+		memcpy(&renderer_world.automatic_exposure_histogram, automatic_exposure_histogram.data, sizeof(AutomaticExposureHistogram));
 	}
 	
 	UpdateMeshStreamingFiles(renderer_context->mesh_streaming_system, thread_pool, record_context, asset_system);

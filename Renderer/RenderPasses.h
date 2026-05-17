@@ -969,6 +969,8 @@ SHADER_DEFINITION_GENERATED_CODE(AutomaticExposureShaders);
 
 NOTES(Meta::HlslFile{ "ToneMappingData.hlsl"_sl })
 struct AutomaticExposureGpuConstants {
+	compile_const u32 histogram_bucket_count = ExposureSettings::histogram_bucket_count;
+	
 	float histogram_min_ev        = 0.f;
 	float histogram_max_ev        = 0.f;
 	float histogram_min_cutoff    = 0.f;
@@ -987,11 +989,13 @@ struct AutomaticExposureRenderPass {
 	
 	ExposureSettings exposure_settings;
 	float delta_time = 0.f;
+	GpuReadbackQueue* automatic_exposure_readback_queue = nullptr;
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
 		HLSL::RWTexture2D<float4>    scene_radiance      = VirtualResourceID::SceneRadiance;
 		HLSL::RWRegularBuffer<u32>   luminance_histogram = VirtualResourceID::LuminanceHistogram;
 		HLSL::RWRegularBuffer<float> exposure            = VirtualResourceID::Exposure;
+		HLSL::RWRegularBuffer<float> luminance_histogram_readback;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {
