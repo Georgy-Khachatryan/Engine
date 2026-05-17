@@ -304,7 +304,9 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	}
 	
 	if (world_entity.exposure_settings->method == ExposureMethod::Automatic) {
-		render_passes.Add<AutomaticExposureRenderPass>();
+		auto& automatic_exposure = render_passes.Add<AutomaticExposureRenderPass>();
+		automatic_exposure.exposure_settings = *world_entity.exposure_settings;
+		automatic_exposure.delta_time        = renderer_world.delta_time;
 	}
 	
 	auto& tone_mapping = render_passes.Add<ToneMappingRenderPass>();

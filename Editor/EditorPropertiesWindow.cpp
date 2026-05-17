@@ -96,7 +96,21 @@ static void WorldComponentEntityView(StackAllocator* alloc, WorldEntitySystem& w
 		auto& settings = *entity.exposure_settings;
 		ImGui::TableCombo("Exposure Method", (s32*)&settings.method, "Manual\0Automatic\0", (s32)ExposureMethod::Count);
 		
-		ImGui::TableSliderFloat("Exposure Offset (EV)", &settings.exposure_offset, -8.f, 8.f);
+		if (settings.method == ExposureMethod::Manual) {
+			ImGui::TableSliderFloat("Exposure Offset (EV)", &settings.manual_exposure_offset_ev, -8.f, 8.f);
+		} else if (settings.method == ExposureMethod::Automatic) {
+			ImGui::TableSliderFloat("Exposure Offset (EV)", &settings.automatic_exposure_offset_ev, -8.f, 8.f);
+			
+			ImGui::TableSliderFloat("Exposure Min (EV)", &settings.exposure_min_ev, -16.f, 16.f);
+			ImGui::TableSliderFloat("Exposure Max (EV)", &settings.exposure_max_ev, -16.f, 16.f);
+			ImGui::TableSliderFloat("Exposure Increase Half Time (s)", &settings.exposure_increase_half_time, 0.f, 8.f);
+			ImGui::TableSliderFloat("Exposure Decrease Half Time (s)", &settings.exposure_decrease_half_time, 0.f, 8.f);
+			
+			ImGui::TableSliderFloat("Histogram Min Cutoff", &settings.histogram_min_cutoff, 0.f, 1.f);
+			ImGui::TableSliderFloat("Histogram Max Cutoff", &settings.histogram_max_cutoff, 0.f, 1.f);
+			ImGui::TableSliderFloat("Histogram Min (EV)", &settings.histogram_min_ev, -32.f, +32.f);
+			ImGui::TableSliderFloat("Histogram Max (EV)", &settings.histogram_max_ev, -32.f, +32.f);
+		}
 	}
 	
 	if (entity.tone_mapping_settings) {

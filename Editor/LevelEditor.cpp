@@ -117,9 +117,7 @@ static void RemoveSelectedEntities(WorldEntitySystem& world_system, UndoRedoSyst
 }
 
 
-static void LevelEditorShortcuts(StackAllocator* alloc, UndoRedoSystem& undo_redo_system, WorldEntitySystem& world_system, AssetEntitySystem& asset_system, EditorSelectionStateEntity world_selection_state_entity, EditorSelectionStateEntity asset_selection_state_entity, u64& world_entity_guid) {
-	auto& selected_world_entities_hash_table = world_selection_state_entity.selection_state->selected_entities_hash_table;
-	auto& selected_asset_entities_hash_table = asset_selection_state_entity.selection_state->selected_entities_hash_table;
+static void LevelEditorSaveLoadShortcuts(StackAllocator* alloc, UndoRedoSystem& undo_redo_system, WorldEntitySystem& world_system, AssetEntitySystem& asset_system, EditorSelectionStateEntity asset_selection_state_entity, u64& world_entity_guid) {
 	
 	bool should_save_scene = ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_S, ImGuiInputFlags_RouteGlobal | ImGuiInputFlags_RouteOverFocused);
 	bool should_load_scene = ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_L, ImGuiInputFlags_RouteGlobal | ImGuiInputFlags_RouteOverFocused);
@@ -136,6 +134,7 @@ static void LevelEditorShortcuts(StackAllocator* alloc, UndoRedoSystem& undo_red
 		TempAllocationScope(alloc);
 		u64 world_entity_guid_to_load = 0;
 		
+		auto& selected_asset_entities_hash_table = asset_selection_state_entity.selection_state->selected_entities_hash_table;
 		if (selected_asset_entities_hash_table.count == 1) {
 			u64 selected_asset_guid = (*selected_asset_entities_hash_table.begin()).key;
 			auto selected_world_asset = QueryEntityByGUID<WorldAssetType>(asset_system, selected_asset_guid);
@@ -154,6 +153,9 @@ static void LevelEditorShortcuts(StackAllocator* alloc, UndoRedoSystem& undo_red
 			world_entity_guid = world_entity_guid_to_load;
 		}
 	}
+}
+
+static void LevelEditorShortcuts(StackAllocator* alloc, UndoRedoSystem& undo_redo_system, WorldEntitySystem& world_system, AssetEntitySystem& asset_system, EditorSelectionStateEntity world_selection_state_entity, EditorSelectionStateEntity asset_selection_state_entity, u64 world_entity_guid) {
 	
 	if (ImGui::Shortcut(ImGuiKey_Delete, ImGuiInputFlags_RouteGlobal)) {
 		auto world_entity = QueryEntityByGUID<WorldEntityType>(world_system, world_entity_guid);
@@ -168,11 +170,11 @@ static void LevelEditorShortcuts(StackAllocator* alloc, UndoRedoSystem& undo_red
 		BeginUndoRedoGroup(undo_redo_system);
 		
 		BeginUndoRedoCommand("Deselect Entities"_sl, undo_redo_system, world_system, world_selection_state_entity.guid->guid);
-		HashTableClear(selected_world_entities_hash_table);
+		HashTableClear(world_selection_state_entity.selection_state->selected_entities_hash_table);
 		EndUndoRedoCommand(undo_redo_system);
 		
 		BeginUndoRedoCommand("Deselect Assets"_sl, undo_redo_system, asset_system, asset_selection_state_entity.guid->guid);
-		HashTableClear(selected_asset_entities_hash_table);
+		HashTableClear(asset_selection_state_entity.selection_state->selected_entities_hash_table);
 		EndUndoRedoCommand(undo_redo_system);
 		
 		EndUndoRedoGroup(undo_redo_system);
@@ -191,9 +193,10 @@ static void LevelEditorShortcuts(StackAllocator* alloc, UndoRedoSystem& undo_red
 void LevelEditorUpdate(StackAllocator* alloc, GraphicsContext* graphics_context, UndoRedoSystem& undo_redo_system, WorldEntitySystem& world_system, AssetEntitySystem& asset_system, u64& world_entity_guid) {
 	ProfilerScope("LevelEditorUpdate");
 	
-	auto world_selection_state_entity = QueryFirstEntityByType<EditorSelectionStateEntity>(world_system);
 	auto asset_selection_state_entity = QueryFirstEntityByType<EditorSelectionStateEntity>(asset_system);
+	LevelEditorSaveLoadShortcuts(alloc, undo_redo_system, world_system, asset_system, asset_selection_state_entity, world_entity_guid);
 	
+	auto world_selection_state_entity = QueryFirstEntityByType<EditorSelectionStateEntity>(world_system);
 	LevelEditorShortcuts(alloc, undo_redo_system, world_system, asset_system, world_selection_state_entity, asset_selection_state_entity, world_entity_guid);
 	
 	EditorUndoRedoHistoryWindow(undo_redo_system);

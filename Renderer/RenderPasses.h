@@ -967,12 +967,26 @@ NOTES(Meta::ShaderName{ "AutomaticExposure.hlsl"_sl })
 enum struct AutomaticExposureShaders : u32 {};
 SHADER_DEFINITION_GENERATED_CODE(AutomaticExposureShaders);
 
+NOTES(Meta::HlslFile{ "ToneMappingData.hlsl"_sl })
+struct AutomaticExposureGpuConstants {
+	float histogram_min_ev        = 0.f;
+	float histogram_max_ev        = 0.f;
+	float histogram_min_cutoff    = 0.f;
+	float histogram_max_cutoff    = 0.f;
+	float histogram_min_luminance = 0.f;
+	float exposure_min_ev         = 0.f;
+	float exposure_max_ev         = 0.f;
+	float exposure_increase_t     = 0.f;
+	float exposure_decrease_t     = 0.f;
+	u32 last_thread_group_index   = 0;
+};
+
 NOTES(Meta::RenderPass{})
 struct AutomaticExposureRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
-	ToneMappingSettings tone_mapping_settings;
-	VirtualResourceID scene_radiance = VirtualResourceID::None;
+	ExposureSettings exposure_settings;
+	float delta_time = 0.f;
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
 		HLSL::RWTexture2D<float4>    scene_radiance      = VirtualResourceID::SceneRadiance;
@@ -981,12 +995,8 @@ struct AutomaticExposureRenderPass {
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {
-		struct PushConstants {
-			u32 last_thread_group_index = 0;
-		};
-		
-		HLSL::PushConstantBuffer<PushConstants> constants;
 		HLSL::ConstantBuffer<SceneConstants> scene;
+		HLSL::ConstantBuffer<AutomaticExposureGpuConstants> constants;
 		HLSL::DescriptorTable<Descriptors> descriptor_table;
 	};
 	

@@ -60,7 +60,21 @@ enum struct ExposureMethod : u32 {
 
 NOTES()
 struct ExposureSettings {
-	float exposure_offset = 0.f; // EV
+	float manual_exposure_offset_ev    = 0.f;
+	float automatic_exposure_offset_ev = 0.f;
+	
+	float histogram_min_ev = -16.f;
+	float histogram_max_ev = +16.f;
+	
+	float histogram_min_cutoff = 0.5f; // Ignore 50% of the dimmest pixels.
+	float histogram_max_cutoff = 0.9f; // Ignore 10% of the brightest pixels.
+	
+	// Time it takes to change exposure half way, in seconds.
+	float exposure_increase_half_time = 1.f;
+	float exposure_decrease_half_time = 1.f;
+	
+	float exposure_min_ev = -4.f;
+	float exposure_max_ev = +4.f;
 	
 	ExposureMethod method = ExposureMethod::Manual;
 };
@@ -125,6 +139,8 @@ struct RendererWorld {
 	SceneConstants scene_constants;
 	
 	float2 window_size = float2(1.f, 1.f);
+	float  delta_time  = 0.f;
+	
 	float meshlet_target_error_pixels = 1.f;
 	float reference_path_tracer_percent = 0.f;
 	bool  reset_reference_path_tracer   = false;

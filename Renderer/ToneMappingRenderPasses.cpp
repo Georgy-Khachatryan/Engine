@@ -34,10 +34,27 @@ static ToneMappingGpuConstants InitializeToneMappingGpuConstants(const ToneMappi
 	constants.fade_end    = settings.fade_end;
 	
 	constants.exposure_method = exposure_settings.method;
-	constants.exposure_scale  = exp2f(exposure_settings.exposure_offset);
+	constants.exposure_scale  = exp2f(exposure_settings.method == ExposureMethod::Automatic ? exposure_settings.automatic_exposure_offset_ev : exposure_settings.manual_exposure_offset_ev);
 	
 	return constants;
 }
+
+static AutomaticExposureGpuConstants InitializeAutomaticExposureGpuConstants(const ExposureSettings& exposure_settings, uint2 thread_group_count, float delta_time) {
+	AutomaticExposureGpuConstants constants;
+	constants.histogram_min_ev        = exposure_settings.histogram_min_ev;
+	constants.histogram_max_ev        = exposure_settings.histogram_max_ev;
+	constants.histogram_min_cutoff    = exposure_settings.histogram_min_cutoff;
+	constants.histogram_max_cutoff    = exposure_settings.histogram_max_cutoff;
+	constants.histogram_min_luminance = exp2f(exposure_settings.histogram_min_ev);
+	constants.exposure_min_ev         = exposure_settings.exposure_min_ev;
+	constants.exposure_max_ev         = exposure_settings.exposure_max_ev;
+	constants.exposure_increase_t     = 1.f - exp2f(-delta_time / exposure_settings.exposure_increase_half_time);
+	constants.exposure_decrease_t     = 1.f - exp2f(-delta_time / exposure_settings.exposure_decrease_half_time);
+	constants.last_thread_group_index = thread_group_count.x * thread_group_count.y - 1;
+	
+	return constants;
+}
+
 
 void AutomaticExposureRenderPass::CreatePipelines(PipelineLibrary* lib) {
 	pipeline_id = CreateComputePipeline(lib, AutomaticExposureShadersID);
@@ -49,9 +66,14 @@ void AutomaticExposureRenderPass::RecordPass(RecordContext* record_context) {
 	auto render_target_size = GetTextureSize(record_context, VirtualResourceID::SceneRadiance);
 	auto thread_group_count = DivideAndRoundUp(uint2(render_target_size), 16u);
 	
+	auto constants = InitializeAutomaticExposureGpuConstants(exposure_settings, thread_group_count, delta_time);
+	
+	auto [gpu_address, cpu_address] = AllocateTransientUploadBuffer<ToneMappingGpuConstants>(record_context);
+	memcpy(cpu_address, &constants, sizeof(constants));
+	
 	CmdSetRootSignature(record_context, root_signature);
 	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
-	CmdSetRootArgument(record_context, root_signature.constants, { thread_group_count.x * thread_group_count.y - 1 });
+	CmdSetRootArgument(record_context, root_signature.constants, gpu_address);
 	CmdSetRootArgument(record_context, root_signature.scene, VirtualResourceID::SceneConstants);
 	CmdSetPipelineState(record_context, pipeline_id);
 	
@@ -74,6 +96,7 @@ void ToneMappingRenderPass::RecordPass(RecordContext* record_context) {
 	CmdSetRootSignature(record_context, root_signature);
 	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
 	CmdSetRootArgument(record_context, root_signature.constants, gpu_address);
+	CmdSetRootArgument(record_context, root_signature.scene, VirtualResourceID::SceneConstants);
 	CmdSetPipelineState(record_context, pipeline_id);
 	
 	auto render_target_size = GetTextureSize(record_context, VirtualResourceID::SceneRadiance);

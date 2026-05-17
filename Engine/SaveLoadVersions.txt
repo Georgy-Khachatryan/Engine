@@ -211,6 +211,18 @@ enum TextureAssetTargetEncoding {
 struct ExposureSettings {
 	/*Version*/ 0 {
 		exposure_offset float32 0;
+	}
+	/*Version*/ 4 {
+		manual_exposure_offset_ev float32 0;
+		automatic_exposure_offset_ev float32 0;
+		histogram_min_ev float32 0;
+		histogram_max_ev float32 0;
+		histogram_min_cutoff float32 0;
+		histogram_max_cutoff float32 0;
+		exposure_increase_half_time float32 0;
+		exposure_decrease_half_time float32 0;
+		exposure_min_ev float32 0;
+		exposure_max_ev float32 0;
 		method ExposureMethod 0;
 	}
 }
