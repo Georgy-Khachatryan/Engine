@@ -43,6 +43,8 @@ enum struct VirtualResourceID : u32 {
 	CullingHzbBuildState,
 	TlasMeshInstances,
 	SceneTLAS,
+	LuminanceHistogram,
+	Exposure,
 	
 	// Mesh rendering:
 	VisibleMeshlets,
@@ -961,6 +963,36 @@ struct BasicMeshRenderPass {
 };
 
 
+NOTES(Meta::ShaderName{ "AutomaticExposure.hlsl"_sl })
+enum struct AutomaticExposureShaders : u32 {};
+SHADER_DEFINITION_GENERATED_CODE(AutomaticExposureShaders);
+
+NOTES(Meta::RenderPass{})
+struct AutomaticExposureRenderPass {
+	RENDER_PASS_GENERATED_CODE();
+	
+	ToneMappingSettings tone_mapping_settings;
+	VirtualResourceID scene_radiance = VirtualResourceID::None;
+	
+	struct Descriptors : HLSL::BaseDescriptorTable {
+		HLSL::RWTexture2D<float4>    scene_radiance      = VirtualResourceID::SceneRadiance;
+		HLSL::RWRegularBuffer<u32>   luminance_histogram = VirtualResourceID::LuminanceHistogram;
+		HLSL::RWRegularBuffer<float> exposure            = VirtualResourceID::Exposure;
+	};
+	
+	struct RootSignature : HLSL::BaseRootSignature {
+		struct PushConstants {
+			u32 last_thread_group_index = 0;
+		};
+		
+		HLSL::PushConstantBuffer<PushConstants> constants;
+		HLSL::ConstantBuffer<SceneConstants> scene;
+		HLSL::DescriptorTable<Descriptors> descriptor_table;
+	};
+	
+	inline static PipelineID pipeline_id;
+};
+
 NOTES(Meta::ShaderName{ "ToneMapping.hlsl"_sl })
 enum struct ToneMappingShaders : u32 {};
 SHADER_DEFINITION_GENERATED_CODE(ToneMappingShaders);
@@ -984,16 +1016,21 @@ struct ToneMappingGpuConstants {
 	float blend_ratio = 0.f;
 	float fade_start  = 0.f;
 	float fade_end    = 0.f;
+	
+	ExposureMethod exposure_method = ExposureMethod::Manual;
+	float exposure_scale = 0.f;
 };
 
 NOTES(Meta::RenderPass{})
 struct ToneMappingRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
+	ExposureSettings exposure_settings;
 	ToneMappingSettings tone_mapping_settings;
 	VirtualResourceID scene_radiance = VirtualResourceID::None;
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
+		HLSL::RegularBuffer<float> exposure = VirtualResourceID::Exposure;
 		HLSL::RWTexture2D<float4> scene_radiance;
 	};
 	

@@ -6,7 +6,7 @@
 // Driving Toward Reality: Physically Based Tone Mapping and Perceptual Fidelity in Gran Turismo 7
 // See license in THIRD_PARTY_LICENSES.md
 //
-static ToneMappingGpuConstants InitializeToneMappingGpuConstants(const ToneMappingSettings& settings) {
+static ToneMappingGpuConstants InitializeToneMappingGpuConstants(const ToneMappingSettings& settings, const ExposureSettings& exposure_settings) {
 	ToneMappingGpuConstants constants;
 	
 	constants.method = settings.method;
@@ -33,7 +33,29 @@ static ToneMappingGpuConstants InitializeToneMappingGpuConstants(const ToneMappi
 	constants.fade_start  = settings.fade_start;
 	constants.fade_end    = settings.fade_end;
 	
+	constants.exposure_method = exposure_settings.method;
+	constants.exposure_scale  = exp2f(exposure_settings.exposure_offset);
+	
 	return constants;
+}
+
+void AutomaticExposureRenderPass::CreatePipelines(PipelineLibrary* lib) {
+	pipeline_id = CreateComputePipeline(lib, AutomaticExposureShadersID);
+}
+
+void AutomaticExposureRenderPass::RecordPass(RecordContext* record_context) {
+	auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
+	
+	auto render_target_size = GetTextureSize(record_context, VirtualResourceID::SceneRadiance);
+	auto thread_group_count = DivideAndRoundUp(uint2(render_target_size), 16u);
+	
+	CmdSetRootSignature(record_context, root_signature);
+	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
+	CmdSetRootArgument(record_context, root_signature.constants, { thread_group_count.x * thread_group_count.y - 1 });
+	CmdSetRootArgument(record_context, root_signature.scene, VirtualResourceID::SceneConstants);
+	CmdSetPipelineState(record_context, pipeline_id);
+	
+	CmdDispatch(record_context, thread_group_count);
 }
 
 void ToneMappingRenderPass::CreatePipelines(PipelineLibrary* lib) {
@@ -44,7 +66,7 @@ void ToneMappingRenderPass::RecordPass(RecordContext* record_context) {
 	auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
 	descriptor_table.scene_radiance = scene_radiance;
 	
-	auto constants = InitializeToneMappingGpuConstants(tone_mapping_settings);
+	auto constants = InitializeToneMappingGpuConstants(tone_mapping_settings, exposure_settings);
 	
 	auto [gpu_address, cpu_address] = AllocateTransientUploadBuffer<ToneMappingGpuConstants>(record_context);
 	memcpy(cpu_address, &constants, sizeof(constants));

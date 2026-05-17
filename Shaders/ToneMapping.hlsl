@@ -33,7 +33,9 @@ compile_const u32 thread_group_size = 16;
 void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	uint2 thread_id = group_id * thread_group_size + MortonDecode(thread_index);
 	
-	float3 radiance_rec709  = scene_radiance[thread_id].xyz;
+	float total_exposure = (constants.exposure_method == ExposureMethod::Automatic ? exposure[0] : 1.0) * constants.exposure_scale;
+	
+	float3 radiance_rec709  = scene_radiance[thread_id].xyz * total_exposure;
 	float3 radiance_rec2020 = mul(rec709_to_rec2020, radiance_rec709);
 	
 	float3 result_rec2020 = ApplyToneMapping(radiance_rec2020);

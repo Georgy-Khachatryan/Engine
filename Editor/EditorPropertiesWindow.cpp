@@ -92,6 +92,13 @@ static void WorldComponentEntityView(StackAllocator* alloc, WorldEntitySystem& w
 		ImGui::TableCombo("Anti Aliasing Method", (s32*)&settings.method, "None\0DLSS\0XeSS\0", (s32)AntiAliasingMethod::Count);
 	}
 	
+	if (entity.exposure_settings) {
+		auto& settings = *entity.exposure_settings;
+		ImGui::TableCombo("Exposure Method", (s32*)&settings.method, "Manual\0Automatic\0", (s32)ExposureMethod::Count);
+		
+		ImGui::TableSliderFloat("Exposure Offset (EV)", &settings.exposure_offset, -8.f, 8.f);
+	}
+	
 	if (entity.tone_mapping_settings) {
 		auto& settings = *entity.tone_mapping_settings;
 		

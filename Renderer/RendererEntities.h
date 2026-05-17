@@ -51,6 +51,21 @@ struct SceneConstants {
 };
 
 NOTES(Meta::HlslFile{ "ToneMappingData.hlsl"_sl })
+enum struct ExposureMethod : u32 {
+	Manual    = 0,
+	Automatic = 1,
+	
+	Count
+};
+
+NOTES()
+struct ExposureSettings {
+	float exposure_offset = 0.f; // EV
+	
+	ExposureMethod method = ExposureMethod::Manual;
+};
+
+NOTES(Meta::HlslFile{ "ToneMappingData.hlsl"_sl })
 enum struct ToneMappingMethod : u32 {
 	None         = 0,
 	GT7_HDR      = 1,
@@ -209,8 +224,9 @@ struct WorldEntityQuery {
 	ECS::Component<LightEntityGUID>      global_light_entity;
 	ECS::Component<CameraEntityGUID>     camera_entity;
 	ECS::Component<RendererWorld>        renderer_world;
-	ECS::Component<ToneMappingSettings>  tone_mapping_settings;
 	ECS::Component<AntiAliasingSettings> anti_aliasing_settings;
+	ECS::Component<ExposureSettings>     exposure_settings;
+	ECS::Component<ToneMappingSettings>  tone_mapping_settings;
 	ECS::GpuComponent<SceneConstants>    gpu_scene_constants;
 };
 

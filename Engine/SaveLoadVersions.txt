@@ -175,6 +175,14 @@ struct AntiAliasingSettings {
 	}
 }
 
+enum ExposureMethod {
+	/*Version*/ 0 u32 {
+		Manual 0;
+		Automatic 1;
+		Count 2;
+	}
+}
+
 struct AabbComponent {
 	/*Version*/ 0 {
 		min float3 0;
@@ -197,6 +205,13 @@ enum TextureAssetTargetEncoding {
 		BC5_UNORM 3;
 		BC5_NORMAL_MAP 4;
 		Count 5;
+	}
+}
+
+struct ExposureSettings {
+	/*Version*/ 0 {
+		exposure_offset float32 0;
+		method ExposureMethod 0;
 	}
 }
 
