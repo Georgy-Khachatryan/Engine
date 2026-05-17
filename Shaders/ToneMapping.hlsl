@@ -27,7 +27,7 @@ float3 ApplyToneMapping(float3 radiance_rec2020) {
 	return result_rec2020;
 }
 
-compile_const u32 thread_group_size = 16;
+compile_const u32 thread_group_size = ToneMappingGpuConstants::thread_group_size;
 
 [ThreadGroupSize(thread_group_size * thread_group_size, 1, 1)]
 void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {

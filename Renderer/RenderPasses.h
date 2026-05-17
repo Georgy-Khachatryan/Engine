@@ -970,9 +970,12 @@ SHADER_DEFINITION_GENERATED_CODE(AutomaticExposureShaders);
 NOTES(Meta::HlslFile{ "ToneMappingData.hlsl"_sl })
 struct AutomaticExposureGpuConstants {
 	compile_const u32 histogram_bucket_count = ExposureSettings::histogram_bucket_count;
+	compile_const u32 thread_group_size      = 16u;
+	compile_const u32 thread_tile_size       = 8u;
 	
+	float2 ev_to_bucket_index     = 0.f;
+	float2 bucket_index_to_ev     = 0.f;
 	float histogram_min_ev        = 0.f;
-	float histogram_max_ev        = 0.f;
 	float histogram_min_cutoff    = 0.f;
 	float histogram_max_cutoff    = 0.f;
 	float histogram_min_luminance = 0.f;
@@ -992,7 +995,7 @@ struct AutomaticExposureRenderPass {
 	GpuReadbackQueue* automatic_exposure_readback_queue = nullptr;
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
-		HLSL::RWTexture2D<float4>    scene_radiance      = VirtualResourceID::SceneRadiance;
+		HLSL::Texture2D<float3>      scene_radiance      = VirtualResourceID::SceneRadiance;
 		HLSL::RWRegularBuffer<u32>   luminance_histogram = VirtualResourceID::LuminanceHistogram;
 		HLSL::RWRegularBuffer<float> exposure            = VirtualResourceID::Exposure;
 		HLSL::RWRegularBuffer<float> luminance_histogram_readback;
@@ -1014,6 +1017,7 @@ SHADER_DEFINITION_GENERATED_CODE(ToneMappingShaders);
 NOTES(Meta::HlslFile{ "ToneMappingData.hlsl"_sl })
 struct ToneMappingGpuConstants {
 	compile_const float reference_luminance = 80.f; // Frame buffer value to cd/m^2.
+	compile_const u32   thread_group_size   = 16u;
 	
 	ToneMappingMethod method = ToneMappingMethod::GT7_HDR;
 	

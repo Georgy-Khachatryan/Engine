@@ -41,8 +41,10 @@ static ToneMappingGpuConstants InitializeToneMappingGpuConstants(const ToneMappi
 
 static AutomaticExposureGpuConstants InitializeAutomaticExposureGpuConstants(const ExposureSettings& exposure_settings, uint2 thread_group_count, float delta_time) {
 	AutomaticExposureGpuConstants constants;
-	constants.histogram_min_ev        = exposure_settings.histogram_min_ev;
-	constants.histogram_max_ev        = exposure_settings.histogram_max_ev;
+	constants.ev_to_bucket_index.x    = (constants.histogram_bucket_count - 1) / (exposure_settings.histogram_max_ev - exposure_settings.histogram_min_ev);
+	constants.ev_to_bucket_index.y    = -exposure_settings.histogram_min_ev * constants.ev_to_bucket_index.x;
+	constants.bucket_index_to_ev.x    = (1.f / (constants.histogram_bucket_count - 1)) * (exposure_settings.histogram_max_ev - exposure_settings.histogram_min_ev);
+	constants.bucket_index_to_ev.y    = exposure_settings.histogram_min_ev;
 	constants.histogram_min_cutoff    = exposure_settings.histogram_min_cutoff;
 	constants.histogram_max_cutoff    = exposure_settings.histogram_max_cutoff;
 	constants.histogram_min_luminance = exp2f(exposure_settings.histogram_min_ev);
@@ -64,7 +66,7 @@ void AutomaticExposureRenderPass::RecordPass(RecordContext* record_context) {
 	auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
 	
 	auto render_target_size = GetTextureSize(record_context, VirtualResourceID::SceneRadiance);
-	auto thread_group_count = DivideAndRoundUp(uint2(render_target_size), 16u);
+	auto thread_group_count = DivideAndRoundUp(DivideAndRoundUp(uint2(render_target_size), AutomaticExposureGpuConstants::thread_tile_size), AutomaticExposureGpuConstants::thread_group_size);
 	
 	auto constants = InitializeAutomaticExposureGpuConstants(exposure_settings, thread_group_count, delta_time);
 	
@@ -105,5 +107,5 @@ void ToneMappingRenderPass::RecordPass(RecordContext* record_context) {
 	CmdSetPipelineState(record_context, pipeline_id);
 	
 	auto render_target_size = GetTextureSize(record_context, VirtualResourceID::SceneRadiance);
-	CmdDispatch(record_context, DivideAndRoundUp(uint2(render_target_size), 16u));
+	CmdDispatch(record_context, DivideAndRoundUp(uint2(render_target_size), ToneMappingGpuConstants::thread_group_size));
 }

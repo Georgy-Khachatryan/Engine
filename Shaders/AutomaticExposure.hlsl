@@ -1,7 +1,7 @@
 #include "Basic.hlsl"
 
 compile_const u32 histogram_bucket_count = AutomaticExposureGpuConstants::histogram_bucket_count;
-compile_const u32 thread_group_size = 16;
+compile_const u32 thread_group_size      = AutomaticExposureGpuConstants::thread_group_size;
 
 groupshared uint gs_luminance_histogram[histogram_bucket_count];
 groupshared uint gs_thread_group_exit_index;
@@ -16,16 +16,21 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	
 	GroupMemoryBarrierWithGroupSync();
 	
-	if (all(thread_id < scene.render_target_size)) {
-		float3 pixel_radiance = scene_radiance[thread_id].xyz;
+	for (uint i = 0; i < 16; i += 1) {
+		float2 pixel_center_coordinates = (float2)(thread_id * 8u + MortonDecode(i) * 2u + 1u);
+		if (any(pixel_center_coordinates >= scene.render_target_size)) continue;
+		
+		float3 pixel_radiance = scene_radiance.SampleLevel(sampler_linear_clamp, pixel_center_coordinates * scene.inv_render_target_size, 0);
 		float pixel_luminance = dot(pixel_radiance, rec709_luminance_coefficients);
 		
-		float pixel_ev     = pixel_luminance <= constants.histogram_min_luminance ? constants.histogram_min_ev : log2(pixel_luminance);
-		float bucket_index = (pixel_ev - constants.histogram_min_ev) * ((histogram_bucket_count - 1) / (constants.histogram_max_ev - constants.histogram_min_ev));
+		// constants.bucket_index_to_ev.y is the same as histogram_min_ev = log2(constants.histogram_min_luminance).
+		float pixel_ev     = pixel_luminance <= constants.histogram_min_luminance ? constants.bucket_index_to_ev.y : log2(pixel_luminance);
+		float bucket_index = pixel_ev * constants.ev_to_bucket_index.x + constants.ev_to_bucket_index.y;
 		
-		uint index = clamp(round(bucket_index), 0, histogram_bucket_count - 1);
-		InterlockedAdd(gs_luminance_histogram[index], 1u);
+		uint clamped_bucket_index = clamp(round(bucket_index), 0, histogram_bucket_count - 1);
+		InterlockedAdd(gs_luminance_histogram[clamped_bucket_index], 4u); // SampleLevel covers 4 pixels.
 	}
+	_Static_assert(AutomaticExposureGpuConstants::thread_tile_size == 8, "Histogram generation loop assumes 8x8 texels per thread.");
 	
 	GroupMemoryBarrierWithGroupSync();
 	
@@ -60,7 +65,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 		float bucket_weight = asfloat(gs_luminance_histogram[bucket_index]);
 		
 		float clamped_bucket_pixel_count = min(prefix_sum + bucket_weight, constants.histogram_max_cutoff) - max(prefix_sum, constants.histogram_min_cutoff);
-		float bucket_ev = bucket_index * (1.0 / (histogram_bucket_count - 1)) * (constants.histogram_max_ev - constants.histogram_min_ev) + constants.histogram_min_ev;
+		float bucket_ev = bucket_index * constants.bucket_index_to_ev.x + constants.bucket_index_to_ev.y;
 		
 		median_ev  += bucket_ev * max(clamped_bucket_pixel_count, 0.0);
 		prefix_sum += bucket_weight;
