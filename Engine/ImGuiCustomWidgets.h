@@ -44,6 +44,9 @@ namespace ImGui {
 	bool EntityDragDropSource(EntityTypeID entity_type_id, u64 guid);
 	bool EntityDragDropTarget(EntityTypeID entity_type_id, u64* guid);
 	
+	bool BeginMainMenuBarEx(float frame_padding_y = -1.f); // The first call of the frame should provide padding that all subsequent calls would use.
+	void EndMainMenuBarEx();
+	
 	// Widgets for 2 column (Name, Data) tables:
 	bool BeginTableItem(const char* label);
 	void EndTableItem();

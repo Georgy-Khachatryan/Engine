@@ -392,6 +392,31 @@ bool ImGui::ImageButtonEx(const char* str_id, ImTextureRef tex_ref, const ImVec2
 	return pressed;
 }
 
+bool ImGui::BeginMainMenuBarEx(float frame_padding_y) {
+	auto& style = ImGui::GetStyle();
+	
+	if (frame_padding_y >= 0.f) {
+		ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(style.FramePadding.x, frame_padding_y));
+	}
+	
+	bool result = ImGui::BeginMainMenuBar();
+	auto* storage = ImGui::GetStateStorage();
+	
+	if (frame_padding_y >= 0.f) {
+		storage->SetFloat(ImGui::GetID("style.FramePadding.y"), frame_padding_y);
+	} else {
+		frame_padding_y = storage->GetFloat(ImGui::GetID("style.FramePadding.y"));
+		ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(style.FramePadding.x, frame_padding_y));
+	}
+	
+	return result;
+}
+
+void ImGui::EndMainMenuBarEx() {
+	ImGui::EndMainMenuBar();
+	ImGui::PopStyleVar();
+}
+
 void ImGui::TableLabelText(const char* label) {
 	auto* window = ImGui::GetCurrentWindow();
 	if (window->SkipItems) return;

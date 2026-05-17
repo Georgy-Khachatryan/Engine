@@ -143,9 +143,8 @@ static void ImGuiMainWindowMenuBar(SystemWindow* window) {
 	auto half_button_size = ImVec2(ceilf(button_width * 0.5f), floorf(title_bar_height * 0.5f));
 	auto button_size      = half_button_size * 2.f;
 	
-	ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(ImGui::GetStyle().FramePadding.x, floorf((button_size.y - ImGui::GetFontSize()) * 0.5f)));
-	ImGui::BeginMainMenuBar();
-	ImGui::PopStyleVar();
+	ImGui::BeginMainMenuBarEx(floorf((button_size.y - ImGui::GetFontSize()) * 0.5f));
+	auto initial_cursor_position = ImGui::GetCursorScreenPos();
 	
 	window->titlebar_hovered = ImGui::IsWindowHovered() && (ImGui::IsAnyItemHovered() == false);
 	
@@ -221,7 +220,9 @@ static void ImGuiMainWindowMenuBar(SystemWindow* window) {
 	ImGui::PopStyleColor();
 	ImGui::PopStyleVar(2);
 	
-	ImGui::EndMainMenuBar();
+	ImGui::SetCursorScreenPos(initial_cursor_position);
+	
+	ImGui::EndMainMenuBarEx();
 	ImGui::PopStyleVar();
 }
 
