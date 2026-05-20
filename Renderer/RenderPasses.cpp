@@ -167,6 +167,9 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	scene.frame_index = (u32)record_context->frame_index;
 	scene.reference_path_tracer_percent = renderer_world.reference_path_tracer_percent;
 	
+	scene.exposure_estimate     = renderer_world.automatic_exposure_histogram.final_exposure;
+	scene.inv_exposure_estimate = 1.f / scene.exposure_estimate;
+	
 	bool should_reset_path_tracer = renderer_world.reset_reference_path_tracer || memcmp(&scene.view_to_world, &scene.prev_view_to_world, sizeof(float3x4)) != 0 || memcmp(&scene.render_target_size, &scene.prev_render_target_size, sizeof(float2)) != 0 || gpu_uploads.count != 0;
 	if (should_reset_path_tracer) {
 		renderer_world.reset_reference_path_tracer = false;
@@ -298,10 +301,16 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	debug_geometry.debug_geometry_buffer      = &renderer_context->debug_geometry_buffer;
 	
 	auto scene_radiance = VirtualResourceID::SceneRadianceResult;
-	switch (world_entity.anti_aliasing_settings->method) {
-	case AntiAliasingMethod::DLSS: render_passes.Add<DlssRenderPass>().jitter_offset_pixels = scene.jitter_offset_pixels; break;
-	case AntiAliasingMethod::XeSS: render_passes.Add<XessRenderPass>().jitter_offset_pixels = scene.jitter_offset_pixels; break;
-	default: scene_radiance = VirtualResourceID::SceneRadiance; break;
+	if (world_entity.anti_aliasing_settings->method == AntiAliasingMethod::DLSS) {
+		auto& dlss = render_passes.Add<DlssRenderPass>();
+		dlss.jitter_offset_pixels = scene.jitter_offset_pixels;
+		dlss.exposure_estimate    = scene.exposure_estimate;
+	} else if (world_entity.anti_aliasing_settings->method == AntiAliasingMethod::XeSS) { 
+		auto& xess = render_passes.Add<XessRenderPass>();
+		xess.jitter_offset_pixels = scene.jitter_offset_pixels;
+		xess.exposure_estimate    = scene.exposure_estimate;
+	} else {
+		scene_radiance = VirtualResourceID::SceneRadiance;
 	}
 	
 	auto& automatic_exposure = render_passes.Add<AutomaticExposureRenderPass>();

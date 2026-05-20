@@ -46,8 +46,10 @@ struct SceneConstants {
 	float reference_path_tracer_percent;
 	u32 path_tracer_accumulated_frame_count = 0;
 	
+	float exposure_estimate     = 0.f;
+	float inv_exposure_estimate = 0.f;
 	u32 global_light_entity_index = 0;
-	uint3 padding;
+	u32 padding;
 };
 
 NOTES(Meta::HlslFile{ "ToneMappingData.hlsl"_sl })
@@ -142,6 +144,7 @@ struct AutomaticExposureHistogram {
 	
 	float histogram[histogram_bucket_count];
 	float final_ev = 0.f;
+	float final_exposure = 1.f;
 };
 
 NOTES(Meta::SaveLoadOptions{ SaveLoadFlags::None })

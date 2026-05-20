@@ -126,7 +126,7 @@ static void WorldComponentEntityView(StackAllocator* alloc, WorldEntitySystem& w
 				}
 				ImGui::PlotHistogram("##HistogramWithCutoff", histogram_with_cutoff.histogram, histogram_with_cutoff.histogram_bucket_count);
 				
-				ImGui::Text("EV: %.3f, Exposure: %.3f", histogram.final_ev, exp2f(-histogram.final_ev));
+				ImGui::Text("EV: %.3f, Exposure: %.3f", histogram.final_ev, histogram.final_exposure);
 				
 				ImGui::EndTableItem();
 			}

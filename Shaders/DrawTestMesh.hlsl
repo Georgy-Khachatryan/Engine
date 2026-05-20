@@ -81,7 +81,7 @@ void MainMS(
 #include "MaterialSampling.hlsl"
 
 struct OutputPS {
-	float4 color : SV_Target0;
+	float4 scene_radiance : SV_Target0;
 	float2 motion_vectors : SV_Target1;
 };
 
@@ -107,7 +107,7 @@ OutputPS MainPS(InputPS input, InputPrimitivePS primitive_input, float3 bary : S
 #endif // (VISUALIZATION_TYPE == 3)
 	
 	OutputPS output;
-	output.color = float4(meshlet_color, 1.0);
+	output.scene_radiance = float4(meshlet_color * scene.exposure_estimate, 1.0);
 	output.motion_vectors = NdcToScreenUvDirection((input.prev_position.xy / input.prev_position.z) - (input.curr_position.xy / input.curr_position.z));
 	
 	return output;

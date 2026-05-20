@@ -153,6 +153,8 @@ void UpdateStreamingSystems(RendererContext* renderer_context, ThreadPool* threa
 	auto automatic_exposure_histogram = renderer_world.automatic_exposure_readback_queue.Load(record_context->frame_index);
 	if (automatic_exposure_histogram.data != nullptr) {
 		memcpy(&renderer_world.automatic_exposure_histogram, automatic_exposure_histogram.data, sizeof(AutomaticExposureHistogram));
+	} else {
+		renderer_world.automatic_exposure_histogram = {};
 	}
 	
 	UpdateMeshStreamingFiles(renderer_context->mesh_streaming_system, thread_pool, record_context, asset_system);

@@ -341,7 +341,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	
 	float3 sky_radiance = SampleSkyPanoramaLUT(atmosphere, sky_panorama_lut, transmittance_lut, scene.world_space_camera_position, planet_space_direction);
 	
-	scene_radiance[thread_id] = float4(sky_radiance, 1.0);
+	scene_radiance[thread_id] = float4(sky_radiance * scene.exposure_estimate, 1.0);
 	
 	// Camera rotation and FOV change motion vectors for the sky. Camera translation is not accounted for since sky is at an infinite distance.
 	if (IsPerspectiveMatrix(scene.clip_to_view_coef)) {

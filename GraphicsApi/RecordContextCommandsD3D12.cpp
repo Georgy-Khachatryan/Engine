@@ -584,6 +584,8 @@ static void CmdDispatchXessD3D12(CmdDispatchXessPacket* packet, ID3D12GraphicsCo
 	auto result = xessGetProperties(xess_context, &xess_output_resolution, &xess_properties);
 	DebugAssert(result == XESS_RESULT_SUCCESS, "xessGetProperties failed.");
 	
+	xessSetExposureMultiplier(xess_context, 1.f / packet->context.exposure_estimate);
+	
 	xess_d3d12_execute_params_t execute_params = {};
 	execute_params.pColorTexture         = radiance_resource.texture.resource.d3d12;
 	execute_params.pVelocityTexture      = motion_vector_resource.texture.resource.d3d12;
@@ -685,7 +687,7 @@ static void CmdDispatchDlssD3D12(CmdDispatchDlssPacket* packet, ID3D12GraphicsCo
 	eval_params.InMVScaleX          = (float)src_size.x;
 	eval_params.InMVScaleY          = (float)src_size.y;
 	eval_params.pInExposureTexture  = exposure_resource.texture.resource.d3d12;
-	eval_params.InPreExposure       = 1.f; // To get the debug exposure pattern to appear correctly, we have to set this to 0.5, this seems like a bug.
+	eval_params.InPreExposure       = packet->context.exposure_estimate; // To get the debug exposure pattern to appear correctly, we have to multiply pre exposure by 0.5, this seems like a bug.
 	eval_params.InExposureScale     = 1.f;
 	eval_params.InRenderSubrectDimensions.Width  = src_size.x;
 	eval_params.InRenderSubrectDimensions.Height = src_size.y;

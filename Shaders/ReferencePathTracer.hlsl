@@ -317,7 +317,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	
 	uint reference_path_tracer_min_x = (uint)(scene.render_target_size.x * scene.reference_path_tracer_percent);
 	if (thread_id.x < reference_path_tracer_min_x) {
-		scene_radiance[thread_id] = float4(new_accumulated_radiance, 1.0);
+		scene_radiance[thread_id] = float4(new_accumulated_radiance * scene.exposure_estimate, 1.0);
 	}
 }
 #endif // defined(REFERENCE_PATH_TRACER)

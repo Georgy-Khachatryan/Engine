@@ -21,7 +21,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 		if (any(pixel_center_coordinates >= scene.render_target_size)) continue;
 		
 		float3 pixel_radiance = scene_radiance.SampleLevel(sampler_linear_clamp, pixel_center_coordinates * scene.inv_render_target_size, 0);
-		float pixel_luminance = dot(pixel_radiance, rec709_luminance_coefficients);
+		float pixel_luminance = dot(pixel_radiance, rec709_luminance_coefficients) * scene.inv_exposure_estimate;
 		
 		// constants.bucket_index_to_ev.y is the same as histogram_min_ev = log2(constants.histogram_min_luminance).
 		float pixel_ev     = pixel_luminance <= constants.histogram_min_luminance ? constants.bucket_index_to_ev.y : log2(pixel_luminance);
@@ -83,5 +83,6 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	exposure[0] = final_exposure;
 	exposure[1] = final_ev;
 	exposure_texture[uint2(0, 0)] = final_exposure;
-	luminance_histogram_readback[histogram_bucket_count] = final_ev;
+	luminance_histogram_readback[histogram_bucket_count + 0] = final_ev;
+	luminance_histogram_readback[histogram_bucket_count + 1] = final_exposure;
 }

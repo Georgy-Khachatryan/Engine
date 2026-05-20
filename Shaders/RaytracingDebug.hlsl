@@ -53,13 +53,16 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 		float wireframe = 1.0;
 #endif // !SHOW_WIREFRAME
 		
+		float3 result;
 #if (VISUALIZATION_TYPE == 0)
 		float delta_time = (uint)(t1 - t0) * (1.0 / 20000.0) * (1.0 / sample_count);
-		scene_radiance[thread_id] = float4(PlasmaHeatMap(saturate(delta_time)) * wireframe, 1.0);
+		result = PlasmaHeatMap(saturate(delta_time)) * wireframe;;
 #elif (VISUALIZATION_TYPE == 1)
-		scene_radiance[thread_id] = float4(DecodeSRGB(RandomColor(meshlet_header_offset >> 4)) * wireframe, 1.0);
+		result = DecodeSRGB(RandomColor(meshlet_header_offset >> 4)) * wireframe;
 #elif (VISUALIZATION_TYPE == 2)
-		scene_radiance[thread_id] = float4(DecodeSRGB(RandomColor(meshlet_header_offset >> 17)) * wireframe, 1.0);
+		result = DecodeSRGB(RandomColor(meshlet_header_offset >> 17)) * wireframe;
 #endif // (VISUALIZATION_TYPE == 1)
+		
+		scene_radiance[thread_id] = float4(result * scene.exposure_estimate, 1.0);
 	}
 }

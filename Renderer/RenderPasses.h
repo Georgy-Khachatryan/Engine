@@ -1066,12 +1066,14 @@ NOTES(Meta::RenderPass{})
 struct DlssRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	float2 jitter_offset_pixels;
+	float exposure_estimate = 1.f;
 };
 
 NOTES(Meta::RenderPass{})
 struct XessRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	float2 jitter_offset_pixels;
+	float exposure_estimate = 1.f;
 };
 
 

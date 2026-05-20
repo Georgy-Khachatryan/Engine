@@ -11,6 +11,7 @@ void DlssRenderPass::RecordPass(RecordContext* record_context) {
 	context.motion_vector_resource_id = VirtualResourceID::MotionVectors;
 	context.exposure_texture          = VirtualResourceID::ExposureTexture;
 	context.jitter_offset_pixels      = jitter_offset_pixels;
+	context.exposure_estimate         = exposure_estimate;
 	CmdDispatchDLSS(record_context, context);
 }
 
@@ -23,5 +24,6 @@ void XessRenderPass::RecordPass(RecordContext* record_context) {
 	context.motion_vector_resource_id = VirtualResourceID::MotionVectors;
 	context.exposure_texture          = VirtualResourceID::ExposureTexture;
 	context.jitter_offset_pixels      = jitter_offset_pixels;
+	context.exposure_estimate         = exposure_estimate;
 	CmdDispatchXeSS(record_context, context);
 }
