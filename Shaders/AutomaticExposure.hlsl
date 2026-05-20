@@ -64,20 +64,24 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	for (uint bucket_index = 0; bucket_index < histogram_bucket_count; bucket_index += 1) {
 		float bucket_weight = asfloat(gs_luminance_histogram[bucket_index]);
 		
-		float clamped_bucket_pixel_count = min(prefix_sum + bucket_weight, constants.histogram_max_cutoff) - max(prefix_sum, constants.histogram_min_cutoff);
+		float clamped_bucket_weight = min(prefix_sum + bucket_weight, constants.histogram_max_cutoff) - max(prefix_sum, constants.histogram_min_cutoff);
 		float bucket_ev = bucket_index * constants.bucket_index_to_ev.x + constants.bucket_index_to_ev.y;
 		
-		median_ev  += bucket_ev * max(clamped_bucket_pixel_count, 0.0);
+		median_ev  += bucket_ev * max(clamped_bucket_weight, 0.0);
 		prefix_sum += bucket_weight;
 	}
 	median_ev /= (constants.histogram_max_cutoff - constants.histogram_min_cutoff);
 	
-	float old_ev = exposure[0] > 0.0 ? -log2(exposure[0]) : 0.0;
+	float old_ev = exposure[1];
 	float new_ev = clamp(median_ev, constants.exposure_min_ev, constants.exposure_max_ev);
 	
 	// Framerate independent lerp smoothing.
 	float final_ev = lerp(old_ev, new_ev, new_ev > old_ev ? constants.exposure_increase_t : constants.exposure_decrease_t);
 	
-	exposure[0] = exp2(-final_ev);
+	float final_exposure = (constants.method == ExposureMethod::Automatic ? exp2(-final_ev) : 1.0) * constants.exposure_scale;
+	
+	exposure[0] = final_exposure;
+	exposure[1] = final_ev;
+	exposure_texture[uint2(0, 0)] = final_exposure;
 	luminance_histogram_readback[histogram_bucket_count] = final_ev;
 }

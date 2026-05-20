@@ -14,7 +14,7 @@ void UpdateEditorEntityComponents(StackAllocator* alloc, WorldEntitySystem& worl
 	ProfilerScope("UpdateEditorEntityComponents");
 	
 	for (auto* entity_array : QueryEntities<WorldAssetType>(alloc, asset_system)) {
-		ProfilerScope("WorldAssetGpuComponentUpdate");
+		ProfilerScope("WorldAssetComponentUpdate");
 		auto streams = ExtractComponentStreams<WorldAssetType>(entity_array);
 		
 		for (u64 i : BitArrayIt(entity_array->created_mask)) {

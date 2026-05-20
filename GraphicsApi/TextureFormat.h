@@ -162,9 +162,10 @@ struct TextureSize {
 		: x((u16)x), y((u16)y), z((u16)z), mips((u8)mips), type(type), format(format) {}
 	TextureSize(TextureFormat format, uint2 xy, u32 z = 1, u32 mips = 1, Type type = Type::Texture2D)
 		: x((u16)xy.x), y((u16)xy.y), z((u16)z), mips((u8)mips), type(type), format(format) {}
+	TextureSize(u64 packed) : packed(packed) {}
 	
-	bool operator==(const TextureSize& other) { return packed == other.packed; }
-	bool operator!=(const TextureSize& other) { return packed != other.packed; }
+	bool operator==(const TextureSize& other) const { return packed == other.packed; }
+	bool operator!=(const TextureSize& other) const { return packed != other.packed; }
 	
 	u32 ArraySliceCount() const { return type != Type::Texture3D ? z : 1; }
 	u32 DepthSliceCount() const { return type == Type::Texture3D ? z : 1; }

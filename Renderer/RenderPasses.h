@@ -45,6 +45,7 @@ enum struct VirtualResourceID : u32 {
 	SceneTLAS,
 	LuminanceHistogram,
 	Exposure,
+	ExposureTexture,
 	
 	// Mesh rendering:
 	VisibleMeshlets,
@@ -983,7 +984,9 @@ struct AutomaticExposureGpuConstants {
 	float exposure_max_ev         = 0.f;
 	float exposure_increase_t     = 0.f;
 	float exposure_decrease_t     = 0.f;
+	float exposure_scale          = 0.f;
 	u32 last_thread_group_index   = 0;
+	ExposureMethod method         = ExposureMethod::Manual;
 };
 
 NOTES(Meta::RenderPass{})
@@ -998,6 +1001,7 @@ struct AutomaticExposureRenderPass {
 		HLSL::Texture2D<float3>      scene_radiance      = VirtualResourceID::SceneRadiance;
 		HLSL::RWRegularBuffer<u32>   luminance_histogram = VirtualResourceID::LuminanceHistogram;
 		HLSL::RWRegularBuffer<float> exposure            = VirtualResourceID::Exposure;
+		HLSL::RWTexture2D<float>     exposure_texture    = VirtualResourceID::ExposureTexture;
 		HLSL::RWRegularBuffer<float> luminance_histogram_readback;
 	};
 	
@@ -1034,16 +1038,12 @@ struct ToneMappingGpuConstants {
 	float blend_ratio = 0.f;
 	float fade_start  = 0.f;
 	float fade_end    = 0.f;
-	
-	ExposureMethod exposure_method = ExposureMethod::Manual;
-	float exposure_scale = 0.f;
 };
 
 NOTES(Meta::RenderPass{})
 struct ToneMappingRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
-	ExposureSettings exposure_settings;
 	ToneMappingSettings tone_mapping_settings;
 	VirtualResourceID scene_radiance = VirtualResourceID::None;
 	

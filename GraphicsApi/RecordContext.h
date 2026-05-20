@@ -96,6 +96,7 @@ struct XessDispatchContext {
 	VirtualResourceID radiance_resource_id;
 	VirtualResourceID depth_resource_id;
 	VirtualResourceID motion_vector_resource_id;
+	VirtualResourceID exposure_texture;
 	float2 jitter_offset_pixels;
 };
 void CmdDispatchXeSS(RecordContext* record_context, const XessDispatchContext& dispatch_context);
@@ -106,6 +107,7 @@ struct DlssDispatchContext {
 	VirtualResourceID radiance_resource_id;
 	VirtualResourceID depth_resource_id;
 	VirtualResourceID motion_vector_resource_id;
+	VirtualResourceID exposure_texture;
 	float2 jitter_offset_pixels;
 };
 void CmdDispatchDLSS(RecordContext* record_context, const DlssDispatchContext& dispatch_context);

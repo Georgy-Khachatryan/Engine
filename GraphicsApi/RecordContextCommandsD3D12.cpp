@@ -527,17 +527,15 @@ static void CmdEndProfilerScopeD3D12(CmdEndProfilerScopePacket* packet, ID3D12Gr
 static void CmdDispatchXessD3D12(CmdDispatchXessPacket* packet, ID3D12GraphicsCommandList7* command_list, GraphicsContextD3D12* context, ArrayView<VirtualResource> resources) {
 	ProfilerScope("CmdDispatchXessD3D12", command_list);
 	
-	auto& xess_handle_resource   = resources[(u32)packet->xess_handle_resource_id];
-	auto& result_resource        = resources[(u32)packet->result_resource_id];
-	auto& radiance_resource      = resources[(u32)packet->radiance_resource_id];
-	auto& depth_resource         = resources[(u32)packet->depth_resource_id];
-	auto& motion_vector_resource = resources[(u32)packet->motion_vector_resource_id];
+	auto& xess_handle_resource   = resources[(u32)packet->context.xess_handle_resource_id];
+	auto& result_resource        = resources[(u32)packet->context.result_resource_id];
+	auto& radiance_resource      = resources[(u32)packet->context.radiance_resource_id];
+	auto& depth_resource         = resources[(u32)packet->context.depth_resource_id];
+	auto& motion_vector_resource = resources[(u32)packet->context.motion_vector_resource_id];
+	auto& exposure_resource      = resources[(u32)packet->context.exposure_texture];
 	
-	auto src_size = uint2((u32)xess_handle_resource.opaque.user_data_1, (u32)(xess_handle_resource.opaque.user_data_1 >> 32));
-	
-	bool is_dirty = (xess_handle_resource.type != VirtualResource::Type::Opaque) ||
-		(src_size.x != depth_resource.texture.size.x) ||
-		(src_size.y != depth_resource.texture.size.y);
+	auto src_size = TextureSize(xess_handle_resource.opaque.user_data_1);
+	bool is_dirty = (xess_handle_resource.type != VirtualResource::Type::Opaque) || (src_size != depth_resource.texture.size);
 	
 	if (is_dirty) {
 		ProfilerScope("xessD3D12CreateContext/xessD3D12Init");
@@ -550,11 +548,11 @@ static void CmdDispatchXessD3D12(CmdDispatchXessPacket* packet, ID3D12GraphicsCo
 		auto result = xessD3D12CreateContext(context->device, &xess_context);
 		DebugAssert(result == XESS_RESULT_SUCCESS, "xessD3D12CreateContext failed.");
 		
-		src_size = uint2(depth_resource.texture.size);
+		src_size = depth_resource.texture.size;
 		
 		xess_handle_resource.type = VirtualResource::Type::Opaque;
 		xess_handle_resource.opaque.user_data_0 = xess_context;
-		xess_handle_resource.opaque.user_data_1 = (u64)src_size.x | ((u64)src_size.y << 32);
+		xess_handle_resource.opaque.user_data_1 = src_size.packed;
 		xess_handle_resource.opaque.release_user_data = [](VirtualResource* xess_handle_resource, GraphicsContext*) {
 			ProfilerScope("xessDestroyContext");
 			auto xess_context = (xess_context_handle_t)xess_handle_resource->opaque.user_data_0;
@@ -570,7 +568,7 @@ static void CmdDispatchXessD3D12(CmdDispatchXessPacket* packet, ID3D12GraphicsCo
 		init_params.outputResolution.x = src_size.x;
 		init_params.outputResolution.y = src_size.y;
 		init_params.qualitySetting     = XESS_QUALITY_SETTING_AA;
-		init_params.initFlags          = XESS_INIT_FLAG_INVERTED_DEPTH | XESS_INIT_FLAG_USE_NDC_VELOCITY | XESS_INIT_FLAG_ENABLE_AUTOEXPOSURE | XESS_INIT_FLAG_EXTERNAL_DESCRIPTOR_HEAP;
+		init_params.initFlags          = XESS_INIT_FLAG_INVERTED_DEPTH | XESS_INIT_FLAG_USE_NDC_VELOCITY | XESS_INIT_FLAG_EXTERNAL_DESCRIPTOR_HEAP;
 		result = xessD3D12Init(xess_context, &init_params);
 		DebugAssert(result == XESS_RESULT_SUCCESS, "xessD3D12Init failed.");
 		
@@ -587,17 +585,18 @@ static void CmdDispatchXessD3D12(CmdDispatchXessPacket* packet, ID3D12GraphicsCo
 	DebugAssert(result == XESS_RESULT_SUCCESS, "xessGetProperties failed.");
 	
 	xess_d3d12_execute_params_t execute_params = {};
-	execute_params.pColorTexture    = radiance_resource.texture.resource.d3d12;
-	execute_params.pVelocityTexture = motion_vector_resource.texture.resource.d3d12;
-	execute_params.pDepthTexture    = depth_resource.texture.resource.d3d12;
-	execute_params.pOutputTexture   = result_resource.texture.resource.d3d12;
-	execute_params.jitterOffsetX    = packet->jitter_offset_pixels.x;
-	execute_params.jitterOffsetY    = packet->jitter_offset_pixels.y;
-	execute_params.inputWidth       = src_size.x;
-	execute_params.inputHeight      = src_size.y;
-	execute_params.exposureScale    = 1.f;
-	execute_params.pDescriptorHeap  = context->descriptor_heaps[(u32)DescriptorHeapType::SRV];
-	execute_params.descriptorHeapOffset = AllocateTransientSrvDescriptorTable(context, xess_properties.requiredDescriptorCount) * context->descriptor_sizes[(u32)DescriptorHeapType::SRV];
+	execute_params.pColorTexture         = radiance_resource.texture.resource.d3d12;
+	execute_params.pVelocityTexture      = motion_vector_resource.texture.resource.d3d12;
+	execute_params.pDepthTexture         = depth_resource.texture.resource.d3d12;
+	execute_params.pExposureScaleTexture = exposure_resource.texture.resource.d3d12;
+	execute_params.pOutputTexture        = result_resource.texture.resource.d3d12;
+	execute_params.jitterOffsetX         = packet->context.jitter_offset_pixels.x;
+	execute_params.jitterOffsetY         = packet->context.jitter_offset_pixels.y;
+	execute_params.inputWidth            = src_size.x;
+	execute_params.inputHeight           = src_size.y;
+	execute_params.exposureScale         = 1.f;
+	execute_params.pDescriptorHeap       = context->descriptor_heaps[(u32)DescriptorHeapType::SRV];
+	execute_params.descriptorHeapOffset  = AllocateTransientSrvDescriptorTable(context, xess_properties.requiredDescriptorCount) * context->descriptor_sizes[(u32)DescriptorHeapType::SRV];
 	
 	result = xessD3D12Execute(xess_context, command_list, &execute_params);
 	DebugAssert(result == XESS_RESULT_SUCCESS, "xessD3D12Execute failed.");
@@ -609,17 +608,15 @@ static void CmdDispatchXessD3D12(CmdDispatchXessPacket* packet, ID3D12GraphicsCo
 static void CmdDispatchDlssD3D12(CmdDispatchDlssPacket* packet, ID3D12GraphicsCommandList7* command_list, GraphicsContextD3D12* context, ArrayView<VirtualResource> resources) {
 	ProfilerScope("CmdDispatchDlssD3D12", command_list);
 	
-	auto& dlss_handle_resource   = resources[(u32)packet->dlss_handle_resource_id];
-	auto& result_resource        = resources[(u32)packet->result_resource_id];
-	auto& radiance_resource      = resources[(u32)packet->radiance_resource_id];
-	auto& depth_resource         = resources[(u32)packet->depth_resource_id];
-	auto& motion_vector_resource = resources[(u32)packet->motion_vector_resource_id];
+	auto& dlss_handle_resource   = resources[(u32)packet->context.dlss_handle_resource_id];
+	auto& result_resource        = resources[(u32)packet->context.result_resource_id];
+	auto& radiance_resource      = resources[(u32)packet->context.radiance_resource_id];
+	auto& depth_resource         = resources[(u32)packet->context.depth_resource_id];
+	auto& motion_vector_resource = resources[(u32)packet->context.motion_vector_resource_id];
+	auto& exposure_resource      = resources[(u32)packet->context.exposure_texture];
 	
-	auto src_size = uint2((u32)dlss_handle_resource.opaque.user_data_1, (u32)(dlss_handle_resource.opaque.user_data_1 >> 32));
-	
-	bool is_dirty = (dlss_handle_resource.type != VirtualResource::Type::Opaque) ||
-		(src_size.x != depth_resource.texture.size.x) ||
-		(src_size.y != depth_resource.texture.size.y);
+	auto src_size = TextureSize(dlss_handle_resource.opaque.user_data_1);
+	bool is_dirty = (dlss_handle_resource.type != VirtualResource::Type::Opaque) || (src_size != depth_resource.texture.size);
 	
 	compile_const char* ngx_parameter_user_dlss_handle = "UserDlssHandle";
 	
@@ -630,7 +627,7 @@ static void CmdDispatchDlssD3D12(CmdDispatchDlssPacket* packet, ID3D12GraphicsCo
 			dlss_handle_resource.opaque.release_user_data(&dlss_handle_resource, context);
 		}
 		
-		src_size = uint2(depth_resource.texture.size);
+		src_size = depth_resource.texture.size;
 		
 		NVSDK_NGX_Parameter* dlss_parameter_handle = nullptr;
 		auto result = NVSDK_NGX_D3D12_AllocateParameters(&dlss_parameter_handle);
@@ -642,7 +639,7 @@ static void CmdDispatchDlssD3D12(CmdDispatchDlssPacket* packet, ID3D12GraphicsCo
 		create_params.Feature.InTargetWidth  = src_size.x;
 		create_params.Feature.InTargetHeight = src_size.y;
 		create_params.Feature.InPerfQualityValue = NVSDK_NGX_PerfQuality_Value_DLAA;
-		create_params.InFeatureCreateFlags   = NVSDK_NGX_DLSS_Feature_Flags_IsHDR | NVSDK_NGX_DLSS_Feature_Flags_MVLowRes | NVSDK_NGX_DLSS_Feature_Flags_DepthInverted | NVSDK_NGX_DLSS_Feature_Flags_AutoExposure;
+		create_params.InFeatureCreateFlags   = NVSDK_NGX_DLSS_Feature_Flags_IsHDR | NVSDK_NGX_DLSS_Feature_Flags_MVLowRes | NVSDK_NGX_DLSS_Feature_Flags_DepthInverted;
 		create_params.InEnableOutputSubrects = false;
 		
 		NVSDK_NGX_Handle* dlss_handle = nullptr;
@@ -653,7 +650,7 @@ static void CmdDispatchDlssD3D12(CmdDispatchDlssPacket* packet, ID3D12GraphicsCo
 		
 		dlss_handle_resource.type = VirtualResource::Type::Opaque;
 		dlss_handle_resource.opaque.user_data_0 = dlss_parameter_handle;
-		dlss_handle_resource.opaque.user_data_1 = (u64)src_size.x | ((u64)src_size.y << 32);
+		dlss_handle_resource.opaque.user_data_1 = src_size.packed;
 		dlss_handle_resource.opaque.release_user_data = [](VirtualResource* dlss_handle_resource, GraphicsContext*) {
 			ProfilerScope("NVSDK_NGX_D3D12_ReleaseFeature/NVSDK_NGX_D3D12_DestroyParameters");
 			auto* dlss_parameter_handle = (NVSDK_NGX_Parameter*)dlss_handle_resource->opaque.user_data_0;
@@ -678,17 +675,18 @@ static void CmdDispatchDlssD3D12(CmdDispatchDlssPacket* packet, ID3D12GraphicsCo
 	NVSDK_NGX_Parameter_GetVoidPointer(dlss_parameter_handle, ngx_parameter_user_dlss_handle, (void**)&dlss_handle);
 	
 	NVSDK_NGX_D3D12_DLSS_Eval_Params eval_params = {};
-	eval_params.Feature.pInColor  = radiance_resource.texture.resource.d3d12;
-	eval_params.Feature.pInOutput = result_resource.texture.resource.d3d12;
+	eval_params.Feature.pInColor    = radiance_resource.texture.resource.d3d12;
+	eval_params.Feature.pInOutput   = result_resource.texture.resource.d3d12;
 	eval_params.Feature.InSharpness = 0.f;
-	eval_params.pInDepth         = depth_resource.texture.resource.d3d12;
-	eval_params.pInMotionVectors = motion_vector_resource.texture.resource.d3d12;
-	eval_params.InJitterOffsetX  = packet->jitter_offset_pixels.x;
-	eval_params.InJitterOffsetY  = packet->jitter_offset_pixels.y;
-	eval_params.InMVScaleX       = (float)src_size.x;
-	eval_params.InMVScaleY       = (float)src_size.y;
-	eval_params.InPreExposure    = 1.f;
-	eval_params.InExposureScale  = 1.f;
+	eval_params.pInDepth            = depth_resource.texture.resource.d3d12;
+	eval_params.pInMotionVectors    = motion_vector_resource.texture.resource.d3d12;
+	eval_params.InJitterOffsetX     = packet->context.jitter_offset_pixels.x;
+	eval_params.InJitterOffsetY     = packet->context.jitter_offset_pixels.y;
+	eval_params.InMVScaleX          = (float)src_size.x;
+	eval_params.InMVScaleY          = (float)src_size.y;
+	eval_params.pInExposureTexture  = exposure_resource.texture.resource.d3d12;
+	eval_params.InPreExposure       = 1.f; // To get the debug exposure pattern to appear correctly, we have to set this to 0.5, this seems like a bug.
+	eval_params.InExposureScale     = 1.f;
 	eval_params.InRenderSubrectDimensions.Width  = src_size.x;
 	eval_params.InRenderSubrectDimensions.Height = src_size.y;
 	

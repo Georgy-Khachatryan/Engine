@@ -1,6 +1,6 @@
 #pragma once
 #include "Basic/Basic.h"
-#include "GraphicsApiTypes.h"
+#include "RecordContext.h"
 
 enum struct CommandType : u16 {
 	None                  = 0,
@@ -213,21 +213,11 @@ struct CmdEndProfilerScopePacket : RecordContextCommandPacket {
 struct CmdDispatchXessPacket : RecordContextCommandPacket {
 	compile_const CommandType my_type = CommandType::DispatchXeSS;
 	
-	VirtualResourceID xess_handle_resource_id;
-	VirtualResourceID result_resource_id;
-	VirtualResourceID radiance_resource_id;
-	VirtualResourceID depth_resource_id;
-	VirtualResourceID motion_vector_resource_id;
-	float2 jitter_offset_pixels;
+	XessDispatchContext context;
 };
 
 struct CmdDispatchDlssPacket : RecordContextCommandPacket {
 	compile_const CommandType my_type = CommandType::DispatchDLSS;
 	
-	VirtualResourceID dlss_handle_resource_id;
-	VirtualResourceID result_resource_id;
-	VirtualResourceID radiance_resource_id;
-	VirtualResourceID depth_resource_id;
-	VirtualResourceID motion_vector_resource_id;
-	float2 jitter_offset_pixels;
+	DlssDispatchContext context;
 };

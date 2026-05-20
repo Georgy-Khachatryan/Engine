@@ -61,6 +61,7 @@ enum struct ExposureMethod : u32 {
 NOTES()
 struct ExposureSettings {
 	compile_const u32 histogram_bucket_count = 256;
+	compile_const u32 exposure_buffer_size   = 2;
 	
 	float manual_exposure_offset_ev    = 0.f;
 	float automatic_exposure_offset_ev = 0.f;

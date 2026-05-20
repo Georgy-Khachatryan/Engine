@@ -6,7 +6,7 @@
 // Driving Toward Reality: Physically Based Tone Mapping and Perceptual Fidelity in Gran Turismo 7
 // See license in THIRD_PARTY_LICENSES.md
 //
-static ToneMappingGpuConstants InitializeToneMappingGpuConstants(const ToneMappingSettings& settings, const ExposureSettings& exposure_settings) {
+static ToneMappingGpuConstants InitializeToneMappingGpuConstants(const ToneMappingSettings& settings) {
 	ToneMappingGpuConstants constants;
 	
 	constants.method = settings.method;
@@ -33,9 +33,6 @@ static ToneMappingGpuConstants InitializeToneMappingGpuConstants(const ToneMappi
 	constants.fade_start  = settings.fade_start;
 	constants.fade_end    = settings.fade_end;
 	
-	constants.exposure_method = exposure_settings.method;
-	constants.exposure_scale  = exp2f(exposure_settings.method == ExposureMethod::Automatic ? exposure_settings.automatic_exposure_offset_ev : exposure_settings.manual_exposure_offset_ev);
-	
 	return constants;
 }
 
@@ -53,6 +50,8 @@ static AutomaticExposureGpuConstants InitializeAutomaticExposureGpuConstants(con
 	constants.exposure_increase_t     = 1.f - exp2f(-delta_time / exposure_settings.exposure_increase_half_time);
 	constants.exposure_decrease_t     = 1.f - exp2f(-delta_time / exposure_settings.exposure_decrease_half_time);
 	constants.last_thread_group_index = thread_group_count.x * thread_group_count.y - 1;
+	constants.exposure_scale          = exp2f(exposure_settings.method == ExposureMethod::Manual ? exposure_settings.manual_exposure_offset_ev : exposure_settings.automatic_exposure_offset_ev);
+	constants.method                  = exposure_settings.method;
 	
 	return constants;
 }
@@ -95,7 +94,7 @@ void ToneMappingRenderPass::RecordPass(RecordContext* record_context) {
 	auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
 	descriptor_table.scene_radiance = scene_radiance;
 	
-	auto constants = InitializeToneMappingGpuConstants(tone_mapping_settings, exposure_settings);
+	auto constants = InitializeToneMappingGpuConstants(tone_mapping_settings);
 	
 	auto [gpu_address, cpu_address] = AllocateTransientUploadBuffer<ToneMappingGpuConstants>(record_context);
 	memcpy(cpu_address, &constants, sizeof(constants));
