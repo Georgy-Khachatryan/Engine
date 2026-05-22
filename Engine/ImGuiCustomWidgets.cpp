@@ -417,6 +417,17 @@ void ImGui::EndMainMenuBarEx() {
 	ImGui::PopStyleVar();
 }
 
+bool ImGui::TableCollapsingHeader(const char* label, ImGuiTreeNodeFlags flags) {
+	ImGui::TableNextRow();
+	
+	bool result = false;
+	if (ImGui::TableSetColumnIndex(0)) {
+		result = ImGui::CollapsingHeader(label, flags | ImGuiTreeNodeFlags_SpanAllColumns | ImGuiTreeNodeFlags_LabelSpanAllColumns);
+	}
+	
+	return result;
+}
+
 void ImGui::TableLabelText(const char* label) {
 	auto* window = ImGui::GetCurrentWindow();
 	if (window->SkipItems) return;
