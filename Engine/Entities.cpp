@@ -103,15 +103,17 @@ void UpdateEntityGpuComponents(StackAllocator* alloc, RecordContext* record_cont
 			for (u64 i : BitArrayIt(entity_array->dirty_mask)) {
 				auto& light_component = streams.light[i];
 				
-				auto light_to_world_rotation = QuatToRotationMatrix(streams.rotation[i].rotation);
-				auto& position = streams.position[i].position;
-				
 				GpuLightEntityData light_entity;
-				light_entity.light_to_world.r0 = float4(light_to_world_rotation.r0, position.x);
-				light_entity.light_to_world.r1 = float4(light_to_world_rotation.r1, position.y);
-				light_entity.light_to_world.r2 = float4(light_to_world_rotation.r2, position.z);
-				light_entity.color      = Math::DecodeSRGB(light_component.color);
-				light_entity.irradiance = light_component.irradiance;
+				light_entity.light_position              = streams.position[i].position;
+				light_entity.light_direction             = streams.rotation[i].rotation * float3(0.f, 0.f, 1.f);
+				light_entity.color                       = Math::DecodeSRGB(light_component.color);
+				light_entity.radiance_or_irradiance      = light_component.radiance_or_irradiance;
+				light_entity.type                        = light_component.type;
+				light_entity.radius                      = light_component.radius;
+				light_entity.inner_attenuation_radius    = light_component.inner_attenuation_radius;
+				light_entity.outer_attenuation_radius    = light_component.outer_attenuation_radius;
+				light_entity.cos_inner_attenuation_angle = cosf(light_component.inner_attenuation_angle * 0.5f);
+				light_entity.cos_outer_attenuation_angle = cosf(light_component.outer_attenuation_angle * 0.5f);
 				
 				AppendGpuTransferCommand(gpu_light_entity_data, i, light_entity);
 			}

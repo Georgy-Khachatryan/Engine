@@ -5,6 +5,16 @@ struct LightComponent {
 		color float3 0;
 		irradiance float32 0;
 	}
+	/*Version*/ 2 {
+		type LightType 0;
+		color float3 0;
+		irradiance float32 0;
+		radius float32 0;
+		inner_attenuation_radius float32 0;
+		outer_attenuation_radius float32 0;
+		inner_attenuation_angle float32 0;
+		outer_attenuation_angle float32 0;
+	}
 }
 
 struct WorldSourceData {
@@ -100,6 +110,14 @@ struct CameraComponent {
 struct CameraEntityGUID {
 	/*Version*/ 0 {
 		guid u64 0;
+	}
+}
+
+enum LightType {
+	/*Version*/ 0 u32 {
+		Spot 0;
+		Point 1;
+		Global 2;
 	}
 }
 

@@ -52,12 +52,41 @@ static void WorldComponentEntityView(StackAllocator* alloc, WorldEntitySystem& w
 	}
 	
 	if (entity.light) {
-		const char* label = "R"; // Reset.
-		const float default_values = 1.f;
-		ImGui::TableDragFloatWithReset("Irradiance", &entity.light->irradiance, 1, 0.1f, 0.f, 2000.f, "%.1f", 0, &label, &default_values);
+		auto& light = *entity.light;
+		
+		ImGui::TableCombo("Light Type", (s32*)&light.type, "Spot\0Point\0Global\0");
+		
+		const char* label           = light.type == LightType::Global ? "Irradiance" : "Radiance";
+		const char* component_label = "R"; // Reset.
+		const float default_values  = 1.f;
+		ImGui::TableDragFloatWithReset(label, &light.radiance_or_irradiance, 1, 0.1f, 0.f, 2000.f, "%.1f", 0, &component_label, &default_values);
+		
 		if (ImGui::BeginTableItem("Color")) {
-			ImGui::ColorEdit3("", &entity.light->color.x, ImGuiColorEditFlags_Float);
+			ImGui::ColorEdit3("", &light.color.x, ImGuiColorEditFlags_Float);
 			ImGui::EndTableItem();
+		}
+		
+		if (light.type == LightType::Spot || light.type == LightType::Point) {
+			ImGui::TableSliderFloat("Light Radius", &light.radius, 0.01f, 1.f);
+			
+			if (ImGui::TableSliderFloat("Inner Attenuation Radius", &light.inner_attenuation_radius, 0.1f, 32.f)) {
+				light.outer_attenuation_radius = Math::Max(light.outer_attenuation_radius, light.inner_attenuation_radius);
+			}
+			
+			ImGui::TableSliderFloat("Outer Attenuation Radius", &light.outer_attenuation_radius, light.inner_attenuation_radius, 32.f);
+		}
+		
+		if (light.type == LightType::Spot) {
+			float inner_attenuation_angle = light.inner_attenuation_angle * Math::radians_to_degrees;
+			if (ImGui::TableSliderFloat("Inner Attenuation Angle", &inner_attenuation_angle, 0.f, 180.f)) {
+				light.inner_attenuation_angle = inner_attenuation_angle * Math::degrees_to_radians;
+				light.outer_attenuation_angle = Math::Max(light.outer_attenuation_angle, light.inner_attenuation_angle);
+			}
+			
+			float outer_attenuation_angle = light.outer_attenuation_angle * Math::radians_to_degrees;
+			if (ImGui::TableSliderFloat("Outer Attenuation Angle", &outer_attenuation_angle, inner_attenuation_angle, 180.f)) {
+				light.outer_attenuation_angle = outer_attenuation_angle * Math::degrees_to_radians;
+			}
 		}
 	}
 	

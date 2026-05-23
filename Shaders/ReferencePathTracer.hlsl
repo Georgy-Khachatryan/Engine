@@ -96,7 +96,7 @@ float3 DecodeAndInterpolateUnitVector(float3 barycentrics, s16x2 v0, s16x2 v1, s
 	return BarycentricInterpolation(barycentrics, n0, n1, n2);
 }
 
-float TraceShadowRay(float3 ray_origin, float3 ray_direction) {
+float TraceShadowRay(float3 ray_origin, float3 ray_direction, float ray_length) {
 	RayQuery<
 		RAY_FLAG_CULL_NON_OPAQUE |
 		RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES |
@@ -109,7 +109,7 @@ float TraceShadowRay(float3 ray_origin, float3 ray_direction) {
 	ray_desc.Origin    = ray_origin;
 	ray_desc.Direction = ray_direction;
 	ray_desc.TMin      = 0.0;
-	ray_desc.TMax      = 1024.0;
+	ray_desc.TMax      = ray_length;
 	
 	ray_query.TraceRayInline(scene_tlas, 0, 0xFF, ray_desc);
 	
@@ -134,6 +134,44 @@ float3 ComputeConductorBrdfEnergyCompensation(float2 single_scattering_energy, f
 
 float ComputeDielectricBrdfEnergyCompensation(float2 single_scattering_energy) {
 	return (1.0 / single_scattering_energy.y);
+}
+
+
+struct LightShadingInfo {
+	float3 light_direction;
+	float shadow_ray_length;
+	float3 light_irradiance;
+};
+
+LightShadingInfo ComputeLightShadingInfo(float3 shading_position, u32 light_entity_index) {
+	GpuLightEntityData light = light_entity_data[light_entity_index];
+	
+	LightShadingInfo shading_info;
+	shading_info.light_irradiance = light.radiance_or_irradiance * light.color;
+	
+	if (light.type == LightType::Global) {
+		shading_info.light_direction   = light.light_direction;
+		shading_info.shadow_ray_length = 1024.0;
+		shading_info.light_irradiance *= SampleTransmittanceLUT(atmosphere, transmittance_lut, shading_position);
+	} else {
+		float3 light_vector = light.light_position - shading_position;
+		float distance_to_light_square = dot(light_vector, light_vector);
+		float distance_to_light = sqrt(distance_to_light_square);
+		
+		shading_info.light_direction   = light_vector / distance_to_light;
+		shading_info.shadow_ray_length = distance_to_light;
+		
+		// Converts Spot or Point light radiance to irradiance. Attenuation radius and light radius are not physically based.
+		float attenuation = smoothstep(light.outer_attenuation_radius, light.inner_attenuation_radius, distance_to_light) / (distance_to_light_square + Pow2(light.radius) * 0.5);
+		
+		if (light.type == LightType::Spot) {
+			attenuation *= smoothstep(light.cos_outer_attenuation_angle, light.cos_inner_attenuation_angle, dot(shading_info.light_direction, light.light_direction));
+		}
+		
+		shading_info.light_irradiance *= attenuation;
+	}
+	
+	return shading_info;
 }
 
 
@@ -219,21 +257,21 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 			float3 diffuse_albedo = properties.albedo;
 			
 			if (scene.global_light_entity_index != u32_max) {
-				GpuLightEntityData light = light_entity_data[scene.global_light_entity_index];
-				
 				float3x3 world_to_tangent = BuildOrthonormalBasis(world_space_normal);
 				float3x3 tangent_to_world = transpose(world_to_tangent);
 				
-				float3 light_direction = mul((float3x3)light.light_to_world, float3(0.0, 0.0, 1.0));
-				float3 wi = mul(world_to_tangent, light_direction);
+				LightShadingInfo shading_info = ComputeLightShadingInfo(ray_desc.Origin, scene.global_light_entity_index);
+				
+				float3 wi = mul(world_to_tangent, shading_info.light_direction);
 				float3 wo = mul(world_to_tangent, -ray_desc.Direction);
 				float3 wh = normalize(wo + wi);
 				float abs_cos_theta_o = abs(wo.z);
 				float i_dot_h = saturate(dot(wi, wh));
 				
-				float3 light_irradiance = light.irradiance * light.color * SampleTransmittanceLUT(atmosphere, transmittance_lut, ray_desc.Origin);
-				float shadow = TraceShadowRay(ray_desc.Origin, light_direction);
-				float3 shadowed_light_irradiance = (throughput * light_irradiance) * (shadow * saturate(wi.z));
+				float3 shadowed_light_irradiance = (throughput * shading_info.light_irradiance) * saturate(wi.z);
+				if (any(shadowed_light_irradiance > 0.0)) {
+					shadowed_light_irradiance *= TraceShadowRay(ray_desc.Origin, shading_info.light_direction, shading_info.shadow_ray_length);
+				}
 				
 				float2 single_scattering_energy = SampleGgxSingleScatteringEnergyLUT(abs_cos_theta_o, roughness);
 				

@@ -28,6 +28,7 @@ static void CreateDefaultWorldSystem(WorldEntitySystem& world_system, u64 world_
 	
 	camera_entity.name->name       = StringCopy(&world_system.heap, "DefaultCamera"_sl);
 	global_light_entity.name->name = StringCopy(&world_system.heap, "DefaultGlobalLight"_sl);
+	global_light_entity.light->type = LightType::Global;
 	
 	world_entity.camera_entity->guid       = camera_entity.guid->guid;
 	world_entity.global_light_entity->guid = global_light_entity.guid->guid;

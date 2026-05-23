@@ -205,17 +205,46 @@ struct CameraEntityGUID {
 	u64 guid = 0;
 };
 
+NOTES(Meta::HlslFile{ "LightData.hlsl"_sl })
+enum struct LightType : u32 {
+	Spot   = 0,
+	Point  = 1,
+	Global = 2,
+};
+
 NOTES()
 struct LightComponent {
-	float3 color     = 1.f; // SRGB rec709.
-	float irradiance = 1.f; // W/m^2
+	LightType type = LightType::Spot;
+	float3   color = 1.f; // SRGB rec709.
+	
+	union {
+		float radiance_or_irradiance = 1.f;
+		
+		float radiance;   // Used for Spot and Point lights, W
+		float irradiance; // Used for Global lights, W/m^2
+	};
+	
+	float radius = 0.03f; // Used for Spot and Point lights (Default is 60mm diameter E27 light bulb).
+	
+	float inner_attenuation_radius = 9.f;
+	float outer_attenuation_radius = 10.f;
+	
+	float inner_attenuation_angle = 60.f * Math::degrees_to_radians;
+	float outer_attenuation_angle = 90.f * Math::degrees_to_radians;
 };
 
 NOTES(Meta::HlslFile{ "LightData.hlsl"_sl })
 struct GpuLightEntityData {
-	float3x4 light_to_world;
-	float3 color     = 1.f; // Linear rec709.
-	float irradiance = 1.f; // W/m^2.
+	float3 light_position             = 0.f;
+	float3 light_direction            = 0.f;
+	float3 color                      = 1.f; // Linear Rec709.
+	float radiance_or_irradiance      = 0.f;
+	LightType type                    = LightType::Spot;
+	float radius                      = 0.f;
+	float inner_attenuation_radius    = 0.f;
+	float outer_attenuation_radius    = 0.f;
+	float cos_inner_attenuation_angle = 0.f;
+	float cos_outer_attenuation_angle = 0.f;
 };
 
 NOTES()
