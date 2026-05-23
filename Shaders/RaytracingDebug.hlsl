@@ -56,7 +56,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 		float3 result;
 #if (VISUALIZATION_TYPE == 0)
 		float delta_time = (uint)(t1 - t0) * (1.0 / 20000.0) * (1.0 / sample_count);
-		result = PlasmaHeatMap(saturate(delta_time)) * wireframe;;
+		result = PlasmaHeatMap(saturate(delta_time)) * wireframe;
 #elif (VISUALIZATION_TYPE == 1)
 		result = DecodeSRGB(RandomColor(meshlet_header_offset >> 4)) * wireframe;
 #elif (VISUALIZATION_TYPE == 2)

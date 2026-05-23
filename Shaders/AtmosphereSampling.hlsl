@@ -173,7 +173,9 @@ float3 SampleTransmittanceLUT(AtmosphereParameters atmosphere, Texture2D<float3>
 	float2 transmittance_lut_uv = TransmittanceLutCoordinatesToUv(atmosphere, lut_coordinates);
 	float3 transmittance_to_light = transmittance_lut.SampleLevel(sampler_linear_clamp, transmittance_lut_uv, 0);
 	
-	return transmittance_to_light;
+	bool intersect_ground = RayAtmosphereIntersect(planet_space_position, planet_space_direction, atmosphere.bottom_radius) >= 0.0;
+	
+	return transmittance_to_light * (intersect_ground ? 0.0 : 1.0);
 }
 
 #endif // ATMOSPHERESAMPLING_HLSL

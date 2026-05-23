@@ -5,8 +5,11 @@
 #include "EntitySystem/Components.h"
 #include "GraphicsApi/GraphicsApiTypes.h"
 
+struct AsyncTransferQueue;
 struct DebugMeshInstanceArray;
-struct DebugGeometryBuffer;
+struct GpuComponentUploadBuffer;
+struct RecordContext;
+struct ThreadPool;
 
 NOTES(Meta::HlslFile{ "SceneData.hlsl"_sl })
 struct SceneConstants {
@@ -240,9 +243,12 @@ struct GpuLightEntityData {
 	float3 color                 = 1.f; // Linear Rec709.
 	float radiance_or_irradiance = 0.f;
 	LightType type               = LightType::Spot;
-	float radius                 = 0.f;
+	float  light_radius          = 0.f;
 	float2 distance_attenuation  = 0.f;
 	float2 angle_attenuation     = 0.f;
+	float  attenuation_radius    = 0.f;
+	float  tan_attenuation_angle = 0.f;
+	float  cos_attenuation_angle = 0.f;
 };
 
 NOTES()
@@ -307,9 +313,11 @@ struct LightEntityQuery {
 	ECS::Component<LightComponent>    light;
 };
 
-struct RecordContext;
-struct AsyncTransferQueue;
-struct ThreadPool;
-struct GpuComponentUploadBuffer;
+NOTES(Meta::ComponentQuery{})
+struct GpuLightEntityQuery {
+	ECS::GpuComponent<GpuLightEntityData> gpu_light_entity_data;
+};
+
+
 void UpdateRendererEntityGpuComponents(StackAllocator* alloc, ThreadPool* thread_pool, AsyncTransferQueue* async_transfer_queue, RecordContext* record_context, AssetEntitySystem& asset_system, Array<GpuComponentUploadBuffer>& gpu_uploads);
 void ReleaseTextureAssets(StackAllocator* alloc, GraphicsContext* graphics_context, AssetEntitySystem& asset_system);

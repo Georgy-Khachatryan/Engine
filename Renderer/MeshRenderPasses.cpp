@@ -1,4 +1,3 @@
-#include "Basic/BasicBitArray.h"
 #include "RenderPasses.h"
 #include "GraphicsApi/GraphicsApi.h"
 #include "GraphicsApi/RecordContext.h"
@@ -34,6 +33,7 @@ void MeshletClearBuffersRenderPass::RecordPass(RecordContext* record_context) {
 	largest_buffer_size = Math::Max(largest_buffer_size, constants.mesh_streaming_feedback_size);
 	largest_buffer_size = Math::Max(largest_buffer_size, constants.texture_streaming_feedback_size);
 	largest_buffer_size = Math::Max(largest_buffer_size, constants.mesh_instance_capacity);
+	largest_buffer_size = Math::Max(largest_buffer_size, LightCullingConstants::grid_element_count);
 	
 	CmdDispatch(record_context, DivideAndRoundUp(largest_buffer_size, MeshletConstants::meshlet_culling_thread_group_size));
 }

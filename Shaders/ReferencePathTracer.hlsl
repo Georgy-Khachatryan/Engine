@@ -77,6 +77,13 @@ float2 ComputeRandomUnorm16x2(inout uint hash) {
 	return result;
 }
 
+// Result has exclusive upper bound, i.e. the range is [0, max_value).
+uint ComputeRandomU32(inout uint hash, uint max_value) {
+	uint result = hash % max_value;
+	hash = WyHash32(hash, 0);
+	return result;
+}
+
 
 #if defined(REFERENCE_PATH_TRACER)
 #include "SDK/NvAPI/include/nvHLSLExtns.h"
@@ -162,7 +169,7 @@ LightShadingInfo ComputeLightShadingInfo(float3 shading_position, u32 light_enti
 		shading_info.shadow_ray_length = distance_to_light;
 		
 		// Converts Spot or Point light radiance to irradiance. Attenuation radius and light radius are not physically based.
-		float attenuation = SmoothStep(light.distance_attenuation, distance_to_light) / (distance_to_light_square + Pow2(light.radius) * 0.5);
+		float attenuation = SmoothStep(light.distance_attenuation, distance_to_light) / (distance_to_light_square + Pow2(light.light_radius) * 0.5);
 		
 		if (light.type == LightType::Spot) {
 			attenuation *= SmoothStep(light.angle_attenuation, dot(shading_info.light_direction, light.light_direction));
@@ -172,6 +179,38 @@ LightShadingInfo ComputeLightShadingInfo(float3 shading_position, u32 light_enti
 	}
 	
 	return shading_info;
+}
+
+uint2 SampleLight(float3 shading_position, inout uint hash) {
+	compile_const float grid_cell_size  = LightCullingConstants::grid_cell_size;
+	compile_const float grid_size_cells = LightCullingConstants::grid_size_cells;
+	
+	float3 origin = round(scene.world_space_camera_position / grid_cell_size) * grid_cell_size;
+	s32x3 cell_position = (s32x3)floor(((shading_position - origin) / grid_cell_size) + grid_size_cells * 0.5);
+	
+	uint light_count = 0;
+	
+	bool has_global_light = scene.global_light_entity_index != u32_max;
+	light_count += has_global_light ? 1u : 0u;
+	
+	uint cell_index = u32_max;
+	if (all(cell_position >= 0) && all(cell_position < 16)) {
+		cell_index = cell_position.x | (cell_position.y << 4) | (cell_position.z << 8);
+		light_count += min(light_culling_grid[cell_index * LightCullingConstants::max_elements_per_cell], LightCullingConstants::max_elements_per_cell);
+	}
+	
+	uint light_entity_index = u32_max;
+	if (light_count != 0) {
+		uint light_index_in_cell = ComputeRandomU32(hash, light_count);
+		
+		if (has_global_light && light_index_in_cell == 0) {
+			light_entity_index = scene.global_light_entity_index;
+		} else {
+			light_entity_index = light_culling_grid[cell_index * LightCullingConstants::max_elements_per_cell + light_index_in_cell + (has_global_light ? 0u : 1u)];
+		}
+	}
+	
+	return uint2(light_entity_index, light_count);
 }
 
 
@@ -256,11 +295,14 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 			float  alpha_square = Pow2(alpha);
 			float3 diffuse_albedo = properties.albedo;
 			
-			if (scene.global_light_entity_index != u32_max) {
+			uint2 light_sample = SampleLight(ray_desc.Origin, hash);
+			
+			if (light_sample.y != 0) {
 				float3x3 world_to_tangent = BuildOrthonormalBasis(world_space_normal);
 				float3x3 tangent_to_world = transpose(world_to_tangent);
 				
-				LightShadingInfo shading_info = ComputeLightShadingInfo(ray_desc.Origin, scene.global_light_entity_index);
+				LightShadingInfo shading_info = ComputeLightShadingInfo(ray_desc.Origin, light_sample.x);
+				shading_info.light_irradiance *= light_sample.y;
 				
 				float3 wi = mul(world_to_tangent, shading_info.light_direction);
 				float3 wo = mul(world_to_tangent, -ray_desc.Direction);

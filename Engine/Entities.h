@@ -69,6 +69,9 @@ struct LightEntityType {
 	ECS::Component<RotationComponent> rotation;
 	ECS::Component<LightComponent>    light;
 	
+	NOTES(VirtualResourceID::LightEntityAliveMask)
+	ECS::GpuMaskComponent<AliveEntityMask> alive_mask;
+	
 	NOTES(VirtualResourceID::GpuLightEntityData)
 	ECS::GpuComponent<GpuLightEntityData> gpu_light_entity_data;
 };

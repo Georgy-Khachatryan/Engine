@@ -21,7 +21,7 @@ static void UpdateEntityAliveMasks(StackAllocator* alloc, RecordContext* record_
 			created_or_removed_qword_count += created_or_removed_qword != 0 ? 1 : 0;
 		}
 		
-		if (created_or_removed_qword_count) {
+		if (created_or_removed_qword_count != 0) {
 			auto streams = ExtractComponentStreams<AliveEntityMaskQuery>(entity_array);
 			auto gpu_alive_mask = AllocateGpuComponentUploadBuffer(record_context, created_or_removed_qword_count, streams.alive_mask);
 			
@@ -115,9 +115,12 @@ void UpdateEntityGpuComponents(StackAllocator* alloc, RecordContext* record_cont
 				light_entity.color                  = Math::DecodeSRGB(light_component.color);
 				light_entity.radiance_or_irradiance = light_component.radiance_or_irradiance;
 				light_entity.type                   = light_component.type;
-				light_entity.radius                 = light_component.radius;
+				light_entity.light_radius           = light_component.radius;
 				light_entity.distance_attenuation   = Math::SmoothStepCoefficients(outer_attenuation_radius, inner_attenuation_radius);
 				light_entity.angle_attenuation      = Math::SmoothStepCoefficients(cos_outer_attenuation_angle, cos_inner_attenuation_angle);
+				light_entity.attenuation_radius     = outer_attenuation_radius;
+				light_entity.tan_attenuation_angle  = tanf(light_component.attenuation_angle * 0.5f);
+				light_entity.cos_attenuation_angle  = cos_outer_attenuation_angle;
 				
 				AppendGpuTransferCommand(gpu_light_entity_data, i, light_entity);
 			}

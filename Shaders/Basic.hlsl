@@ -60,6 +60,7 @@ compile_const s64 s64_min = (s64)0x8000000000000000;
 
 
 compile_const float PI = 3.1415927;
+compile_const float SQRT3_OVER_TWO = 0.8660254;
 
 float  Pow2(float  value) { return value * value; }
 float2 Pow2(float2 value) { return value * value; }
@@ -70,6 +71,10 @@ float  Pow5(float  value) { return Pow2(Pow2(value)) * value; }
 float2 Pow5(float2 value) { return Pow2(Pow2(value)) * value; }
 float3 Pow5(float3 value) { return Pow2(Pow2(value)) * value; }
 float4 Pow5(float4 value) { return Pow2(Pow2(value)) * value; }
+
+float Length2(float2 value) { return dot(value, value); }
+float Length2(float3 value) { return dot(value, value); }
+float Length2(float4 value) { return dot(value, value); }
 
 uint DivideAndRoundUp(uint numerator, uint denominator) { return (numerator + (denominator - 1)) / denominator; }
 uint AlignUp(uint size, uint alignment) { return (size + alignment - 1) & ~(alignment - 1); }

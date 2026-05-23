@@ -16,6 +16,7 @@ enum struct VirtualResourceID : u32 {
 	GpuLightEntityData,
 	GpuMeshAssetData,
 	GpuMeshEntityData,
+	LightEntityAliveMask,
 	MaterialAssetTextureData,
 	MeshAssetAliveMask,
 	MeshEntityAliveMask,
@@ -55,6 +56,11 @@ enum struct VirtualResourceID : u32 {
 	MeshletIndirectArguments,
 	InstanceMeshletCounts,
 	MeshletRtasIndirectArguments,
+	
+	// Lighting:
+	LightCullingIndirectArguments,
+	LightCullingCommands,
+	LightCullingGrid,
 	
 	// Streaming feedback:
 	MeshletStreamingFeedback,
@@ -655,6 +661,8 @@ struct MeshletClearBuffersRenderPass {
 		HLSL::RWRegularBuffer<u32> texture_streaming_feedback = VirtualResourceID::TextureStreamingFeedback;
 		HLSL::RWRegularBuffer<u32> culling_hzb_build_state    = VirtualResourceID::CullingHzbBuildState;
 		HLSL::RWRegularBuffer<u32> instance_meshlet_counts    = VirtualResourceID::InstanceMeshletCounts;
+		HLSL::RWRegularBuffer<uint4> light_culling_indirect_arguments = VirtualResourceID::LightCullingIndirectArguments;
+		HLSL::RWRegularBuffer<u32> light_culling_grid         = VirtualResourceID::LightCullingGrid;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {
@@ -852,6 +860,82 @@ struct BuildHzbRenderPass {
 };
 
 
+NOTES(Meta::ShaderName{ "LightCulling.hlsl"_sl })
+enum struct LightCullingShaders : u32 {
+	ClearBuffers       = 1u << 0,
+	LightEntityCulling = 1u << 1,
+	LightCulling       = 1u << 2,
+};
+SHADER_DEFINITION_GENERATED_CODE(LightCullingShaders);
+
+NOTES(Meta::HlslFile{ "LightData.hlsl"_sl })
+struct LightCullingConstants {
+	compile_const u32 thread_group_size = 256u;
+	
+	compile_const u32   grid_size_cells    = 16;
+	compile_const u32   grid_cell_count    = grid_size_cells * grid_size_cells * grid_size_cells;
+	compile_const float grid_cell_size     = 0.25f;
+	compile_const float inv_grid_cell_size = 1.f / grid_cell_size;
+	
+	compile_const u32 max_elements_per_cell = 64;
+	compile_const u32 max_lights_per_cell   = max_elements_per_cell - 1; // 1 Counter
+	compile_const u32 grid_element_count    = max_elements_per_cell * grid_cell_count;
+	
+	compile_const u32 culling_command_bin_count = 13;
+	compile_const u32 culling_command_bin_size  = 16 * 1024;
+	compile_const u32 culling_command_count     = culling_command_bin_size * culling_command_bin_count;
+	
+	static_assert((1u << (culling_command_bin_count - 1)) == (grid_size_cells * grid_size_cells * grid_size_cells));
+};
+
+NOTES(Meta::RenderPass{})
+struct LightEntityCullingRenderPass {
+	RENDER_PASS_GENERATED_CODE();
+	
+	WorldEntitySystem* world_system = nullptr;
+	
+	struct Descriptors : HLSL::BaseDescriptorTable {
+		HLSL::RegularBuffer<u32>                light_alive_mask  = VirtualResourceID::LightEntityAliveMask;
+		HLSL::RegularBuffer<GpuLightEntityData> light_entity_data = VirtualResourceID::GpuLightEntityData;
+		
+		HLSL::RWRegularBuffer<uint2> light_culling_commands = VirtualResourceID::LightCullingCommands;
+		HLSL::RWRegularBuffer<uint4> indirect_arguments     = VirtualResourceID::LightCullingIndirectArguments;
+	};
+	
+	struct RootSignature : HLSL::BaseRootSignature {
+		HLSL::ConstantBuffer<SceneConstants> scene;
+		HLSL::DescriptorTable<Descriptors> descriptor_table;
+	};
+	
+	inline static PipelineID pipeline_id;
+};
+
+NOTES(Meta::RenderPass{})
+struct LightCullingRenderPass {
+	RENDER_PASS_GENERATED_CODE();
+	
+	struct Descriptors : HLSL::BaseDescriptorTable {
+		HLSL::RegularBuffer<GpuLightEntityData> light_entity_data      = VirtualResourceID::GpuLightEntityData;
+		HLSL::RegularBuffer<uint2>              light_culling_commands = VirtualResourceID::LightCullingCommands;
+		
+		HLSL::RWRegularBuffer<uint4> indirect_arguments = VirtualResourceID::LightCullingIndirectArguments;
+		HLSL::RWRegularBuffer<u32>   light_culling_grid = VirtualResourceID::LightCullingGrid;
+	};
+	
+	struct RootSignature : HLSL::BaseRootSignature {
+		struct PushConstants {
+			u32 bin_index = 0;
+		};
+		
+		HLSL::PushConstantBuffer<PushConstants> constants;
+		HLSL::ConstantBuffer<SceneConstants> scene;
+		HLSL::DescriptorTable<Descriptors> descriptor_table;
+	};
+	
+	inline static PipelineID pipeline_id;
+};
+
+
 NOTES(Meta::ShaderName{ "RaytracingDebug.hlsl"_sl })
 enum struct RaytracingDebugShaders : u32 {};
 SHADER_DEFINITION_GENERATED_CODE(RaytracingDebugShaders);
@@ -899,6 +983,7 @@ struct ReferencePathTracerRenderPass {
 		HLSL::RegularBuffer<GpuMeshEntityData>      mesh_entity_data      = VirtualResourceID::GpuMeshEntityData;
 		HLSL::RegularBuffer<GpuMaterialTextureData> material_texture_data = VirtualResourceID::MaterialAssetTextureData;
 		HLSL::ByteBuffer                            mesh_asset_buffer     = VirtualResourceID::MeshAssetBuffer;
+		HLSL::RegularBuffer<u32>                    light_culling_grid    = VirtualResourceID::LightCullingGrid;
 		HLSL::TopLevelRTAS                          scene_tlas            = VirtualResourceID::SceneTLAS;
 		HLSL::RWTexture2D<float4>                   path_tracer_radiance  = VirtualResourceID::ReferencePathTracerRadiance;
 		HLSL::RWTexture2D<float4>                   scene_radiance        = VirtualResourceID::SceneRadiance;

@@ -42,6 +42,10 @@ static void BuildResourceTable(RecordContext* record_context, WorldEntitySystem*
 	table.Set(ID::CullingHZB,           BuildHzbRenderPass::ComputeCullingHzbSize(render_target_size));
 	table.Set(ID::CullingHzbBuildState, BuildHzbRenderPass::culling_hzb_build_state_size);
 	
+	table.Set(ID::LightCullingCommands,          LightCullingConstants::culling_command_count     * sizeof(uint2));
+	table.Set(ID::LightCullingIndirectArguments, LightCullingConstants::culling_command_bin_count * sizeof(uint4));
+	table.Set(ID::LightCullingGrid,              LightCullingConstants::grid_element_count        * sizeof(u32));
+	
 	table.Set(ID::LuminanceHistogram, ExposureSettings::histogram_bucket_count * sizeof(u32) + sizeof(u32));
 	table.Set(ID::Exposure,           ExposureSettings::exposure_buffer_size * sizeof(float));
 	table.Set(ID::ExposureTexture,    TextureSize(TextureFormat::R32_FLOAT, 1, 1)); // Used only for third party SDKs.
@@ -286,6 +290,12 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	copy_streaming_feedback.meshlet_streaming_feedback_queue = &renderer_world.meshlet_streaming_feedback_queue;
 	copy_streaming_feedback.mesh_streaming_feedback_queue    = &renderer_world.mesh_streaming_feedback_queue;
 	copy_streaming_feedback.texture_streaming_feedback_queue = &renderer_world.texture_streaming_feedback_queue;
+	
+	
+	auto& light_entity_culling = render_passes.Add<LightEntityCullingRenderPass>();
+	light_entity_culling.world_system = world_system;
+	
+	render_passes.Add<LightCullingRenderPass>();
 	
 	
 	render_passes.Add<RaytracingDebugRenderPass>();
