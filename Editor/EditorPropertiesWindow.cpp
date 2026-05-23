@@ -69,24 +69,16 @@ static void WorldComponentEntityView(StackAllocator* alloc, WorldEntitySystem& w
 		if (light.type == LightType::Spot || light.type == LightType::Point) {
 			ImGui::TableSliderFloat("Light Radius", &light.radius, 0.01f, 1.f);
 			
-			if (ImGui::TableSliderFloat("Inner Attenuation Radius", &light.inner_attenuation_radius, 0.1f, 32.f)) {
-				light.outer_attenuation_radius = Math::Max(light.outer_attenuation_radius, light.inner_attenuation_radius);
-			}
-			
-			ImGui::TableSliderFloat("Outer Attenuation Radius", &light.outer_attenuation_radius, light.inner_attenuation_radius, 32.f);
+			ImGui::TableSliderFloat("Attenuation Radius", &light.attenuation_radius, 0.1f, 32.f);
+			ImGui::TableSliderFloat("Attenuation Radius Falloff", &light.attenuation_radius_falloff, 0.f, 1.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
 		}
 		
 		if (light.type == LightType::Spot) {
-			float inner_attenuation_angle = light.inner_attenuation_angle * Math::radians_to_degrees;
-			if (ImGui::TableSliderFloat("Inner Attenuation Angle", &inner_attenuation_angle, 0.f, 180.f)) {
-				light.inner_attenuation_angle = inner_attenuation_angle * Math::degrees_to_radians;
-				light.outer_attenuation_angle = Math::Max(light.outer_attenuation_angle, light.inner_attenuation_angle);
+			float attenuation_angle = light.attenuation_angle * Math::radians_to_degrees;
+			if (ImGui::TableSliderFloat("Attenuation Angle", &attenuation_angle, 0.f, 180.f)) {
+				light.attenuation_angle = attenuation_angle * Math::degrees_to_radians;
 			}
-			
-			float outer_attenuation_angle = light.outer_attenuation_angle * Math::radians_to_degrees;
-			if (ImGui::TableSliderFloat("Outer Attenuation Angle", &outer_attenuation_angle, inner_attenuation_angle, 180.f)) {
-				light.outer_attenuation_angle = outer_attenuation_angle * Math::degrees_to_radians;
-			}
+			ImGui::TableSliderFloat("Attenuation Angle Falloff", &light.attenuation_angle_falloff, 0.f, 1.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
 		}
 	}
 	

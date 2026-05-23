@@ -15,6 +15,16 @@ struct LightComponent {
 		inner_attenuation_angle float32 0;
 		outer_attenuation_angle float32 0;
 	}
+	/*Version*/ 4 {
+		type LightType 0;
+		color float3 0;
+		irradiance float32 0;
+		radius float32 0;
+		attenuation_radius float32 0;
+		attenuation_radius_falloff float32 0;
+		attenuation_angle float32 0;
+		attenuation_angle_falloff float32 0;
+	}
 }
 
 struct WorldSourceData {

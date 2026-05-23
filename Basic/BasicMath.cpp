@@ -291,6 +291,14 @@ quat Math::EulerXyzAnglesToQuat(const float3& e) {
 }
 
 
+float2 Math::SmoothStepCoefficients(float min_value, float max_value) {
+	float2 result;
+	result.x = 1.f / (max_value - min_value);
+	result.y = -min_value * result.x;
+	return result;
+}
+
+
 s16x4 Math::EncodeR16G16B16A16_SNORM(const float4& value) {
 	auto scaled_value_float32 = _mm_mul_ps(_mm_loadu_ps(&value.x), _mm_set_ps1((float)s16_max));
 	auto scaled_value_s32 = _mm_cvtps_epi32(scaled_value_float32);

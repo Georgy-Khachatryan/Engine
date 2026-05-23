@@ -103,17 +103,21 @@ void UpdateEntityGpuComponents(StackAllocator* alloc, RecordContext* record_cont
 			for (u64 i : BitArrayIt(entity_array->dirty_mask)) {
 				auto& light_component = streams.light[i];
 				
+				float outer_attenuation_radius = light_component.attenuation_radius;
+				float inner_attenuation_radius = light_component.attenuation_radius * (1.f - Math::Max(light_component.attenuation_radius_falloff, 1.f / 1024.f));
+				
+				float cos_outer_attenuation_angle = cosf(light_component.attenuation_angle * 0.5f);
+				float cos_inner_attenuation_angle = cosf(light_component.attenuation_angle * 0.5f * (1.f - Math::Max(light_component.attenuation_angle_falloff, 1.f / 1024.f)));
+				
 				GpuLightEntityData light_entity;
-				light_entity.light_position              = streams.position[i].position;
-				light_entity.light_direction             = streams.rotation[i].rotation * float3(0.f, 0.f, 1.f);
-				light_entity.color                       = Math::DecodeSRGB(light_component.color);
-				light_entity.radiance_or_irradiance      = light_component.radiance_or_irradiance;
-				light_entity.type                        = light_component.type;
-				light_entity.radius                      = light_component.radius;
-				light_entity.inner_attenuation_radius    = light_component.inner_attenuation_radius;
-				light_entity.outer_attenuation_radius    = light_component.outer_attenuation_radius;
-				light_entity.cos_inner_attenuation_angle = cosf(light_component.inner_attenuation_angle * 0.5f);
-				light_entity.cos_outer_attenuation_angle = cosf(light_component.outer_attenuation_angle * 0.5f);
+				light_entity.light_position         = streams.position[i].position;
+				light_entity.light_direction        = streams.rotation[i].rotation * float3(0.f, 0.f, 1.f);
+				light_entity.color                  = Math::DecodeSRGB(light_component.color);
+				light_entity.radiance_or_irradiance = light_component.radiance_or_irradiance;
+				light_entity.type                   = light_component.type;
+				light_entity.radius                 = light_component.radius;
+				light_entity.distance_attenuation   = Math::SmoothStepCoefficients(outer_attenuation_radius, inner_attenuation_radius);
+				light_entity.angle_attenuation      = Math::SmoothStepCoefficients(cos_outer_attenuation_angle, cos_inner_attenuation_angle);
 				
 				AppendGpuTransferCommand(gpu_light_entity_data, i, light_entity);
 			}

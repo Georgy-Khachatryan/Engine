@@ -202,6 +202,8 @@ namespace Math {
 	float3 QuatToEulerXyzAngles(const quat& q); // Extrinsic XYZ angles, the same as intrinsic ZYX angles. float3(Roll, Pitch, Yaw)
 	quat EulerXyzAnglesToQuat(const float3& e);
 	
+	float2 SmoothStepCoefficients(float min_value, float max_value);
+	
 	s16x4 EncodeR16G16B16A16_SNORM(const float4& value);
 	s16x2 EncodeR16G16_SNORM(const float2& value);
 	float16x4 EncodeR16G16B16A16_FLOAT(const float4& value);

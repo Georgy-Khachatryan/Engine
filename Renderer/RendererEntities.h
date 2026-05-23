@@ -226,25 +226,23 @@ struct LightComponent {
 	
 	float radius = 0.03f; // Used for Spot and Point lights (Default is 60mm diameter E27 light bulb).
 	
-	float inner_attenuation_radius = 9.f;
-	float outer_attenuation_radius = 10.f;
+	float attenuation_radius         = 10.f;
+	float attenuation_radius_falloff = 0.1f;
 	
-	float inner_attenuation_angle = 60.f * Math::degrees_to_radians;
-	float outer_attenuation_angle = 90.f * Math::degrees_to_radians;
+	float attenuation_angle         = 90.f * Math::degrees_to_radians;
+	float attenuation_angle_falloff = 0.3f;
 };
 
 NOTES(Meta::HlslFile{ "LightData.hlsl"_sl })
 struct GpuLightEntityData {
-	float3 light_position             = 0.f;
-	float3 light_direction            = 0.f;
-	float3 color                      = 1.f; // Linear Rec709.
-	float radiance_or_irradiance      = 0.f;
-	LightType type                    = LightType::Spot;
-	float radius                      = 0.f;
-	float inner_attenuation_radius    = 0.f;
-	float outer_attenuation_radius    = 0.f;
-	float cos_inner_attenuation_angle = 0.f;
-	float cos_outer_attenuation_angle = 0.f;
+	float3 light_position        = 0.f;
+	float3 light_direction       = 0.f;
+	float3 color                 = 1.f; // Linear Rec709.
+	float radiance_or_irradiance = 0.f;
+	LightType type               = LightType::Spot;
+	float radius                 = 0.f;
+	float2 distance_attenuation  = 0.f;
+	float2 angle_attenuation     = 0.f;
 };
 
 NOTES()

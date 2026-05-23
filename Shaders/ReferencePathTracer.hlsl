@@ -162,10 +162,10 @@ LightShadingInfo ComputeLightShadingInfo(float3 shading_position, u32 light_enti
 		shading_info.shadow_ray_length = distance_to_light;
 		
 		// Converts Spot or Point light radiance to irradiance. Attenuation radius and light radius are not physically based.
-		float attenuation = smoothstep(light.outer_attenuation_radius, light.inner_attenuation_radius, distance_to_light) / (distance_to_light_square + Pow2(light.radius) * 0.5);
+		float attenuation = SmoothStep(light.distance_attenuation, distance_to_light) / (distance_to_light_square + Pow2(light.radius) * 0.5);
 		
 		if (light.type == LightType::Spot) {
-			attenuation *= smoothstep(light.cos_outer_attenuation_angle, light.cos_inner_attenuation_angle, dot(shading_info.light_direction, light.light_direction));
+			attenuation *= SmoothStep(light.angle_attenuation, dot(shading_info.light_direction, light.light_direction));
 		}
 		
 		shading_info.light_irradiance *= attenuation;

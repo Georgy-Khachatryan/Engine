@@ -220,6 +220,11 @@ float3 RandomColor(uint seed_a, uint seed_b = 0) {
 
 compile_const float3 rec709_luminance_coefficients = float3(0.2126, 0.7152, 0.0722);
 
+float SmoothStep(float2 coefficients, float x) {
+	float t = saturate(x * coefficients.x + coefficients.y);
+	return Pow2(t) * (3.0 - 2.0 * t);
+}
+
 
 float2 ConcentricMapping(float2 uv) {
 	float2 ndc = uv * 2.0 - 1.0;
