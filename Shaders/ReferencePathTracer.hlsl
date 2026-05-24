@@ -91,18 +91,6 @@ uint ComputeRandomU32(inout uint hash, uint max_value) {
 #include "MeshletVertexDecoding.hlsl"
 #include "AtmosphereSampling.hlsl"
 
-template<typename T>
-T BarycentricInterpolation(float3 barycentrics, T v0, T v1, T v2) {
-	return v0 * barycentrics.x + v1 * barycentrics.y + v2 * barycentrics.z;
-}
-
-float3 DecodeAndInterpolateUnitVector(float3 barycentrics, s16x2 v0, s16x2 v1, s16x2 v2) {
-	float3 n0 = DecodeOctahedralMap(DecodeR16G16_SNORM(v0));
-	float3 n1 = DecodeOctahedralMap(DecodeR16G16_SNORM(v1));
-	float3 n2 = DecodeOctahedralMap(DecodeR16G16_SNORM(v2));
-	return BarycentricInterpolation(barycentrics, n0, n1, n2);
-}
-
 float TraceShadowRay(float3 ray_origin, float3 ray_direction, float ray_length) {
 	RayQuery<
 		RAY_FLAG_CULL_NON_OPAQUE |

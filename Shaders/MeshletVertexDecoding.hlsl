@@ -41,4 +41,16 @@ float3x3 ComputeTangentToOtherSpace(float3 other_space_tangent, float3 other_spa
 	return transpose(float3x3(other_space_tangent, bitangent_sign * cross(other_space_normal, other_space_tangent), other_space_normal));
 }
 
+template<typename T>
+T BarycentricInterpolation(float3 barycentrics, T v0, T v1, T v2) {
+	return v0 * barycentrics.x + v1 * barycentrics.y + v2 * barycentrics.z;
+}
+
+float3 DecodeAndInterpolateUnitVector(float3 barycentrics, s16x2 v0, s16x2 v1, s16x2 v2) {
+	float3 n0 = DecodeOctahedralMap(DecodeR16G16_SNORM(v0));
+	float3 n1 = DecodeOctahedralMap(DecodeR16G16_SNORM(v1));
+	float3 n2 = DecodeOctahedralMap(DecodeR16G16_SNORM(v2));
+	return BarycentricInterpolation(barycentrics, n0, n1, n2);
+}
+
 #endif // MESHLETVERTEXDECODING_HLSL

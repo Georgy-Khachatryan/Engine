@@ -37,6 +37,7 @@ enum struct VirtualResourceID : u32 {
 	// Common scene resources:
 	DepthStencil,
 	SceneRadiance,
+	VisibilityBuffer,
 	MotionVectors,
 	SceneRadianceResult,
 	SceneConstants,
@@ -1043,6 +1044,69 @@ struct BasicMeshRenderPass {
 		};
 		
 		HLSL::PushConstantBuffer<PushConstants> constants;
+		HLSL::ConstantBuffer<SceneConstants> scene;
+		HLSL::DescriptorTable<Descriptors> descriptor_table;
+	};
+	
+	inline static PipelineID pipeline_id;
+};
+
+NOTES(Meta::ShaderName{ "VisibilityBufferLaydown.hlsl"_sl })
+enum struct VisibilityBufferLaydownShaders : u32 {};
+SHADER_DEFINITION_GENERATED_CODE(VisibilityBufferLaydownShaders);
+
+NOTES(Meta::RenderPass{ CommandQueueType::Graphics })
+struct VisibilityBufferLaydownRenderPass {
+	RENDER_PASS_GENERATED_CODE();
+	
+	MeshletCullingPass pass = MeshletCullingPass::Main;
+	
+	struct Descriptors : HLSL::BaseDescriptorTable {
+		HLSL::RegularBuffer<GpuTransform>      mesh_transforms    = VirtualResourceID::MeshEntityGpuTransform;
+		HLSL::RegularBuffer<GpuMeshAssetData>  mesh_asset_data    = VirtualResourceID::GpuMeshAssetData;
+		HLSL::RegularBuffer<GpuMeshEntityData> mesh_entity_data   = VirtualResourceID::GpuMeshEntityData;
+		HLSL::ByteBuffer                       mesh_asset_buffer  = VirtualResourceID::MeshAssetBuffer;
+		HLSL::RegularBuffer<uint2>             visible_meshlets   = VirtualResourceID::VisibleMeshlets;
+		HLSL::RegularBuffer<uint4>             indirect_arguments = VirtualResourceID::MeshletIndirectArguments;
+	};
+	
+	struct RootSignature : HLSL::BaseRootSignature {
+		struct PushConstants {
+			MeshletCullingPass pass = MeshletCullingPass::Main;
+		};
+		
+		HLSL::PushConstantBuffer<PushConstants> constants;
+		HLSL::ConstantBuffer<SceneConstants> scene;
+		HLSL::DescriptorTable<Descriptors> descriptor_table;
+	};
+	
+	inline static PipelineID pipeline_id;
+};
+
+
+NOTES(Meta::ShaderName{ "VisibilityBufferResolve.hlsl"_sl })
+enum struct VisibilityBufferResolveShaders : u32 {};
+SHADER_DEFINITION_GENERATED_CODE(VisibilityBufferResolveShaders);
+
+NOTES(Meta::RenderPass{})
+struct VisibilityBufferResolveRenderPass {
+	RENDER_PASS_GENERATED_CODE();
+	
+	struct Descriptors : HLSL::BaseDescriptorTable {
+		HLSL::Texture2D<u32>                        visibility_buffer     = VirtualResourceID::VisibilityBuffer;
+		HLSL::Texture2D<float>                      depth_stencil         = VirtualResourceID::DepthStencil;
+		HLSL::RegularBuffer<GpuTransform>           prev_mesh_transforms  = VirtualResourceID::MeshEntityPrevGpuTransform;
+		HLSL::RegularBuffer<GpuTransform>           mesh_transforms       = VirtualResourceID::MeshEntityGpuTransform;
+		HLSL::RegularBuffer<GpuMeshAssetData>       mesh_asset_data       = VirtualResourceID::GpuMeshAssetData;
+		HLSL::RegularBuffer<GpuMeshEntityData>      mesh_entity_data      = VirtualResourceID::GpuMeshEntityData;
+		HLSL::RegularBuffer<GpuMaterialTextureData> material_texture_data = VirtualResourceID::MaterialAssetTextureData;
+		HLSL::ByteBuffer                            mesh_asset_buffer     = VirtualResourceID::MeshAssetBuffer;
+		HLSL::RegularBuffer<uint2>                  visible_meshlets      = VirtualResourceID::VisibleMeshlets;
+		HLSL::RWTexture2D<float4>                   scene_radiance        = VirtualResourceID::SceneRadiance;
+		HLSL::RWTexture2D<float2>                   motion_vectors        = VirtualResourceID::MotionVectors;
+	};
+	
+	struct RootSignature : HLSL::BaseRootSignature {
 		HLSL::ConstantBuffer<SceneConstants> scene;
 		HLSL::DescriptorTable<Descriptors> descriptor_table;
 	};

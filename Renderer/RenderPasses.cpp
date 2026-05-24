@@ -34,6 +34,7 @@ static void BuildResourceTable(RecordContext* record_context, WorldEntitySystem*
 	table.Set(ID::SceneRadiance,       TextureSize(TextureFormat::R16G16B16A16_FLOAT, render_target_size), Flags::UAV | Flags::RTV);
 	table.Set(ID::DepthStencil,        TextureSize(TextureFormat::D32_FLOAT,          render_target_size), Flags::DSV);
 	table.Set(ID::MotionVectors,       TextureSize(TextureFormat::R16G16_FLOAT,       render_target_size), Flags::UAV | Flags::RTV);
+	table.Set(ID::VisibilityBuffer,    TextureSize(TextureFormat::R32_UINT,           render_target_size), Flags::RTV);
 	table.Set(ID::SceneRadianceResult, TextureSize(TextureFormat::R16G16B16A16_FLOAT, render_target_size), Flags::UAV);
 	
 	table.Set(ID::ReferencePathTracerRadiance, TextureSize(TextureFormat::R32G32B32A32_FLOAT, render_target_size), Flags::UAV);
@@ -259,7 +260,7 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 		render_passes.Add<MeshEntityCullingRenderPass>().world_system = world_system;
 		render_passes.Add<MeshletGroupCullingRenderPass>();
 		render_passes.Add<MeshletCullingRenderPass>();
-		render_passes.Add<BasicMeshRenderPass>();
+		render_passes.Add<VisibilityBufferLaydownRenderPass>();
 	}
 	
 	if (renderer_world.debug_freeze_culling_camera.enabled == false) {
@@ -268,10 +269,14 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 		render_passes.Add<MeshEntityCullingRenderPass>("DisocclusionMeshEntityCulling"_sl).pass = MeshletCullingPass::Disocclusion;
 		render_passes.Add<MeshletGroupCullingRenderPass>("DisocclusionMeshletGroupCulling"_sl).pass = MeshletCullingPass::Disocclusion;
 		render_passes.Add<MeshletCullingRenderPass>("DisocclusionMeshletCulling"_sl).pass = MeshletCullingPass::Disocclusion;
-		render_passes.Add<BasicMeshRenderPass>("DisocclusionBasicMesh"_sl).pass = MeshletCullingPass::Disocclusion;
+		render_passes.Add<VisibilityBufferLaydownRenderPass>("DisocclusionVisibilityBufferLaydown"_sl).pass = MeshletCullingPass::Disocclusion;
 		
 		render_passes.Add<BuildHzbRenderPass>();
 	}
+	
+	render_passes.Add<AtmosphereCompositeRenderPass>().atmosphere = atmosphere_parameters_gpu_address;
+	render_passes.Add<VisibilityBufferResolveRenderPass>();
+	
 	
 	{
 		auto& raytracing_mesh_entity_culling = render_passes.Add<MeshEntityCullingRenderPass>("RaytracingMeshEntityCulling"_sl);
@@ -280,8 +285,6 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 		render_passes.Add<MeshletGroupCullingRenderPass>("RaytracingMeshletGroupCulling"_sl).pass = MeshletCullingPass::Raytracing;
 		render_passes.Add<MeshletCullingRenderPass>("RaytracingMeshletCulling"_sl).pass = MeshletCullingPass::Raytracing;
 	}
-	
-	render_passes.Add<AtmosphereCompositeRenderPass>().atmosphere = atmosphere_parameters_gpu_address;
 	
 	auto& copy_meshlet_culling_statistics = render_passes.Add<CopyMeshletCullingStatisticsRenderPass>();
 	copy_meshlet_culling_statistics.readback_queue = &renderer_world.meshlet_culling_statistics_readback_queue;

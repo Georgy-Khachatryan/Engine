@@ -77,7 +77,6 @@ PipelineID CreateGraphicsPipeline(PipelineLibrary* lib, ArrayView<u8> pipeline_s
 
 static PipelineDepthStencil default_depth_stencil = {};
 static PipelineRasterizer   default_rasterizer    = {};
-static PipelineBlendState   default_blend_state   = {};
 
 PipelineStateDescription CreatePipelineStateDescription(ArrayView<u8> stream) {
 	PipelineStateDescription result;
@@ -110,12 +109,6 @@ PipelineStateDescription CreatePipelineStateDescription(ArrayView<u8> stream) {
 		}
 		}
 	}
-	
-	if (result.render_targets.count != 0 && result.blend_states.count == 0) {
-		ArrayAppend(result.blend_states, &default_blend_state);
-	}
-	
-	DebugAssert(result.blend_states.count == 1 && result.render_targets.count != 0 || result.blend_states.count == result.render_targets.count, "Mismatching render target and blend state counts. Render targets: %, Blend States: %..", result.render_targets.count, result.blend_states.count);
 	
 	return result;
 }
