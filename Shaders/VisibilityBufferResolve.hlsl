@@ -4,10 +4,15 @@
 
 compile_const u32 thread_group_size = 16;
 
+float4 TransformModelToClipSpace(MeshletVertex vertex, GpuTransform model_to_world, GpuMeshAssetData mesh_asset, MeshletHeader meshlet, float3x4 world_to_view, float4 view_to_clip_coef) {
+	float3 model_space_position = DecodeMeshletVertexPosition(vertex.position, mesh_asset, meshlet);
+	return TransformModelToClipSpace(model_space_position, model_to_world, world_to_view, view_to_clip_coef);
+}
+
 [ThreadGroupSize(thread_group_size * thread_group_size, 1, 1)]
 void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	uint2  thread_id = group_id * thread_group_size + MortonDecode(thread_index);
-	float2 thread_uv = (thread_id + 0.5) * scene.inv_render_target_size;
+	float2 thread_uv = (thread_id + 0.5 - scene.jitter_offset_pixels) * scene.inv_render_target_size;
 	
 	uint scene_primitive_id = visibility_buffer[thread_id];
 	if (scene_primitive_id == 0) return;
@@ -18,8 +23,8 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	u32 mesh_entity_index     = meshlet_instance.y;
 	u32 triangle_index        = (scene_primitive_id & 0x7F);
 	
-	GpuTransform   model_to_world = mesh_transforms[mesh_entity_index];
 	GpuMeshEntityData mesh_entity = mesh_entity_data[mesh_entity_index];
+	GpuMeshAssetData  mesh_asset  = mesh_asset_data[mesh_entity.mesh_asset_index];
 	
 	MeshletHeader meshlet = mesh_asset_buffer.Load<MeshletHeader>(meshlet_header_offset);
 	MeshletBufferOffsets offsets = ComputeMeshletBufferOffsets(meshlet, meshlet_header_offset);
@@ -29,17 +34,27 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	MeshletVertex v1 = LoadMeshletVertexBuffer(mesh_asset_buffer, offsets.vertex_buffer_offset, indices.y);
 	MeshletVertex v2 = LoadMeshletVertexBuffer(mesh_asset_buffer, offsets.vertex_buffer_offset, indices.z);
 	
-	float3 barycentrics;
-	barycentrics.yz = 1.0 / 3.0; // TODO: Barycentrics.
-	barycentrics.x  = 1.0 - barycentrics.y - barycentrics.z;
+	GpuTransform model_to_world = mesh_transforms[mesh_entity_index];
+	float4 p0 = TransformModelToClipSpace(v0, model_to_world, mesh_asset, meshlet, scene.world_to_view, scene.view_to_clip_coef);
+	float4 p1 = TransformModelToClipSpace(v1, model_to_world, mesh_asset, meshlet, scene.world_to_view, scene.view_to_clip_coef);
+	float4 p2 = TransformModelToClipSpace(v2, model_to_world, mesh_asset, meshlet, scene.world_to_view, scene.view_to_clip_coef);
 	
-	float3 model_space_normal  = DecodeAndInterpolateUnitVector(barycentrics, v0.normal,  v1.normal,  v2.normal);
-	float3 model_space_tangent = DecodeAndInterpolateUnitVector(barycentrics, v0.tangent, v1.tangent, v2.tangent);
+	BarycentricsWithDerivatives b = ComputeBarycentricsWithDerivatives(p0, p1, p2, ScreenUvToNdc(thread_uv), scene.render_target_size);
+	
+	GpuTransform prev_model_to_world = prev_mesh_transforms[mesh_entity_index];
+	float4 prev_p0 = TransformModelToClipSpace(v0, prev_model_to_world, mesh_asset, meshlet, scene.prev_world_to_view, scene.prev_view_to_clip_coef);
+	float4 prev_p1 = TransformModelToClipSpace(v1, prev_model_to_world, mesh_asset, meshlet, scene.prev_world_to_view, scene.prev_view_to_clip_coef);
+	float4 prev_p2 = TransformModelToClipSpace(v2, prev_model_to_world, mesh_asset, meshlet, scene.prev_world_to_view, scene.prev_view_to_clip_coef);
+	float3 prev_p  = BarycentricInterpolation(b.barycentrics, prev_p0.xyw, prev_p1.xyw, prev_p2.xyw);
+	motion_vectors[thread_id] = NdcToScreenUv(prev_p.xy / prev_p.z) - thread_uv;
+	
+	float3 model_space_normal  = DecodeAndInterpolateUnitVector(b.barycentrics, v0.normal,  v1.normal,  v2.normal);
+	float3 model_space_tangent = DecodeAndInterpolateUnitVector(b.barycentrics, v0.tangent, v1.tangent, v2.tangent);
 	
 	TexcoordStream texcoord_stream;
-	texcoord_stream.texcoord = BarycentricInterpolation<float2>(barycentrics, v0.texcoord, v1.texcoord, v2.texcoord);
-	texcoord_stream.texcoord_ddx = 0.0; // TODO: Barycentric derivatives.
-	texcoord_stream.texcoord_ddy = 0.0;
+	texcoord_stream.texcoord     = BarycentricInterpolation<float2>(b.barycentrics,     v0.texcoord, v1.texcoord, v2.texcoord);
+	texcoord_stream.texcoord_ddx = BarycentricInterpolation<float2>(b.barycentrics_ddx, v0.texcoord, v1.texcoord, v2.texcoord);
+	texcoord_stream.texcoord_ddy = BarycentricInterpolation<float2>(b.barycentrics_ddy, v0.texcoord, v1.texcoord, v2.texcoord);
 	
 	MaterialProperties properties = SampleMaterial(mesh_entity.material_asset_index, texcoord_stream);
 	
