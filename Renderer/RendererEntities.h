@@ -53,6 +53,9 @@ struct SceneConstants {
 	float inv_exposure_estimate = 0.f;
 	u32 global_light_entity_index = 0;
 	u32 padding;
+	
+	compile_const u32 light_grid_cascade_count = 8;
+	FixedCountArray<float4, light_grid_cascade_count> light_grid_cascade_descs;
 };
 
 NOTES(Meta::HlslFile{ "ToneMappingData.hlsl"_sl })

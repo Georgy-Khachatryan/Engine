@@ -46,13 +46,12 @@ void MainCS(uint thread_id : SV_DispatchThreadID) {
 	}
 	
 	compile_const float grid_size_cells = LightCullingConstants::grid_size_cells;
-	
 	float grid_cell_size = LightCullingConstants::grid_cell_size;
-	float3 origin = round(scene.world_space_camera_position / grid_cell_size) * grid_cell_size;
 	
 	for (uint cascade_index = 0; cascade_index < LightCullingConstants::grid_cascade_count; cascade_index += 1, grid_cell_size *= 2.0) {
-		uint3 aabb_min_cells = (uint3)clamp(floor(((aabb_min - origin) / grid_cell_size) + grid_size_cells * 0.5), 0.0, grid_size_cells);
-		uint3 aabb_max_cells = (uint3)clamp(ceil(((aabb_max - origin) / grid_cell_size) + grid_size_cells * 0.5), 0.0, grid_size_cells);
+		float4 cascade_desc = scene.light_grid_cascade_descs[cascade_index];
+		uint3 aabb_min_cells = (uint3)clamp(floor((aabb_min - cascade_desc.xyz) / grid_cell_size), 0.0, grid_size_cells);
+		uint3 aabb_max_cells = (uint3)clamp(ceil((aabb_max - cascade_desc.xyz) / grid_cell_size), 0.0, grid_size_cells);
 		uint3 aabb_size_cells = aabb_max_cells - aabb_min_cells;
 		uint aabb_volume_cells = aabb_size_cells.x * aabb_size_cells.y * aabb_size_cells.z;
 		
@@ -97,8 +96,8 @@ void MainCS(uint thread_id : SV_DispatchThreadID) {
 	float grid_cell_size   = LightCullingConstants::grid_cell_size * (1u << cascade_index);
 	float grid_cell_radius = grid_cell_size * SQRT_THREE_OVER_TWO;
 	
-	float3 origin = round(scene.world_space_camera_position / LightCullingConstants::grid_cell_size) * LightCullingConstants::grid_cell_size;
-	float3 cell_center_position = ((float3)cell_coordinates + 0.5 - LightCullingConstants::grid_size_cells * 0.5) * grid_cell_size + origin;
+	float4 cascade_desc = scene.light_grid_cascade_descs[cascade_index];
+	float3 cell_center_position = (float3)(cell_coordinates + 0.5) * grid_cell_size + cascade_desc.xyz;
 	
 	GpuLightEntityData light = light_entity_data[light_entity_index];
 	

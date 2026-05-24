@@ -200,6 +200,16 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 		atmosphere_parameters.sun_irradiance = 0.f;
 	}
 	
+	for (u32 i = 0; i < LightCullingConstants::grid_cascade_count; i += 1) {
+		float grid_cell_size_next_level = LightCullingConstants::grid_cell_size * (1u << Math::Min(i + 1u, LightCullingConstants::grid_cascade_count - 1));
+		float grid_cell_size            = LightCullingConstants::grid_cell_size * (1u << i);
+		
+		auto& cascade_desc = scene.light_grid_cascade_descs[i];
+		cascade_desc.w = grid_cell_size * LightCullingConstants::grid_size_cells;
+		cascade_desc.x = roundf(scene.world_space_camera_position.x / grid_cell_size_next_level) * grid_cell_size_next_level - cascade_desc.w * 0.5f;
+		cascade_desc.y = roundf(scene.world_space_camera_position.y / grid_cell_size_next_level) * grid_cell_size_next_level - cascade_desc.w * 0.5f;
+		cascade_desc.z = roundf(scene.world_space_camera_position.z / grid_cell_size_next_level) * grid_cell_size_next_level - cascade_desc.w * 0.5f;
+	}
 	
 	auto gpu_scene_constants = AllocateGpuComponentUploadBuffer(record_context, 1, world_entity.gpu_scene_constants);
 	AppendGpuTransferCommand(gpu_scene_constants, 0, scene);

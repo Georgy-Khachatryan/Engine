@@ -874,7 +874,7 @@ struct LightCullingConstants {
 	
 	compile_const u32   grid_size_cells    = 16;
 	compile_const u32   grid_cell_count    = grid_size_cells * grid_size_cells * grid_size_cells;
-	compile_const u32   grid_cascade_count = 8;
+	compile_const u32   grid_cascade_count = SceneConstants::light_grid_cascade_count;
 	compile_const float grid_cell_size     = 0.25f;
 	compile_const float inv_grid_cell_size = 1.f / grid_cell_size;
 	
