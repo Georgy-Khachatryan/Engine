@@ -78,15 +78,18 @@
     <ClCompile Include="Renderer/ImGuiRenderPass.cpp" />
     <ClCompile Include="Renderer/LightCullingRenderPasses.cpp" />
     <ClCompile Include="Renderer/MeshAssetImporter.cpp" />
+    <ClCompile Include="Renderer/MeshletCullingRenderPasses.cpp" />
+    <ClCompile Include="Renderer/MeshletRtasRenderPasses.cpp" />
     <ClCompile Include="Renderer/MeshletStreamingSystem.cpp" />
-    <ClCompile Include="Renderer/MeshRenderPasses.cpp" />
     <ClCompile Include="Renderer/MeshStreamingSystem.cpp" />
+    <ClCompile Include="Renderer/ReferencePathTracerRenderPasses.cpp" />
     <ClCompile Include="Renderer/Renderer.cpp" />
     <ClCompile Include="Renderer/RendererEntities.cpp" />
     <ClCompile Include="Renderer/RenderPasses.cpp" />
     <ClCompile Include="Renderer/TextureAssetImporter.cpp" />
     <ClCompile Include="Renderer/TextureStreamingSystem.cpp" />
     <ClCompile Include="Renderer/ToneMappingRenderPasses.cpp" />
+    <ClCompile Include="Renderer/VisibilityBufferRenderPasses.cpp" />
     
     <!-- Generated code. -->
     <ClCompile Include="Engine/Generated/EntitySystemMetadata.cpp" />
