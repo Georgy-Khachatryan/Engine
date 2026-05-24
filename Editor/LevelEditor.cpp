@@ -118,10 +118,10 @@ static void RemoveSelectedEntities(WorldEntitySystem& world_system, UndoRedoSyst
 }
 
 
-static void LevelEditorSaveLoadShortcuts(StackAllocator* alloc, UndoRedoSystem& undo_redo_system, WorldEntitySystem& world_system, AssetEntitySystem& asset_system, EditorSelectionStateEntity asset_selection_state_entity, u64& world_entity_guid) {
+static void LevelEditorSaveLoadShortcuts(StackAllocator* alloc, UndoRedoSystem& undo_redo_system, WorldEntitySystem& world_system, AssetEntitySystem& asset_system, EditorSelectionStateEntity asset_selection_state_entity, LevelEditorIO& level_editor_io, u64& world_entity_guid) {
 	
 	bool should_save_scene = ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_S, ImGuiInputFlags_RouteGlobal | ImGuiInputFlags_RouteOverFocused);
-	bool should_load_scene = ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_L, ImGuiInputFlags_RouteGlobal | ImGuiInputFlags_RouteOverFocused);
+	bool should_load_scene = ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_L, ImGuiInputFlags_RouteGlobal | ImGuiInputFlags_RouteOverFocused) || (level_editor_io.world_asset_guid_to_load != 0);
 	
 	// Save the current scene before loading another one.
 	if (should_save_scene || should_load_scene) {
@@ -136,12 +136,15 @@ static void LevelEditorSaveLoadShortcuts(StackAllocator* alloc, UndoRedoSystem& 
 		u64 world_entity_guid_to_load = 0;
 		
 		auto& selected_asset_entities_hash_table = asset_selection_state_entity.selection_state->selected_entities_hash_table;
-		if (selected_asset_entities_hash_table.count == 1) {
-			u64 selected_asset_guid = (*selected_asset_entities_hash_table.begin()).key;
+		if (level_editor_io.world_asset_guid_to_load != 0 || selected_asset_entities_hash_table.count == 1) {
+			u64 selected_asset_guid = level_editor_io.world_asset_guid_to_load != 0 ? level_editor_io.world_asset_guid_to_load : (*selected_asset_entities_hash_table.begin()).key;
+			
 			auto selected_world_asset = QueryEntityByGUID<WorldAssetType>(asset_system, selected_asset_guid);
 			if (selected_world_asset.source_data.data) {
 				world_entity_guid_to_load = selected_world_asset.source_data->world_entity_guid;
 			}
+			
+			level_editor_io.world_asset_guid_to_load = 0;
 		}
 		
 		if (world_entity_guid_to_load != 0) {
@@ -190,12 +193,23 @@ static void LevelEditorShortcuts(StackAllocator* alloc, UndoRedoSystem& undo_red
 	}
 }
 
+static void ProcessLevelEditorIO(UndoRedoSystem& undo_redo_system, WorldEntitySystem& world_system, LevelEditorIO& level_editor_io, u64 world_entity_guid) {
+	if (level_editor_io.camera_entity_guid_to_set != 0) {
+		BeginUndoRedoCommand("Select Active Camera"_sl, undo_redo_system, world_system, world_entity_guid);
+		auto world_entity = QueryEntityByGUID<WorldEntityType>(world_system, world_entity_guid);
+		world_entity.camera_entity->guid = level_editor_io.camera_entity_guid_to_set;
+		EndUndoRedoCommand(undo_redo_system);
+		
+		level_editor_io.camera_entity_guid_to_set = 0;
+	}
+}
 
-void LevelEditorUpdate(StackAllocator* alloc, GraphicsContext* graphics_context, UndoRedoSystem& undo_redo_system, WorldEntitySystem& world_system, AssetEntitySystem& asset_system, u64& world_entity_guid) {
+
+void LevelEditorUpdate(StackAllocator* alloc, GraphicsContext* graphics_context, UndoRedoSystem& undo_redo_system, WorldEntitySystem& world_system, AssetEntitySystem& asset_system, LevelEditorIO& level_editor_io, u64& world_entity_guid) {
 	ProfilerScope("LevelEditorUpdate");
 	
 	auto asset_selection_state_entity = QueryFirstEntityByType<EditorSelectionStateEntity>(asset_system);
-	LevelEditorSaveLoadShortcuts(alloc, undo_redo_system, world_system, asset_system, asset_selection_state_entity, world_entity_guid);
+	LevelEditorSaveLoadShortcuts(alloc, undo_redo_system, world_system, asset_system, asset_selection_state_entity, level_editor_io, world_entity_guid);
 	
 	auto world_selection_state_entity = QueryFirstEntityByType<EditorSelectionStateEntity>(world_system);
 	LevelEditorShortcuts(alloc, undo_redo_system, world_system, asset_system, world_selection_state_entity, asset_selection_state_entity, world_entity_guid);
@@ -204,9 +218,11 @@ void LevelEditorUpdate(StackAllocator* alloc, GraphicsContext* graphics_context,
 	
 	EditorShaderStatisticsWindow(alloc, graphics_context);
 	
-	EditorOutlinerWindow(alloc, undo_redo_system, world_system, world_selection_state_entity, world_entity_guid);
+	EditorOutlinerWindow(alloc, undo_redo_system, world_system, world_selection_state_entity, level_editor_io);
 	
-	EditorAssetBrowserWindow(alloc, undo_redo_system, asset_system, asset_selection_state_entity);
+	EditorAssetBrowserWindow(alloc, undo_redo_system, asset_system, asset_selection_state_entity, level_editor_io);
+	
+	ProcessLevelEditorIO(undo_redo_system, world_system, level_editor_io, world_entity_guid);
 	
 	EditorPropertiesWindow(alloc, undo_redo_system, world_system, asset_system, world_selection_state_entity, asset_selection_state_entity, world_entity_guid);
 	

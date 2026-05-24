@@ -83,6 +83,7 @@ s32 main() {
 	InitializeUndoRedoSystem(undo_redo_system, &imgui_heap);
 	defer{ ReleaseUndoRedoSystem(undo_redo_system); };
 	
+	LevelEditorIO level_editor_io;
 	u64 world_entity_guid = LoadOrCreateDefaultEntitySystems(&alloc, world_system, asset_system);
 	
 	
@@ -101,7 +102,7 @@ s32 main() {
 		
 		ApplicatingStatisticsWindow(world_system, asset_system, world_entity_guid, frame_initial_size, frame_allocation_size, transient_upload_allocation_size, transient_readback_allocation_size, imgui_heap.ComputeTotalMemoryUsage(), &swap_chain_format_index);
 		
-		LevelEditorUpdate(&alloc, graphics_context, undo_redo_system, world_system, asset_system, world_entity_guid);
+		LevelEditorUpdate(&alloc, graphics_context, undo_redo_system, world_system, asset_system, level_editor_io, world_entity_guid);
 		
 		Array<GpuComponentUploadBuffer> gpu_uploads;
 		auto* record_context = BeginRecordContext(&alloc, renderer_context, swap_chain, resource_table);

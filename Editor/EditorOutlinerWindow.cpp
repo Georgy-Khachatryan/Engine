@@ -107,7 +107,7 @@ static ArrayView<EntityViewTableEntry> EntityQueryToArrayView(ArrayView<EntityTy
 	return entity_view_table_entries;
 }
 
-static void EntityViewTable(StackAllocator* alloc, EntitySystemBase& entity_system, UndoRedoSystem& undo_redo_system, u64 world_entity_guid, EditorSelectionStateEntity selection_state_entity, String search_pattern) {
+static void EntityViewTable(StackAllocator* alloc, EntitySystemBase& entity_system, UndoRedoSystem& undo_redo_system, LevelEditorIO& level_editor_io, EditorSelectionStateEntity selection_state_entity, String search_pattern) {
 	ProfilerScope("EntityViewTable");
 	TempAllocationScope(alloc);
 	
@@ -156,15 +156,12 @@ static void EntityViewTable(StackAllocator* alloc, EntitySystemBase& entity_syst
 				ImGui::EntityDragDropSource(entity_type_id, guid);
 				
 				if (ImGui::IsItemClicked(ImGuiMouseButton_Left) && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-					if (entity_type_id.index == ECS::GetEntityTypeID<CameraEntityType>::id.index && world_entity_guid != 0) {
-						BeginUndoRedoCommand("Select Active Camera"_sl, undo_redo_system, entity_system, world_entity_guid);
-						auto world_entity = QueryEntityByGUID<WorldEntityQuery>(entity_system, world_entity_guid);
-						world_entity.camera_entity->guid = guid;
-						EndUndoRedoCommand(undo_redo_system);
+					if (entity_type_id.index == ECS::GetEntityTypeID<CameraEntityType>::id.index) {
+						level_editor_io.camera_entity_guid_to_set = guid;
 					}
 					
 					if (entity_type_id.index == ECS::GetEntityTypeID<WorldAssetType>::id.index) {
-						// TODO: Load world on double click
+						level_editor_io.world_asset_guid_to_load = guid;
 					}
 				}
 			}
@@ -184,7 +181,7 @@ static void EntityViewTable(StackAllocator* alloc, EntitySystemBase& entity_syst
 	ApplyEntitySelectionRequests(ms_io, entity_view_table_entries, entity_system, undo_redo_system, selection_state_entity);
 }
 
-static void EntityViewTableWithCreationAndSearch(StackAllocator* alloc, const char* creation_combo_box_label, UndoRedoSystem& undo_redo_system, EntitySystemBase& entity_system, EditorSelectionStateEntity selection_state_entity, ArrayView<const EntityTypeID> entity_type_ids, u64 world_entity_guid) {
+static void EntityViewTableWithCreationAndSearch(StackAllocator* alloc, const char* creation_combo_box_label, UndoRedoSystem& undo_redo_system, EntitySystemBase& entity_system, EditorSelectionStateEntity selection_state_entity, ArrayView<const EntityTypeID> entity_type_ids, LevelEditorIO& level_editor_io) {
 	EntityCreationComboBox("##CreateEntity", creation_combo_box_label, entity_system, undo_redo_system, selection_state_entity, entity_type_ids);
 	
 	ImGui::SameLine();
@@ -198,10 +195,10 @@ static void EntityViewTableWithCreationAndSearch(StackAllocator* alloc, const ch
 	auto& search_pattern = selection_state_entity.selection_state->search_pattern;
 	ImGui::InputTextWithHint("##SearchEntities", "Search", search_pattern, &entity_system.heap);
 	
-	EntityViewTable(alloc, entity_system, undo_redo_system, world_entity_guid, selection_state_entity, search_pattern);
+	EntityViewTable(alloc, entity_system, undo_redo_system, level_editor_io, selection_state_entity, search_pattern);
 }
 
-void EditorOutlinerWindow(StackAllocator* alloc, UndoRedoSystem& undo_redo_system, WorldEntitySystem& world_system, EditorSelectionStateEntity selection_state_entity, u64 world_entity_guid) {
+void EditorOutlinerWindow(StackAllocator* alloc, UndoRedoSystem& undo_redo_system, WorldEntitySystem& world_system, EditorSelectionStateEntity selection_state_entity, LevelEditorIO& level_editor_io) {
 	static const EntityTypeID creatable_world_entity_type_ids[] = {
 		ECS::GetEntityTypeID<MeshEntityType>::id,
 		ECS::GetEntityTypeID<LightEntityType>::id,
@@ -209,11 +206,11 @@ void EditorOutlinerWindow(StackAllocator* alloc, UndoRedoSystem& undo_redo_syste
 	};
 	
 	ImGui::Begin("Outliner");
-	EntityViewTableWithCreationAndSearch(alloc, "Create Entity", undo_redo_system, world_system, selection_state_entity, ArrayViewCreate(creatable_world_entity_type_ids), world_entity_guid);
+	EntityViewTableWithCreationAndSearch(alloc, "Create Entity", undo_redo_system, world_system, selection_state_entity, ArrayViewCreate(creatable_world_entity_type_ids), level_editor_io);
 	ImGui::End();
 }
 
-void EditorAssetBrowserWindow(StackAllocator* alloc, UndoRedoSystem& undo_redo_system, AssetEntitySystem& asset_system, EditorSelectionStateEntity selection_state_entity) {
+void EditorAssetBrowserWindow(StackAllocator* alloc, UndoRedoSystem& undo_redo_system, AssetEntitySystem& asset_system, EditorSelectionStateEntity selection_state_entity, LevelEditorIO& level_editor_io) {
 	static const EntityTypeID creatable_asset_entity_type_ids[] = {
 		ECS::GetEntityTypeID<MeshAssetType>::id,
 		ECS::GetEntityTypeID<TextureAssetType>::id,
@@ -222,6 +219,6 @@ void EditorAssetBrowserWindow(StackAllocator* alloc, UndoRedoSystem& undo_redo_s
 	};
 	
 	ImGui::Begin("Asset Browser");
-	EntityViewTableWithCreationAndSearch(alloc, "Create Asset", undo_redo_system, asset_system, selection_state_entity, ArrayViewCreate(creatable_asset_entity_type_ids), 0);
+	EntityViewTableWithCreationAndSearch(alloc, "Create Asset", undo_redo_system, asset_system, selection_state_entity, ArrayViewCreate(creatable_asset_entity_type_ids), level_editor_io);
 	ImGui::End();
 }
