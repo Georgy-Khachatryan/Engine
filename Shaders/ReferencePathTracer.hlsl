@@ -182,21 +182,31 @@ LightShadingInfo ComputeLightShadingInfo(float3 shading_position, u32 light_enti
 }
 
 uint2 SampleLight(float3 shading_position, inout uint hash) {
-	compile_const float grid_cell_size  = LightCullingConstants::grid_cell_size;
 	compile_const float grid_size_cells = LightCullingConstants::grid_size_cells;
+	float grid_cell_size = LightCullingConstants::grid_cell_size;
 	
 	float3 origin = round(scene.world_space_camera_position / grid_cell_size) * grid_cell_size;
-	s32x3 cell_position = (s32x3)floor(((shading_position - origin) / grid_cell_size) + grid_size_cells * 0.5);
+	s32x3 cell_position = (s32x3)floor(((shading_position - origin) / grid_cell_size));
+	
+	uint cascade_index = 0;
+	while ((any(cell_position < -8) || any(cell_position >= 8)) && cascade_index < 8) {
+		cascade_index += 1;
+		cell_position >>= 1;
+		grid_cell_size *= 2.0;
+	}
+	cell_position += 8;
 	
 	uint light_count = 0;
 	
 	bool has_global_light = scene.global_light_entity_index != u32_max;
 	light_count += has_global_light ? 1u : 0u;
 	
-	uint cell_index = u32_max;
-	if (all(cell_position >= 0) && all(cell_position < 16)) {
-		cell_index = cell_position.x | (cell_position.y << 4) | (cell_position.z << 8);
-		light_count += min(light_culling_grid[cell_index * LightCullingConstants::max_elements_per_cell], LightCullingConstants::max_elements_per_cell);
+	uint cell_offset = u32_max;
+	if (all(cell_position >= 0) && all(cell_position < 16) && cascade_index < 8) {
+		uint cell_index = cell_position.x | (cell_position.y << 4) | (cell_position.z << 8);
+		cell_offset = cell_index * LightCullingConstants::max_elements_per_cell + cascade_index * LightCullingConstants::max_elements_per_cascade;
+		
+		light_count += min(light_culling_grid[cell_offset], LightCullingConstants::max_elements_per_cell);
 	}
 	
 	uint light_entity_index = u32_max;
@@ -206,7 +216,7 @@ uint2 SampleLight(float3 shading_position, inout uint hash) {
 		if (has_global_light && light_index_in_cell == 0) {
 			light_entity_index = scene.global_light_entity_index;
 		} else {
-			light_entity_index = light_culling_grid[cell_index * LightCullingConstants::max_elements_per_cell + light_index_in_cell + (has_global_light ? 0u : 1u)];
+			light_entity_index = light_culling_grid[cell_offset + light_index_in_cell + (has_global_light ? 0u : 1u)];
 		}
 	}
 	

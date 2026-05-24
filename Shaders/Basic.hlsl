@@ -59,8 +59,8 @@ compile_const s64 s64_min = (s64)0x8000000000000000;
 #include ROOT_SIGNATURE_FILEPATH
 
 
-compile_const float PI = 3.1415927;
-compile_const float SQRT3_OVER_TWO = 0.8660254;
+compile_const float PI                  = 3.1415927;
+compile_const float SQRT_THREE_OVER_TWO = 0.8660254;
 
 float  Pow2(float  value) { return value * value; }
 float2 Pow2(float2 value) { return value * value; }

@@ -874,12 +874,14 @@ struct LightCullingConstants {
 	
 	compile_const u32   grid_size_cells    = 16;
 	compile_const u32   grid_cell_count    = grid_size_cells * grid_size_cells * grid_size_cells;
+	compile_const u32   grid_cascade_count = 8;
 	compile_const float grid_cell_size     = 0.25f;
 	compile_const float inv_grid_cell_size = 1.f / grid_cell_size;
 	
-	compile_const u32 max_elements_per_cell = 64;
-	compile_const u32 max_lights_per_cell   = max_elements_per_cell - 1; // 1 Counter
-	compile_const u32 grid_element_count    = max_elements_per_cell * grid_cell_count;
+	compile_const u32 max_elements_per_cell    = 64;
+	compile_const u32 max_lights_per_cell      = max_elements_per_cell - 1; // 1 Counter
+	compile_const u32 max_elements_per_cascade = max_elements_per_cell * grid_cell_count;
+	compile_const u32 grid_element_count       = max_elements_per_cascade * grid_cascade_count;
 	
 	compile_const u32 culling_command_bin_count = 13;
 	compile_const u32 culling_command_bin_size  = 16 * 1024;

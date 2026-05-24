@@ -3,12 +3,12 @@
 compile_const uint thread_group_size = LightCullingConstants::thread_group_size;
 
 #if defined(LIGHT_ENTITY_CULLING)
-void AppendLightCullingCommand(uint light_entity_index, uint aabb_volume_offset, uint packed_aabb, uint bin_index) {
+void AppendLightCullingCommand(uint light_entity_index, uint aabb_volume_offset, uint packed_aabb, uint cascade_index, uint bin_index) {
 	uint command_index = 0;
 	InterlockedAdd(indirect_arguments[bin_index].w, 1u, command_index);
 	
 	if (command_index < LightCullingConstants::culling_command_bin_size) {
-		uint2 culling_command = uint2(light_entity_index | ((aabb_volume_offset >> 8) << 28), packed_aabb | (aabb_volume_offset << 24));
+		uint2 culling_command = uint2(light_entity_index | ((aabb_volume_offset >> 8) << 28) | (cascade_index << 25), packed_aabb | (aabb_volume_offset << 24));
 		
 		uint bin_base_offset = bin_index * LightCullingConstants::culling_command_bin_size;
 		light_culling_commands[bin_base_offset + command_index] = culling_command;
@@ -45,26 +45,29 @@ void MainCS(uint thread_id : SV_DispatchThreadID) {
 		aabb_max = min(aabb_max, max(light.light_position, cap_position + cap_extent));
 	}
 	
-	compile_const float grid_cell_size  = LightCullingConstants::grid_cell_size;
 	compile_const float grid_size_cells = LightCullingConstants::grid_size_cells;
 	
+	float grid_cell_size = LightCullingConstants::grid_cell_size;
 	float3 origin = round(scene.world_space_camera_position / grid_cell_size) * grid_cell_size;
-	uint3 aabb_min_cells = (uint3)clamp(floor(((aabb_min - origin) / grid_cell_size) + grid_size_cells * 0.5), 0.0, grid_size_cells);
-	uint3 aabb_max_cells = (uint3)clamp(ceil(((aabb_max - origin) / grid_cell_size) + grid_size_cells * 0.5), 0.0, grid_size_cells);
-	uint3 aabb_size_cells = aabb_max_cells - aabb_min_cells;
-	uint aabb_volume_cells = aabb_size_cells.x * aabb_size_cells.y * aabb_size_cells.z;
 	
-	uint packed_aabb_min = (aabb_min_cells.x - 0) | ((aabb_min_cells.y - 0) << 4) | ((aabb_min_cells.z - 0) << 8);
-	uint packed_aabb_max = (aabb_max_cells.x - 1) | ((aabb_max_cells.y - 1) << 4) | ((aabb_max_cells.z - 1) << 8);
-	uint packed_aabb     = packed_aabb_min | (packed_aabb_max << 12);
-	
-	uint aabb_volume_offset = 0;
-	while (aabb_volume_cells != 0) {
-		uint bin_index = firstbitlow(aabb_volume_cells);
-		AppendLightCullingCommand(light_entity_index, aabb_volume_offset, packed_aabb, bin_index);
+	for (uint cascade_index = 0; cascade_index < LightCullingConstants::grid_cascade_count; cascade_index += 1, grid_cell_size *= 2.0) {
+		uint3 aabb_min_cells = (uint3)clamp(floor(((aabb_min - origin) / grid_cell_size) + grid_size_cells * 0.5), 0.0, grid_size_cells);
+		uint3 aabb_max_cells = (uint3)clamp(ceil(((aabb_max - origin) / grid_cell_size) + grid_size_cells * 0.5), 0.0, grid_size_cells);
+		uint3 aabb_size_cells = aabb_max_cells - aabb_min_cells;
+		uint aabb_volume_cells = aabb_size_cells.x * aabb_size_cells.y * aabb_size_cells.z;
 		
-		aabb_volume_cells  -= (1u << bin_index);
-		aabb_volume_offset += (1u << bin_index);
+		uint packed_aabb_min = (aabb_min_cells.x - 0) | ((aabb_min_cells.y - 0) << 4) | ((aabb_min_cells.z - 0) << 8);
+		uint packed_aabb_max = (aabb_max_cells.x - 1) | ((aabb_max_cells.y - 1) << 4) | ((aabb_max_cells.z - 1) << 8);
+		uint packed_aabb     = packed_aabb_min | (packed_aabb_max << 12);
+		
+		uint aabb_volume_offset = 0;
+		while (aabb_volume_cells != 0) {
+			uint bin_index = firstbitlow(aabb_volume_cells);
+			AppendLightCullingCommand(light_entity_index, aabb_volume_offset, packed_aabb, cascade_index, bin_index);
+			
+			aabb_volume_cells  -= (1u << bin_index);
+			aabb_volume_offset += (1u << bin_index);
+		}
 	}
 }
 #endif // defined(LIGHT_ENTITY_CULLING)
@@ -78,11 +81,12 @@ void MainCS(uint thread_id : SV_DispatchThreadID) {
 	uint bin_base_offset = constants.bin_index * LightCullingConstants::culling_command_bin_size;
 	uint2 light_culling_command = light_culling_commands[bin_base_offset + (thread_id >> constants.bin_index)];
 	
-	uint light_entity_index = (light_culling_command.x & 0xFFFFFFFu);
+	uint light_entity_index = (light_culling_command.x & 0x1FFFFFFu);
 	uint aabb_volume_offset = (((light_culling_command.x >> 28) << 8) | (light_culling_command.y >> 24)) + (thread_id & CreateBitMaskSmall(constants.bin_index));
 	uint3 aabb_min_cells    = (uint3(light_culling_command.y >> 0,  light_culling_command.y >> 4,  light_culling_command.y >> 8)  & 0xF) + 0;
 	uint3 aabb_max_cells    = (uint3(light_culling_command.y >> 12, light_culling_command.y >> 16, light_culling_command.y >> 20) & 0xF) + 1;
 	uint3 aabb_size_cells   = aabb_max_cells - aabb_min_cells;
+	uint  cascade_index     = (light_culling_command.x >> 25) & 0x7;
 	
 	uint3 cell_coordinates;
 	cell_coordinates.z = (aabb_volume_offset / (aabb_size_cells.x * aabb_size_cells.y));
@@ -90,12 +94,11 @@ void MainCS(uint thread_id : SV_DispatchThreadID) {
 	cell_coordinates.x = (aabb_volume_offset % (aabb_size_cells.x * aabb_size_cells.y)) % aabb_size_cells.x;
 	cell_coordinates += aabb_min_cells;
 	
-	compile_const float grid_cell_size   = LightCullingConstants::grid_cell_size;
-	compile_const float grid_size_cells  = LightCullingConstants::grid_size_cells;
-	compile_const float grid_cell_radius = grid_cell_size * SQRT3_OVER_TWO;
+	float grid_cell_size   = LightCullingConstants::grid_cell_size * (1u << cascade_index);
+	float grid_cell_radius = grid_cell_size * SQRT_THREE_OVER_TWO;
 	
-	float3 origin = round(scene.world_space_camera_position / grid_cell_size) * grid_cell_size;
-	float3 cell_center_position = ((float3)cell_coordinates + 0.5 - grid_size_cells * 0.5) * grid_cell_size + origin;
+	float3 origin = round(scene.world_space_camera_position / LightCullingConstants::grid_cell_size) * LightCullingConstants::grid_cell_size;
+	float3 cell_center_position = ((float3)cell_coordinates + 0.5 - LightCullingConstants::grid_size_cells * 0.5) * grid_cell_size + origin;
 	
 	GpuLightEntityData light = light_entity_data[light_entity_index];
 	
@@ -111,18 +114,19 @@ void MainCS(uint thread_id : SV_DispatchThreadID) {
 		float length_square   = Length2(light_to_cell);
 		float axis_projection = dot(light_to_cell, -light.light_direction);
 		
-		float distance_to_cone = (sqrt(length_square - Pow2(axis_projection)) - axis_projection * light.tan_attenuation_angle) * light.cos_attenuation_angle;
+		float distance_to_cone = (sqrt(max(length_square - Pow2(axis_projection), 0.0)) - axis_projection * light.tan_attenuation_angle) * light.cos_attenuation_angle;
 		is_visible = (axis_projection >= -grid_cell_radius) && (distance_to_cone <= grid_cell_radius);
 	}
 	
 	if (is_visible) {
-		uint cell_index = cell_coordinates.x | (cell_coordinates.y << 4) | (cell_coordinates.z << 8);
+		uint cell_index  = cell_coordinates.x | (cell_coordinates.y << 4) | (cell_coordinates.z << 8);
+		uint cell_offset = cell_index * LightCullingConstants::max_elements_per_cell + cascade_index * LightCullingConstants::max_elements_per_cascade;
 		
 		uint light_index_in_cell = 0;
-		InterlockedAdd(light_culling_grid[cell_index * LightCullingConstants::max_elements_per_cell], 1u, light_index_in_cell);
+		InterlockedAdd(light_culling_grid[cell_offset], 1u, light_index_in_cell);
 		
 		if (light_index_in_cell < LightCullingConstants::max_lights_per_cell) {
-			light_culling_grid[cell_index * LightCullingConstants::max_elements_per_cell + light_index_in_cell + 1] = light_entity_index;
+			light_culling_grid[cell_offset + light_index_in_cell + 1] = light_entity_index;
 		}
 	}
 }
