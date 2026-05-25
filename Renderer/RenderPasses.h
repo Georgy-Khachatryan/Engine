@@ -38,6 +38,8 @@ enum struct VirtualResourceID : u32 {
 	DepthStencil,
 	SceneRadiance,
 	VisibilityBuffer,
+	GBufferAlbedoMetalness,
+	GBufferNormalRoughness,
 	MotionVectors,
 	SceneRadianceResult,
 	SceneConstants,
@@ -1104,6 +1106,8 @@ struct VisibilityBufferResolveRenderPass {
 		HLSL::RegularBuffer<uint2>                  visible_meshlets      = VirtualResourceID::VisibleMeshlets;
 		HLSL::RWTexture2D<float4>                   scene_radiance        = VirtualResourceID::SceneRadiance;
 		HLSL::RWTexture2D<float2>                   motion_vectors        = VirtualResourceID::MotionVectors;
+		HLSL::RWTexture2D<float4>                   gb_albedo_metalness   = VirtualResourceID::GBufferAlbedoMetalness;
+		HLSL::RWTexture2D<float4>                   gb_normal_roughness   = VirtualResourceID::GBufferNormalRoughness;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {

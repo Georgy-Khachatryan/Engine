@@ -130,6 +130,7 @@ compile_const u32 texture_max_mip_level_count = 16u;
 
 TextureFormat ToNonSrgbFormat(TextureFormat format);
 TextureFormat ToSrvFormat(TextureFormat format);
+TextureFormat ToUavFormat(TextureFormat format);
 
 enum DXGI_FORMAT;
 extern ArrayView<DXGI_FORMAT> dxgi_texture_format_map;

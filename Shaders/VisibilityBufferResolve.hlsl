@@ -57,10 +57,14 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	texcoord_stream.texcoord_ddy = BarycentricInterpolation<float2>(b.barycentrics_ddy, v0.texcoord, v1.texcoord, v2.texcoord);
 	
 	MaterialProperties properties = SampleMaterial(mesh_entity.material_asset_index, texcoord_stream);
+	gb_albedo_metalness[thread_id] = EncodeSRGB(float4(properties.albedo, properties.metalness));
 	
 	float3x3 tangent_to_model = ComputeTangentToOtherSpace(model_space_tangent, model_space_normal);
 	float3x3 tangent_to_world = mul(QuatToRotationMatrix(model_to_world.rotation), tangent_to_model);
 	float3 world_space_normal = normalize(mul(tangent_to_world, properties.normal));
+	
+	float2 octahedral_normal = EncodeHemiOctahedralMap(world_space_normal);
+	gb_normal_roughness[thread_id] = float4(octahedral_normal * 0.5 + 0.5, properties.roughness, world_space_normal.z >= 0.0 ? 1.0 : 0.0);
 	
 	float3 meshlet_color = properties.albedo * max(world_space_normal.z * 0.5 + 0.5, 0.0);
 	scene_radiance[thread_id] = float4(meshlet_color * scene.exposure_estimate, 1.0);

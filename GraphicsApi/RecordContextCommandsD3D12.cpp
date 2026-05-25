@@ -44,7 +44,7 @@ static void CreateDescriptorTables(GraphicsContextD3D12* context, ArrayView<HLSL
 				break;
 			} case ResourceDescriptorType::RWTexture2D: {
 				D3D12_UNORDERED_ACCESS_VIEW_DESC desc = {};
-				desc.Format               = resource.texture.resource.d3d12 ? dxgi_texture_format_map[(u32)resource.texture.size.format] : DXGI_FORMAT_R8G8B8A8_UNORM;
+				desc.Format               = resource.texture.resource.d3d12 ? dxgi_texture_format_map[(u32)ToUavFormat(resource.texture.size.format)] : DXGI_FORMAT_R8G8B8A8_UNORM;
 				desc.ViewDimension        = D3D12_UAV_DIMENSION_TEXTURE2D;
 				desc.Texture2D.MipSlice   = descriptor.texture.mip_index;
 				desc.Texture2D.PlaneSlice = 0;

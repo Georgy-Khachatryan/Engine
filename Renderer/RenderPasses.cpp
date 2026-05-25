@@ -37,6 +37,9 @@ static void BuildResourceTable(RecordContext* record_context, WorldEntitySystem*
 	table.Set(ID::VisibilityBuffer,    TextureSize(TextureFormat::R32_UINT,           render_target_size), Flags::RTV);
 	table.Set(ID::SceneRadianceResult, TextureSize(TextureFormat::R16G16B16A16_FLOAT, render_target_size), Flags::UAV);
 	
+	table.Set(ID::GBufferAlbedoMetalness, TextureSize(TextureFormat::R8G8B8A8_UNORM_SRGB, render_target_size), Flags::UAV);
+	table.Set(ID::GBufferNormalRoughness, TextureSize(TextureFormat::R10G10B10A2_UNORM,   render_target_size), Flags::UAV);
+	
 	table.Set(ID::ReferencePathTracerRadiance, TextureSize(TextureFormat::R32G32B32A32_FLOAT, render_target_size), Flags::UAV);
 	table.Set(ID::GgxSingleScatteringEnergyLUT, TextureSize(TextureFormat::R16G16_UNORM, 32, 32), Flags::UAV);
 	

@@ -22,6 +22,13 @@ TextureFormat ToSrvFormat(TextureFormat format) {
 	}
 }
 
+TextureFormat ToUavFormat(TextureFormat format) {
+	switch (format) {
+	case TextureFormat::R8G8B8A8_UNORM_SRGB: return TextureFormat::R8G8B8A8_UNORM;
+	default: return format;
+	}
+}
+
 static DXGI_FORMAT dxgi_texture_formats[(u32)TextureFormat::Count] = {
 	DXGI_FORMAT_UNKNOWN,
 	
