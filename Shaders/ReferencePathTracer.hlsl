@@ -88,7 +88,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 			float  alpha_square = Pow2(alpha);
 			float3 diffuse_albedo = properties.albedo;
 			
-			LightSample light_sample = SampleLight(ray_desc.Origin, hash);
+			LightSample light_sample = SampleLightUniform(ray_desc.Origin, hash);
 			
 			if (light_sample.light_entity_index != u32_max) {
 				float3x3 world_to_tangent = BuildOrthonormalBasis(world_space_normal);

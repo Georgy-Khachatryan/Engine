@@ -12,8 +12,6 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	float depth = depth_stencil[thread_id];
 	if (depth == 0.0) return;
 	
-	uint hash = WyHash32(thread_id.x | (thread_id.y << 16), scene.frame_index);
-	
 	float3 view_space_position = TransformScreenUvToViewSpace(thread_uv, depth, scene.clip_to_view_coef);
 	
 	RayDesc ray_desc;
@@ -34,7 +32,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	ray_desc.Origin += world_space_normal * (1.0 / 1024.0);
 	
 	float blue_noise = blue_noise_1d[uint3(thread_id % 128, scene.frame_index % 32)];
-	LightSample light_sample = SampleLightWithBlueNoise(ray_desc.Origin, blue_noise);
+	LightSample light_sample = SampleLightWRS(ray_desc.Origin, world_space_normal, blue_noise);
 	
 	float3 radiance   = 0.0;
 	float3 throughput = 1.0;

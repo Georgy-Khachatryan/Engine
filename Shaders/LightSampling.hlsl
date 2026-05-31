@@ -47,7 +47,7 @@ struct LightSample {
 	float inv_pdf;
 };
 
-LightSample SampleLight(float3 shading_position, inout uint hash) {
+LightSample SampleLightUniform(float3 shading_position, inout uint hash) {
 	bool has_global_light = scene.global_light_entity_index != u32_max;
 	u32 light_count = has_global_light ? 1u : 0u;
 	
@@ -73,7 +73,7 @@ LightSample SampleLight(float3 shading_position, inout uint hash) {
 	return sample;
 }
 
-LightSample SampleLightWithBlueNoise(float3 shading_position, float blue_noise) {
+LightSample SampleLightWRS(float3 shading_position, float3 world_space_normal, float random) {
 	bool has_global_light = scene.global_light_entity_index != u32_max;
 	u32 light_count = has_global_light ? 1u : 0u;
 	
@@ -84,16 +84,38 @@ LightSample SampleLightWithBlueNoise(float3 shading_position, float blue_noise) 
 	
 	LightSample sample;
 	sample.light_entity_index = u32_max;
-	sample.inv_pdf = (float)light_count;
+	sample.inv_pdf = 0.0;
 	
 	if (light_count != 0) {
-		u32 light_index_in_cell = clamp((u32)(blue_noise * light_count), 0, light_count - 1);
-		
-		if (has_global_light && light_index_in_cell == 0) {
-			sample.light_entity_index = scene.global_light_entity_index;
-		} else {
-			sample.light_entity_index = light_culling_grid[cell_coordinates.cell_offset + light_index_in_cell + (has_global_light ? 0u : 1u)];
+		float weight_sum = 0.0;
+		for (uint light_index_in_cell = 0; light_index_in_cell < light_count; light_index_in_cell += 1) {
+			u32 light_entity_index = 0;
+			if (has_global_light && light_index_in_cell == 0) {
+				light_entity_index = scene.global_light_entity_index;
+			} else {
+				light_entity_index = light_culling_grid[cell_coordinates.cell_offset + light_index_in_cell + (has_global_light ? 0u : 1u)];
+			}
+			
+			// TODO: Account for BRDF during sampling.
+			LightShadingInfo shading_info = ComputeLightShadingInfo(shading_position, light_entity_index);
+			float weight = dot(shading_info.light_irradiance, rec709_luminance_coefficients) * saturate(dot(shading_info.light_direction, world_space_normal));
+			
+			if (weight > 0.0) {
+				weight_sum += weight;
+				
+				float p = (weight / weight_sum);
+				bool commit_sample = (random < p);
+				
+				if (commit_sample) {
+					sample.light_entity_index = light_entity_index;
+					sample.inv_pdf            = (1.0 / weight);
+				}
+				
+				// Warp the random number instead of generating a new one.
+				random = commit_sample ? (random / p) : ((random - p) / (1.0 - p));
+			}
 		}
+		sample.inv_pdf *= weight_sum;
 	}
 	
 	return sample;
