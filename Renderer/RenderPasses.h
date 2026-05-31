@@ -33,6 +33,8 @@ enum struct VirtualResourceID : u32 {
 	CurrentBackBuffer,
 	TransientUploadBuffer,
 	TransientReadbackBuffer,
+	BlueNoise1D,
+	BlueNoise2D,
 	
 	// Common scene resources:
 	DepthStencil,
@@ -1130,6 +1132,7 @@ struct DeferredLightingRenderPass {
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
 		HLSL::Texture2D<float2>                 ggx_single_scattering_energy_lut = VirtualResourceID::GgxSingleScatteringEnergyLUT;
+		HLSL::Texture2DArray<float>             blue_noise_1d       = VirtualResourceID::BlueNoise1D;
 		HLSL::Texture2D<float3>                 transmittance_lut   = VirtualResourceID::TransmittanceLut;
 		HLSL::Texture2D<float>                  depth_stencil       = VirtualResourceID::DepthStencil;
 		HLSL::Texture2D<float4>                 gb_albedo_metalness = VirtualResourceID::GBufferAlbedoMetalness;

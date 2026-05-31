@@ -320,6 +320,8 @@ static void GenerateCodeForRenderPass(StackAllocator* alloc, String filename, St
 				"None"_sl,
 				"Texture2D"_sl,
 				"RWTexture2D"_sl,
+				"Texture2DArray"_sl,
+				"RWTexture2DArray"_sl,
 				"StructuredBuffer"_sl,
 				"RWStructuredBuffer"_sl,
 				"ByteAddressBuffer"_sl,

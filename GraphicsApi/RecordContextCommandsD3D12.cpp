@@ -51,6 +51,31 @@ static void CreateDescriptorTables(GraphicsContextD3D12* context, ArrayView<HLSL
 				
 				device->CreateUnorderedAccessView(resource.texture.resource.d3d12, nullptr, &desc, descriptor_table_handle);
 				break;
+			} case ResourceDescriptorType::Texture2DArray: {
+				D3D12_SHADER_RESOURCE_VIEW_DESC desc = {};
+				desc.Format                             = resource.texture.resource.d3d12 ? dxgi_texture_format_map[(u32)ToSrvFormat(resource.texture.size.format)] : DXGI_FORMAT_R8G8B8A8_UNORM;
+				desc.ViewDimension                      = D3D12_SRV_DIMENSION_TEXTURE2DARRAY;
+				desc.Shader4ComponentMapping            = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+				desc.Texture2DArray.MostDetailedMip     = descriptor.texture.mip_index;
+				desc.Texture2DArray.MipLevels           = Math::Min(descriptor.texture.mip_count, (u8)(resource.texture.size.mips - descriptor.texture.mip_index));
+				desc.Texture2DArray.FirstArraySlice     = descriptor.texture.array_index;
+				desc.Texture2DArray.ArraySize           = Math::Min(descriptor.texture.array_count, (u16)(resource.texture.size.ArraySliceCount() - descriptor.texture.array_index));
+				desc.Texture2DArray.PlaneSlice          = 0;
+				desc.Texture2DArray.ResourceMinLODClamp = 0.f;
+				
+				device->CreateShaderResourceView(resource.texture.resource.d3d12, &desc, descriptor_table_handle);
+				break;
+			} case ResourceDescriptorType::RWTexture2DArray: {
+				D3D12_UNORDERED_ACCESS_VIEW_DESC desc = {};
+				desc.Format                         = resource.texture.resource.d3d12 ? dxgi_texture_format_map[(u32)ToUavFormat(resource.texture.size.format)] : DXGI_FORMAT_R8G8B8A8_UNORM;
+				desc.ViewDimension                  = D3D12_UAV_DIMENSION_TEXTURE2DARRAY;
+				desc.Texture2DArray.MipSlice        = descriptor.texture.mip_index;
+				desc.Texture2DArray.FirstArraySlice = descriptor.texture.array_index;
+				desc.Texture2DArray.ArraySize       = Math::Min(descriptor.texture.array_count, (u16)(resource.texture.size.ArraySliceCount() - descriptor.texture.array_index));
+				desc.Texture2DArray.PlaneSlice      = 0;
+				
+				device->CreateUnorderedAccessView(resource.texture.resource.d3d12, nullptr, &desc, descriptor_table_handle);
+				break;
 			} case ResourceDescriptorType::RegularBuffer: {
 				D3D12_SHADER_RESOURCE_VIEW_DESC desc = {};
 				desc.Format                     = DXGI_FORMAT_UNKNOWN;

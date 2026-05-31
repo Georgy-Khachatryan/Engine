@@ -63,6 +63,9 @@ struct RendererContext {
 	u64 streaming_scratch_buffer_address = 0;
 	
 	DebugGeometryBuffer debug_geometry_buffer;
+	
+	NativeTextureResource blue_noise_1d;
+	NativeTextureResource blue_noise_2d;
 };
 
 RendererContext* CreateRendererContext(StackAllocator* alloc);

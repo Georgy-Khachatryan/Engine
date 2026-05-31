@@ -34,8 +34,9 @@ struct AsyncTransferDstTexture {
 	NativeTextureResource resource;
 	TextureSize size; // Size of the texture subresource.
 	
-	u64 offset = 0;
+	u64 offset            = 0;
 	u32 subresource_index = 0;
+	u32 row_pitch         = 0;
 };
 
 enum struct AsyncTransferDstType : u32 {
@@ -62,7 +63,7 @@ struct AsyncTransferCommand {
 u64 AppendAsyncTransferCommand(AsyncTransferQueue* queue, const AsyncTransferCommand& command);
 u64 AsyncCopyMemoryToBuffer(AsyncTransferQueue* async_transfer_queue, NativeBufferResource dst_buffer, u64 dst_buffer_offset, u64 dst_buffer_size, void* src_data, u64 copy_size);
 u64 AsyncCopyFileToBuffer(AsyncTransferQueue* async_transfer_queue, NativeBufferResource dst_buffer, u64 dst_buffer_offset, u64 dst_buffer_size, FileHandle src_file, u64 src_file_offset, u64 copy_size);
-u64 AsyncCopyFileToTexture(AsyncTransferQueue* async_transfer_queue, NativeTextureResource dst_texture, u32 dst_subresource_index, TextureSize dst_texture_size, FileHandle src_file, u64 src_file_offset, u64 copy_size);
+u64 AsyncCopyFileToTexture(AsyncTransferQueue* async_transfer_queue, NativeTextureResource dst_texture, u32 dst_subresource_index, TextureSize dst_texture_size, FileHandle src_file, u64 src_file_offset, u64 copy_size, u32 row_pitch = 0);
 
 u64 CompletedGpuAsyncTransferIndex(AsyncTransferQueue* async_transfer_queue);
 

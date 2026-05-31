@@ -33,7 +33,8 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	float3 world_space_normal = DecodeHemiOctahedralMap01(normal_roughness.xy) * float3(1.0, 1.0, normal_roughness.w * 2.0 - 1.0);
 	ray_desc.Origin += world_space_normal * (1.0 / 1024.0);
 	
-	LightSample light_sample = SampleLight(ray_desc.Origin, hash);
+	float blue_noise = blue_noise_1d[uint3(thread_id % 128, scene.frame_index % 32)];
+	LightSample light_sample = SampleLightWithBlueNoise(ray_desc.Origin, blue_noise);
 	
 	float3 radiance   = 0.0;
 	float3 throughput = 1.0;

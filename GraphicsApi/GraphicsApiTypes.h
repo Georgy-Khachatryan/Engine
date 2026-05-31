@@ -300,14 +300,16 @@ enum struct ResourceDescriptorType : u16 {
 	AnyUAV      = 1u << 3,
 	IndexOffset = 4,
 	
-	None            = (0u << IndexOffset),
-	Texture2D       = (1u << IndexOffset) | AnyTexture | AnySRV,
-	RWTexture2D     = (2u << IndexOffset) | AnyTexture | AnyUAV,
-	RegularBuffer   = (3u << IndexOffset) | AnyBuffer  | AnySRV,
-	RWRegularBuffer = (4u << IndexOffset) | AnyBuffer  | AnyUAV,
-	ByteBuffer      = (5u << IndexOffset) | AnyBuffer  | AnySRV,
-	RWByteBuffer    = (6u << IndexOffset) | AnyBuffer  | AnyUAV,
-	TopLevelRTAS    = (7u << IndexOffset) | AnyBuffer  | AnySRV,
+	None             = (0u << IndexOffset),
+	Texture2D        = (1u << IndexOffset) | AnyTexture | AnySRV,
+	RWTexture2D      = (2u << IndexOffset) | AnyTexture | AnyUAV,
+	Texture2DArray   = (3u << IndexOffset) | AnyTexture | AnySRV,
+	RWTexture2DArray = (4u << IndexOffset) | AnyTexture | AnyUAV,
+	RegularBuffer    = (5u << IndexOffset) | AnyBuffer  | AnySRV,
+	RWRegularBuffer  = (6u << IndexOffset) | AnyBuffer  | AnyUAV,
+	ByteBuffer       = (7u << IndexOffset) | AnyBuffer  | AnySRV,
+	RWByteBuffer     = (8u << IndexOffset) | AnyBuffer  | AnyUAV,
+	TopLevelRTAS     = (9u << IndexOffset) | AnyBuffer  | AnySRV,
 };
 ENUM_FLAGS_OPERATORS(ResourceDescriptorType);
 
@@ -564,6 +566,28 @@ namespace HLSL {
 		void Bind(VirtualResourceID resource, u32 mip_index = 0) {
 			resource_id = resource;
 			texture = { Type::RWTexture2D, (u8)mip_index, 1, 0, 1, 0 };
+		}
+	};
+	
+	NOTES(ResourceDescriptorType::Texture2DArray)
+	template<typename T>
+	struct Texture2DArray : ResourceDescriptor {
+		Texture2DArray(VirtualResourceID resource = (VirtualResourceID)0, u32 mip_offset = 0, u32 mip_count = u32_max, u32 array_index = 0, u32 array_count = u32_max) { Bind(resource, mip_offset, mip_count, array_index, array_count); }
+		
+		void Bind(VirtualResourceID resource, u32 mip_offset = 0, u32 mip_count = u32_max, u32 array_index = 0, u32 array_count = u32_max) {
+			resource_id = resource;
+			texture = { Type::Texture2DArray, (u8)mip_offset, (u8)mip_count, (u16)array_index, (u16)array_count, 0 };
+		}
+	};
+	
+	NOTES(ResourceDescriptorType::RWTexture2DArray)
+	template<typename T>
+	struct RWTexture2DArray : ResourceDescriptor {
+		RWTexture2DArray(VirtualResourceID resource = (VirtualResourceID)0, u32 mip_index = 0, u32 array_index = 0, u32 array_count = u32_max) { Bind(resource, mip_index, array_index, array_count); }
+		
+		void Bind(VirtualResourceID resource, u32 mip_index = 0, u32 array_index = 0, u32 array_count = u32_max) {
+			resource_id = resource;
+			texture = { Type::RWTexture2DArray, (u8)mip_index, 1, (u16)array_index, (u16)array_count, 0 };
 		}
 	};
 	

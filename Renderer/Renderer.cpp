@@ -16,6 +16,8 @@ compile_const u32 max_transient_resource_table_entries = 16;
 compile_const u32 texture_heap_size                    = 64 * 1024 * 1024;
 compile_const u32 streaming_scratch_buffer_size        = 16 * 1024 * 1024;
 
+static NativeTextureResource LoadRawTexture(GraphicsContext* context, AsyncTransferQueue* async_transfer_queue, StackAllocator* alloc, TextureSize size, String path);
+
 RendererContext* CreateRendererContext(StackAllocator* alloc) {
 	auto* context = NewFromAlloc(alloc, RendererContext);
 	
@@ -62,6 +64,9 @@ RendererContext* CreateRendererContext(StackAllocator* alloc) {
 	context->mesh_streaming_system    = CreateMeshStreamingSystem(alloc, mesh_asset_buffer_size - MeshletPageHeader::page_size * MeshletPageHeader::runtime_page_count);
 	context->texture_streaming_system = CreateTextureStreamingSystem(graphics_context, alloc, texture_heap_size);
 	
+	context->blue_noise_1d = LoadRawTexture(graphics_context, context->async_transfer_queue, alloc, TextureSize(TextureFormat::R8_UNORM,   128u, 128u, 32u), "./Assets/Source/Textures/BlueNoise/real_uniform_gauss1_0_exp0101_separate05.bin"_sl);
+	context->blue_noise_2d = LoadRawTexture(graphics_context, context->async_transfer_queue, alloc, TextureSize(TextureFormat::R8G8_UNORM, 128u, 128u, 32u), "./Assets/Source/Textures/BlueNoise/vec2_uniform_gauss1_0_exp0101_separate05.bin"_sl);
+	
 	return context;
 }
 
@@ -71,6 +76,8 @@ void ReleaseRendererContext(RendererContext* context, StackAllocator* alloc) {
 	ReleaseBufferResource(context->graphics_context, context->meshlet_blas_buffer);
 	ReleaseBufferResource(context->graphics_context, context->meshlet_rtas_buffer);
 	ReleaseBufferResource(context->graphics_context, context->streaming_scratch_buffer);
+	ReleaseTextureResource(context->graphics_context, context->blue_noise_1d);
+	ReleaseTextureResource(context->graphics_context, context->blue_noise_2d);
 	ReleaseAsyncTransferQueue(context->async_transfer_queue);
 	
 	for (auto& buffer : context->upload_buffers) {
@@ -84,6 +91,23 @@ void ReleaseRendererContext(RendererContext* context, StackAllocator* alloc) {
 	ReleaseTextureStreamingSystem(context->graphics_context, context->texture_streaming_system);
 	
 	ReleaseGraphicsContext(context->graphics_context, alloc);
+}
+
+static NativeTextureResource LoadRawTexture(GraphicsContext* context, AsyncTransferQueue* async_transfer_queue, StackAllocator* alloc, TextureSize size, String path) {
+	auto file = SystemOpenFile(alloc, path, OpenFileFlags::Read | OpenFileFlags::Async); // TODO: Close the file once async copy is done.
+	DebugAssert(file.handle != nullptr, "Missing texture '%'.", path);
+	
+	auto texture = CreateTextureResource(context, size, CreateResourceFlags::None);
+	auto format = texture_format_info_map[(u32)size.format];
+	
+	u32 row_pitch        = size.x * format.block_size_bytes;
+	u32 array_slice_size = row_pitch * size.y * size.DepthSliceCount();
+	
+	for (u32 i = 0; i < size.ArraySliceCount(); i += 1) {
+		AsyncCopyFileToTexture(async_transfer_queue, texture, i, size, file, array_slice_size * i, array_slice_size, row_pitch);
+	}
+	
+	return texture;
 }
 
 VirtualResourceTable* CreateResourceTable(StackAllocator* alloc) {
@@ -131,6 +155,8 @@ RecordContext* BeginRecordContext(StackAllocator* alloc, RendererContext* contex
 	resource_table->Set(VirtualResourceID::MeshletBlasBuffer,      context->meshlet_blas_buffer,            (u32)context->meshlet_blas_buffer_size);
 	resource_table->Set(VirtualResourceID::StreamingScratchBuffer, context->streaming_scratch_buffer,       (u32)context->streaming_scratch_buffer_size);
 	resource_table->Set(VirtualResourceID::DebugMeshBuffer,        context->debug_geometry_buffer.resource, (u32)context->debug_geometry_buffer.resource_size);
+	resource_table->Set(VirtualResourceID::BlueNoise1D,            context->blue_noise_1d,                  TextureSize(TextureFormat::R8_UNORM,   128u, 128u, 32u));
+	resource_table->Set(VirtualResourceID::BlueNoise2D,            context->blue_noise_2d,                  TextureSize(TextureFormat::R8G8_UNORM, 128u, 128u, 32u));
 	
 	u64 buffer_index = context->transient_buffer_index;
 	resource_table->Set(VirtualResourceID::TransientUploadBuffer, context->upload_buffers[buffer_index], upload_buffer_size, context->upload_buffer_cpu_addresses[buffer_index]);
