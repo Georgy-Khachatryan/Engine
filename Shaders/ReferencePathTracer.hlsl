@@ -1,230 +1,11 @@
 #include "Basic.hlsl"
 
-
-//
-// Based on "Sampling Visible GGX Normals with Spherical Caps" by Jonathan Dupuy and Anis Benyoub.
-//
-// Sampling the visible hemisphere as half vectors.
-//
-float3 SampleVndfHemisphere(float2 u, float3 wo) {
-	// Sample a spherical cap in (-wo.z, 1].
-	float phi = 2.0 * PI * u.x;
-	
-	float z = mad((1.0 - u.y), (1.0 + wo.z), -wo.z);
-	float sin_theta = sqrt(saturate(1.0 - z * z));
-	
-	float x = sin_theta * cos(phi);
-	float y = sin_theta * sin(phi);
-	
-	// Compute halfway direction, return without normalization (as this is done later).
-	return float3(x, y, z) + wo;
-}
-
-// Trowbridge Reitz (GGX) VNDF sampling. PDF = (SmithVisibilityG1(cos_theta_o) * TrowbridgeReitzNDF(cos_theta_m)) / (4.0 * cos_theta_o)
-float3 SampleTrowbridgeReitzVNDF(float2 u, float3 wo, float2 alpha) {
-	// Warp to the hemisphere configuration.
-	float3 wo_standard = normalize(float3(wo.xy * alpha, wo.z));
-	
-	// Sample the hemisphere.
-	float3 wm_standard = SampleVndfHemisphere(u, wo_standard);
-	
-	// Warp the microfacet normal back to the ellipsoid configuration.
-	return normalize(float3(wm_standard.xy * alpha, wm_standard.z));
-}
-
-float TrowbridgeReitzNDF(float cos_theta_m, float alpha_square) {
-	return alpha_square * rcp(PI * Pow2(1.0 + Pow2(cos_theta_m) * (alpha_square - 1.0)));
-}
-
-template<typename T>
-T FresnelSchlick(T f0, float cos_theta) {
-	return f0 + (1.0 - f0) * Pow5(1.0 - cos_theta);
-}
-
-float3 FresnelConductor(float3 f0, float cos_theta) {
-	return FresnelSchlick<float3>(f0, cos_theta);
-}
-
-float FresnelDielectric(float f0, float cos_theta) {
-	return FresnelSchlick<float>(f0, cos_theta);
-}
-
-float SmithVisibilityLambda(float cos_theta, float alpha_square) {
-	float tan_theta_square = rcp(Pow2(cos_theta)) - 1.0;
-	return (sqrt(alpha_square * tan_theta_square + 1.0) - 1.0) * 0.5;
-}
-
-// Smith masking function.
-float SmithVisibilityG1(float cos_theta, float alpha_square) {
-	return rcp(1.0 + SmithVisibilityLambda(cos_theta, alpha_square));
-}
-
-// Smith masking-shadowing function.
-float SmithVisibilityG(float cos_theta_o, float cos_theta_i, float alpha_square) {
-	return rcp(1.0 + SmithVisibilityLambda(cos_theta_o, alpha_square) + SmithVisibilityLambda(cos_theta_i, alpha_square)); // Height correlated.
-	// return SmithVisibilityG1(cos_theta_o, alpha_square) * SmithVisibilityG1(cos_theta_i, alpha_square); // Uncorrelated.
-}
-
-compile_const u32 energy_compensation_lut_size = 32u;
-compile_const float energy_compensation_lut_cos_theta_bias = (1.0 / 1024.0);
-compile_const float dielectric_f0 = 0.04;
-
-
-// Result has exclusive upper bound, i.e. the range is [0, 1).
-float2 ComputeRandomUnorm16x2(inout uint hash) {
-	float2 result = float2(hash & 0xFFFF, (hash >> 16) & 0xFFFF) * rcp(0x10000);
-	hash = WyHash32(hash, 0);
-	return result;
-}
-
-// Result has exclusive upper bound, i.e. the range is [0, max_value).
-uint ComputeRandomU32(inout uint hash, uint max_value) {
-	uint result = hash % max_value;
-	hash = WyHash32(hash, 0);
-	return result;
-}
-
-
 #if defined(REFERENCE_PATH_TRACER)
-#include "SDK/NvAPI/include/nvHLSLExtns.h"
+#include "BrdfSampling.hlsl"
+#include "LightSampling.hlsl"
 #include "MaterialSampling.hlsl"
 #include "MeshletVertexDecoding.hlsl"
-#include "AtmosphereSampling.hlsl"
-
-float TraceShadowRay(float3 ray_origin, float3 ray_direction, float ray_length) {
-	RayQuery<
-		RAY_FLAG_CULL_NON_OPAQUE |
-		RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES |
-		// RAY_FLAG_CULL_BACK_FACING_TRIANGLES |
-		RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH |
-		RAY_FLAG_NONE
-	> ray_query;
-	
-	RayDesc ray_desc;
-	ray_desc.Origin    = ray_origin;
-	ray_desc.Direction = ray_direction;
-	ray_desc.TMin      = 0.0;
-	ray_desc.TMax      = ray_length;
-	
-	ray_query.TraceRayInline(scene_tlas, 0, 0xFF, ray_desc);
-	
-	while (ray_query.Proceed()) {
-		
-	}
-	
-	return ray_query.CommittedStatus() == COMMITTED_TRIANGLE_HIT ? 0.0 : 1.0;
-}
-
-// Based on "Practical multiple scattering compensation for microfacet models" by Emmanuel Turquin.
-float2 SampleGgxSingleScatteringEnergyLUT(float cos_theta, float roughness) {
-	float2 energy_compensation_lut_parameters = saturate(float2(cos_theta + energy_compensation_lut_cos_theta_bias, roughness));
-	float2 energy_compensation_lut_uv = LutParametersToUv(energy_compensation_lut_parameters, energy_compensation_lut_size);
-	
-	return ggx_single_scattering_energy_lut.SampleLevel(sampler_linear_clamp, energy_compensation_lut_uv, 0);
-}
-
-float3 ComputeConductorBrdfEnergyCompensation(float2 single_scattering_energy, float3 specular_fresnel) {
-	return (1.0 + specular_fresnel * (1.0 - single_scattering_energy.x) / single_scattering_energy.x);
-}
-
-float ComputeDielectricBrdfEnergyCompensation(float2 single_scattering_energy) {
-	return (1.0 / single_scattering_energy.y);
-}
-
-
-struct LightShadingInfo {
-	float3 light_direction;
-	float shadow_ray_length;
-	float3 light_irradiance;
-};
-
-LightShadingInfo ComputeLightShadingInfo(float3 shading_position, u32 light_entity_index) {
-	GpuLightEntityData light = light_entity_data[light_entity_index];
-	
-	LightShadingInfo shading_info;
-	shading_info.light_irradiance = light.radiance_or_irradiance * light.color;
-	
-	if (light.type == LightType::Global) {
-		shading_info.light_direction   = light.light_direction;
-		shading_info.shadow_ray_length = 1024.0;
-		shading_info.light_irradiance *= SampleTransmittanceLUT(atmosphere, transmittance_lut, shading_position);
-	} else {
-		float3 light_vector = light.light_position - shading_position;
-		float distance_to_light_square = dot(light_vector, light_vector);
-		float distance_to_light = sqrt(distance_to_light_square);
-		
-		shading_info.light_direction   = light_vector / distance_to_light;
-		shading_info.shadow_ray_length = distance_to_light;
-		
-		// Converts Spot or Point light radiance to irradiance. Attenuation radius and light radius are not physically based.
-		float attenuation = SmoothStep(light.distance_attenuation, distance_to_light) / (distance_to_light_square + Pow2(light.light_radius) * 0.5);
-		
-		if (light.type == LightType::Spot) {
-			attenuation *= SmoothStep(light.angle_attenuation, dot(shading_info.light_direction, light.light_direction));
-		}
-		
-		shading_info.light_irradiance *= attenuation;
-	}
-	
-	return shading_info;
-}
-
-
-struct LightGridCellCoordinates {
-	u32 cascade_index;
-	u32 cell_offset;
-};
-
-LightGridCellCoordinates ComputeLightGridCellCoordinates(float3 world_space_position) {
-	LightGridCellCoordinates result;
-	result.cascade_index = u32_max;
-	result.cell_offset   = u32_max;
-	
-	for (u32 i = 0; (i < scene.light_grid_cascade_descs.count) && (result.cascade_index == u32_max); i += 1) {
-		float4 cascade_desc   = scene.light_grid_cascade_descs[i];
-		float3 cascade_offset = world_space_position - cascade_desc.xyz;
-		if (all(cascade_offset >= 0.0) && all(cascade_offset < cascade_desc.w)) {
-			result.cascade_index = i;
-		}
-	}
-	
-	if (result.cascade_index != u32_max) {
-		float4 cascade_desc   = scene.light_grid_cascade_descs[result.cascade_index];
-		float3 cascade_offset = world_space_position - cascade_desc.xyz;
-		
-		float grid_cell_size   = LightCullingConstants::grid_cell_size * (1u << result.cascade_index);
-		uint3 cell_coordinates = (uint3)floor((world_space_position - cascade_desc.xyz) / grid_cell_size);
-		
-		uint cell_index = cell_coordinates.x | (cell_coordinates.y << 4) | (cell_coordinates.z << 8);
-		result.cell_offset = cell_index * LightCullingConstants::max_elements_per_cell + result.cascade_index * LightCullingConstants::max_elements_per_cascade;
-	}
-	
-	return result;
-}
-
-uint2 SampleLight(float3 shading_position, inout uint hash) {
-	bool has_global_light = scene.global_light_entity_index != u32_max;
-	u32 light_count = has_global_light ? 1u : 0u;
-	
-	LightGridCellCoordinates cell_coordinates = ComputeLightGridCellCoordinates(shading_position);
-	if (cell_coordinates.cell_offset != u32_max) {
-		light_count += min(light_culling_grid[cell_coordinates.cell_offset], LightCullingConstants::max_elements_per_cell);
-	}
-	
-	u32 light_entity_index = u32_max;
-	if (light_count != 0) {
-		u32 light_index_in_cell = ComputeRandomU32(hash, light_count);
-		
-		if (has_global_light && light_index_in_cell == 0) {
-			light_entity_index = scene.global_light_entity_index;
-		} else {
-			light_entity_index = light_culling_grid[cell_coordinates.cell_offset + light_index_in_cell + (has_global_light ? 0u : 1u)];
-		}
-	}
-	
-	return uint2(light_entity_index, light_count);
-}
-
+#include "SDK/NvAPI/include/nvHLSLExtns.h"
 
 [ThreadGroupSize(32, 1, 1)]
 void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
@@ -307,14 +88,14 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 			float  alpha_square = Pow2(alpha);
 			float3 diffuse_albedo = properties.albedo;
 			
-			uint2 light_sample = SampleLight(ray_desc.Origin, hash);
+			LightSample light_sample = SampleLight(ray_desc.Origin, hash);
 			
-			if (light_sample.y != 0) {
+			if (light_sample.light_entity_index != u32_max) {
 				float3x3 world_to_tangent = BuildOrthonormalBasis(world_space_normal);
 				float3x3 tangent_to_world = transpose(world_to_tangent);
 				
-				LightShadingInfo shading_info = ComputeLightShadingInfo(ray_desc.Origin, light_sample.x);
-				shading_info.light_irradiance *= light_sample.y;
+				LightShadingInfo shading_info = ComputeLightShadingInfo(ray_desc.Origin, light_sample.light_entity_index);
+				shading_info.light_irradiance *= light_sample.inv_pdf;
 				
 				float3 wi = mul(world_to_tangent, shading_info.light_direction);
 				float3 wo = mul(world_to_tangent, -ray_desc.Direction);
@@ -327,7 +108,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 					shadowed_light_irradiance *= TraceShadowRay(ray_desc.Origin, shading_info.light_direction, shading_info.shadow_ray_length);
 				}
 				
-				float2 single_scattering_energy = SampleGgxSingleScatteringEnergyLUT(abs_cos_theta_o, roughness);
+				float2 single_scattering_energy = SampleGgxSingleScatteringEnergyLUT(ggx_single_scattering_energy_lut, abs_cos_theta_o, roughness);
 				
 				if (metalness != 0.0 && (wi.z * abs_cos_theta_o) > 0.0) {
 					float3 specular_fresnel = FresnelConductor(conductor_f0, i_dot_h);
@@ -363,7 +144,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 				if ((wi.z * abs_cos_theta_o) > 0.0) {
 					float2 mis_thresholds = ComputeRandomUnorm16x2(hash);
 					
-					float2 single_scattering_energy = SampleGgxSingleScatteringEnergyLUT(abs_cos_theta_o, roughness);
+					float2 single_scattering_energy = SampleGgxSingleScatteringEnergyLUT(ggx_single_scattering_energy_lut, abs_cos_theta_o, roughness);
 					
 					if (mis_thresholds.x < metalness) {
 						float3 specular_fresnel = FresnelConductor(conductor_f0, i_dot_h);
@@ -416,6 +197,8 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 
 
 #if defined(ENERGY_COMPENSATION_LUT)
+#include "BrdfSampling.hlsl"
+
 compile_const u32 thread_group_size   = 1024;
 compile_const u32 sample_grid_size_xy = 128;
 compile_const u32 sample_count        = sample_grid_size_xy * sample_grid_size_xy;

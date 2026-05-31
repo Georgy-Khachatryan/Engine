@@ -3,6 +3,8 @@
 #include "Generated/SceneData.hlsl"
 #include "Generated/AtmosphereData.hlsl"
 
+compile_const uint thread_group_size = AtmosphereParameters::thread_group_size;
+
 //
 // Sebastien Hillaire. 2020. A Scalable and Production Ready Sky and Atmosphere Rendering Technique.
 // https://github.com/sebh/UnrealEngineSkyAtmosphere see license in THIRD_PARTY_LICENSES.md

@@ -39,7 +39,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	float4 p1 = TransformModelToClipSpace(v1, model_to_world, mesh_asset, meshlet, scene.world_to_view, scene.view_to_clip_coef);
 	float4 p2 = TransformModelToClipSpace(v2, model_to_world, mesh_asset, meshlet, scene.world_to_view, scene.view_to_clip_coef);
 	
-	BarycentricsWithDerivatives b = ComputeBarycentricsWithDerivatives(p0, p1, p2, ScreenUvToNdc(thread_uv), scene.render_target_size);
+	BarycentricsWithDerivatives b = ComputeBarycentricsWithDerivatives(p0, p1, p2, ScreenUvToNdc(thread_uv), scene.inv_render_target_size);
 	
 	GpuTransform prev_model_to_world = prev_mesh_transforms[mesh_entity_index];
 	float4 prev_p0 = TransformModelToClipSpace(v0, prev_model_to_world, mesh_asset, meshlet, scene.prev_world_to_view, scene.prev_view_to_clip_coef);

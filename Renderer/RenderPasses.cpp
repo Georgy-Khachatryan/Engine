@@ -289,35 +289,40 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 		render_passes.Add<MeshletCullingRenderPass>("RaytracingMeshletCulling"_sl).pass = MeshletCullingPass::Raytracing;
 	}
 	
-	auto& copy_meshlet_culling_statistics = render_passes.Add<CopyMeshletCullingStatisticsRenderPass>();
-	copy_meshlet_culling_statistics.readback_queue = &renderer_world.meshlet_culling_statistics_readback_queue;
+	{
+		auto& copy_meshlet_culling_statistics = render_passes.Add<CopyMeshletCullingStatisticsRenderPass>();
+		copy_meshlet_culling_statistics.readback_queue = &renderer_world.meshlet_culling_statistics_readback_queue;
+		
+		auto& meshlet_blas_build_indirect_arguments = render_passes.Add<MeshletBlasBuildIndirectArgumentsRenderPass>();
+		meshlet_blas_build_indirect_arguments.world_system = world_system;
+		meshlet_blas_build_indirect_arguments.scratch_buffer_address = renderer_context->streaming_scratch_buffer_address;
+		
+		auto& meshlet_blas_write_addresses = render_passes.Add<MeshletBlasWriteAddressesRenderPass>();
+		meshlet_blas_write_addresses.meshlet_rtas_buffer_address = renderer_context->meshlet_rtas_buffer_address;
+		
+		auto& build_tlas = render_passes.Add<BuildTlasRenderPass>();
+		build_tlas.world_system = world_system;
+		
+		auto& copy_streaming_feedback = render_passes.Add<CopyStreamingFeedbackRenderPass>();
+		copy_streaming_feedback.meshlet_streaming_feedback_queue = &renderer_world.meshlet_streaming_feedback_queue;
+		copy_streaming_feedback.mesh_streaming_feedback_queue    = &renderer_world.mesh_streaming_feedback_queue;
+		copy_streaming_feedback.texture_streaming_feedback_queue = &renderer_world.texture_streaming_feedback_queue;
+	}
 	
-	auto& meshlet_blas_build_indirect_arguments = render_passes.Add<MeshletBlasBuildIndirectArgumentsRenderPass>();
-	meshlet_blas_build_indirect_arguments.world_system = world_system;
-	meshlet_blas_build_indirect_arguments.scratch_buffer_address = renderer_context->streaming_scratch_buffer_address;
+	{
+		auto& light_entity_culling = render_passes.Add<LightEntityCullingRenderPass>();
+		light_entity_culling.world_system = world_system;
+		
+		render_passes.Add<LightCullingRenderPass>();
+	}
 	
-	auto& meshlet_blas_write_addresses = render_passes.Add<MeshletBlasWriteAddressesRenderPass>();
-	meshlet_blas_write_addresses.meshlet_rtas_buffer_address = renderer_context->meshlet_rtas_buffer_address;
+	// TODO: Generate energy compensation LUT once on startup, or save it as dds and load it from disk.
+	render_passes.Add<EnergyCompensationLutRenderPass>();
 	
-	auto& build_tlas = render_passes.Add<BuildTlasRenderPass>();
-	build_tlas.world_system = world_system;
-	
-	auto& copy_streaming_feedback = render_passes.Add<CopyStreamingFeedbackRenderPass>();
-	copy_streaming_feedback.meshlet_streaming_feedback_queue = &renderer_world.meshlet_streaming_feedback_queue;
-	copy_streaming_feedback.mesh_streaming_feedback_queue    = &renderer_world.mesh_streaming_feedback_queue;
-	copy_streaming_feedback.texture_streaming_feedback_queue = &renderer_world.texture_streaming_feedback_queue;
-	
-	
-	auto& light_entity_culling = render_passes.Add<LightEntityCullingRenderPass>();
-	light_entity_culling.world_system = world_system;
-	
-	render_passes.Add<LightCullingRenderPass>();
-	
-	
-	render_passes.Add<RaytracingDebugRenderPass>();
+	auto& deferred_lighting = render_passes.Add<DeferredLightingRenderPass>();
+	deferred_lighting.atmosphere = atmosphere_parameters_gpu_address;
 	
 	if (renderer_world.reference_path_tracer_percent != 0.f) {
-		render_passes.Add<EnergyCompensationLutRenderPass>();
 		render_passes.Add<ReferencePathTracerRenderPass>().atmosphere = atmosphere_parameters_gpu_address;
 	}
 	

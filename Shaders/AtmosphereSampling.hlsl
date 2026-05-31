@@ -10,7 +10,6 @@ compile_const float2 inv_transmittance_lut_size       = 1.0 / AtmosphereParamete
 compile_const float2 inv_multiple_scattering_lut_size = 1.0 / AtmosphereParameters::multiple_scattering_lut_size;
 compile_const float2 inv_sky_panorama_lut_size        = 1.0 / AtmosphereParameters::sky_panorama_lut_size;
 compile_const float  planet_radius_offset             = 0.01;
-compile_const uint   thread_group_size                = AtmosphereParameters::thread_group_size;
 compile_const float  world_to_planet_space_scale      = 1.0 / 1000.0;
 
 float3 TransformWorldToPlanetSpace(float3 world_space_position, float bottom_radius) {

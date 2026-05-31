@@ -104,6 +104,20 @@ u32 WyHash32(u32 a, u32 b) {
 	return a ^ b;
 }
 
+// Result has exclusive upper bound, i.e. the range is [0, 1).
+float2 ComputeRandomUnorm16x2(inout uint hash) {
+	float2 result = float2(hash & 0xFFFF, (hash >> 16) & 0xFFFF) * rcp(0x10000);
+	hash = WyHash32(hash, 0);
+	return result;
+}
+
+// Result has exclusive upper bound, i.e. the range is [0, max_value).
+uint ComputeRandomU32(inout uint hash, uint max_value) {
+	uint result = hash % max_value;
+	hash = WyHash32(hash, 0);
+	return result;
+}
+
 
 //
 // Based on https://fgiesen.wordpress.com/2022/09/09/morton-codes-addendum/

@@ -995,8 +995,8 @@ struct ReferencePathTracerRenderPass {
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {
-		HLSL::DescriptorTable<Descriptors> descriptor_table;
 		HLSL::ConstantBuffer<SceneConstants> scene;
+		HLSL::DescriptorTable<Descriptors> descriptor_table;
 		HLSL::ConstantBuffer<AtmosphereParameters> atmosphere;
 	};
 	
@@ -1113,6 +1113,37 @@ struct VisibilityBufferResolveRenderPass {
 	struct RootSignature : HLSL::BaseRootSignature {
 		HLSL::ConstantBuffer<SceneConstants> scene;
 		HLSL::DescriptorTable<Descriptors> descriptor_table;
+	};
+	
+	inline static PipelineID pipeline_id;
+};
+
+NOTES(Meta::ShaderName{ "DeferredLighting.hlsl"_sl })
+enum struct DeferredLightingShaders : u32 {};
+SHADER_DEFINITION_GENERATED_CODE(DeferredLightingShaders);
+
+NOTES(Meta::RenderPass{})
+struct DeferredLightingRenderPass {
+	RENDER_PASS_GENERATED_CODE();
+	
+	GpuAddress atmosphere;
+	
+	struct Descriptors : HLSL::BaseDescriptorTable {
+		HLSL::Texture2D<float2>                 ggx_single_scattering_energy_lut = VirtualResourceID::GgxSingleScatteringEnergyLUT;
+		HLSL::Texture2D<float3>                 transmittance_lut   = VirtualResourceID::TransmittanceLut;
+		HLSL::Texture2D<float>                  depth_stencil       = VirtualResourceID::DepthStencil;
+		HLSL::Texture2D<float4>                 gb_albedo_metalness = VirtualResourceID::GBufferAlbedoMetalness;
+		HLSL::Texture2D<float4>                 gb_normal_roughness = VirtualResourceID::GBufferNormalRoughness;
+		HLSL::RegularBuffer<GpuLightEntityData> light_entity_data   = VirtualResourceID::GpuLightEntityData;
+		HLSL::RegularBuffer<u32>                light_culling_grid  = VirtualResourceID::LightCullingGrid;
+		HLSL::TopLevelRTAS                      scene_tlas          = VirtualResourceID::SceneTLAS;
+		HLSL::RWTexture2D<float4>               scene_radiance      = VirtualResourceID::SceneRadiance;
+	};
+	
+	struct RootSignature : HLSL::BaseRootSignature {
+		HLSL::ConstantBuffer<SceneConstants> scene;
+		HLSL::DescriptorTable<Descriptors> descriptor_table;
+		HLSL::ConstantBuffer<AtmosphereParameters> atmosphere;
 	};
 	
 	inline static PipelineID pipeline_id;

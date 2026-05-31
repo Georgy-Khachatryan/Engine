@@ -61,7 +61,7 @@ struct BarycentricsWithDerivatives {
 
 // Based on SIGGRAPH 2024 "Variable Rate Shading with Visibility Buffer Rendering" by John Hable.
 // Code by James McLaren and Stephen Hill. (public domain)
-BarycentricsWithDerivatives ComputeBarycentricsWithDerivatives(float4 v0, float4 v1, float4 v2, float2 pixel_ndc, float2 render_target_size) {
+BarycentricsWithDerivatives ComputeBarycentricsWithDerivatives(float4 v0, float4 v1, float4 v2, float2 pixel_ndc, float2 inv_render_target_size) {
 	BarycentricsWithDerivatives result = (BarycentricsWithDerivatives)0;
 	
 	float3 inv_w = rcp(float3(v0.w, v1.w, v2.w));
@@ -73,8 +73,9 @@ BarycentricsWithDerivatives ComputeBarycentricsWithDerivatives(float4 v0, float4
 	float inv_det = rcp(determinant(float2x2(ndc2 - ndc1, ndc0 - ndc1)));
 	result.barycentrics_ddx = float3(ndc1.y - ndc2.y, ndc2.y - ndc0.y, ndc0.y - ndc1.y) * inv_det * inv_w;
 	result.barycentrics_ddy = float3(ndc2.x - ndc1.x, ndc0.x - ndc2.x, ndc1.x - ndc0.x) * inv_det * inv_w;
-	float ddx_sum = dot(result.barycentrics_ddx, float3(1.0, 1.0, 1.0));
-	float ddy_sum = dot(result.barycentrics_ddy, float3(1.0, 1.0, 1.0));
+	
+	float ddx_sum = result.barycentrics_ddx.x + result.barycentrics_ddx.y + result.barycentrics_ddx.z;
+	float ddy_sum = result.barycentrics_ddy.x + result.barycentrics_ddy.y + result.barycentrics_ddy.z;
 	
 	float2 delta_vec = pixel_ndc - ndc0;
 	float interp_inv_w = inv_w.x + delta_vec.x * ddx_sum + delta_vec.y * ddy_sum;
@@ -84,19 +85,16 @@ BarycentricsWithDerivatives ComputeBarycentricsWithDerivatives(float4 v0, float4
 	result.barycentrics.y = interp_w * (delta_vec.x * result.barycentrics_ddx.y + delta_vec.y * result.barycentrics_ddy.y);
 	result.barycentrics.z = interp_w * (delta_vec.x * result.barycentrics_ddx.z + delta_vec.y * result.barycentrics_ddy.z);
 	
-	result.barycentrics_ddx *= (2.0 / render_target_size.x);
-	result.barycentrics_ddy *= (2.0 / render_target_size.y);
-	ddx_sum *= (2.0 / render_target_size.x);
-	ddy_sum *= (2.0 / render_target_size.y);
-	
-	result.barycentrics_ddy *= -1.0;
-	ddy_sum                 *= -1.0;
+	result.barycentrics_ddx *= (2.0 * inv_render_target_size.x);
+	result.barycentrics_ddy *= (2.0 * inv_render_target_size.y);
+	ddx_sum *= (2.0 * inv_render_target_size.x);
+	ddy_sum *= (2.0 * inv_render_target_size.y);
 	
 	float interp_w_ddx = 1.0 / (interp_inv_w + ddx_sum);
-	float interp_w_ddy = 1.0 / (interp_inv_w + ddy_sum);
+	float interp_w_ddy = 1.0 / (interp_inv_w - ddy_sum);
 	
 	result.barycentrics_ddx = interp_w_ddx * (result.barycentrics * interp_inv_w + result.barycentrics_ddx) - result.barycentrics;
-	result.barycentrics_ddy = interp_w_ddy * (result.barycentrics * interp_inv_w + result.barycentrics_ddy) - result.barycentrics;  
+	result.barycentrics_ddy = interp_w_ddy * (result.barycentrics * interp_inv_w - result.barycentrics_ddy) - result.barycentrics;  
 	
 	return result;
 }
