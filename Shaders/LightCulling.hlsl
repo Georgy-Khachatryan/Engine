@@ -1,4 +1,5 @@
 #include "Basic.hlsl"
+#include "Generated/LightData.hlsl"
 
 compile_const uint thread_group_size = LightCullingConstants::thread_group_size;
 
@@ -121,12 +122,62 @@ void MainCS(uint thread_id : SV_DispatchThreadID) {
 		uint cell_index  = cell_coordinates.x | (cell_coordinates.y << 4) | (cell_coordinates.z << 8);
 		uint cell_offset = cell_index * LightCullingConstants::max_elements_per_cell + cascade_index * LightCullingConstants::max_elements_per_cascade;
 		
-		uint light_index_in_cell = 0;
-		InterlockedAdd(light_culling_grid[cell_offset], 1u, light_index_in_cell);
-		
-		if (light_index_in_cell < LightCullingConstants::max_lights_per_cell) {
-			light_culling_grid[cell_offset + light_index_in_cell + 1] = light_entity_index;
-		}
+		BitArraySetBit(light_culling_grid, light_entity_index, cell_offset);
 	}
 }
 #endif // defined(LIGHT_CULLING)
+
+
+#if defined(LIGHT_LIST)
+compile_const u32 min_wave_size = 4u;
+groupshared u32 gs_light_list[LightCullingConstants::max_elements_per_cell];
+groupshared u32 gs_wave_prefix_sums[LightCullingConstants::max_elements_per_cell / min_wave_size];
+
+[ThreadGroupSize(LightCullingConstants::max_elements_per_cell, 1, 1)]
+void MainCS(uint3 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
+	uint cascade_index = (group_id.z / LightCullingConstants::grid_size_cells);
+	uint3 cell_coordinates = uint3(group_id.xy, group_id.z % LightCullingConstants::grid_size_cells);
+	
+	uint cell_index  = cell_coordinates.x | (cell_coordinates.y << 4) | (cell_coordinates.z << 8);
+	uint cell_offset = cell_index * LightCullingConstants::max_elements_per_cell + cascade_index * LightCullingConstants::max_elements_per_cascade;
+	
+	uint bitmask               = light_culling_grid[cell_offset + thread_index];
+	uint bitmask_bit_count     = countbits(bitmask);
+	uint wave_prefix_bit_count = WavePrefixSum(bitmask_bit_count);
+	uint wave_active_bit_count = WaveActiveSum(bitmask_bit_count);
+	
+	uint wave_count = (LightCullingConstants::max_elements_per_cell / WaveGetLaneCount());
+	uint wave_index = (thread_index / WaveGetLaneCount());
+	
+	if (WaveIsFirstLane()) {
+		gs_wave_prefix_sums[wave_index] = wave_active_bit_count;
+	}
+	
+	GroupMemoryBarrierWithGroupSync();
+	
+	if (thread_index == 0) {
+		uint prefix_sum = 0;
+		for (uint i = 0; i < wave_count; i += 1) {
+			uint wave_bit_count = gs_wave_prefix_sums[i];
+			gs_wave_prefix_sums[i] = prefix_sum;
+			prefix_sum += wave_bit_count;
+		}
+		gs_light_list[0] = min(prefix_sum, LightCullingConstants::max_lights_per_cell);
+	}
+	
+	GroupMemoryBarrierWithGroupSync();
+	
+	uint group_prefix_bit_count = gs_wave_prefix_sums[wave_index] + wave_prefix_bit_count;
+	
+	uint begin_index = group_prefix_bit_count + 1u; // Offset by 1 because the gs_light_list[0] stores the number of elements in the list.
+	uint end_index   = min(group_prefix_bit_count + bitmask_bit_count, LightCullingConstants::max_lights_per_cell) + 1u;
+	
+	for (uint i = begin_index; i < end_index; i += 1, bitmask &= (bitmask - 1)) {
+		gs_light_list[i] = firstbitlow(bitmask) + thread_index * 32u;
+	}
+	
+	GroupMemoryBarrierWithGroupSync();
+	
+	light_culling_grid[cell_offset + thread_index] = gs_light_list[thread_index];
+}
+#endif // defined(LIGHT_LIST)

@@ -73,7 +73,8 @@ LightSample SampleLightUniform(float3 shading_position, inout uint hash) {
 	return sample;
 }
 
-LightSample SampleLightWRS(float3 shading_position, float3 world_space_normal, float random) {
+template<bool enable_visible_light_hash_mask = false>
+LightSample SampleLightWRS(float3 shading_position, float3 world_space_normal, float random, uint4 visible_light_hash_mask = 0, uint light_hash_seed = 0) {
 	bool has_global_light = scene.global_light_entity_index != u32_max;
 	u32 light_count = has_global_light ? 1u : 0u;
 	
@@ -99,6 +100,14 @@ LightSample SampleLightWRS(float3 shading_position, float3 world_space_normal, f
 			// TODO: Account for BRDF during sampling.
 			LightShadingInfo shading_info = ComputeLightShadingInfo(shading_position, light_entity_index);
 			float weight = dot(shading_info.light_irradiance, rec709_luminance_coefficients) * saturate(dot(shading_info.light_direction, world_space_normal));
+			
+			weight = log2(weight + 1.0);
+			
+			if (enable_visible_light_hash_mask) {
+				u32 light_hash = (WyHash32(light_entity_index, light_hash_seed) % 128u);
+				bool light_is_maybe_visible = BitArrayTestBit(visible_light_hash_mask, light_hash);
+				weight *= light_is_maybe_visible ? 64.0 : 1.0;
+			}
 			
 			if (weight > 0.0) {
 				weight_sum += weight;

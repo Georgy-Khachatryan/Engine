@@ -66,6 +66,7 @@ enum struct VirtualResourceID : u32 {
 	LightCullingIndirectArguments,
 	LightCullingCommands,
 	LightCullingGrid,
+	VisibleLightHashMask,
 	
 	// Streaming feedback:
 	MeshletStreamingFeedback,
@@ -870,6 +871,7 @@ enum struct LightCullingShaders : u32 {
 	ClearBuffers       = 1u << 0,
 	LightEntityCulling = 1u << 1,
 	LightCulling       = 1u << 2,
+	LightList          = 1u << 3,
 };
 SHADER_DEFINITION_GENERATED_CODE(LightCullingShaders);
 
@@ -891,6 +893,9 @@ struct LightCullingConstants {
 	compile_const u32 culling_command_bin_count = 13;
 	compile_const u32 culling_command_bin_size  = 16 * 1024;
 	compile_const u32 culling_command_count     = culling_command_bin_size * culling_command_bin_count;
+	
+	compile_const u32 visible_light_tile_size = 8;
+	compile_const u32 visible_light_tile_area = visible_light_tile_size * visible_light_tile_size;
 	
 	static_assert((1u << (culling_command_bin_count - 1)) == (grid_size_cells * grid_size_cells * grid_size_cells));
 };
@@ -935,6 +940,22 @@ struct LightCullingRenderPass {
 		};
 		
 		HLSL::PushConstantBuffer<PushConstants> constants;
+		HLSL::ConstantBuffer<SceneConstants> scene;
+		HLSL::DescriptorTable<Descriptors> descriptor_table;
+	};
+	
+	inline static PipelineID pipeline_id;
+};
+
+NOTES(Meta::RenderPass{})
+struct LightListRenderPass {
+	RENDER_PASS_GENERATED_CODE();
+	
+	struct Descriptors : HLSL::BaseDescriptorTable {
+		HLSL::RWRegularBuffer<u32> light_culling_grid = VirtualResourceID::LightCullingGrid;
+	};
+	
+	struct RootSignature : HLSL::BaseRootSignature {
 		HLSL::ConstantBuffer<SceneConstants> scene;
 		HLSL::DescriptorTable<Descriptors> descriptor_table;
 	};
@@ -1132,15 +1153,18 @@ struct DeferredLightingRenderPass {
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
 		HLSL::Texture2D<float2>                 ggx_single_scattering_energy_lut = VirtualResourceID::GgxSingleScatteringEnergyLUT;
-		HLSL::Texture2DArray<float>             blue_noise_1d       = VirtualResourceID::BlueNoise1D;
-		HLSL::Texture2D<float3>                 transmittance_lut   = VirtualResourceID::TransmittanceLut;
-		HLSL::Texture2D<float>                  depth_stencil       = VirtualResourceID::DepthStencil;
-		HLSL::Texture2D<float4>                 gb_albedo_metalness = VirtualResourceID::GBufferAlbedoMetalness;
-		HLSL::Texture2D<float4>                 gb_normal_roughness = VirtualResourceID::GBufferNormalRoughness;
-		HLSL::RegularBuffer<GpuLightEntityData> light_entity_data   = VirtualResourceID::GpuLightEntityData;
-		HLSL::RegularBuffer<u32>                light_culling_grid  = VirtualResourceID::LightCullingGrid;
-		HLSL::TopLevelRTAS                      scene_tlas          = VirtualResourceID::SceneTLAS;
-		HLSL::RWTexture2D<float4>               scene_radiance      = VirtualResourceID::SceneRadiance;
+		HLSL::Texture2DArray<float>             blue_noise_1d           = VirtualResourceID::BlueNoise1D;
+		HLSL::Texture2DArray<float2>            blue_noise_2d           = VirtualResourceID::BlueNoise2D;
+		HLSL::Texture2D<float3>                 transmittance_lut       = VirtualResourceID::TransmittanceLut;
+		HLSL::Texture2D<float>                  depth_stencil           = VirtualResourceID::DepthStencil;
+		HLSL::Texture2D<float4>                 gb_albedo_metalness     = VirtualResourceID::GBufferAlbedoMetalness;
+		HLSL::Texture2D<float4>                 gb_normal_roughness     = VirtualResourceID::GBufferNormalRoughness;
+		HLSL::Texture2D<float2>                 motion_vectors          = VirtualResourceID::MotionVectors;
+		HLSL::RegularBuffer<GpuLightEntityData> light_entity_data       = VirtualResourceID::GpuLightEntityData;
+		HLSL::RegularBuffer<u32>                light_culling_grid      = VirtualResourceID::LightCullingGrid;
+		HLSL::TopLevelRTAS                      scene_tlas              = VirtualResourceID::SceneTLAS;
+		HLSL::RWTexture2D<float4>               scene_radiance          = VirtualResourceID::SceneRadiance;
+		HLSL::RWRegularBuffer<uint4>            visible_light_hash_mask = VirtualResourceID::VisibleLightHashMask;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {

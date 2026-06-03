@@ -203,10 +203,11 @@ compile_const u32 thread_group_size   = 1024;
 compile_const u32 sample_grid_size_xy = 128;
 compile_const u32 sample_count        = sample_grid_size_xy * sample_grid_size_xy;
 compile_const u32 samples_per_thread  = sample_count / thread_group_size;
+compile_const u32 min_wave_size       = 16;
 
-groupshared float2 gs_single_scattering_energy[64];
+groupshared float2 gs_single_scattering_energy[thread_group_size / min_wave_size];
 
-[ThreadGroupSize(thread_group_size, 1, 1)][WaveSize(16, 128)]
+[ThreadGroupSize(thread_group_size, 1, 1)][WaveSize(min_wave_size, 128)]
 void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	float2 group_uv = group_id * (1.0 / (energy_compensation_lut_size - 1));
 	

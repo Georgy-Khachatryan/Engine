@@ -415,6 +415,9 @@ bool BitArrayTestBit(StructuredBuffer<uint> mask, u32 index, u32 offset = 0) { r
 void BitArraySetBit(RWStructuredBuffer<uint> mask, u32 index, u32 offset = 0) { InterlockedOr(mask[offset + index / 32u], 1u << (index % 32u)); }
 void BitArrayResetBit(RWStructuredBuffer<uint> mask, u32 index, u32 offset = 0) { InterlockedAnd(mask[offset + index / 32u], ~(1u << (index % 32u))); }
 
+template<int component_count>
+bool BitArrayTestBit(vector<uint, component_count> mask, u32 index, u32 offset = 0) { return (mask[offset + index / 32u] & (1u << (index % 32u))) != 0; }
+
 #define GsBitArrayTestBit(gs_mask, index) ((gs_mask[index / 32u] & (1u << (index % 32u))) != 0)
 #define GsBitArraySetBit(gs_mask, index) InterlockedOr(gs_mask[index / 32u], 1u << (index % 32u))
 #define GsBitArrayResetBit(gs_mask, index) InterlockedAnd(gs_mask[index / 32u], ~(1u << (index % 32u)))

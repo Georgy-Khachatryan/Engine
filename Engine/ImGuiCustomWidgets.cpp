@@ -254,8 +254,9 @@ bool ImGui::EntityComboBox(StackAllocator* alloc, const char* label, EntitySyste
 		
 		auto* array = &entity_system->entity_type_arrays[entity_type_id.index];
 		auto streams = ExtractComponentStreams<GuidNameQuery>(array);
+		auto entity_type_name = entity_type_name_table[entity_type_id.index];
 		
-		if (ImGui::IsWindowAppearing()) {
+		if (ImGui::IsWindowAppearing() || ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_F)) {
 			ImGui::SetKeyboardFocusHere();
 		}
 		
@@ -268,10 +269,12 @@ bool ImGui::EntityComboBox(StackAllocator* alloc, const char* label, EntitySyste
 		ArrayReserve(combo_box_entries, alloc, array->count);
 		
 		auto search_pattern = StringFromCString(search_pattern_buffer);
+		s32 type_name_score = search_pattern.count == 0 ? 0 : StringFuzzyMatch(search_pattern.data, entity_type_name.data);
+		
 		for (u64 i : BitArrayIt(array->alive_mask)) {
 			auto& [name] = streams.name[i];
 			
-			s32 score = search_pattern.count == 0 || name.count == 0 ? 0 : StringFuzzyMatch(search_pattern.data, name.data);
+			s32 score = search_pattern.count == 0 || name.count == 0 ? type_name_score : Math::Max(StringFuzzyMatch(search_pattern.data, name.data), (type_name_score - 1) / 2);
 			if (score >= 0) {
 				auto& entry = ArrayEmplace(combo_box_entries);
 				entry.entity_id = EntityID{ (u32)i };
@@ -284,8 +287,6 @@ bool ImGui::EntityComboBox(StackAllocator* alloc, const char* label, EntitySyste
 				return lh.score > rh.score;
 			});
 		}
-		
-		auto entity_type_name = entity_type_name_table[entity_type_id.index];
 		
 		ImGuiListClipper clipper;
 		clipper.Begin((s32)combo_box_entries.count);

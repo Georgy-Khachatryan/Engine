@@ -37,3 +37,18 @@ void LightCullingRenderPass::RecordPass(RecordContext* record_context) {
 		CmdDispatchIndirect(record_context, GpuAddress(VirtualResourceID::LightCullingIndirectArguments, i * sizeof(uint4)));
 	}
 }
+
+void LightListRenderPass::CreatePipelines(PipelineLibrary* lib) {
+	pipeline_id = CreateComputePipeline(lib, LightCullingShadersID, LightCullingShaders::LightList);
+}
+
+void LightListRenderPass::RecordPass(RecordContext* record_context) {
+	auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
+	CmdSetRootSignature(record_context, root_signature);
+	CmdSetPipelineState(record_context, pipeline_id);
+	
+	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
+	CmdSetRootArgument(record_context, root_signature.scene, VirtualResourceID::SceneConstants);
+	
+	CmdDispatch(record_context, uint3(LightCullingConstants::grid_size_cells, LightCullingConstants::grid_size_cells, LightCullingConstants::grid_size_cells * LightCullingConstants::grid_cascade_count));
+}

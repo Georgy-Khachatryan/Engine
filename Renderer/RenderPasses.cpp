@@ -54,6 +54,9 @@ static void BuildResourceTable(RecordContext* record_context, WorldEntitySystem*
 	table.Set(ID::Exposure,           ExposureSettings::exposure_buffer_size * sizeof(float));
 	table.Set(ID::ExposureTexture,    TextureSize(TextureFormat::R32_FLOAT, 1, 1)); // Used only for third party SDKs.
 	
+	auto visible_light_hash_mask_size = DivideAndRoundUp(render_target_size, LightCullingConstants::visible_light_tile_size);
+	table.Set(ID::VisibleLightHashMask, visible_light_hash_mask_size.x * visible_light_hash_mask_size.y * sizeof(uint4) * 2u);
+	
 	table.Set(ID::DebugGeometryDepthStencil, TextureSize(TextureFormat::D32_FLOAT, render_target_size), Flags::DSV);
 }
 
@@ -214,6 +217,8 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 		cascade_desc.y = roundf(scene.world_space_camera_position.y / grid_cell_size_next_level) * grid_cell_size_next_level - cascade_desc.w * 0.5f;
 		cascade_desc.z = roundf(scene.world_space_camera_position.z / grid_cell_size_next_level) * grid_cell_size_next_level - cascade_desc.w * 0.5f;
 	}
+	scene.visible_light_hash_mask_size = DivideAndRoundUp(render_target_size, LightCullingConstants::visible_light_tile_size);
+	
 	
 	auto gpu_scene_constants = AllocateGpuComponentUploadBuffer(record_context, 1, world_entity.gpu_scene_constants);
 	AppendGpuTransferCommand(gpu_scene_constants, 0, scene);
@@ -314,6 +319,7 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 		light_entity_culling.world_system = world_system;
 		
 		render_passes.Add<LightCullingRenderPass>();
+		render_passes.Add<LightListRenderPass>();
 	}
 	
 	// TODO: Generate energy compensation LUT once on startup, or save it as dds and load it from disk.
