@@ -123,7 +123,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 		}
 	}
 	
-	scene_radiance[thread_id] = float4(radiance * scene.exposure_estimate, 1.0);
+	denoiser_radiance_source[thread_id] = float4(radiance * scene.exposure_estimate, 1.0);
 	
 	
 #if USE_VISIBLE_LIGHT_HASH_MASK

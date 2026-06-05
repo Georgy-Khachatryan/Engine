@@ -146,5 +146,9 @@ struct VirtualResourceTable {
 		
 		return resource_id;
 	}
+	
+	void SwapHistory(VirtualResourceID primary_resource_id, VirtualResourceID history_resource_id) {
+		Swap(virtual_resources[(u32)primary_resource_id], virtual_resources[(u32)history_resource_id]);
+	}
 };
 

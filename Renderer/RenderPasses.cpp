@@ -33,6 +33,7 @@ static void BuildResourceTable(RecordContext* record_context, WorldEntitySystem*
 	
 	table.Set(ID::SceneRadiance,       TextureSize(TextureFormat::R16G16B16A16_FLOAT, render_target_size), Flags::UAV | Flags::RTV);
 	table.Set(ID::DepthStencil,        TextureSize(TextureFormat::D32_FLOAT,          render_target_size), Flags::DSV);
+	table.Set(ID::DepthStencilHistory, TextureSize(TextureFormat::D32_FLOAT,          render_target_size), Flags::DSV);
 	table.Set(ID::MotionVectors,       TextureSize(TextureFormat::R16G16_FLOAT,       render_target_size), Flags::UAV | Flags::RTV);
 	table.Set(ID::VisibilityBuffer,    TextureSize(TextureFormat::R32_UINT,           render_target_size), Flags::RTV);
 	table.Set(ID::SceneRadianceResult, TextureSize(TextureFormat::R16G16B16A16_FLOAT, render_target_size), Flags::UAV);
@@ -58,6 +59,13 @@ static void BuildResourceTable(RecordContext* record_context, WorldEntitySystem*
 	table.Set(ID::VisibleLightHashMask, visible_light_hash_mask_size.x * visible_light_hash_mask_size.y * sizeof(uint4) * 2u);
 	
 	table.Set(ID::DebugGeometryDepthStencil, TextureSize(TextureFormat::D32_FLOAT, render_target_size), Flags::DSV);
+	
+	table.Set(ID::DenoiserRadianceHistory0, TextureSize(TextureFormat::R16G16B16A16_FLOAT, render_target_size), Flags::UAV);
+	table.Set(ID::DenoiserRadianceHistory1, TextureSize(TextureFormat::R16G16B16A16_FLOAT, render_target_size), Flags::UAV);
+	table.Set(ID::DenoiserRadianceSource,   TextureSize(TextureFormat::R16G16B16A16_FLOAT, render_target_size), Flags::UAV);
+	
+	table.SwapHistory(ID::DepthStencil, ID::DepthStencilHistory);
+	table.SwapHistory(ID::DenoiserRadianceHistory0, ID::DenoiserRadianceHistory1);
 }
 
 using RecordPassCallback = void(*)(void*, RecordContext*);
@@ -181,7 +189,13 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	scene.exposure_estimate     = renderer_world.automatic_exposure_histogram.final_exposure;
 	scene.inv_exposure_estimate = 1.f / scene.exposure_estimate;
 	
-	bool should_reset_path_tracer = renderer_world.reset_reference_path_tracer || memcmp(&scene.view_to_world, &scene.prev_view_to_world, sizeof(float3x4)) != 0 || memcmp(&scene.render_target_size, &scene.prev_render_target_size, sizeof(float2)) != 0 || gpu_uploads.count != 0;
+	
+	bool should_reset_path_tracer =
+		renderer_world.reset_reference_path_tracer ||
+		memcmp(&scene.view_to_world, &scene.prev_view_to_world, sizeof(float3x4)) != 0 ||
+		memcmp(&scene.render_target_size, &scene.prev_render_target_size, sizeof(float2)) != 0 ||
+		gpu_uploads.count != 0;
+	
 	if (should_reset_path_tracer) {
 		renderer_world.reset_reference_path_tracer = false;
 		scene.path_tracer_accumulated_frame_count = 0;
@@ -327,6 +341,8 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	
 	auto& deferred_lighting = render_passes.Add<DeferredLightingRenderPass>();
 	deferred_lighting.atmosphere = atmosphere_parameters_gpu_address;
+	
+	render_passes.Add<LightingDenoiserRenderPass>();
 	
 	if (renderer_world.reference_path_tracer_percent != 0.f) {
 		render_passes.Add<ReferencePathTracerRenderPass>().atmosphere = atmosphere_parameters_gpu_address;

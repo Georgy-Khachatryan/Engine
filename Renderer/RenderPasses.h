@@ -38,6 +38,7 @@ enum struct VirtualResourceID : u32 {
 	
 	// Common scene resources:
 	DepthStencil,
+	DepthStencilHistory,
 	SceneRadiance,
 	VisibilityBuffer,
 	GBufferAlbedoMetalness,
@@ -52,6 +53,11 @@ enum struct VirtualResourceID : u32 {
 	LuminanceHistogram,
 	Exposure,
 	ExposureTexture,
+	
+	// Denoiser:
+	DenoiserRadianceHistory0,
+	DenoiserRadianceHistory1,
+	DenoiserRadianceSource,
 	
 	// Mesh rendering:
 	VisibleMeshlets,
@@ -1153,24 +1159,52 @@ struct DeferredLightingRenderPass {
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
 		HLSL::Texture2D<float2>                 ggx_single_scattering_energy_lut = VirtualResourceID::GgxSingleScatteringEnergyLUT;
-		HLSL::Texture2DArray<float>             blue_noise_1d           = VirtualResourceID::BlueNoise1D;
-		HLSL::Texture2DArray<float2>            blue_noise_2d           = VirtualResourceID::BlueNoise2D;
-		HLSL::Texture2D<float3>                 transmittance_lut       = VirtualResourceID::TransmittanceLut;
-		HLSL::Texture2D<float>                  depth_stencil           = VirtualResourceID::DepthStencil;
-		HLSL::Texture2D<float4>                 gb_albedo_metalness     = VirtualResourceID::GBufferAlbedoMetalness;
-		HLSL::Texture2D<float4>                 gb_normal_roughness     = VirtualResourceID::GBufferNormalRoughness;
-		HLSL::Texture2D<float2>                 motion_vectors          = VirtualResourceID::MotionVectors;
-		HLSL::RegularBuffer<GpuLightEntityData> light_entity_data       = VirtualResourceID::GpuLightEntityData;
-		HLSL::RegularBuffer<u32>                light_culling_grid      = VirtualResourceID::LightCullingGrid;
-		HLSL::TopLevelRTAS                      scene_tlas              = VirtualResourceID::SceneTLAS;
-		HLSL::RWTexture2D<float4>               scene_radiance          = VirtualResourceID::SceneRadiance;
-		HLSL::RWRegularBuffer<uint4>            visible_light_hash_mask = VirtualResourceID::VisibleLightHashMask;
+		HLSL::Texture2DArray<float>             blue_noise_1d            = VirtualResourceID::BlueNoise1D;
+		HLSL::Texture2DArray<float2>            blue_noise_2d            = VirtualResourceID::BlueNoise2D;
+		HLSL::Texture2D<float3>                 transmittance_lut        = VirtualResourceID::TransmittanceLut;
+		HLSL::Texture2D<float>                  depth_stencil            = VirtualResourceID::DepthStencil;
+		HLSL::Texture2D<float4>                 gb_albedo_metalness      = VirtualResourceID::GBufferAlbedoMetalness;
+		HLSL::Texture2D<float4>                 gb_normal_roughness      = VirtualResourceID::GBufferNormalRoughness;
+		HLSL::Texture2D<float2>                 motion_vectors           = VirtualResourceID::MotionVectors;
+		HLSL::RegularBuffer<GpuLightEntityData> light_entity_data        = VirtualResourceID::GpuLightEntityData;
+		HLSL::RegularBuffer<u32>                light_culling_grid       = VirtualResourceID::LightCullingGrid;
+		HLSL::TopLevelRTAS                      scene_tlas               = VirtualResourceID::SceneTLAS;
+		HLSL::RWTexture2D<float4>               denoiser_radiance_source = VirtualResourceID::DenoiserRadianceSource;
+		HLSL::RWRegularBuffer<uint4>            visible_light_hash_mask  = VirtualResourceID::VisibleLightHashMask;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {
 		HLSL::ConstantBuffer<SceneConstants> scene;
 		HLSL::DescriptorTable<Descriptors> descriptor_table;
 		HLSL::ConstantBuffer<AtmosphereParameters> atmosphere;
+	};
+	
+	inline static PipelineID pipeline_id;
+};
+
+NOTES(Meta::ShaderName{ "LightingDenoiser.hlsl"_sl })
+enum struct LightingDenoiserShaders : u32 {};
+SHADER_DEFINITION_GENERATED_CODE(LightingDenoiserShaders);
+
+NOTES(Meta::RenderPass{})
+struct LightingDenoiserRenderPass {
+	RENDER_PASS_GENERATED_CODE();
+	
+	struct Descriptors : HLSL::BaseDescriptorTable {
+		HLSL::Texture2D<float>    depth_stencil_history       = VirtualResourceID::DepthStencilHistory;
+		HLSL::Texture2D<float>    depth_stencil               = VirtualResourceID::DepthStencil;
+		HLSL::Texture2D<float4>   gb_albedo_metalness         = VirtualResourceID::GBufferAlbedoMetalness;
+		HLSL::Texture2D<float4>   gb_normal_roughness         = VirtualResourceID::GBufferNormalRoughness;
+		HLSL::Texture2D<float2>   motion_vectors              = VirtualResourceID::MotionVectors;
+		HLSL::Texture2D<float4>   denoiser_radiance_source    = VirtualResourceID::DenoiserRadianceSource;
+		HLSL::Texture2D<float4>   denoiser_radiance_history_0 = VirtualResourceID::DenoiserRadianceHistory0;
+		HLSL::RWTexture2D<float4> denoiser_radiance_history_1 = VirtualResourceID::DenoiserRadianceHistory1;
+		HLSL::RWTexture2D<float4> scene_radiance              = VirtualResourceID::SceneRadiance;
+	};
+	
+	struct RootSignature : HLSL::BaseRootSignature {
+		HLSL::ConstantBuffer<SceneConstants> scene;
+		HLSL::DescriptorTable<Descriptors> descriptor_table;
 	};
 	
 	inline static PipelineID pipeline_id;
