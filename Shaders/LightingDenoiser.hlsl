@@ -61,30 +61,22 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	
 	float2 history_pixel_coordinates = ComputeBilinearSamplePixelCoordinates(history_thread_uv * scene.render_target_size);
 	
-	// Validate 4x4 region around history UV coordinates. This is basically 2x2 bilinear region with a 1 pixel border.
+	// Validate 4x4 region around history UV coordinates. This is basically 2x2 bilinear region with a 1 pixel border. Samples are in Morton order.
 	uint valid_sample_mask_4x4 = 0;
 	valid_sample_mask_4x4 |= ValidateHistory2x2(history_pixel_coordinates + float2(0.0, 0.0), world_space_position, view_space_position.z, world_space_normal) << 0u;
 	valid_sample_mask_4x4 |= ValidateHistory2x2(history_pixel_coordinates + float2(2.0, 0.0), world_space_position, view_space_position.z, world_space_normal) << 4u;
 	valid_sample_mask_4x4 |= ValidateHistory2x2(history_pixel_coordinates + float2(0.0, 2.0), world_space_position, view_space_position.z, world_space_normal) << 8u;
 	valid_sample_mask_4x4 |= ValidateHistory2x2(history_pixel_coordinates + float2(2.0, 2.0), world_space_position, view_space_position.z, world_space_normal) << 12u;
 	
-	// Extract 2x2 center region out of 4x4 region. It corresponds to the bilinear filter footprint.
-	uint valid_sample_mask_2x2 = 0;
-	valid_sample_mask_2x2 |= ((valid_sample_mask_4x4 >> 3)  & 0x1) << 0;
-	valid_sample_mask_2x2 |= ((valid_sample_mask_4x4 >> 6)  & 0x1) << 1;
-	valid_sample_mask_2x2 |= ((valid_sample_mask_4x4 >> 9)  & 0x1) << 2;
-	valid_sample_mask_2x2 |= ((valid_sample_mask_4x4 >> 12) & 0x1) << 3;
-	
-	
+	// Extract 2x2 center region out of the 4x4 valid sample mask. It corresponds to the bilinear filter footprint.
 	float4 bilateral_weights = ComputeBilinearWeights(history_thread_uv * scene.render_target_size) * float4(
-		valid_sample_mask_2x2 & 0x1 ? 1.0 : 0.0,
-		valid_sample_mask_2x2 & 0x2 ? 1.0 : 0.0,
-		valid_sample_mask_2x2 & 0x4 ? 1.0 : 0.0,
-		valid_sample_mask_2x2 & 0x8 ? 1.0 : 0.0
+		valid_sample_mask_4x4 & (1u << 0x3) ? 1.0 : 0.0,
+		valid_sample_mask_4x4 & (1u << 0x6) ? 1.0 : 0.0,
+		valid_sample_mask_4x4 & (1u << 0x9) ? 1.0 : 0.0,
+		valid_sample_mask_4x4 & (1u << 0xC) ? 1.0 : 0.0
 	);
 	
-	bool is_disocclusion = all(bilateral_weights == 0.0);
-	float rcp_weight_sum = is_disocclusion ? 0.0 : rcp(bilateral_weights.x + bilateral_weights.y + bilateral_weights.z + bilateral_weights.w);
+	float rcp_weight_sum = all(bilateral_weights == 0.0) ? 0.0 : rcp(bilateral_weights.x + bilateral_weights.y + bilateral_weights.z + bilateral_weights.w);
 	
 	
 	float4 frame_count_samples = GatherChannel<3>(denoiser_radiance_history_0, sampler_linear_clamp, history_thread_uv);
@@ -135,21 +127,8 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	
 	
 	compile_const float max_frame_count = 32.0; // Matches blue noise sequence length.
-	
-	float  result_frame_count = 0.0;
-	float3 result_radiance    = 0.0;
-	if (history_frame_count >= max_frame_count) {
-		result_frame_count = history_frame_count;
-		result_radiance    = lerp(history_radiance, current_radiance, 0.02);
-	} else {
-		result_frame_count = history_frame_count + 1.0;
-		result_radiance    = (history_radiance * history_frame_count + current_radiance) * rcp(result_frame_count);
-	}
-	
-	if (is_disocclusion) {
-		result_radiance = current_radiance;
-		result_frame_count = 1.0;
-	}
+	float  result_frame_count = min(history_frame_count + 1.0, max_frame_count);
+	float3 result_radiance    = lerp(history_radiance, current_radiance, 1.0 / (history_frame_count + 1.0));
 	
 	result_radiance = mul(ycbcr_to_rec709, result_radiance);
 	
