@@ -6,7 +6,6 @@
 // TODO:
 // - Denoise diffuse and specular radiance separately.
 // - Demodulate diffuse and specular radiance.
-// - Higher quality history reprojection.
 // - Better disocclusion detection.
 // - Normal and roughness weights.
 // - Hole filling for disocclusions.
@@ -17,6 +16,31 @@
 
 compile_const u32 thread_group_size = 16;
 
+// Input coordinates the coordinates of the 2x2 pixel quad center.
+uint ValidateHistory2x2(float2 sample_coordinates, float3 world_space_position, float view_space_depth, float3 world_space_normal) {
+	uint valid_sample_mask_2x2 = 0;
+	
+	float4 history_depths = GatherChannel<0>(depth_stencil_history, sampler_linear_clamp, sample_coordinates * scene.inv_render_target_size);
+	for (u32 i = 0; i < 4; i += 1) {
+		float history_depth = history_depths[i];
+		float2 history_uv = (sample_coordinates + uint2(i & 0x1, i >> 1) - 0.5) * scene.inv_render_target_size;
+		
+		float3 history_view_space_position  = TransformScreenUvToViewSpace(history_uv, history_depth, scene.prev_clip_to_view_coef);
+		float3 history_world_space_position = mul(scene.prev_view_to_world, float4(history_view_space_position, 1.0));
+		
+		bool is_disocclusion = 
+			abs(dot(world_space_position - history_world_space_position, world_space_normal)) > 0.005 * view_space_depth ||
+			any(history_uv < 0.5 * scene.inv_render_target_size) ||
+			any(history_uv > (1.0 - 0.5 * scene.inv_render_target_size)) ||
+			history_depth == 0.0;
+		
+		if (is_disocclusion == false) {
+			valid_sample_mask_2x2 |= (1u << i);
+		}
+	}
+	
+	return valid_sample_mask_2x2;
+}
 
 [ThreadGroupSize(thread_group_size * thread_group_size, 1, 1)]
 void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
@@ -26,41 +50,48 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	float depth = depth_stencil[thread_id];
 	if (depth == 0.0) return;
 	
-	float2 motion_uv_offset = motion_vectors[thread_id];
-	
+	float2 motion_uv_offset  = motion_vectors[thread_id];
 	float2 history_thread_uv = thread_uv + motion_uv_offset;
-	float4 history_depths    = GatherChannel<0>(depth_stencil_history, sampler_linear_clamp, history_thread_uv);
-	float4 bilateral_weights = 1.0;
+	
+	float4 normal_roughness = gb_normal_roughness[thread_id];
 	
 	float3 view_space_position  = TransformScreenUvToViewSpace(thread_uv, depth, scene.clip_to_view_coef);
 	float3 world_space_position = mul(scene.view_to_world, float4(view_space_position, 1.0));
+	float3 world_space_normal   = DecodeHemiOctahedralMap01(normal_roughness.xy) * float3(1.0, 1.0, normal_roughness.w * 2.0 - 1.0);
 	
-	float2 history_sample_pixel_coordinates = ComputeBilinearSamplePixelCoordinates(history_thread_uv * scene.render_target_size);
-	for (u32 i = 0; i < 4; i += 1) {
-		float history_depth = history_depths[i];
-		float2 history_uv = (history_sample_pixel_coordinates + uint2(i & 0x1, i >> 1)) * scene.inv_render_target_size;
-		
-		float3 history_view_space_position = TransformScreenUvToViewSpace(history_uv, history_depth, scene.prev_clip_to_view_coef);
-		float3 history_world_space_position = mul(scene.prev_view_to_world, float4(history_view_space_position, 1.0));
-		
-		bool is_disocclusion = 
-			length(world_space_position - history_world_space_position) > 0.02 * history_view_space_position.z ||
-			any(history_uv < 0.5 * scene.inv_render_target_size) ||
-			any(history_uv > (1.0 - 0.5 * scene.inv_render_target_size)) ||
-			depth == 0.0;
-		
-		bilateral_weights[i] = is_disocclusion ? 0.0 : 1.0;
-	}
-	bilateral_weights *= ComputeBilinearWeights(history_thread_uv * scene.render_target_size);
+	float2 history_pixel_coordinates = ComputeBilinearSamplePixelCoordinates(history_thread_uv * scene.render_target_size);
+	
+	// Validate 4x4 region around history UV coordinates. This is basically 2x2 bilinear region with a 1 pixel border.
+	uint valid_sample_mask_4x4 = 0;
+	valid_sample_mask_4x4 |= ValidateHistory2x2(history_pixel_coordinates + float2(0.0, 0.0), world_space_position, view_space_position.z, world_space_normal) << 0u;
+	valid_sample_mask_4x4 |= ValidateHistory2x2(history_pixel_coordinates + float2(2.0, 0.0), world_space_position, view_space_position.z, world_space_normal) << 4u;
+	valid_sample_mask_4x4 |= ValidateHistory2x2(history_pixel_coordinates + float2(0.0, 2.0), world_space_position, view_space_position.z, world_space_normal) << 8u;
+	valid_sample_mask_4x4 |= ValidateHistory2x2(history_pixel_coordinates + float2(2.0, 2.0), world_space_position, view_space_position.z, world_space_normal) << 12u;
+	
+	// Extract 2x2 center region out of 4x4 region. It corresponds to the bilinear filter footprint.
+	uint valid_sample_mask_2x2 = 0;
+	valid_sample_mask_2x2 |= ((valid_sample_mask_4x4 >> 3)  & 0x1) << 0;
+	valid_sample_mask_2x2 |= ((valid_sample_mask_4x4 >> 6)  & 0x1) << 1;
+	valid_sample_mask_2x2 |= ((valid_sample_mask_4x4 >> 9)  & 0x1) << 2;
+	valid_sample_mask_2x2 |= ((valid_sample_mask_4x4 >> 12) & 0x1) << 3;
+	
+	
+	float4 bilateral_weights = ComputeBilinearWeights(history_thread_uv * scene.render_target_size) * float4(
+		valid_sample_mask_2x2 & 0x1 ? 1.0 : 0.0,
+		valid_sample_mask_2x2 & 0x2 ? 1.0 : 0.0,
+		valid_sample_mask_2x2 & 0x4 ? 1.0 : 0.0,
+		valid_sample_mask_2x2 & 0x8 ? 1.0 : 0.0
+	);
 	
 	bool is_disocclusion = all(bilateral_weights == 0.0);
 	float rcp_weight_sum = is_disocclusion ? 0.0 : rcp(bilateral_weights.x + bilateral_weights.y + bilateral_weights.z + bilateral_weights.w);
+	
 	
 	float4 frame_count_samples = GatherChannel<3>(denoiser_radiance_history_0, sampler_linear_clamp, history_thread_uv);
 	float  history_frame_count = dot(frame_count_samples, bilateral_weights) * rcp_weight_sum;
 	float3 history_sample = 0.0;
 	
-	if (all(bilateral_weights != 0.0)) {
+	if (valid_sample_mask_4x4 == 0xFFFF) {
 		history_sample = SampleTextureCatmullRom(denoiser_radiance_history_0, sampler_linear_clamp, history_thread_uv, 0.0, scene.render_target_size, scene.inv_render_target_size).xyz;
 	} else {
 		float3x4 sample_matrix;
