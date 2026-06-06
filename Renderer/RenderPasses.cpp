@@ -186,8 +186,9 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	scene.frame_index = (u32)record_context->frame_index;
 	scene.reference_path_tracer_percent = renderer_world.reference_path_tracer_percent;
 	
-	scene.exposure_estimate     = renderer_world.automatic_exposure_histogram.final_exposure;
-	scene.inv_exposure_estimate = 1.f / scene.exposure_estimate;
+	scene.exposure_estimate      = renderer_world.automatic_exposure_histogram.final_exposure;
+	scene.exposure_history_ratio = scene.exposure_estimate * scene.inv_exposure_estimate;
+	scene.inv_exposure_estimate  = 1.f / scene.exposure_estimate;
 	
 	
 	bool should_reset_path_tracer =

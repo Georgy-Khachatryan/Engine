@@ -50,7 +50,10 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	
 	
 	float depth = depth_stencil[thread_id];
-	if (depth == 0.0) return;
+	if (depth == 0.0) {
+		denoiser_radiance_source[thread_id] = 0.0;
+		return;
+	}
 	
 	float3 view_space_position = TransformScreenUvToViewSpace(thread_uv, depth, scene.clip_to_view_coef);
 	

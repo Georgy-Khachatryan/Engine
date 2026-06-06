@@ -51,8 +51,8 @@ struct SceneConstants {
 	
 	float exposure_estimate     = 0.f;
 	float inv_exposure_estimate = 0.f;
+	float exposure_history_ratio = 0.f;
 	u32 global_light_entity_index = 0;
-	u32 padding_0;
 	
 	uint2 visible_light_hash_mask_size;
 	uint2 padding_1;
