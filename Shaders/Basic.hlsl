@@ -157,6 +157,43 @@ float2 DecodeR16G16_SNORM(s16x2 encoded) { return float2(encoded) * (1.0 / s16_m
 template<typename T = float>
 vector<T, 3> DecodeR10G10B10(uint encoded) { return vector<T, 3>(uint3(encoded >> 0, encoded >> 10, encoded >> 20) & 0x3FF) / (T)1023.0; }
 
+//
+// Based on DirectX-Graphics-Samples, see license in THIRD_PARTY_LICENSES.md
+//
+// RGBE, aka R9G9B9E5_SHAREDEXP, is an unsigned float HDR pixel format where red, green,
+// and blue all share the same exponent. The color channels store a 9-bit value ranging
+// from [0/512, 511/512] which multiplies by 2^Exp and Exp ranges from [-15, 16].
+// Floating point specials are not encoded.
+uint EncodeR9G9B9E5(float3 color) {
+	// To determine the shared exponent, we must clamp the channels to an expressible range.
+	compile_const float max_val = asfloat(0x477F8000); // 1.FF x 2^+15
+	compile_const float min_val = asfloat(0x37800000); // 1.00 x 2^-16
+	
+	// Non-negative and <= max_val.
+	color = clamp(color, 0.0, max_val);
+	
+	// From the maximum channel we will determine the exponent. We clamp to a min value
+	// so that the exponent is within the valid 5-bit range.
+	float max_channel = max(max(min_val, color.r), max(color.g, color.b));
+	
+	// 'bias' has to have the biggest exponent plus 15 (and nothing in the mantissa). When
+	// added to the three channels, it shifts the explicit '1' and the 8 most significant
+	// mantissa bits into the low 9 bits. IEEE rules of float addition will round rather
+	// than truncate the discarded bits. Channels with smaller natural exponents will be
+	// shifted further to the right (discarding more bits).
+	float bias = asfloat((asuint(max_channel) + 0x07804000) & 0x7F800000);
+	
+	// Shift bits into the right places.
+	uint3 rgb = asuint(color + bias);
+	uint exponent = (asuint(bias) << 4) + 0x10000000;
+	return exponent | (rgb.b << 18) | (rgb.g << 9) | (rgb.r & 0x1FF);
+}
+
+float3 DecodeR9G9B9E5(uint p) {
+	float3 rgb = uint3(p, p >> 9, p >> 18) & 0x1FF;
+	return ldexp(rgb, (s32)(p >> 27) - 24);
+}
+
 float2 NdcToScreenUv(float2 ndc) { return float2(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5); }
 float2 ScreenUvToNdc(float2 uv)  { return float2(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0); }
 

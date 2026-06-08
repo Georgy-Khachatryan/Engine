@@ -51,8 +51,8 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	
 	float depth = depth_stencil[thread_id];
 	if (depth == 0.0) {
-		denoiser_radiance_source_s[thread_id] = 0.0;
-		denoiser_radiance_source_d[thread_id] = 0.0;
+		denoiser_radiance_source_s[thread_id] = 0;
+		denoiser_radiance_source_d[thread_id] = 0;
 		return;
 	}
 	
@@ -135,8 +135,8 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 		}
 	}
 	
-	denoiser_radiance_source_s[thread_id] = float4(specular_radiance * scene.exposure_estimate, 1.0);
-	denoiser_radiance_source_d[thread_id] = float4(diffuse_radiance  * scene.exposure_estimate, 1.0);
+	denoiser_radiance_source_s[thread_id] = EncodeR9G9B9E5(specular_radiance * scene.exposure_estimate);
+	denoiser_radiance_source_d[thread_id] = EncodeR9G9B9E5(diffuse_radiance  * scene.exposure_estimate);
 	
 	
 #if USE_VISIBLE_LIGHT_HASH_MASK

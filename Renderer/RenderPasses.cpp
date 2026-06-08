@@ -61,14 +61,17 @@ static void BuildResourceTable(RecordContext* record_context, WorldEntitySystem*
 	
 	table.Set(ID::DebugGeometryDepthStencil, TextureSize(TextureFormat::D32_FLOAT, render_target_size), Flags::DSV);
 	
-	table.Set(ID::DenoiserRadianceHistoryS0, TextureSize(TextureFormat::R16G16B16A16_FLOAT, render_target_size), Flags::UAV);
-	table.Set(ID::DenoiserRadianceHistoryS1, TextureSize(TextureFormat::R16G16B16A16_FLOAT, render_target_size), Flags::UAV);
-	table.Set(ID::DenoiserRadianceHistoryD0, TextureSize(TextureFormat::R16G16B16A16_FLOAT, render_target_size), Flags::UAV);
-	table.Set(ID::DenoiserRadianceHistoryD1, TextureSize(TextureFormat::R16G16B16A16_FLOAT, render_target_size), Flags::UAV);
-	table.Set(ID::DenoiserRadianceSourceS,   TextureSize(TextureFormat::R16G16B16A16_FLOAT, render_target_size), Flags::UAV);
-	table.Set(ID::DenoiserRadianceSourceD,   TextureSize(TextureFormat::R16G16B16A16_FLOAT, render_target_size), Flags::UAV);
+	table.Set(ID::DenoiserRadianceHistoryS0, TextureSize(TextureFormat::R9G9B9E5_FLOAT, render_target_size), Flags::UAV);
+	table.Set(ID::DenoiserRadianceHistoryS1, TextureSize(TextureFormat::R9G9B9E5_FLOAT, render_target_size), Flags::UAV);
+	table.Set(ID::DenoiserRadianceHistoryD0, TextureSize(TextureFormat::R9G9B9E5_FLOAT, render_target_size), Flags::UAV);
+	table.Set(ID::DenoiserRadianceHistoryD1, TextureSize(TextureFormat::R9G9B9E5_FLOAT, render_target_size), Flags::UAV);
+	table.Set(ID::DenoiserRadianceSourceS,   TextureSize(TextureFormat::R9G9B9E5_FLOAT, render_target_size), Flags::UAV);
+	table.Set(ID::DenoiserRadianceSourceD,   TextureSize(TextureFormat::R9G9B9E5_FLOAT, render_target_size), Flags::UAV);
+	table.Set(ID::DenoiserAccumulatedFrameCount0,  TextureSize(TextureFormat::R8_UNORM, render_target_size), Flags::UAV);
+	table.Set(ID::DenoiserAccumulatedFrameCount1,  TextureSize(TextureFormat::R8_UNORM, render_target_size), Flags::UAV);
 	
 	table.SwapHistory(ID::DepthStencil, ID::DepthStencilHistory);
+	table.SwapHistory(ID::DenoiserAccumulatedFrameCount0, ID::DenoiserAccumulatedFrameCount1);
 }
 
 using RecordPassCallback = void(*)(void*, RecordContext*);

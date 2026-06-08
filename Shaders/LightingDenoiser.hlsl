@@ -85,16 +85,14 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	float rcp_weight_sum = all(bilateral_weights == 0.0) ? 0.0 : rcp(bilateral_weights.x + bilateral_weights.y + bilateral_weights.z + bilateral_weights.w);
 	
 	
-	float4 frame_count_samples_s = GatherChannel<3>(denoiser_radiance_history_s_0, sampler_linear_clamp, history_thread_uv);
-	float4 frame_count_samples_d = GatherChannel<3>(denoiser_radiance_history_d_0, sampler_linear_clamp, history_thread_uv);
-	float  history_frame_count_s = dot(frame_count_samples_s, bilateral_weights) * rcp_weight_sum;
-	float  history_frame_count_d = dot(frame_count_samples_d, bilateral_weights) * rcp_weight_sum;
+	float4 frame_count_samples = GatherChannel<0>(denoiser_accumulated_frame_count_0, sampler_linear_clamp, history_thread_uv) * 255.0;
+	float  history_frame_count = dot(frame_count_samples, bilateral_weights) * rcp_weight_sum;
 	float3 history_sample_s = 0.0;
 	float3 history_sample_d = 0.0;
 	
 	if (valid_sample_mask_4x4 == 0xFFFF) {
-		history_sample_s = SampleTextureCatmullRom(denoiser_radiance_history_s_0, sampler_linear_clamp, history_thread_uv, 0.0, scene.render_target_size, scene.inv_render_target_size).xyz;
-		history_sample_d = SampleTextureCatmullRom(denoiser_radiance_history_d_0, sampler_linear_clamp, history_thread_uv, 0.0, scene.render_target_size, scene.inv_render_target_size).xyz;
+		history_sample_s = SampleTextureCatmullRom(denoiser_radiance_history_s_0, sampler_linear_clamp, history_thread_uv, 0.0, scene.render_target_size, scene.inv_render_target_size);
+		history_sample_d = SampleTextureCatmullRom(denoiser_radiance_history_d_0, sampler_linear_clamp, history_thread_uv, 0.0, scene.render_target_size, scene.inv_render_target_size);
 	} else {
 		float3x4 sample_matrix_s;
 		sample_matrix_s[0] = GatherChannel<0>(denoiser_radiance_history_s_0, sampler_linear_clamp, history_thread_uv);
@@ -110,10 +108,10 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	}
 	
 	float3 history_radiance_s = mul(rec709_to_ycbcr, max(history_sample_s * scene.exposure_history_ratio, 0.0));
-	float3 current_radiance_s = mul(rec709_to_ycbcr, denoiser_radiance_source_s[thread_id].xyz);
+	float3 current_radiance_s = mul(rec709_to_ycbcr, denoiser_radiance_source_s[thread_id]);
 	
 	float3 history_radiance_d = mul(rec709_to_ycbcr, max(history_sample_d * scene.exposure_history_ratio, 0.0));
-	float3 current_radiance_d = mul(rec709_to_ycbcr, denoiser_radiance_source_d[thread_id].xyz);
+	float3 current_radiance_d = mul(rec709_to_ycbcr, denoiser_radiance_source_d[thread_id]);
 	
 	float3 weighted_moments_pow1_s = 0.0;
 	float3 weighted_moments_pow2_s = 0.0;
@@ -124,12 +122,12 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	compile_const s32 radius = 4;
 	for (s32 y = -radius; y <= radius; y += 1) {
 		for (s32 x = -radius; x <= radius; x += 1) {
-			float4 radiance_s = denoiser_radiance_source_s[thread_id + s32x2(x, y)];
-			float4 radiance_d = denoiser_radiance_source_d[thread_id + s32x2(x, y)];
-			float gaussian_weight = ComputeGaussianWeight(x, y, radius) * radiance_s.w * radiance_d.w;
+			float3 radiance_s = denoiser_radiance_source_s[thread_id + s32x2(x, y)];
+			float3 radiance_d = denoiser_radiance_source_d[thread_id + s32x2(x, y)];
+			float gaussian_weight = ComputeGaussianWeight(x, y, radius); // TODO: Check if the radiance for this pixel was computed or not.
 			
-			float3 sample_s = mul(rec709_to_ycbcr, radiance_s.xyz);
-			float3 sample_d = mul(rec709_to_ycbcr, radiance_d.xyz);
+			float3 sample_s = mul(rec709_to_ycbcr, radiance_s);
+			float3 sample_d = mul(rec709_to_ycbcr, radiance_d);
 			weighted_moments_pow1_s += sample_s       * gaussian_weight;
 			weighted_moments_pow2_s += Pow2(sample_s) * gaussian_weight;
 			weighted_moments_pow1_d += sample_d       * gaussian_weight;
@@ -173,16 +171,16 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	float divergence_scale = 1.0;
 #endif
 	
-	float  result_frame_count_s = min(history_frame_count_s + 1.0, max_frame_count);
-	float  result_frame_count_d = min(history_frame_count_d + 1.0, max_frame_count);
-	float3 result_radiance_s    = lerp(history_radiance_s, current_radiance_s, 1.0 / (history_frame_count_s * divergence_scale + 1.0));
-	float3 result_radiance_d    = lerp(history_radiance_d, current_radiance_d, 1.0 / (history_frame_count_d * divergence_scale + 1.0));
+	float result_frame_count = min(history_frame_count + 1.0, max_frame_count);
+	float3 result_radiance_s = lerp(history_radiance_s, current_radiance_s, 1.0 / (history_frame_count * divergence_scale + 1.0));
+	float3 result_radiance_d = lerp(history_radiance_d, current_radiance_d, 1.0 / (history_frame_count * divergence_scale + 1.0));
 	
 	result_radiance_s = mul(ycbcr_to_rec709, result_radiance_s);
 	result_radiance_d = mul(ycbcr_to_rec709, result_radiance_d);
 	
-	denoiser_radiance_history_s_1[thread_id] = float4(result_radiance_s, result_frame_count_s);
-	denoiser_radiance_history_d_1[thread_id] = float4(result_radiance_d, result_frame_count_d);
+	denoiser_radiance_history_s_1[thread_id] = EncodeR9G9B9E5(result_radiance_s);
+	denoiser_radiance_history_d_1[thread_id] = EncodeR9G9B9E5(result_radiance_d);
+	denoiser_accumulated_frame_count_1[thread_id] = result_frame_count / 255.0;
 }
 #endif // defined(TEMPORAL_PASS)
 
@@ -202,12 +200,11 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	float3 world_space_position = mul(scene.view_to_world, float4(view_space_position, 1.0));
 	float3 world_space_normal   = DecodeHemiOctahedralMap01(normal_roughness.xy) * float3(1.0, 1.0, normal_roughness.w * 2.0 - 1.0);
 	
-	float4 sample_s = denoiser_radiance_not_blurred_s[thread_id];
-	float4 sample_d = denoiser_radiance_not_blurred_d[thread_id];
+	float history_frame_count = denoiser_accumulated_frame_count_1[thread_id] * 255.0;
 	
 	float blur_frame_count = 4.0;
-	float blur_weight_s = saturate(rcp(blur_frame_count) * (sample_s.w - 1.0));
-	float blur_weight_d = saturate(rcp(blur_frame_count) * (sample_d.w - 1.0));
+	float blur_weight_s = saturate(rcp(blur_frame_count) * (history_frame_count - 1.0));
+	float blur_weight_d = saturate(rcp(blur_frame_count) * (history_frame_count - 1.0));
 	
 	bool enable_spatial_filtering = (blur_weight_s < 1.0) || (blur_weight_d < 1.0);
 	
@@ -238,34 +235,40 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 				history_depth == 0.0;
 			
 			if (is_disocclusion == false) {
-				float3 sample_s = denoiser_radiance_history_s_1[thread_id + s32x2(x, y)].xyz;
-				float3 sample_d = denoiser_radiance_history_d_1[thread_id + s32x2(x, y)].xyz;
-				average_radiance_s += sample_s * gaussian_weight;
-				average_radiance_d += sample_d * gaussian_weight;
-				weight_sum += gaussian_weight;
+				average_radiance_s += denoiser_radiance_history_s_1[thread_id + s32x2(x, y)] * gaussian_weight;
+				average_radiance_d += denoiser_radiance_history_d_1[thread_id + s32x2(x, y)] * gaussian_weight;
+				weight_sum         += gaussian_weight;
 			}
 		}
 	}
+	
+	float3 sample_s = 0.0;
+	float3 sample_d = 0.0;
 	
 	if (weight_sum > 0.0 && enable_spatial_filtering) {
 		average_radiance_s *= rcp(weight_sum);
 		average_radiance_d *= rcp(weight_sum);
 		
 		if (constants.pass_index == 0) {
-			sample_s.xyz = average_radiance_s;
-			sample_d.xyz = average_radiance_d;
+			sample_s = average_radiance_s;
+			sample_d = average_radiance_d;
 		} else {
-			sample_s.xyz = lerp(average_radiance_s, sample_s.xyz, blur_weight_s);
-			sample_d.xyz = lerp(average_radiance_d, sample_d.xyz, blur_weight_d);
+			sample_s = lerp(average_radiance_s, denoiser_radiance_not_blurred_s[thread_id], blur_weight_s);
+			sample_d = lerp(average_radiance_d, denoiser_radiance_not_blurred_d[thread_id], blur_weight_d);
 		}
+	} else if (constants.pass_index == 1) {
+		sample_s = denoiser_radiance_not_blurred_s[thread_id];
+		sample_d = denoiser_radiance_not_blurred_d[thread_id];
 	}
 	
-	denoiser_radiance_history_s_0[thread_id] = sample_s;
-	denoiser_radiance_history_d_0[thread_id] = sample_d;
+	if (enable_spatial_filtering || constants.pass_index == 1) {
+		denoiser_radiance_history_s_0[thread_id] = EncodeR9G9B9E5(sample_s);
+		denoiser_radiance_history_d_0[thread_id] = EncodeR9G9B9E5(sample_d);
+	}
 	
 	if (constants.pass_index == 1) {
-		float3 result_radiance_s = sample_s.xyz;
-		float3 result_radiance_d = sample_d.xyz;
+		float3 result_radiance_s = sample_s;
+		float3 result_radiance_d = sample_d;
 		
 		float4 albedo_metalness = gb_albedo_metalness[thread_id];
 		

@@ -5,7 +5,8 @@
 
 // An HLSL function for sampling a 2D texture with Catmull-Rom filtering, using 9 texture samples instead of 16.
 // The following code is licensed under the MIT license, see license in THIRD_PARTY_LICENSES.md
-float4 SampleTextureCatmullRom(Texture2D<float4> src_texture, SamplerState src_sampler, float2 uv, float mip_level, float2 texture_size, float2 inv_texture_size) {
+template<typename T>
+T SampleTextureCatmullRom(Texture2D<T> src_texture, SamplerState src_sampler, float2 uv, float mip_level, float2 texture_size, float2 inv_texture_size) {
 	// We're going to sample a a 4x4 grid of texels surrounding the target UV coordinate. We'll do this by rounding
 	// down the sample location to get the exact center of our "starting" texel. The starting texel will be at
 	// location [1, 1] in the grid, where [0, 0] is the top left corner.
@@ -34,7 +35,7 @@ float4 SampleTextureCatmullRom(Texture2D<float4> src_texture, SamplerState src_s
 	float2 tex_pos_3  = (tex_pos_1 + 2.0) * inv_texture_size;
 	float2 tex_pos_12 = (tex_pos_1 + offset_12) * inv_texture_size;
 	
-	float4 result = 0.0;
+	T result = 0.0;
 	result += src_texture.SampleLevel(src_sampler, float2(tex_pos_0.x,  tex_pos_0.y), mip_level) * w0.x  * w0.y;
 	result += src_texture.SampleLevel(src_sampler, float2(tex_pos_12.x, tex_pos_0.y), mip_level) * w12.x * w0.y;
 	result += src_texture.SampleLevel(src_sampler, float2(tex_pos_3.x,  tex_pos_0.y), mip_level) * w3.x  * w0.y;

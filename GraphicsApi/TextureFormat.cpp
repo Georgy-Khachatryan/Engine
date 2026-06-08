@@ -25,6 +25,7 @@ TextureFormat ToSrvFormat(TextureFormat format) {
 TextureFormat ToUavFormat(TextureFormat format) {
 	switch (format) {
 	case TextureFormat::R8G8B8A8_UNORM_SRGB: return TextureFormat::R8G8B8A8_UNORM;
+	case TextureFormat::R9G9B9E5_FLOAT:      return TextureFormat::R32_UINT;
 	default: return format;
 	}
 }

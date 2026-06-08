@@ -681,6 +681,14 @@ NativeTextureResource CreateTextureResource(GraphicsContext* api_context, Textur
 	clear_value.Format = resource_desc.Format;
 	bool set_clear_value = HasAnyFlags(flags, CreateResourceFlags::RTV | CreateResourceFlags::DSV);
 	
+	FixedCapacityArray<DXGI_FORMAT, 1> castable_formats;
+	if (HasAnyFlags(flags, CreateResourceFlags::UAV)) {
+		auto uav_format = ToUavFormat(size.format);
+		if (uav_format != size.format) {
+			ArrayAppend(castable_formats, dxgi_texture_format_map[(u32)uav_format]);
+		}
+	}
+	
 	NativeTextureResource resource = {};
 	if (HasAnyFlags(flags, CreateResourceFlags::Sparse) == false) {
 		D3D12_HEAP_PROPERTIES heap_properties = {};
@@ -697,8 +705,8 @@ NativeTextureResource CreateTextureResource(GraphicsContext* api_context, Textur
 			D3D12_BARRIER_LAYOUT_COMMON,
 			set_clear_value ? &clear_value : nullptr,
 			nullptr,
-			0,
-			nullptr,
+			(u32)castable_formats.count,
+			castable_formats.count ? castable_formats.data : nullptr,
 			IID_PPV_ARGS(&resource.d3d12)
 		);
 		DebugAssert(SUCCEEDED(result), "Failed to create texture resource.");
@@ -708,8 +716,8 @@ NativeTextureResource CreateTextureResource(GraphicsContext* api_context, Textur
 			D3D12_BARRIER_LAYOUT_COMMON,
 			set_clear_value ? &clear_value : nullptr,
 			nullptr,
-			0,
-			nullptr,
+			(u32)castable_formats.count,
+			castable_formats.count ? castable_formats.data : nullptr,
 			IID_PPV_ARGS(&resource.d3d12)
 		);
 		DebugAssert(SUCCEEDED(result), "Failed to create texture resource.");
