@@ -51,7 +51,8 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	
 	float depth = depth_stencil[thread_id];
 	if (depth == 0.0) {
-		denoiser_radiance_source[thread_id] = 0.0;
+		denoiser_radiance_source_s[thread_id] = 0.0;
+		denoiser_radiance_source_d[thread_id] = 0.0;
 		return;
 	}
 	
@@ -82,7 +83,9 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	LightSample light_sample = SampleLightWRS(ray_desc.Origin, world_space_normal, light_sampling_blue_noise);
 #endif // !USE_VISIBLE_LIGHT_HASH_MASK
 	
-	float3 radiance   = 0.0;
+	bool demodulate_radiance = true;
+	float3 specular_radiance = 0.0;
+	float3 diffuse_radiance  = 0.0;
 	float3 throughput = 1.0;
 	
 	if (light_sample.light_entity_index != u32_max) {
@@ -111,7 +114,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 			
 			float3 specular_brdf = specular_fresnel * SmithVisibilityG(abs_cos_theta_o, wi.z, alpha_square) * TrowbridgeReitzNDF(wh.z, alpha_square) * rcp(4.0 * wi.z * abs_cos_theta_o);
 			
-			radiance += shadowed_light_irradiance * (energy_compensation * specular_brdf);
+			specular_radiance += shadowed_light_irradiance * (energy_compensation * specular_brdf);
 		}
 		
 		if (metalness != 1.0 && (wi.z * abs_cos_theta_o) > 0.0) {
@@ -119,14 +122,21 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 			float energy_compensation = ComputeDielectricBrdfEnergyCompensation(single_scattering_energy) * (1.0 - metalness);
 			
 			float specular_brdf = specular_fresnel * SmithVisibilityG(abs_cos_theta_o, wi.z, alpha_square) * TrowbridgeReitzNDF(wh.z, alpha_square) * rcp(4.0 * wi.z * abs_cos_theta_o);
-			float3 diffuse_brdf = diffuse_albedo * ((1.0 - specular_fresnel) * rcp(PI));
+			float3 diffuse_brdf = (demodulate_radiance ? 1.0 : diffuse_albedo) * ((1.0 - specular_fresnel) * rcp(PI));
 			
-			radiance += shadowed_light_irradiance * (energy_compensation * specular_brdf);
-			radiance += shadowed_light_irradiance * (energy_compensation * diffuse_brdf);
+			specular_radiance += shadowed_light_irradiance * (energy_compensation * specular_brdf);
+			diffuse_radiance  += shadowed_light_irradiance * (energy_compensation * diffuse_brdf);
+		}
+		
+		if (demodulate_radiance) {
+			float2 preintegrated_brdf = SampleGgxSingleScatteringEnergyLUT(ggx_preintegrated_brdf_lut, abs_cos_theta_o, roughness);
+			float3 specular_demodulation = lerp(dielectric_f0, conductor_f0, metalness) * preintegrated_brdf.x + preintegrated_brdf.y;
+			specular_radiance /= max(specular_demodulation, 1.0 / 64.0);
 		}
 	}
 	
-	denoiser_radiance_source[thread_id] = float4(radiance * scene.exposure_estimate, 1.0);
+	denoiser_radiance_source_s[thread_id] = float4(specular_radiance * scene.exposure_estimate, 1.0);
+	denoiser_radiance_source_d[thread_id] = float4(diffuse_radiance  * scene.exposure_estimate, 1.0);
 	
 	
 #if USE_VISIBLE_LIGHT_HASH_MASK
@@ -135,7 +145,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	uint tile_index_in_thread_group = (thread_index / LightCullingConstants::visible_light_tile_area);
 	uint tile_is_first_lane = 0;
 	
-	if (any(radiance > 0.0)) {
+	if (any((diffuse_radiance + specular_radiance) > 0.0)) {
 		u32 light_hash = (WyHash32(light_sample.light_entity_index, dst_tile_hash_seed) % 128u);
 		GsBitArraySetBit(gs_visible_light_hash_mask[tile_index_in_thread_group], light_hash);
 		if (WaveIsFirstLane()) {

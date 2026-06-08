@@ -41,8 +41,9 @@ static void BuildResourceTable(RecordContext* record_context, WorldEntitySystem*
 	table.Set(ID::GBufferAlbedoMetalness, TextureSize(TextureFormat::R8G8B8A8_UNORM_SRGB, render_target_size), Flags::UAV);
 	table.Set(ID::GBufferNormalRoughness, TextureSize(TextureFormat::R10G10B10A2_UNORM,   render_target_size), Flags::UAV);
 	
-	table.Set(ID::ReferencePathTracerRadiance, TextureSize(TextureFormat::R32G32B32A32_FLOAT, render_target_size), Flags::UAV);
+	table.Set(ID::ReferencePathTracerRadiance,  TextureSize(TextureFormat::R32G32B32A32_FLOAT, render_target_size), Flags::UAV);
 	table.Set(ID::GgxSingleScatteringEnergyLUT, TextureSize(TextureFormat::R16G16_UNORM, 32, 32), Flags::UAV);
+	table.Set(ID::GgxPreintegratedBrdfLUT,      TextureSize(TextureFormat::R16G16_UNORM, 32, 32), Flags::UAV);
 	
 	table.Set(ID::CullingHZB,           BuildHzbRenderPass::ComputeCullingHzbSize(render_target_size));
 	table.Set(ID::CullingHzbBuildState, BuildHzbRenderPass::culling_hzb_build_state_size);
@@ -60,12 +61,14 @@ static void BuildResourceTable(RecordContext* record_context, WorldEntitySystem*
 	
 	table.Set(ID::DebugGeometryDepthStencil, TextureSize(TextureFormat::D32_FLOAT, render_target_size), Flags::DSV);
 	
-	table.Set(ID::DenoiserRadianceHistory0, TextureSize(TextureFormat::R16G16B16A16_FLOAT, render_target_size), Flags::UAV);
-	table.Set(ID::DenoiserRadianceHistory1, TextureSize(TextureFormat::R16G16B16A16_FLOAT, render_target_size), Flags::UAV);
-	table.Set(ID::DenoiserRadianceSource,   TextureSize(TextureFormat::R16G16B16A16_FLOAT, render_target_size), Flags::UAV);
+	table.Set(ID::DenoiserRadianceHistoryS0, TextureSize(TextureFormat::R16G16B16A16_FLOAT, render_target_size), Flags::UAV);
+	table.Set(ID::DenoiserRadianceHistoryS1, TextureSize(TextureFormat::R16G16B16A16_FLOAT, render_target_size), Flags::UAV);
+	table.Set(ID::DenoiserRadianceHistoryD0, TextureSize(TextureFormat::R16G16B16A16_FLOAT, render_target_size), Flags::UAV);
+	table.Set(ID::DenoiserRadianceHistoryD1, TextureSize(TextureFormat::R16G16B16A16_FLOAT, render_target_size), Flags::UAV);
+	table.Set(ID::DenoiserRadianceSourceS,   TextureSize(TextureFormat::R16G16B16A16_FLOAT, render_target_size), Flags::UAV);
+	table.Set(ID::DenoiserRadianceSourceD,   TextureSize(TextureFormat::R16G16B16A16_FLOAT, render_target_size), Flags::UAV);
 	
 	table.SwapHistory(ID::DepthStencil, ID::DepthStencilHistory);
-	table.SwapHistory(ID::DenoiserRadianceHistory0, ID::DenoiserRadianceHistory1);
 }
 
 using RecordPassCallback = void(*)(void*, RecordContext*);
@@ -343,7 +346,8 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	auto& deferred_lighting = render_passes.Add<DeferredLightingRenderPass>();
 	deferred_lighting.atmosphere = atmosphere_parameters_gpu_address;
 	
-	render_passes.Add<LightingDenoiserRenderPass>();
+	render_passes.Add<LightingTemporalDenoiserRenderPass>();
+	render_passes.Add<LightingSpatialDenoiserRenderPass>();
 	
 	if (renderer_world.reference_path_tracer_percent != 0.f) {
 		render_passes.Add<ReferencePathTracerRenderPass>().atmosphere = atmosphere_parameters_gpu_address;

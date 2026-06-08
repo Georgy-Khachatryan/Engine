@@ -205,7 +205,7 @@ compile_const u32 sample_count        = sample_grid_size_xy * sample_grid_size_x
 compile_const u32 samples_per_thread  = sample_count / thread_group_size;
 compile_const u32 min_wave_size       = 16;
 
-groupshared float2 gs_single_scattering_energy[thread_group_size / min_wave_size];
+groupshared float4 gs_single_scattering_energy[thread_group_size / min_wave_size];
 
 [ThreadGroupSize(thread_group_size, 1, 1)][WaveSize(min_wave_size, 128)]
 void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
@@ -218,7 +218,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	
 	float3 wo = float3(sqrt(1.0 - Pow2(cos_theta)), 0.0, cos_theta);
 	
-	float2 single_scattering_energy = 0.0;
+	float4 single_scattering_energy = 0.0;
 	for (u32 i = 0; i < samples_per_thread; i += 1) {
 		u32 sample_index = thread_index * samples_per_thread + i;
 		
@@ -234,10 +234,14 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 			
 			float fresnel = FresnelDielectric(dielectric_f0, dot(wo, wh));
 			single_scattering_energy.y += fresnel * specular_sample + (1.0 - fresnel); // Dielectric
+			
+			float fresnel_zero_reflectance = FresnelSchlick(0.0, dot(wo, wh));
+			single_scattering_energy.z += specular_sample * (1.0 - fresnel_zero_reflectance);
+			single_scattering_energy.w += specular_sample * fresnel_zero_reflectance;
 		}
 	}
 	
-	float2 wave_single_scattering_energy = WaveActiveSum(single_scattering_energy);
+	float4 wave_single_scattering_energy = WaveActiveSum(single_scattering_energy);
 	if (WaveIsFirstLane()) {
 		gs_single_scattering_energy[thread_index / WaveGetLaneCount()] = wave_single_scattering_energy;
 	}
@@ -245,14 +249,15 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	GroupMemoryBarrierWithGroupSync();
 	
 	if (thread_index == 0) {
-		float2 group_single_scattering_energy = wave_single_scattering_energy;
+		float4 group_single_scattering_energy = wave_single_scattering_energy;
 		
 		u32 wave_count = thread_group_size / WaveGetLaneCount();
 		for (u32 i = 1; i < wave_count; i += 1) {
 			group_single_scattering_energy += gs_single_scattering_energy[i];
 		}
 		
-		ggx_single_scattering_energy_lut[group_id] = group_single_scattering_energy / sample_count;
+		ggx_single_scattering_energy_lut[group_id] = group_single_scattering_energy.xy / sample_count;
+		ggx_preintegrated_brdf_lut[group_id]       = group_single_scattering_energy.zw / sample_count;
 	}
 }
 #endif // defined(ENERGY_COMPENSATION_LUT)

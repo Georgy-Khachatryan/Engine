@@ -131,11 +131,11 @@ void DeferredLightingRenderPass::RecordPass(RecordContext* record_context) {
 }
 
 
-void LightingDenoiserRenderPass::CreatePipelines(PipelineLibrary* lib) {
-	pipeline_id = CreateComputePipeline(lib, LightingDenoiserShadersID);
+void LightingTemporalDenoiserRenderPass::CreatePipelines(PipelineLibrary* lib) {
+	pipeline_id = CreateComputePipeline(lib, LightingDenoiserShadersID, LightingDenoiserShaders::TemporalPass);
 }
 
-void LightingDenoiserRenderPass::RecordPass(RecordContext* record_context) {
+void LightingTemporalDenoiserRenderPass::RecordPass(RecordContext* record_context) {
 	auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
 	CmdSetRootSignature(record_context, root_signature);
 	CmdSetPipelineState(record_context, pipeline_id);
@@ -145,4 +145,41 @@ void LightingDenoiserRenderPass::RecordPass(RecordContext* record_context) {
 	
 	auto render_target_size = GetTextureSize(record_context, VirtualResourceID::SceneRadiance);
 	CmdDispatch(record_context, DivideAndRoundUp(uint2(render_target_size), 16u));
+}
+
+void LightingSpatialDenoiserRenderPass::CreatePipelines(PipelineLibrary* lib) {
+	pipeline_id = CreateComputePipeline(lib, LightingDenoiserShadersID, LightingDenoiserShaders::SpatialPass);
+}
+
+void LightingSpatialDenoiserRenderPass::RecordPass(RecordContext* record_context) {
+	CmdSetRootSignature(record_context, root_signature);
+	CmdSetPipelineState(record_context, pipeline_id);
+	
+	CmdSetRootArgument(record_context, root_signature.scene, VirtualResourceID::SceneConstants);
+	
+	for (u32 pass_index = 0; pass_index < 2; pass_index += 1) {
+		auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
+		
+		if (pass_index == 0) {
+			descriptor_table.denoiser_radiance_not_blurred_s = VirtualResourceID::DenoiserRadianceHistoryS1;
+			descriptor_table.denoiser_radiance_not_blurred_d = VirtualResourceID::DenoiserRadianceHistoryD1;
+			descriptor_table.denoiser_radiance_history_s_1   = VirtualResourceID::DenoiserRadianceHistoryS1;
+			descriptor_table.denoiser_radiance_history_d_1   = VirtualResourceID::DenoiserRadianceHistoryD1;
+			descriptor_table.denoiser_radiance_history_s_0   = VirtualResourceID::DenoiserRadianceSourceS;
+			descriptor_table.denoiser_radiance_history_d_0   = VirtualResourceID::DenoiserRadianceSourceD;
+		} else {
+			descriptor_table.denoiser_radiance_not_blurred_s = VirtualResourceID::DenoiserRadianceHistoryS1;
+			descriptor_table.denoiser_radiance_not_blurred_d = VirtualResourceID::DenoiserRadianceHistoryD1;
+			descriptor_table.denoiser_radiance_history_s_1   = VirtualResourceID::DenoiserRadianceSourceS;
+			descriptor_table.denoiser_radiance_history_d_1   = VirtualResourceID::DenoiserRadianceSourceD;
+			descriptor_table.denoiser_radiance_history_s_0   = VirtualResourceID::DenoiserRadianceHistoryS0;
+			descriptor_table.denoiser_radiance_history_d_0   = VirtualResourceID::DenoiserRadianceHistoryD0;
+		}
+		
+		CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
+		CmdSetRootArgument(record_context, root_signature.constants, { pass_index });
+		
+		auto render_target_size = GetTextureSize(record_context, VirtualResourceID::SceneRadiance);
+		CmdDispatch(record_context, DivideAndRoundUp(uint2(render_target_size), 16u));
+	} 
 }
