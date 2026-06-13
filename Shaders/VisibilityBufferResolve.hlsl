@@ -65,7 +65,4 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	
 	float2 octahedral_normal = EncodeHemiOctahedralMap(world_space_normal);
 	gb_normal_roughness[thread_id] = float4(octahedral_normal * 0.5 + 0.5, properties.roughness, world_space_normal.z >= 0.0 ? 1.0 : 0.0);
-	
-	float3 meshlet_color = properties.albedo * max(world_space_normal.z * 0.5 + 0.5, 0.0);
-	scene_radiance[thread_id] = float4(meshlet_color * scene.exposure_estimate, 1.0);
 }

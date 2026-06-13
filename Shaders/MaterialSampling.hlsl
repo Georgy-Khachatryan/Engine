@@ -23,10 +23,10 @@ T SampleMaterialTexture(u32 texture_index, TexcoordStream texcoord_stream, T def
 	
 #if defined(PIXEL_SHADER)
 	Texture2D<T> texture = ResourceDescriptorHeap[texture_index];
-	return texture.Sample(sampler_linear_wrap, texcoord_stream.texcoord);
+	return texture.Sample(sampler_aniso_wrap, texcoord_stream.texcoord);
 #else // !defined(PIXEL_SHADER)
 	Texture2D<T> texture = ResourceDescriptorHeap[NonUniformResourceIndex(texture_index)];
-	return texture.SampleGrad(sampler_linear_wrap, texcoord_stream.texcoord, texcoord_stream.texcoord_ddx, texcoord_stream.texcoord_ddy);
+	return texture.SampleGrad(sampler_aniso_wrap, texcoord_stream.texcoord, texcoord_stream.texcoord_ddx, texcoord_stream.texcoord_ddy);
 #endif // !defined(PIXEL_SHADER)
 }
 

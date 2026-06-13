@@ -148,9 +148,10 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	if (any((diffuse_radiance + specular_radiance) > 0.0)) {
 		u32 light_hash = (WyHash32(light_sample.light_entity_index, dst_tile_hash_seed) % 128u);
 		GsBitArraySetBit(gs_visible_light_hash_mask[tile_index_in_thread_group], light_hash);
-		if (WaveIsFirstLane()) {
-			InterlockedExchange(gs_tile_is_first_lane[tile_index_in_thread_group], 0u, tile_is_first_lane);
-		}
+	}
+	
+	if (WaveIsFirstLane()) {
+		InterlockedExchange(gs_tile_is_first_lane[tile_index_in_thread_group], 0u, tile_is_first_lane);
 	}
 	
 	GroupMemoryBarrierWithGroupSync();

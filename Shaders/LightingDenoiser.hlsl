@@ -10,16 +10,11 @@
 // - Experiment with blending in tone mapped space (currently results in dark outlines around shadows).
 // - Anti firefly filter.
 // - Optimizations (reduce texture sizes, preload textures to LDS, remove redundant view to world transforms, use half floats, etc).
-//
-// To be finish:
-// - Denoise diffuse and specular radiance separately.
-// - Demodulate diffuse and specular radiance.
-// - Hole filling for disocclusions.
-// - Fix blurriness in motion, especially when zooming in. Maybe sharpen history based on MV divergence.
-//
 
-compile_const u32 thread_group_size = 16;
 
+compile_const u32 thread_group_size  = 16;
+compile_const float max_frame_count  = 32.0; // Matches blue noise sequence length.
+compile_const float blur_frame_count = 4.0;
 
 #if defined(TEMPORAL_PASS)
 // Input coordinates the coordinates of the 2x2 pixel quad center.
@@ -34,7 +29,7 @@ uint ValidateHistory2x2(float2 sample_coordinates, float3 world_space_position, 
 		float3 history_view_space_position  = TransformScreenUvToViewSpace(history_uv, history_depth, scene.prev_clip_to_view_coef);
 		float3 history_world_space_position = mul(scene.prev_view_to_world, float4(history_view_space_position, 1.0));
 		
-		bool is_disocclusion = 
+		bool is_disocclusion =
 			abs(dot(world_space_position - history_world_space_position, world_space_normal)) > 0.005 * view_space_depth ||
 			any(history_uv < 0.5 * scene.inv_render_target_size) ||
 			any(history_uv > (1.0 - 0.5 * scene.inv_render_target_size)) ||
@@ -122,27 +117,26 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	compile_const s32 radius = 4;
 	for (s32 y = -radius; y <= radius; y += 1) {
 		for (s32 x = -radius; x <= radius; x += 1) {
-			float3 radiance_s = denoiser_radiance_source_s[thread_id + s32x2(x, y)];
-			float3 radiance_d = denoiser_radiance_source_d[thread_id + s32x2(x, y)];
 			float gaussian_weight = ComputeGaussianWeight(x, y, radius); // TODO: Check if the radiance for this pixel was computed or not.
 			
-			float3 sample_s = mul(rec709_to_ycbcr, radiance_s);
-			float3 sample_d = mul(rec709_to_ycbcr, radiance_d);
-			weighted_moments_pow1_s += sample_s       * gaussian_weight;
-			weighted_moments_pow2_s += Pow2(sample_s) * gaussian_weight;
-			weighted_moments_pow1_d += sample_d       * gaussian_weight;
-			weighted_moments_pow2_d += Pow2(sample_d) * gaussian_weight;
+			float3 radiance_s = mul(rec709_to_ycbcr, denoiser_radiance_source_s[thread_id + s32x2(x, y)]);
+			float3 radiance_d = mul(rec709_to_ycbcr, denoiser_radiance_source_d[thread_id + s32x2(x, y)]);
+			
+			weighted_moments_pow1_s += Pow1(radiance_s) * gaussian_weight;
+			weighted_moments_pow2_s += Pow2(radiance_s) * gaussian_weight;
+			weighted_moments_pow1_d += Pow1(radiance_d) * gaussian_weight;
+			weighted_moments_pow2_d += Pow2(radiance_d) * gaussian_weight;
 			weight_sum              += gaussian_weight;
 		}
 	}
 	
 	float3 moments_pow1_s = weighted_moments_pow1_s * rcp(weight_sum);
 	float3 moments_pow2_s = weighted_moments_pow2_s * rcp(weight_sum);
-	float3 standard_deviation_s = sqrt(max(moments_pow2_s - moments_pow1_s * moments_pow1_s, 0.0));
+	float3 standard_deviation_s = sqrt(max(moments_pow2_s - Pow2(moments_pow1_s), 0.0));
 	
 	float3 moments_pow1_d = weighted_moments_pow1_d * rcp(weight_sum);
 	float3 moments_pow2_d = weighted_moments_pow2_d * rcp(weight_sum);
-	float3 standard_deviation_d = sqrt(max(moments_pow2_d - moments_pow1_d * moments_pow1_d, 0.0));
+	float3 standard_deviation_d = sqrt(max(moments_pow2_d - Pow2(moments_pow1_d), 0.0));
 	
 	float clamp_aabb_scale = 1.0;
 	float3 aabb_min_s = moments_pow1_s - standard_deviation_s * clamp_aabb_scale;
@@ -154,10 +148,8 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	history_radiance_s = clamp(history_radiance_s, aabb_min_s, aabb_max_s);
 	history_radiance_d = clamp(history_radiance_d, aabb_min_d, aabb_max_d);
 	
-	current_radiance_s = clamp(current_radiance_s, aabb_min_s, aabb_max_s);
-	current_radiance_d = clamp(current_radiance_d, aabb_min_d, aabb_max_d);
-	
-	compile_const float max_frame_count = 32.0; // Matches blue noise sequence length.
+	current_radiance_s.x = clamp(current_radiance_s.x, aabb_min_s.x, aabb_max_s.x);
+	current_radiance_d.x = clamp(current_radiance_d.x, aabb_min_d.x, aabb_max_d.x);
 	
 #if 1
 	float2 mv_l = motion_vectors[thread_id + s32x2(-1, 0)];
@@ -171,15 +163,13 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	float divergence_scale = 1.0;
 #endif
 	
+	float accumulation_ratio = 1.0 / (history_frame_count + 1.0);
 	float result_frame_count = min(history_frame_count + 1.0, max_frame_count);
-	float3 result_radiance_s = lerp(history_radiance_s, current_radiance_s, 1.0 / (history_frame_count * divergence_scale + 1.0));
-	float3 result_radiance_d = lerp(history_radiance_d, current_radiance_d, 1.0 / (history_frame_count * divergence_scale + 1.0));
+	float3 result_radiance_s = lerp(history_radiance_s, current_radiance_s, accumulation_ratio);
+	float3 result_radiance_d = lerp(history_radiance_d, current_radiance_d, accumulation_ratio);
 	
-	result_radiance_s = mul(ycbcr_to_rec709, result_radiance_s);
-	result_radiance_d = mul(ycbcr_to_rec709, result_radiance_d);
-	
-	denoiser_radiance_history_s_1[thread_id] = EncodeR9G9B9E5(result_radiance_s);
-	denoiser_radiance_history_d_1[thread_id] = EncodeR9G9B9E5(result_radiance_d);
+	denoiser_radiance_history_s_1[thread_id] = EncodeR9G9B9E5(mul(ycbcr_to_rec709, result_radiance_s));
+	denoiser_radiance_history_d_1[thread_id] = EncodeR9G9B9E5(mul(ycbcr_to_rec709, result_radiance_d));
 	denoiser_accumulated_frame_count_1[thread_id] = result_frame_count / 255.0;
 }
 #endif // defined(TEMPORAL_PASS)
@@ -202,17 +192,14 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	
 	float history_frame_count = denoiser_accumulated_frame_count_1[thread_id] * 255.0;
 	
-	float blur_frame_count = 4.0;
-	float blur_weight_s = saturate(rcp(blur_frame_count) * (history_frame_count - 1.0));
-	float blur_weight_d = saturate(rcp(blur_frame_count) * (history_frame_count - 1.0));
-	
-	bool enable_spatial_filtering = (blur_weight_s < 1.0) || (blur_weight_d < 1.0);
+	float blur_weight = saturate((history_frame_count - 1.0) * rcp(blur_frame_count));
+	bool enable_spatial_filtering = (blur_weight < 1.0);
 	
 	float3 average_radiance_s = 0.0;
 	float3 average_radiance_d = 0.0;
 	float  weight_sum         = 0.0;
 	if (enable_spatial_filtering) {
-		s32 radius = 24.0 * saturate(1.0 - min(blur_weight_s, blur_weight_d));
+		s32 radius = 24.0 * saturate(1.0 - blur_weight);
 		for (s32 i = -radius; i <= radius; i += 1) {
 			s32 x = constants.pass_index == 0 ? 0 : i;
 			s32 y = constants.pass_index == 0 ? i : 0;
@@ -227,7 +214,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 			float3 history_world_space_position = mul(scene.view_to_world, float4(history_view_space_position, 1.0));
 			float3 history_world_space_normal   = DecodeHemiOctahedralMap01(history_normal_roughness.xy) * float3(1.0, 1.0, history_normal_roughness.w * 2.0 - 1.0);
 			
-			bool is_disocclusion = 
+			bool is_disocclusion =
 				abs(dot(world_space_position - history_world_space_position, world_space_normal)) > 0.005 * view_space_position.z ||
 				dot(history_world_space_normal, world_space_normal) < 0.975 ||
 				any(history_uv <= 0.5 * scene.inv_render_target_size) ||
@@ -253,8 +240,8 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 			sample_s = average_radiance_s;
 			sample_d = average_radiance_d;
 		} else {
-			sample_s = lerp(average_radiance_s, denoiser_radiance_not_blurred_s[thread_id], blur_weight_s);
-			sample_d = lerp(average_radiance_d, denoiser_radiance_not_blurred_d[thread_id], blur_weight_d);
+			sample_s = lerp(average_radiance_s, denoiser_radiance_not_blurred_s[thread_id], blur_weight);
+			sample_d = lerp(average_radiance_d, denoiser_radiance_not_blurred_d[thread_id], blur_weight);
 		}
 	} else if (constants.pass_index == 1) {
 		sample_s = denoiser_radiance_not_blurred_s[thread_id];
@@ -285,7 +272,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 		result_radiance_s *= max(specular_demodulation, 1.0 / 64.0);
 		result_radiance_d *= diffuse_albedo;
 		
-		float3 result_radiance = result_radiance_s + result_radiance_d;	
+		float3 result_radiance = result_radiance_s + result_radiance_d;
 		
 		scene_radiance[thread_id] = float4(result_radiance, 1.0);
 	}

@@ -976,29 +976,6 @@ struct LightListRenderPass {
 };
 
 
-NOTES(Meta::ShaderName{ "RaytracingDebug.hlsl"_sl })
-enum struct RaytracingDebugShaders : u32 {};
-SHADER_DEFINITION_GENERATED_CODE(RaytracingDebugShaders);
-
-NOTES(Meta::RenderPass{})
-struct RaytracingDebugRenderPass {
-	RENDER_PASS_GENERATED_CODE();
-	
-	struct Descriptors : HLSL::BaseDescriptorTable {
-		HLSL::Texture2D<float> depth_stencil = VirtualResourceID::DepthStencil;
-		HLSL::TopLevelRTAS     scene_tlas    = VirtualResourceID::SceneTLAS;
-		HLSL::RWTexture2D<float4> scene_radiance = VirtualResourceID::SceneRadiance;
-	};
-	
-	struct RootSignature : HLSL::BaseRootSignature {
-		HLSL::DescriptorTable<Descriptors> descriptor_table;
-		HLSL::ConstantBuffer<SceneConstants> scene;
-	};
-	
-	inline static PipelineID pipeline_id;
-};
-
-
 NOTES(Meta::ShaderName{ "ReferencePathTracer.hlsl"_sl })
 enum struct ReferencePathTracerShaders : u32 {
 	None                  = 0u,
@@ -1055,40 +1032,6 @@ struct EnergyCompensationLutRenderPass {
 };
 
 
-NOTES(Meta::ShaderName{ "DrawTestMesh.hlsl"_sl })
-enum struct DrawTestMeshShaders : u32 {};
-SHADER_DEFINITION_GENERATED_CODE(DrawTestMeshShaders);
-
-NOTES(Meta::RenderPass{ CommandQueueType::Graphics })
-struct BasicMeshRenderPass {
-	RENDER_PASS_GENERATED_CODE();
-	
-	MeshletCullingPass pass = MeshletCullingPass::Main;
-	
-	struct Descriptors : HLSL::BaseDescriptorTable {
-		HLSL::RegularBuffer<GpuTransform> prev_mesh_transforms  = VirtualResourceID::MeshEntityPrevGpuTransform;
-		HLSL::RegularBuffer<GpuTransform>      mesh_transforms  = VirtualResourceID::MeshEntityGpuTransform;
-		HLSL::RegularBuffer<GpuMeshAssetData>  mesh_asset_data  = VirtualResourceID::GpuMeshAssetData;
-		HLSL::RegularBuffer<GpuMeshEntityData> mesh_entity_data = VirtualResourceID::GpuMeshEntityData;
-		HLSL::RegularBuffer<GpuMaterialTextureData> material_texture_data = VirtualResourceID::MaterialAssetTextureData;
-		HLSL::ByteBuffer           mesh_asset_buffer  = VirtualResourceID::MeshAssetBuffer;
-		HLSL::RegularBuffer<uint2> visible_meshlets   = VirtualResourceID::VisibleMeshlets;
-		HLSL::RegularBuffer<uint4> indirect_arguments = VirtualResourceID::MeshletIndirectArguments;
-	};
-	
-	struct RootSignature : HLSL::BaseRootSignature {
-		struct PushConstants {
-			MeshletCullingPass pass = MeshletCullingPass::Main;
-		};
-		
-		HLSL::PushConstantBuffer<PushConstants> constants;
-		HLSL::ConstantBuffer<SceneConstants> scene;
-		HLSL::DescriptorTable<Descriptors> descriptor_table;
-	};
-	
-	inline static PipelineID pipeline_id;
-};
-
 NOTES(Meta::ShaderName{ "VisibilityBufferLaydown.hlsl"_sl })
 enum struct VisibilityBufferLaydownShaders : u32 {};
 SHADER_DEFINITION_GENERATED_CODE(VisibilityBufferLaydownShaders);
@@ -1140,7 +1083,6 @@ struct VisibilityBufferResolveRenderPass {
 		HLSL::RegularBuffer<GpuMaterialTextureData> material_texture_data = VirtualResourceID::MaterialAssetTextureData;
 		HLSL::ByteBuffer                            mesh_asset_buffer     = VirtualResourceID::MeshAssetBuffer;
 		HLSL::RegularBuffer<uint2>                  visible_meshlets      = VirtualResourceID::VisibleMeshlets;
-		HLSL::RWTexture2D<float4>                   scene_radiance        = VirtualResourceID::SceneRadiance;
 		HLSL::RWTexture2D<float2>                   motion_vectors        = VirtualResourceID::MotionVectors;
 		HLSL::RWTexture2D<float4>                   gb_albedo_metalness   = VirtualResourceID::GBufferAlbedoMetalness;
 		HLSL::RWTexture2D<float4>                   gb_normal_roughness   = VirtualResourceID::GBufferNormalRoughness;
