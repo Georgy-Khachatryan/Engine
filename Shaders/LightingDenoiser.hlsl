@@ -8,7 +8,6 @@
 // - Better disocclusion detection.
 // - Normal and roughness weights.
 // - Experiment with blending in tone mapped space (currently results in dark outlines around shadows).
-// - Anti firefly filter.
 // - Optimizations (reduce texture sizes, preload textures to LDS, remove redundant view to world transforms, use half floats, etc).
 
 
@@ -18,7 +17,7 @@ compile_const float blur_frame_count = 4.0;
 
 #if defined(TEMPORAL_PASS)
 // Input coordinates the coordinates of the 2x2 pixel quad center.
-uint ValidateHistory2x2(float2 sample_coordinates, float3 world_space_position, float view_space_depth, float3 world_space_normal) {
+uint ValidateHistory2x2(float2 sample_coordinates, float3 world_space_position, float view_space_depth, float n_dot_v, float3 world_space_normal) {
 	uint valid_sample_mask_2x2 = 0;
 	
 	float4 history_depths = GatherChannel<0>(depth_stencil_history, sampler_linear_clamp, sample_coordinates * scene.inv_render_target_size);
@@ -30,7 +29,7 @@ uint ValidateHistory2x2(float2 sample_coordinates, float3 world_space_position, 
 		float3 history_world_space_position = mul(scene.prev_view_to_world, float4(history_view_space_position, 1.0));
 		
 		bool is_disocclusion =
-			abs(dot(world_space_position - history_world_space_position, world_space_normal)) > 0.005 * view_space_depth ||
+			abs(dot(world_space_position - history_world_space_position, world_space_normal)) > 0.005 * view_space_depth * n_dot_v ||
 			any(history_uv < 0.5 * scene.inv_render_target_size) ||
 			any(history_uv > (1.0 - 0.5 * scene.inv_render_target_size)) ||
 			history_depth == 0.0;
@@ -59,15 +58,16 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	float3 view_space_position  = TransformScreenUvToViewSpace(thread_uv, depth, scene.clip_to_view_coef, scene.jitter_offset_ndc);
 	float3 world_space_position = mul(scene.view_to_world, float4(view_space_position, 1.0));
 	float3 world_space_normal   = DecodeHemiOctahedralMap01(normal_roughness.xy) * float3(1.0, 1.0, normal_roughness.w * 2.0 - 1.0);
+	float n_dot_v = saturate(dot(world_space_normal, normalize(scene.world_space_camera_position - world_space_position)));
 	
 	float2 history_pixel_coordinates = ComputeBilinearSamplePixelCoordinates(history_thread_uv * scene.render_target_size);
 	
 	// Validate 4x4 region around history UV coordinates. This is basically 2x2 bilinear region with a 1 pixel border. Samples are in Morton order.
 	uint valid_sample_mask_4x4 = 0;
-	valid_sample_mask_4x4 |= ValidateHistory2x2(history_pixel_coordinates + float2(0.0, 0.0), world_space_position, view_space_position.z, world_space_normal) << 0u;
-	valid_sample_mask_4x4 |= ValidateHistory2x2(history_pixel_coordinates + float2(2.0, 0.0), world_space_position, view_space_position.z, world_space_normal) << 4u;
-	valid_sample_mask_4x4 |= ValidateHistory2x2(history_pixel_coordinates + float2(0.0, 2.0), world_space_position, view_space_position.z, world_space_normal) << 8u;
-	valid_sample_mask_4x4 |= ValidateHistory2x2(history_pixel_coordinates + float2(2.0, 2.0), world_space_position, view_space_position.z, world_space_normal) << 12u;
+	valid_sample_mask_4x4 |= ValidateHistory2x2(history_pixel_coordinates + float2(0.0, 0.0), world_space_position, view_space_position.z, n_dot_v, world_space_normal) << 0u;
+	valid_sample_mask_4x4 |= ValidateHistory2x2(history_pixel_coordinates + float2(2.0, 0.0), world_space_position, view_space_position.z, n_dot_v, world_space_normal) << 4u;
+	valid_sample_mask_4x4 |= ValidateHistory2x2(history_pixel_coordinates + float2(0.0, 2.0), world_space_position, view_space_position.z, n_dot_v, world_space_normal) << 8u;
+	valid_sample_mask_4x4 |= ValidateHistory2x2(history_pixel_coordinates + float2(2.0, 2.0), world_space_position, view_space_position.z, n_dot_v, world_space_normal) << 12u;
 	
 	// Extract 2x2 center region out of the 4x4 valid sample mask. It corresponds to the bilinear filter footprint.
 	float4 bilateral_weights = ComputeBilinearWeights(history_thread_uv * scene.render_target_size) * float4(
@@ -147,9 +147,6 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	
 	history_radiance_s = clamp(history_radiance_s, aabb_min_s, aabb_max_s);
 	history_radiance_d = clamp(history_radiance_d, aabb_min_d, aabb_max_d);
-	
-	current_radiance_s.x = clamp(current_radiance_s.x, aabb_min_s.x, aabb_max_s.x);
-	current_radiance_d.x = clamp(current_radiance_d.x, aabb_min_d.x, aabb_max_d.x);
 	
 #if 1
 	float2 mv_l = motion_vectors[thread_id + s32x2(-1, 0)];

@@ -55,7 +55,8 @@ struct SceneConstants {
 	u32 global_light_entity_index = 0;
 	
 	uint2 visible_light_hash_mask_size;
-	uint2 padding_1;
+	float wrs_disocclusion_min_light_weight = 0.f;
+	u32 padding_1 = 0;
 	
 	compile_const u32 light_grid_cascade_count = 8;
 	FixedCountArray<float4, light_grid_cascade_count> light_grid_cascade_descs;
@@ -118,6 +119,11 @@ struct ToneMappingSettings {
 	float fade_end       = 1.16f;
 	
 	ToneMappingMethod method = ToneMappingMethod::GT7_HDR;
+};
+
+NOTES()
+struct LightingSettings {
+	float wrs_disocclusion_min_light_weight = 0.2f;
 };
 
 NOTES()
@@ -294,9 +300,10 @@ struct WorldEntityQuery {
 	ECS::Component<LightEntityGUID>      global_light_entity;
 	ECS::Component<CameraEntityGUID>     camera_entity;
 	ECS::Component<RendererWorld>        renderer_world;
-	ECS::Component<AntiAliasingSettings> anti_aliasing_settings;
+	ECS::Component<LightingSettings>     lighting_settings;
 	ECS::Component<ExposureSettings>     exposure_settings;
 	ECS::Component<ToneMappingSettings>  tone_mapping_settings;
+	ECS::Component<AntiAliasingSettings> anti_aliasing_settings;
 	ECS::GpuComponent<SceneConstants>    gpu_scene_constants;
 };
 

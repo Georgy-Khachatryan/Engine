@@ -17,6 +17,7 @@ struct WorldEntityType {
 	ECS::Component<LightEntityGUID>  global_light_entity;
 	ECS::Component<RendererWorld>    renderer_world;
 	
+	ECS::Component<LightingSettings>     lighting_settings;
 	ECS::Component<ExposureSettings>     exposure_settings;
 	ECS::Component<ToneMappingSettings>  tone_mapping_settings;
 	ECS::Component<AntiAliasingSettings> anti_aliasing_settings;

@@ -1,6 +1,7 @@
 #include "Basic.hlsl"
 #include "BrdfSampling.hlsl"
 #include "LightSampling.hlsl"
+#include "LightEvaluation.hlsl"
 
 compile_const u32 thread_group_size = 16;
 compile_const u32 thread_group_area = thread_group_size * thread_group_size;
@@ -33,6 +34,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	uint src_tile_index = (hash_mask_size.x * src_tile_id.y + src_tile_id.x) + (scene.frame_index & 0x1 ? hash_mask_size.x * hash_mask_size.y : 0);
 	uint dst_tile_index = (hash_mask_size.x * dst_tile_id.y + dst_tile_id.x) + (scene.frame_index & 0x1 ? 0 : hash_mask_size.x * hash_mask_size.y);
 	
+	// TODO: Detect disocclusions.
 	bool src_tile_valid = all(src_tile_id >= 0) && all(src_tile_id < hash_mask_size);
 	
 	// TODO: Experiment with randomly seeding light hashes.
@@ -78,65 +80,51 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	float light_sampling_blue_noise = blue_noise_1d[uint3(thread_id % 128, scene.frame_index % 32)];
 	
 #if USE_VISIBLE_LIGHT_HASH_MASK
-	LightSample light_sample = SampleLightWRS<true>(ray_desc.Origin, world_space_normal, light_sampling_blue_noise, src_tile_valid ? visible_light_hash_mask[src_tile_index] : 0u, src_tile_hash_seed);
+	float min_light_weight = src_tile_valid ? scene.wrs_disocclusion_min_light_weight : 0.0;
+	LightSample light_sample = SampleLightWRS<true>(ray_desc.Origin, world_space_normal, light_sampling_blue_noise, min_light_weight, src_tile_valid ? visible_light_hash_mask[src_tile_index] : 0u, src_tile_hash_seed);
 #else // !USE_VISIBLE_LIGHT_HASH_MASK
 	LightSample light_sample = SampleLightWRS(ray_desc.Origin, world_space_normal, light_sampling_blue_noise);
 #endif // !USE_VISIBLE_LIGHT_HASH_MASK
 	
+	SplitLightAccumulator light_accumulator;
+	light_accumulator.specular_radiance = 0.0;
+	light_accumulator.diffuse_radiance  = 0.0;
+	
 	bool demodulate_radiance = true;
-	float3 specular_radiance = 0.0;
-	float3 diffuse_radiance  = 0.0;
-	float3 throughput = 1.0;
 	
 	if (light_sample.light_entity_index != u32_max) {
 		float3x3 world_to_tangent = BuildOrthonormalBasis(world_space_normal);
-		float3x3 tangent_to_world = transpose(world_to_tangent);
 		
-		LightShadingInfo shading_info = ComputeLightShadingInfo(ray_desc.Origin, light_sample.light_entity_index);
-		shading_info.light_irradiance *= light_sample.inv_pdf;
-		
-		float3 wi = mul(world_to_tangent, shading_info.light_direction);
 		float3 wo = mul(world_to_tangent, -ray_desc.Direction);
-		float3 wh = normalize(wo + wi);
 		float abs_cos_theta_o = abs(wo.z);
-		float i_dot_h = saturate(dot(wi, wh));
-		
-		float3 shadowed_light_irradiance = (throughput * shading_info.light_irradiance) * saturate(wi.z);
-		if (any(shadowed_light_irradiance > 0.0)) {
-			shadowed_light_irradiance *= TraceShadowRay(ray_desc.Origin, shading_info.light_direction, shading_info.shadow_ray_length);
-		}
 		
 		float2 single_scattering_energy = SampleGgxSingleScatteringEnergyLUT(ggx_single_scattering_energy_lut, abs_cos_theta_o, roughness);
 		
-		if (metalness != 0.0 && (wi.z * abs_cos_theta_o) > 0.0) {
-			float3 specular_fresnel = FresnelConductor(conductor_f0, i_dot_h);
-			float3 energy_compensation = ComputeConductorBrdfEnergyCompensation(single_scattering_energy, specular_fresnel) * metalness;
-			
-			float3 specular_brdf = specular_fresnel * SmithVisibilityG(abs_cos_theta_o, wi.z, alpha_square) * TrowbridgeReitzNDF(wh.z, alpha_square) * rcp(4.0 * wi.z * abs_cos_theta_o);
-			
-			specular_radiance += shadowed_light_irradiance * (energy_compensation * specular_brdf);
-		}
-		
-		if (metalness != 1.0 && (wi.z * abs_cos_theta_o) > 0.0) {
-			float specular_fresnel = FresnelDielectric(dielectric_f0, i_dot_h);
-			float energy_compensation = ComputeDielectricBrdfEnergyCompensation(single_scattering_energy) * (1.0 - metalness);
-			
-			float specular_brdf = specular_fresnel * SmithVisibilityG(abs_cos_theta_o, wi.z, alpha_square) * TrowbridgeReitzNDF(wh.z, alpha_square) * rcp(4.0 * wi.z * abs_cos_theta_o);
-			float3 diffuse_brdf = (demodulate_radiance ? 1.0 : diffuse_albedo) * ((1.0 - specular_fresnel) * rcp(PI));
-			
-			specular_radiance += shadowed_light_irradiance * (energy_compensation * specular_brdf);
-			diffuse_radiance  += shadowed_light_irradiance * (energy_compensation * diffuse_brdf);
-		}
+		EvaluateBRDF(
+			light_accumulator,
+			ray_desc.Origin,
+			world_to_tangent,
+			wo,
+			abs_cos_theta_o,
+			metalness,
+			roughness,
+			alpha_square,
+			conductor_f0,
+			(demodulate_radiance ? 1.0 : diffuse_albedo),
+			/*throughput=*/1.0,
+			single_scattering_energy,
+			light_sample
+		);
 		
 		if (demodulate_radiance) {
 			float2 preintegrated_brdf = SampleGgxSingleScatteringEnergyLUT(ggx_preintegrated_brdf_lut, abs_cos_theta_o, roughness);
 			float3 specular_demodulation = lerp(dielectric_f0, conductor_f0, metalness) * preintegrated_brdf.x + preintegrated_brdf.y;
-			specular_radiance /= max(specular_demodulation, 1.0 / 64.0);
+			light_accumulator.specular_radiance /= max(specular_demodulation, 1.0 / 64.0);
 		}
 	}
 	
-	denoiser_radiance_source_s[thread_id] = EncodeR9G9B9E5(specular_radiance * scene.exposure_estimate);
-	denoiser_radiance_source_d[thread_id] = EncodeR9G9B9E5(diffuse_radiance  * scene.exposure_estimate);
+	denoiser_radiance_source_s[thread_id] = EncodeR9G9B9E5(light_accumulator.specular_radiance * scene.exposure_estimate);
+	denoiser_radiance_source_d[thread_id] = EncodeR9G9B9E5(light_accumulator.diffuse_radiance  * scene.exposure_estimate);
 	
 	
 #if USE_VISIBLE_LIGHT_HASH_MASK
@@ -145,7 +133,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	uint tile_index_in_thread_group = (thread_index / LightCullingConstants::visible_light_tile_area);
 	uint tile_is_first_lane = 0;
 	
-	if (any((diffuse_radiance + specular_radiance) > 0.0)) {
+	if (any((light_accumulator.diffuse_radiance + light_accumulator.specular_radiance) > 0.0)) {
 		u32 light_hash = (WyHash32(light_sample.light_entity_index, dst_tile_hash_seed) % 128u);
 		GsBitArraySetBit(gs_visible_light_hash_mask[tile_index_in_thread_group], light_hash);
 	}

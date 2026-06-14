@@ -40,9 +40,10 @@ struct WorldEntityEditorQuery {
 	
 	RendererWorld* renderer_world = nullptr;
 	
-	AntiAliasingSettings* anti_aliasing_settings = nullptr;
+	LightingSettings*     lighting_settings      = nullptr;
 	ExposureSettings*     exposure_settings      = nullptr;
 	ToneMappingSettings*  tone_mapping_settings  = nullptr;
+	AntiAliasingSettings* anti_aliasing_settings = nullptr;
 };
 
 NOTES(Meta::ComponentQuery{})

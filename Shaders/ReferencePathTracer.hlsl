@@ -1,11 +1,54 @@
 #include "Basic.hlsl"
 
 #if defined(REFERENCE_PATH_TRACER)
-#include "BrdfSampling.hlsl"
-#include "LightSampling.hlsl"
+#include "LightEvaluation.hlsl"
 #include "MaterialSampling.hlsl"
 #include "MeshletVertexDecoding.hlsl"
 #include "SDK/NvAPI/include/nvHLSLExtns.h"
+
+MaterialProperties SampleMaterialFromHitResult(
+	u32 meshlet_header_offset,
+	u32 mesh_entity_index,
+	u32 triangle_index,
+	float2 barycentrics_yz,
+	bool is_front_face,
+	float texcoord_grad = 0.0
+) {
+	GpuTransform   model_to_world = mesh_transforms[mesh_entity_index];
+	GpuMeshEntityData mesh_entity = mesh_entity_data[mesh_entity_index];
+	
+	MeshletHeader meshlet = mesh_asset_buffer.Load<MeshletHeader>(meshlet_header_offset);
+	MeshletBufferOffsets offsets = ComputeMeshletBufferOffsets(meshlet, meshlet_header_offset);
+	
+	uint3 indices = LoadMeshletIndexBuffer(mesh_asset_buffer, offsets.index_buffer_offset, triangle_index);
+	MeshletVertex v0 = LoadMeshletVertexBuffer(mesh_asset_buffer, offsets.vertex_buffer_offset, indices.x);
+	MeshletVertex v1 = LoadMeshletVertexBuffer(mesh_asset_buffer, offsets.vertex_buffer_offset, indices.y);
+	MeshletVertex v2 = LoadMeshletVertexBuffer(mesh_asset_buffer, offsets.vertex_buffer_offset, indices.z);
+	
+	float3 barycentrics;
+	barycentrics.yz = barycentrics_yz;
+	barycentrics.x  = 1.0 - barycentrics.y - barycentrics.z;
+	
+	float3 model_space_normal  = DecodeAndInterpolateUnitVector(barycentrics, v0.normal,  v1.normal,  v2.normal);
+	float3 model_space_tangent = DecodeAndInterpolateUnitVector(barycentrics, v0.tangent, v1.tangent, v2.tangent);
+	
+	TexcoordStream texcoord_stream;
+	texcoord_stream.texcoord     = BarycentricInterpolation<float2>(barycentrics, v0.texcoord, v1.texcoord, v2.texcoord);
+	texcoord_stream.texcoord_ddx = texcoord_grad;
+	texcoord_stream.texcoord_ddy = texcoord_grad;
+	
+	MaterialProperties properties = SampleMaterial(mesh_entity.material_asset_index, texcoord_stream);
+	
+	float3x3 tangent_to_model = ComputeTangentToOtherSpace(model_space_tangent, model_space_normal);
+	float3x3 tangent_to_world = mul(QuatToRotationMatrix(model_to_world.rotation), tangent_to_model);
+	properties.normal = (float16x3)normalize(mul(tangent_to_world, properties.normal));
+	
+	if (is_front_face == false) {
+		properties.normal = -properties.normal;
+	}
+	
+	return properties;
+}
 
 [ThreadGroupSize(32, 1, 1)]
 void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
@@ -22,7 +65,8 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	ray_desc.TMin      = 0.0;
 	ray_desc.TMax      = 1024.0;
 	
-	float3 radiance   = 0.0;
+	LightAccumulator light_accumulator;
+	light_accumulator.radiance = 0.0;
 	float3 throughput = 1.0;
 	uint max_path_length = 512 + 2;
 	
@@ -42,44 +86,17 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 		}
 		
 		if (ray_query.CommittedStatus() == COMMITTED_TRIANGLE_HIT) {
-			u32 meshlet_header_offset = NvRtGetCommittedClusterID(ray_query);
-			u32 mesh_entity_index     = ray_query.CommittedInstanceID();
-			u32 triangle_index        = ray_query.CommittedPrimitiveIndex();
+			MaterialProperties properties = SampleMaterialFromHitResult(
+				NvRtGetCommittedClusterID(ray_query),
+				ray_query.CommittedInstanceID(),
+				ray_query.CommittedPrimitiveIndex(),
+				ray_query.CommittedTriangleBarycentrics(),
+				ray_query.CommittedTriangleFrontFace()
+			);
 			
-			GpuTransform   model_to_world = mesh_transforms[mesh_entity_index];
-			GpuMeshEntityData mesh_entity = mesh_entity_data[mesh_entity_index];
+			float3 world_space_normal = properties.normal;
 			
-			MeshletHeader meshlet = mesh_asset_buffer.Load<MeshletHeader>(meshlet_header_offset);
-			MeshletBufferOffsets offsets = ComputeMeshletBufferOffsets(meshlet, meshlet_header_offset);
-			
-			uint3 indices = LoadMeshletIndexBuffer(mesh_asset_buffer, offsets.index_buffer_offset, triangle_index);
-			MeshletVertex v0 = LoadMeshletVertexBuffer(mesh_asset_buffer, offsets.vertex_buffer_offset, indices.x);
-			MeshletVertex v1 = LoadMeshletVertexBuffer(mesh_asset_buffer, offsets.vertex_buffer_offset, indices.y);
-			MeshletVertex v2 = LoadMeshletVertexBuffer(mesh_asset_buffer, offsets.vertex_buffer_offset, indices.z);
-			
-			float3 barycentrics;
-			barycentrics.yz = ray_query.CommittedTriangleBarycentrics();
-			barycentrics.x  = 1.0 - barycentrics.y - barycentrics.z;
-			
-			float3 model_space_normal  = DecodeAndInterpolateUnitVector(barycentrics, v0.normal,  v1.normal,  v2.normal);
-			float3 model_space_tangent = DecodeAndInterpolateUnitVector(barycentrics, v0.tangent, v1.tangent, v2.tangent);
-			
-			TexcoordStream texcoord_stream;
-			texcoord_stream.texcoord = BarycentricInterpolation<float2>(barycentrics, v0.texcoord, v1.texcoord, v2.texcoord);
-			texcoord_stream.texcoord_ddx = 0.0;
-			texcoord_stream.texcoord_ddy = 0.0;
-			
-			MaterialProperties properties = SampleMaterial(mesh_entity.material_asset_index, texcoord_stream);
-			
-			float3x3 tangent_to_model = ComputeTangentToOtherSpace(model_space_tangent, model_space_normal);
-			float3x3 tangent_to_world = mul(QuatToRotationMatrix(model_to_world.rotation), tangent_to_model);
-			float3 world_space_normal = normalize(mul(tangent_to_world, properties.normal));
-			
-			if (ray_query.CommittedTriangleFrontFace() == false) {
-				world_space_normal = -world_space_normal;
-			}
 			ray_desc.Origin += ray_desc.Direction * ray_query.CommittedRayT() + world_space_normal * (1.0 / 1024.0);
-			
 			
 			float  metalness    = properties.metalness;
 			float  roughness    = properties.roughness;
@@ -88,104 +105,64 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 			float  alpha_square = Pow2(alpha);
 			float3 diffuse_albedo = properties.albedo;
 			
+			// TODO: WRS is slower, but converges much faster. We can make sampling strategy switchable at runtime.
+			// LightSample light_sample = SampleLightWRS(ray_desc.Origin, world_space_normal, ComputeRandomUnorm16x2(hash).x);
 			LightSample light_sample = SampleLightUniform(ray_desc.Origin, hash);
 			
+			float3x3 world_to_tangent = BuildOrthonormalBasis(world_space_normal);
+			float3x3 tangent_to_world = transpose(world_to_tangent);
+			
+			float3 wo = mul(world_to_tangent, -ray_desc.Direction);
+			float abs_cos_theta_o = abs(wo.z);
+			
+			float2 single_scattering_energy = SampleGgxSingleScatteringEnergyLUT(ggx_single_scattering_energy_lut, abs_cos_theta_o, roughness);
+			
 			if (light_sample.light_entity_index != u32_max) {
-				float3x3 world_to_tangent = BuildOrthonormalBasis(world_space_normal);
-				float3x3 tangent_to_world = transpose(world_to_tangent);
-				
-				LightShadingInfo shading_info = ComputeLightShadingInfo(ray_desc.Origin, light_sample.light_entity_index);
-				shading_info.light_irradiance *= light_sample.inv_pdf;
-				
-				float3 wi = mul(world_to_tangent, shading_info.light_direction);
-				float3 wo = mul(world_to_tangent, -ray_desc.Direction);
-				float3 wh = normalize(wo + wi);
-				float abs_cos_theta_o = abs(wo.z);
-				float i_dot_h = saturate(dot(wi, wh));
-				
-				float3 shadowed_light_irradiance = (throughput * shading_info.light_irradiance) * saturate(wi.z);
-				if (any(shadowed_light_irradiance > 0.0)) {
-					shadowed_light_irradiance *= TraceShadowRay(ray_desc.Origin, shading_info.light_direction, shading_info.shadow_ray_length);
-				}
-				
-				float2 single_scattering_energy = SampleGgxSingleScatteringEnergyLUT(ggx_single_scattering_energy_lut, abs_cos_theta_o, roughness);
-				
-				if (metalness != 0.0 && (wi.z * abs_cos_theta_o) > 0.0) {
-					float3 specular_fresnel = FresnelConductor(conductor_f0, i_dot_h);
-					float3 energy_compensation = ComputeConductorBrdfEnergyCompensation(single_scattering_energy, specular_fresnel) * metalness;
-					
-					float3 specular_brdf = specular_fresnel * SmithVisibilityG(abs_cos_theta_o, wi.z, alpha_square) * TrowbridgeReitzNDF(wh.z, alpha_square) * rcp(4.0 * wi.z * abs_cos_theta_o);
-					
-					radiance += shadowed_light_irradiance * (energy_compensation * specular_brdf);
-				}
-				
-				if (metalness != 1.0 && (wi.z * abs_cos_theta_o) > 0.0) {
-					float specular_fresnel = FresnelDielectric(dielectric_f0, i_dot_h);
-					float energy_compensation = ComputeDielectricBrdfEnergyCompensation(single_scattering_energy) * (1.0 - metalness);
-					
-					float specular_brdf = specular_fresnel * SmithVisibilityG(abs_cos_theta_o, wi.z, alpha_square) * TrowbridgeReitzNDF(wh.z, alpha_square) * rcp(4.0 * wi.z * abs_cos_theta_o);
-					float3 diffuse_brdf = diffuse_albedo * ((1.0 - specular_fresnel) * rcp(PI));
-					
-					radiance += shadowed_light_irradiance * (energy_compensation * specular_brdf);
-					radiance += shadowed_light_irradiance * (energy_compensation * diffuse_brdf);
-				}
+				EvaluateBRDF(
+					light_accumulator,
+					ray_desc.Origin,
+					world_to_tangent,
+					wo,
+					abs_cos_theta_o,
+					metalness,
+					roughness,
+					alpha_square,
+					conductor_f0,
+					diffuse_albedo,
+					throughput,
+					single_scattering_energy,
+					light_sample
+				);
 			}
 			
-			{
-				float3x3 world_to_tangent = BuildOrthonormalBasis(world_space_normal);
-				float3x3 tangent_to_world = transpose(world_to_tangent);
-				
-				float3 wo = mul(world_to_tangent, -ray_desc.Direction);
-				float3 wh = SampleTrowbridgeReitzVNDF(ComputeRandomUnorm16x2(hash), wo, alpha);
-				float3 wi = reflect(-wo, wh);
-				float abs_cos_theta_o = abs(wo.z);
-				float i_dot_h = saturate(dot(wi, wh));
-				
-				if ((wi.z * abs_cos_theta_o) > 0.0) {
-					float2 mis_thresholds = ComputeRandomUnorm16x2(hash);
-					
-					float2 single_scattering_energy = SampleGgxSingleScatteringEnergyLUT(ggx_single_scattering_energy_lut, abs_cos_theta_o, roughness);
-					
-					if (mis_thresholds.x < metalness) {
-						float3 specular_fresnel = FresnelConductor(conductor_f0, i_dot_h);
-						float3 energy_compensation = ComputeConductorBrdfEnergyCompensation(single_scattering_energy, specular_fresnel);
-						
-						ray_desc.Direction = mul(tangent_to_world, wi);
-						
-						throughput *= specular_fresnel * energy_compensation * (SmithVisibilityG(abs_cos_theta_o, wi.z, alpha_square) / SmithVisibilityG1(abs_cos_theta_o, alpha_square));
-					} else {
-						float specular_fresnel = FresnelDielectric(dielectric_f0, i_dot_h);
-						float energy_compensation = ComputeDielectricBrdfEnergyCompensation(single_scattering_energy);
-						
-						float mis_specular_weight = specular_fresnel;
-						float mis_diffuse_weight  = dot(diffuse_albedo, rec709_luminance_coefficients) * (1.0 - mis_specular_weight);
-						float normalized_mis_specular_weight = mis_specular_weight / (mis_specular_weight + mis_diffuse_weight);
-						float normalized_mis_diffuse_weight  = 1.0 - normalized_mis_specular_weight;
-						
-						if (mis_thresholds.y < normalized_mis_specular_weight) {
-							ray_desc.Direction = normalize(mul(tangent_to_world, wi));
-							
-							throughput *= specular_fresnel * (energy_compensation * (SmithVisibilityG(abs_cos_theta_o, wi.z, alpha_square) / SmithVisibilityG1(abs_cos_theta_o, alpha_square)) / normalized_mis_specular_weight);
-						} else {
-							ray_desc.Direction = normalize(mul(tangent_to_world, CosineWeightedHemisphereMapping(ComputeRandomUnorm16x2(hash))));
-							
-							throughput *= diffuse_albedo * (energy_compensation * (1.0 - specular_fresnel) / normalized_mis_diffuse_weight);
-						}
-					}
-				} else {
-					i = max_path_length;
-				}
+			BrdfSampleResult brdf_sample = SampleBRDF(
+				wo,
+				abs_cos_theta_o,
+				metalness,
+				alpha,
+				alpha_square,
+				conductor_f0,
+				diffuse_albedo,
+				single_scattering_energy,
+				hash
+			);
+			
+			if (brdf_sample.is_valid) {
+				ray_desc.Direction = mul(tangent_to_world, brdf_sample.wi);
+				throughput *= brdf_sample.throughput;
+			} else {
+				i = max_path_length;
 			}
 		} else {
 			float3 sky_radiance = SampleSkyPanoramaLUT(atmosphere, sky_panorama_lut, transmittance_lut, scene.world_space_camera_position, ray_desc.Direction, i == 0);
 			
-			radiance += throughput * sky_radiance;
+			light_accumulator.radiance += throughput * sky_radiance;
 			i = max_path_length;
 		}
 	}
 	
 	float3 old_accumulated_radiance = max(path_tracer_radiance[thread_id].xyz, 0.0);
-	float3 new_accumulated_radiance = (old_accumulated_radiance * (scene.path_tracer_accumulated_frame_count - 1) + radiance) / (float)scene.path_tracer_accumulated_frame_count;
+	float3 new_accumulated_radiance = (old_accumulated_radiance * (scene.path_tracer_accumulated_frame_count - 1) + light_accumulator.radiance) / (float)scene.path_tracer_accumulated_frame_count;
 	path_tracer_radiance[thread_id] = float4(new_accumulated_radiance, 1.0);
 	
 	uint reference_path_tracer_min_x = (uint)(scene.render_target_size.x * scene.reference_path_tracer_percent);

@@ -238,7 +238,9 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 		cascade_desc.y = roundf(scene.world_space_camera_position.y / grid_cell_size_next_level) * grid_cell_size_next_level - cascade_desc.w * 0.5f;
 		cascade_desc.z = roundf(scene.world_space_camera_position.z / grid_cell_size_next_level) * grid_cell_size_next_level - cascade_desc.w * 0.5f;
 	}
+	
 	scene.visible_light_hash_mask_size = DivideAndRoundUp(render_target_size, LightCullingConstants::visible_light_tile_size);
+	scene.wrs_disocclusion_min_light_weight = world_entity.lighting_settings->wrs_disocclusion_min_light_weight;
 	
 	
 	auto gpu_scene_constants = AllocateGpuComponentUploadBuffer(record_context, 1, world_entity.gpu_scene_constants);

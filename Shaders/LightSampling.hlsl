@@ -74,7 +74,14 @@ LightSample SampleLightUniform(float3 shading_position, inout uint hash) {
 }
 
 template<bool enable_visible_light_hash_mask = false>
-LightSample SampleLightWRS(float3 shading_position, float3 world_space_normal, float random, uint4 visible_light_hash_mask = 0, uint light_hash_seed = 0) {
+LightSample SampleLightWRS(
+	float3 shading_position,
+	float3 world_space_normal,
+	float random,
+	float minimum_light_weight = 0.0,
+	uint4 visible_light_hash_mask = 0,
+	uint light_hash_seed = 0
+) {
 	bool has_global_light = scene.global_light_entity_index != u32_max;
 	u32 light_count = has_global_light ? 1u : 0u;
 	
@@ -109,7 +116,7 @@ LightSample SampleLightWRS(float3 shading_position, float3 world_space_normal, f
 				weight *= light_is_maybe_visible ? 64.0 : 1.0;
 			}
 			
-			if (weight > 0.0) {
+			if (weight > minimum_light_weight) {
 				weight_sum += weight;
 				
 				float p = (weight / weight_sum);
