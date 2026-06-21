@@ -199,6 +199,12 @@ float3 DecodeR9G9B9E5(uint p) {
 	return ldexp(rgb, (s32)(p >> 27) - 24);
 }
 
+bool WaveIsHighestMatchingLane(uint4 match_mask) {
+	s32x4 lane_indices = (s32x4)(firstbithigh(match_mask) | uint4(0, 0x20, 0x40, 0x60));
+	u32 highest_lane_index = (u32)max(max(lane_indices.x, lane_indices.y), max(lane_indices.z, lane_indices.w));
+	return highest_lane_index == WaveGetLaneIndex();
+}
+
 float2 NdcToScreenUv(float2 ndc) { return float2(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5); }
 float2 ScreenUvToNdc(float2 uv)  { return float2(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0); }
 

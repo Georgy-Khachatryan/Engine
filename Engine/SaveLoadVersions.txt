@@ -326,7 +326,7 @@ struct RotationComponent {
 
 struct LightingSettings {
 	/*Version*/ 0 {
-		wrs_disocclusion_min_light_weight float32 0;
+		wrs_min_light_weight float32 0;
 	}
 }
 

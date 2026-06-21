@@ -120,6 +120,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 			if (light_sample.light_entity_index != u32_max) {
 				EvaluateBRDF(
 					light_accumulator,
+					ConcentricMapping(ComputeRandomUnorm16x2(hash)),
 					ray_desc.Origin,
 					world_to_tangent,
 					wo,

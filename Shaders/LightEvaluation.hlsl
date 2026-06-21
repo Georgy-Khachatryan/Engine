@@ -19,9 +19,10 @@ struct SplitLightAccumulator {
 	void AddDiffuse(float3 new_radiance)  { diffuse_radiance  += new_radiance; }
 };
 
-template<typename LightAccumulatorT>
-void EvaluateBRDF(
+template<typename LightAccumulatorT, RAY_FLAG shadow_ray_flags = RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH>
+float EvaluateBRDF(
 	inout LightAccumulatorT light_accumulator,
+	float2 penumbra_noise,
 	float3 shading_position,
 	float3x3 world_to_tangent,
 	float3 wo,
@@ -43,8 +44,12 @@ void EvaluateBRDF(
 	float i_dot_h = saturate(dot(wi, wh));
 	
 	float3 shadowed_light_irradiance = (throughput * shading_info.light_irradiance) * saturate(wi.z);
+	float penumbra_mask = 0.0;
+	
 	if (any(shadowed_light_irradiance > 0.0)) {
-		shadowed_light_irradiance *= TraceShadowRay(shading_position, shading_info.light_direction, shading_info.shadow_ray_length);
+		float2 shadow_trace_result = TraceShadowRay<shadow_ray_flags>(shading_position, shading_info.light_direction, shading_info.shadow_ray_length, penumbra_noise);
+		shadowed_light_irradiance *= shadow_trace_result.x;
+		penumbra_mask = shadow_trace_result.y;
 	}
 	
 	bool evaluate_brdf = any(shadowed_light_irradiance > 0.0) && (wi.z * abs_cos_theta_o) > 0.0;
@@ -68,6 +73,8 @@ void EvaluateBRDF(
 		light_accumulator.AddSpecular(shadowed_light_irradiance * (energy_compensation * specular_brdf));
 		light_accumulator.AddDiffuse(shadowed_light_irradiance * (energy_compensation * diffuse_brdf));
 	}
+	
+	return penumbra_mask;
 }
 
 struct BrdfSampleResult {

@@ -56,8 +56,8 @@ static void BuildResourceTable(RecordContext* record_context, WorldEntitySystem*
 	table.Set(ID::Exposure,           ExposureSettings::exposure_buffer_size * sizeof(float));
 	table.Set(ID::ExposureTexture,    TextureSize(TextureFormat::R32_FLOAT, 1, 1)); // Used only for third party SDKs.
 	
-	auto visible_light_hash_mask_size = DivideAndRoundUp(render_target_size, LightCullingConstants::visible_light_tile_size);
-	table.Set(ID::VisibleLightHashMask, visible_light_hash_mask_size.x * visible_light_hash_mask_size.y * sizeof(uint4) * 2u);
+	auto visible_light_tile_list_size = DivideAndRoundUp(render_target_size, LightCullingConstants::visible_light_tile_size);
+	table.Set(ID::VisibleLightTileList, visible_light_tile_list_size.x * visible_light_tile_list_size.y * LightCullingConstants::visible_light_tile_area * sizeof(u32) * 2u);
 	
 	table.Set(ID::DebugGeometryDepthStencil, TextureSize(TextureFormat::D32_FLOAT, render_target_size), Flags::DSV);
 	
@@ -69,9 +69,12 @@ static void BuildResourceTable(RecordContext* record_context, WorldEntitySystem*
 	table.Set(ID::DenoiserRadianceSourceD,   TextureSize(TextureFormat::R9G9B9E5_FLOAT, render_target_size), Flags::UAV);
 	table.Set(ID::DenoiserAccumulatedFrameCount0,  TextureSize(TextureFormat::R8_UNORM, render_target_size), Flags::UAV);
 	table.Set(ID::DenoiserAccumulatedFrameCount1,  TextureSize(TextureFormat::R8_UNORM, render_target_size), Flags::UAV);
+	table.Set(ID::DenoiserPenumbraMask0,          TextureSize(TextureFormat::R16_FLOAT, render_target_size), Flags::UAV);
+	table.Set(ID::DenoiserPenumbraMask1,          TextureSize(TextureFormat::R16_FLOAT, render_target_size), Flags::UAV);
 	
-	table.SwapHistory(ID::DepthStencil, ID::DepthStencilHistory);
+	table.SwapHistory(ID::DepthStencil,                   ID::DepthStencilHistory);
 	table.SwapHistory(ID::DenoiserAccumulatedFrameCount0, ID::DenoiserAccumulatedFrameCount1);
+	table.SwapHistory(ID::DenoiserPenumbraMask0,          ID::DenoiserPenumbraMask1);
 }
 
 using RecordPassCallback = void(*)(void*, RecordContext*);
@@ -116,6 +119,9 @@ static void CopyCurrentToPreviousSceneConstants(SceneConstants& scene) {
 	
 	scene.prev_render_target_size     = scene.render_target_size;
 	scene.inv_prev_render_target_size = scene.inv_render_target_size;
+	
+	scene.prev_jitter_offset_pixels = scene.jitter_offset_pixels;
+	scene.prev_jitter_offset_ndc    = scene.jitter_offset_ndc;
 }
 
 void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext* record_context, WorldEntitySystem* world_system, AssetEntitySystem* asset_system, u64 world_entity_guid, Array<GpuComponentUploadBuffer> gpu_uploads) {
@@ -239,8 +245,8 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 		cascade_desc.z = roundf(scene.world_space_camera_position.z / grid_cell_size_next_level) * grid_cell_size_next_level - cascade_desc.w * 0.5f;
 	}
 	
-	scene.visible_light_hash_mask_size = DivideAndRoundUp(render_target_size, LightCullingConstants::visible_light_tile_size);
-	scene.wrs_disocclusion_min_light_weight = world_entity.lighting_settings->wrs_disocclusion_min_light_weight;
+	scene.visible_light_tile_list_size = DivideAndRoundUp(render_target_size, LightCullingConstants::visible_light_tile_size);
+	scene.wrs_min_light_weight = world_entity.lighting_settings->wrs_min_light_weight;
 	
 	
 	auto gpu_scene_constants = AllocateGpuComponentUploadBuffer(record_context, 1, world_entity.gpu_scene_constants);

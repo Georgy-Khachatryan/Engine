@@ -25,7 +25,7 @@ uint ValidateHistory2x2(float2 sample_coordinates, float3 world_space_position, 
 		float history_depth = history_depths[i];
 		float2 history_uv = (sample_coordinates + uint2(i & 0x1, i >> 1) - 0.5) * scene.inv_render_target_size;
 		
-		float3 history_view_space_position  = TransformScreenUvToViewSpace(history_uv, history_depth, scene.prev_clip_to_view_coef);
+		float3 history_view_space_position  = TransformScreenUvToViewSpace(history_uv, history_depth, scene.prev_clip_to_view_coef, scene.prev_jitter_offset_ndc);
 		float3 history_world_space_position = mul(scene.prev_view_to_world, float4(history_view_space_position, 1.0));
 		
 		bool is_disocclusion =
@@ -84,10 +84,12 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	float  history_frame_count = dot(frame_count_samples, bilateral_weights) * rcp_weight_sum;
 	float3 history_sample_s = 0.0;
 	float3 history_sample_d = 0.0;
+	float history_penumbra_mask = 0.0;
 	
 	if (valid_sample_mask_4x4 == 0xFFFF) {
 		history_sample_s = SampleTextureCatmullRom(denoiser_radiance_history_s_0, sampler_linear_clamp, history_thread_uv, 0.0, scene.render_target_size, scene.inv_render_target_size);
 		history_sample_d = SampleTextureCatmullRom(denoiser_radiance_history_d_0, sampler_linear_clamp, history_thread_uv, 0.0, scene.render_target_size, scene.inv_render_target_size);
+		history_penumbra_mask = SampleTextureCatmullRom(denoiser_penumbra_mask_0, sampler_linear_clamp, history_thread_uv, 0.0, scene.render_target_size, scene.inv_render_target_size);
 	} else {
 		float3x4 sample_matrix_s;
 		sample_matrix_s[0] = GatherChannel<0>(denoiser_radiance_history_s_0, sampler_linear_clamp, history_thread_uv);
@@ -100,6 +102,9 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 		sample_matrix_d[1] = GatherChannel<1>(denoiser_radiance_history_d_0, sampler_linear_clamp, history_thread_uv);
 		sample_matrix_d[2] = GatherChannel<2>(denoiser_radiance_history_d_0, sampler_linear_clamp, history_thread_uv);
 		history_sample_d   = mul(sample_matrix_d, bilateral_weights) * rcp_weight_sum;
+		
+		float4 temporal_moments_samples = GatherChannel<0>(denoiser_penumbra_mask_0, sampler_linear_clamp, history_thread_uv);
+		history_penumbra_mask = dot(temporal_moments_samples, bilateral_weights) * rcp_weight_sum;
 	}
 	
 	float3 history_radiance_s = mul(rec709_to_ycbcr, max(history_sample_s * scene.exposure_history_ratio, 0.0));
@@ -107,6 +112,8 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	
 	float3 history_radiance_d = mul(rec709_to_ycbcr, max(history_sample_d * scene.exposure_history_ratio, 0.0));
 	float3 current_radiance_d = mul(rec709_to_ycbcr, denoiser_radiance_source_d[thread_id]);
+	
+	float current_penumbra_mask = denoiser_penumbra_mask_1[thread_id];
 	
 	float3 weighted_moments_pow1_s = 0.0;
 	float3 weighted_moments_pow2_s = 0.0;
@@ -155,24 +162,29 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	float2 mv_b = motion_vectors[thread_id + s32x2(0, +1)];
 	
 	float divergence = abs((mv_r.x - mv_l.x) * scene.render_target_size.x + (mv_b.y - mv_t.y) * scene.render_target_size.y);
-	float divergence_scale = clamp(rcp(divergence * max_frame_count), 0.75, 1.0);
+	float divergence_scale = clamp(rcp(divergence * max_frame_count), 0.5, 1.0);
 #else
 	float divergence_scale = 1.0;
 #endif
 	
-	float accumulation_ratio = 1.0 / (history_frame_count + 1.0);
+	float accumulation_ratio = 1.0 / (history_frame_count * divergence_scale + 1.0);
 	float result_frame_count = min(history_frame_count + 1.0, max_frame_count);
 	float3 result_radiance_s = lerp(history_radiance_s, current_radiance_s, accumulation_ratio);
 	float3 result_radiance_d = lerp(history_radiance_d, current_radiance_d, accumulation_ratio);
+	float result_penumbra_mask = lerp(history_penumbra_mask, current_penumbra_mask, accumulation_ratio);
 	
 	denoiser_radiance_history_s_1[thread_id] = EncodeR9G9B9E5(mul(ycbcr_to_rec709, result_radiance_s));
 	denoiser_radiance_history_d_1[thread_id] = EncodeR9G9B9E5(mul(ycbcr_to_rec709, result_radiance_d));
 	denoiser_accumulated_frame_count_1[thread_id] = result_frame_count / 255.0;
+	denoiser_penumbra_mask_1[thread_id] = max(result_penumbra_mask, 0.0);
 }
 #endif // defined(TEMPORAL_PASS)
 
 
 #if defined(SPATIAL_PASS)
+float3 ToneMap(float3 color) { return log2(max(color + 1.0, 1.0)); }
+float3 InverseToneMap(float3 color) { return exp2(color) - 1.0; }
+
 [ThreadGroupSize(thread_group_size * thread_group_size, 1, 1)]
 void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	uint2  thread_id = group_id * thread_group_size + MortonDecode(thread_index);
@@ -190,13 +202,20 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	float history_frame_count = denoiser_accumulated_frame_count_1[thread_id] * 255.0;
 	
 	float blur_weight = saturate((history_frame_count - 1.0) * rcp(blur_frame_count));
+	float max_blur_radius = 24.0;
+	
+	float penumbra_size_meters = max(denoiser_penumbra_mask_1[thread_id], 0.0);
+	float world_to_pixel_scale = scene.view_to_clip_coef.x * scene.render_target_size.x * 0.5;
+	float penumbra_size_pixels = penumbra_size_meters * world_to_pixel_scale / view_space_position.z;
+	blur_weight = min(blur_weight, saturate(1.0 - clamp(penumbra_size_pixels, 0.0, max_blur_radius) / max_blur_radius));
+	
 	bool enable_spatial_filtering = (blur_weight < 1.0);
 	
 	float3 average_radiance_s = 0.0;
 	float3 average_radiance_d = 0.0;
 	float  weight_sum         = 0.0;
 	if (enable_spatial_filtering) {
-		s32 radius = 24.0 * saturate(1.0 - blur_weight);
+		s32 radius = max_blur_radius * saturate(1.0 - blur_weight);
 		for (s32 i = -radius; i <= radius; i += 1) {
 			s32 x = constants.pass_index == 0 ? 0 : i;
 			s32 y = constants.pass_index == 0 ? i : 0;
@@ -207,7 +226,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 			
 			float2 history_uv = ((s32x2)thread_id + s32x2(x, y) + 0.5) * scene.inv_render_target_size;
 			
-			float3 history_view_space_position  = TransformScreenUvToViewSpace(history_uv, history_depth, scene.clip_to_view_coef);
+			float3 history_view_space_position  = TransformScreenUvToViewSpace(history_uv, history_depth, scene.clip_to_view_coef, scene.jitter_offset_ndc);
 			float3 history_world_space_position = mul(scene.view_to_world, float4(history_view_space_position, 1.0));
 			float3 history_world_space_normal   = DecodeHemiOctahedralMap01(history_normal_roughness.xy) * float3(1.0, 1.0, history_normal_roughness.w * 2.0 - 1.0);
 			
@@ -219,8 +238,8 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 				history_depth == 0.0;
 			
 			if (is_disocclusion == false) {
-				average_radiance_s += denoiser_radiance_history_s_1[thread_id + s32x2(x, y)] * gaussian_weight;
-				average_radiance_d += denoiser_radiance_history_d_1[thread_id + s32x2(x, y)] * gaussian_weight;
+				average_radiance_s += ToneMap(denoiser_radiance_history_s_1[thread_id + s32x2(x, y)]) * gaussian_weight;
+				average_radiance_d += ToneMap(denoiser_radiance_history_d_1[thread_id + s32x2(x, y)]) * gaussian_weight;
 				weight_sum         += gaussian_weight;
 			}
 		}
@@ -234,11 +253,11 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 		average_radiance_d *= rcp(weight_sum);
 		
 		if (constants.pass_index == 0) {
-			sample_s = average_radiance_s;
-			sample_d = average_radiance_d;
+			sample_s = InverseToneMap(average_radiance_s);
+			sample_d = InverseToneMap(average_radiance_d);
 		} else {
-			sample_s = lerp(average_radiance_s, denoiser_radiance_not_blurred_s[thread_id], blur_weight);
-			sample_d = lerp(average_radiance_d, denoiser_radiance_not_blurred_d[thread_id], blur_weight);
+			sample_s = InverseToneMap(lerp(average_radiance_s, ToneMap(denoiser_radiance_not_blurred_s[thread_id]), blur_weight));
+			sample_d = InverseToneMap(lerp(average_radiance_d, ToneMap(denoiser_radiance_not_blurred_d[thread_id]), blur_weight));
 		}
 	} else if (constants.pass_index == 1) {
 		sample_s = denoiser_radiance_not_blurred_s[thread_id];
@@ -270,6 +289,8 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 		result_radiance_d *= diffuse_albedo;
 		
 		float3 result_radiance = result_radiance_s + result_radiance_d;
+		
+		// result_radiance = PlasmaHeatMap(1.0 - saturate(blur_weight));
 		
 		scene_radiance[thread_id] = float4(result_radiance, 1.0);
 	}

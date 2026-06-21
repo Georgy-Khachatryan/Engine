@@ -6,59 +6,31 @@
 compile_const u32 thread_group_size = 16;
 compile_const u32 thread_group_area = thread_group_size * thread_group_size;
 
-
-#define USE_VISIBLE_LIGHT_HASH_MASK 1
-
-#if USE_VISIBLE_LIGHT_HASH_MASK
 compile_const u32 visible_light_tiles_per_thread_group = thread_group_area / LightCullingConstants::visible_light_tile_area;
+groupshared uint gs_light_indices[visible_light_tiles_per_thread_group][LightCullingConstants::visible_light_tile_area];
 
-groupshared uint4 gs_visible_light_hash_mask[visible_light_tiles_per_thread_group];
-groupshared uint  gs_tile_is_first_lane[visible_light_tiles_per_thread_group];
-#endif // USE_VISIBLE_LIGHT_HASH_MASK
 
 [ThreadGroupSize(thread_group_size * thread_group_size, 1, 1)]
 void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	uint2  thread_id = group_id * thread_group_size + MortonDecode(thread_index);
-	float2 thread_uv = (thread_id + 0.5 - scene.jitter_offset_pixels) * scene.inv_render_target_size;
+	float2 thread_uv = (thread_id + 0.5) * scene.inv_render_target_size;
 	
-	
-#if USE_VISIBLE_LIGHT_HASH_MASK
-	uint2 hash_mask_size = scene.visible_light_hash_mask_size;
+	uint2 tile_list_size = scene.visible_light_tile_list_size;
 	
 	float2 motion_uv_offset = motion_vectors[thread_id];
 	float2 src_tile_blue_noise = ConcentricMapping(blue_noise_2d[uint3(thread_id % 128, scene.frame_index % 32)]);
 	
-	s32x2 src_tile_id = (s32x2)round((thread_uv + motion_uv_offset) * hash_mask_size + (src_tile_blue_noise - 0.5));
+	s32x2 src_tile_id = (s32x2)round((thread_uv + motion_uv_offset) * tile_list_size + (src_tile_blue_noise - 0.5));
 	uint2 dst_tile_id = (thread_id / LightCullingConstants::visible_light_tile_size);
 	
-	uint src_tile_index = (hash_mask_size.x * src_tile_id.y + src_tile_id.x) + (scene.frame_index & 0x1 ? hash_mask_size.x * hash_mask_size.y : 0);
-	uint dst_tile_index = (hash_mask_size.x * dst_tile_id.y + dst_tile_id.x) + (scene.frame_index & 0x1 ? 0 : hash_mask_size.x * hash_mask_size.y);
+	uint src_tile_index = (tile_list_size.x * src_tile_id.y + src_tile_id.x) + (scene.frame_index & 0x1 ? tile_list_size.x * tile_list_size.y : 0);
+	uint dst_tile_index = (tile_list_size.x * dst_tile_id.y + dst_tile_id.x) + (scene.frame_index & 0x1 ? 0 : tile_list_size.x * tile_list_size.y);
 	
 	// TODO: Detect disocclusions.
-	bool src_tile_valid = all(src_tile_id >= 0) && all(src_tile_id < hash_mask_size);
-	
-	// TODO: Experiment with randomly seeding light hashes.
-	// In most cases this doesn't do anything, but in some
-	// regions with a lot of overlapping lights and hash
-	// collisions, random seeding reduces the noise a lot.
-	uint src_tile_hash_seed = WyHash32(src_tile_index, scene.frame_index + 0u);
-	uint dst_tile_hash_seed = WyHash32(dst_tile_index, scene.frame_index + 1u);
-	
-	if (thread_index < visible_light_tiles_per_thread_group) {
-		gs_visible_light_hash_mask[thread_index] = 0;
-		gs_tile_is_first_lane[thread_index] = 1;
-	}
-#endif // USE_VISIBLE_LIGHT_HASH_MASK
-	
+	bool src_tile_valid = all(src_tile_id >= 0) && all(src_tile_id < tile_list_size);
 	
 	float depth = depth_stencil[thread_id];
-	if (depth == 0.0) {
-		denoiser_radiance_source_s[thread_id] = 0;
-		denoiser_radiance_source_d[thread_id] = 0;
-		return;
-	}
-	
-	float3 view_space_position = TransformScreenUvToViewSpace(thread_uv, depth, scene.clip_to_view_coef);
+	float3 view_space_position = TransformScreenUvToViewSpace(thread_uv, depth, scene.clip_to_view_coef, scene.jitter_offset_ndc);
 	
 	RayDesc ray_desc;
 	ray_desc.Origin    = mul(scene.view_to_world, float4(view_space_position, 1.0));
@@ -78,17 +50,22 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	ray_desc.Origin += world_space_normal * (1.0 / 1024.0);
 	
 	float light_sampling_blue_noise = blue_noise_1d[uint3(thread_id % 128, scene.frame_index % 32)];
+	float min_light_weight = src_tile_valid ? scene.wrs_min_light_weight : 0.0;
 	
-#if USE_VISIBLE_LIGHT_HASH_MASK
-	float min_light_weight = src_tile_valid ? scene.wrs_disocclusion_min_light_weight : 0.0;
-	LightSample light_sample = SampleLightWRS<true>(ray_desc.Origin, world_space_normal, light_sampling_blue_noise, min_light_weight, src_tile_valid ? visible_light_hash_mask[src_tile_index] : 0u, src_tile_hash_seed);
-#else // !USE_VISIBLE_LIGHT_HASH_MASK
-	LightSample light_sample = SampleLightWRS(ray_desc.Origin, world_space_normal, light_sampling_blue_noise);
-#endif // !USE_VISIBLE_LIGHT_HASH_MASK
+	LightSample light_sample = SampleLightWRS(
+		ray_desc.Origin,
+		world_space_normal,
+		light_sampling_blue_noise,
+		min_light_weight,
+		src_tile_valid,
+		src_tile_index,
+		visible_light_tile_list
+	);
 	
 	SplitLightAccumulator light_accumulator;
 	light_accumulator.specular_radiance = 0.0;
 	light_accumulator.diffuse_radiance  = 0.0;
+	float penumbra_mask = 0.0;
 	
 	bool demodulate_radiance = true;
 	
@@ -98,10 +75,13 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 		float3 wo = mul(world_to_tangent, -ray_desc.Direction);
 		float abs_cos_theta_o = abs(wo.z);
 		
+		float2 penumbra_noise = ConcentricMapping(blue_noise_2d[uint3((thread_id + uint2(61, 67)) % 128, scene.frame_index % 32)]);
+		
 		float2 single_scattering_energy = SampleGgxSingleScatteringEnergyLUT(ggx_single_scattering_energy_lut, abs_cos_theta_o, roughness);
 		
-		EvaluateBRDF(
+		penumbra_mask = EvaluateBRDF<SplitLightAccumulator, RAY_FLAG_NONE>(
 			light_accumulator,
+			penumbra_noise,
 			ray_desc.Origin,
 			world_to_tangent,
 			wo,
@@ -123,29 +103,67 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 		}
 	}
 	
-	denoiser_radiance_source_s[thread_id] = EncodeR9G9B9E5(light_accumulator.specular_radiance * scene.exposure_estimate);
-	denoiser_radiance_source_d[thread_id] = EncodeR9G9B9E5(light_accumulator.diffuse_radiance  * scene.exposure_estimate);
+	bool is_light_visible = false;
+	if (depth != 0.0) {
+		is_light_visible = any(light_accumulator.specular_radiance + light_accumulator.diffuse_radiance > 0.0);;
+		
+		denoiser_radiance_source_s[thread_id] = EncodeR9G9B9E5(light_accumulator.specular_radiance * scene.exposure_estimate);
+		denoiser_radiance_source_d[thread_id] = EncodeR9G9B9E5(light_accumulator.diffuse_radiance  * scene.exposure_estimate);
+		
+		// Not multiplying by inv_pdf, the result is less noisy and biased towards the most important light.
+		// denoiser_penumbra_mask_1[thread_id] = light_sample.light_is_maybe_visible ? penumbra_mask * light_sample.inv_pdf : 0.0;
+		denoiser_penumbra_mask_1[thread_id] = light_sample.light_is_maybe_visible ? penumbra_mask : 0.0;
+	} else {
+		denoiser_radiance_source_s[thread_id] = 0;
+		denoiser_radiance_source_d[thread_id] = 0;
+		denoiser_penumbra_mask_1[thread_id] = 0.0;
+	}
 	
-	
-#if USE_VISIBLE_LIGHT_HASH_MASK
-	GroupMemoryBarrierWithGroupSync();
 	
 	uint tile_index_in_thread_group = (thread_index / LightCullingConstants::visible_light_tile_area);
-	uint tile_is_first_lane = 0;
+	uint thread_index_in_tile       = (thread_index % LightCullingConstants::visible_light_tile_area);
 	
-	if (any((light_accumulator.diffuse_radiance + light_accumulator.specular_radiance) > 0.0)) {
-		u32 light_hash = (WyHash32(light_sample.light_entity_index, dst_tile_hash_seed) % 128u);
-		GsBitArraySetBit(gs_visible_light_hash_mask[tile_index_in_thread_group], light_hash);
-	}
+	uint visible_light_entity_index = is_light_visible ? light_sample.light_entity_index : u32_max;
 	
-	if (WaveIsFirstLane()) {
-		InterlockedExchange(gs_tile_is_first_lane[tile_index_in_thread_group], 0u, tile_is_first_lane);
+	// Deduplicate lights within the wave.
+	bool is_highest_lane = WaveIsHighestMatchingLane(WaveMatch(visible_light_entity_index));
+	gs_light_indices[tile_index_in_thread_group][thread_index_in_tile] = is_highest_lane ? visible_light_entity_index : u32_max;
+	
+	GroupMemoryBarrierWithGroupSync();
+	
+	// Bitonic sort is Based on DirectX-Graphics-Samples, see license in THIRD_PARTY_LICENSES.md
+	for (u32 k = 2; k <= 64; k <<= 1) {
+		for (u32 j = k >> 1; j != 0; j >>= 1) {
+			uint index_1 = (thread_index_in_tile & ~(j - 1)) << 1u | (thread_index_in_tile & (j - 1)) | j;
+			uint index_0 = index_1 ^ (k == 2 * j ? k - 1 : j);
+			
+			uint light_entity_index_0 = gs_light_indices[tile_index_in_thread_group][index_0];
+			uint light_entity_index_1 = gs_light_indices[tile_index_in_thread_group][index_1];
+			
+			if (light_entity_index_1 < light_entity_index_0) {
+				gs_light_indices[tile_index_in_thread_group][index_0] = light_entity_index_1;
+				gs_light_indices[tile_index_in_thread_group][index_1] = light_entity_index_0;
+			}
+			
+			GroupMemoryBarrierWithGroupSync();
+		}
 	}
 	
 	GroupMemoryBarrierWithGroupSync();
 	
-	if (tile_is_first_lane) {
-		visible_light_hash_mask[dst_tile_index] = gs_visible_light_hash_mask[tile_index_in_thread_group];
+	if (thread_index_in_tile == 0) {
+		u32 last_index = gs_light_indices[tile_index_in_thread_group][0];
+		visible_light_tile_list[dst_tile_index * LightCullingConstants::visible_light_tile_area] = last_index;
+		
+		u32 write_offset = 1;
+		for (u32 i = 1; i < LightCullingConstants::visible_light_tile_area && last_index != u32_max; i += 1) {
+			u32 index = gs_light_indices[tile_index_in_thread_group][i];
+			
+			if (index != last_index) {
+				visible_light_tile_list[dst_tile_index * LightCullingConstants::visible_light_tile_area + write_offset] = index;
+				write_offset += 1;
+				last_index = index;
+			}
+		}
 	}
-#endif // USE_VISIBLE_LIGHT_HASH_MASK
 }
