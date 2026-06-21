@@ -17,6 +17,8 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	
 	uint2 tile_list_size = scene.visible_light_tile_list_size;
 	
+	uint disocclusion_mask = denoiser_disocclusion_mask[thread_id];
+	
 	float2 motion_uv_offset = motion_vectors[thread_id];
 	float2 src_tile_blue_noise = ConcentricMapping(blue_noise_2d[uint3(thread_id % 128, scene.frame_index % 32)]);
 	
@@ -26,8 +28,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	uint src_tile_index = (tile_list_size.x * src_tile_id.y + src_tile_id.x) + (scene.frame_index & 0x1 ? tile_list_size.x * tile_list_size.y : 0);
 	uint dst_tile_index = (tile_list_size.x * dst_tile_id.y + dst_tile_id.x) + (scene.frame_index & 0x1 ? 0 : tile_list_size.x * tile_list_size.y);
 	
-	// TODO: Detect disocclusions.
-	bool src_tile_valid = all(src_tile_id >= 0) && all(src_tile_id < tile_list_size);
+	bool src_tile_valid = all(src_tile_id >= 0) && all(src_tile_id < tile_list_size) && (disocclusion_mask & 0xF) != 0;
 	
 	float depth = depth_stencil[thread_id];
 	float3 view_space_position = TransformScreenUvToViewSpace(thread_uv, depth, scene.clip_to_view_coef, scene.jitter_offset_ndc);

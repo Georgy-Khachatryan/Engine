@@ -15,7 +15,7 @@ compile_const u32 thread_group_size  = 16;
 compile_const float max_frame_count  = 32.0; // Matches blue noise sequence length.
 compile_const float blur_frame_count = 4.0;
 
-#if defined(TEMPORAL_PASS)
+#if defined(DISOCCLUSION_MASK)
 // Input coordinates the coordinates of the 2x2 pixel quad center.
 uint ValidateHistory2x2(float2 sample_coordinates, float3 world_space_position, float view_space_depth, float n_dot_v, float3 world_space_normal) {
 	uint valid_sample_mask_2x2 = 0;
@@ -70,11 +70,39 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	valid_sample_mask_4x4 |= ValidateHistory2x2(history_pixel_coordinates + float2(2.0, 2.0), world_space_position, view_space_position.z, n_dot_v, world_space_normal) << 12u;
 	
 	// Extract 2x2 center region out of the 4x4 valid sample mask. It corresponds to the bilinear filter footprint.
+	uint valid_sample_mask_2x2 = 0;
+	valid_sample_mask_2x2 |= ((valid_sample_mask_4x4 >> 0x3) & 0x1) << 0u;
+	valid_sample_mask_2x2 |= ((valid_sample_mask_4x4 >> 0x6) & 0x1) << 1u;
+	valid_sample_mask_2x2 |= ((valid_sample_mask_4x4 >> 0x9) & 0x1) << 2u;
+	valid_sample_mask_2x2 |= ((valid_sample_mask_4x4 >> 0xC) & 0x1) << 3u;
+	
+	uint disocclusion_mask = 0;
+	disocclusion_mask |= valid_sample_mask_2x2; // Full bilinear footprint mask.
+	disocclusion_mask |= valid_sample_mask_4x4 == 0xFFFF ? 0x10 : 0u; // 1 bit mask for the whole CatmullRom footprint.
+	
+	denoiser_disocclusion_mask[thread_id] = disocclusion_mask;
+}
+#endif // defined(DISOCCLUSION_MASK)
+
+#if defined(TEMPORAL_PASS)
+[ThreadGroupSize(thread_group_size * thread_group_size, 1, 1)]
+void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
+	uint2  thread_id = group_id * thread_group_size + MortonDecode(thread_index);
+	float2 thread_uv = (thread_id + 0.5) * scene.inv_render_target_size;
+	
+	float depth = depth_stencil[thread_id];
+	if (depth == 0.0) return;
+	
+	float2 motion_uv_offset  = motion_vectors[thread_id];
+	float2 history_thread_uv = thread_uv + motion_uv_offset;
+	
+	uint disocclusion_mask = denoiser_disocclusion_mask[thread_id];
+	
 	float4 bilateral_weights = ComputeBilinearWeights(history_thread_uv * scene.render_target_size) * float4(
-		valid_sample_mask_4x4 & (1u << 0x3) ? 1.0 : 0.0,
-		valid_sample_mask_4x4 & (1u << 0x6) ? 1.0 : 0.0,
-		valid_sample_mask_4x4 & (1u << 0x9) ? 1.0 : 0.0,
-		valid_sample_mask_4x4 & (1u << 0xC) ? 1.0 : 0.0
+		disocclusion_mask & 0x1 ? 1.0 : 0.0,
+		disocclusion_mask & 0x2 ? 1.0 : 0.0,
+		disocclusion_mask & 0x4 ? 1.0 : 0.0,
+		disocclusion_mask & 0x8 ? 1.0 : 0.0
 	);
 	
 	float rcp_weight_sum = all(bilateral_weights == 0.0) ? 0.0 : rcp(bilateral_weights.x + bilateral_weights.y + bilateral_weights.z + bilateral_weights.w);
@@ -86,7 +114,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	float3 history_sample_d = 0.0;
 	float history_penumbra_mask = 0.0;
 	
-	if (valid_sample_mask_4x4 == 0xFFFF) {
+	if (disocclusion_mask & 0x10) {
 		history_sample_s = SampleTextureCatmullRom(denoiser_radiance_history_s_0, sampler_linear_clamp, history_thread_uv, 0.0, scene.render_target_size, scene.inv_render_target_size);
 		history_sample_d = SampleTextureCatmullRom(denoiser_radiance_history_d_0, sampler_linear_clamp, history_thread_uv, 0.0, scene.render_target_size, scene.inv_render_target_size);
 		history_penumbra_mask = SampleTextureCatmullRom(denoiser_penumbra_mask_0, sampler_linear_clamp, history_thread_uv, 0.0, scene.render_target_size, scene.inv_render_target_size);

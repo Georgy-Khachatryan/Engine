@@ -55,6 +55,7 @@ enum struct VirtualResourceID : u32 {
 	ExposureTexture,
 	
 	// Denoiser:
+	DenoiserDisocclusionMask,
 	DenoiserRadianceHistoryS0,
 	DenoiserRadianceHistoryS1,
 	DenoiserRadianceHistoryD0,
@@ -1111,6 +1112,7 @@ struct DeferredLightingRenderPass {
 	struct Descriptors : HLSL::BaseDescriptorTable {
 		HLSL::Texture2D<float2>                 ggx_single_scattering_energy_lut = VirtualResourceID::GgxSingleScatteringEnergyLUT;
 		HLSL::Texture2D<float2>                 ggx_preintegrated_brdf_lut       = VirtualResourceID::GgxPreintegratedBrdfLUT;
+		HLSL::Texture2D<u32>                    denoiser_disocclusion_mask       = VirtualResourceID::DenoiserDisocclusionMask;
 		HLSL::Texture2DArray<float>             blue_noise_1d                    = VirtualResourceID::BlueNoise1D;
 		HLSL::Texture2DArray<float2>            blue_noise_2d                    = VirtualResourceID::BlueNoise2D;
 		HLSL::Texture2D<float3>                 transmittance_lut                = VirtualResourceID::TransmittanceLut;
@@ -1138,10 +1140,31 @@ struct DeferredLightingRenderPass {
 
 NOTES(Meta::ShaderName{ "LightingDenoiser.hlsl"_sl })
 enum struct LightingDenoiserShaders : u32 {
-	TemporalPass = 1u << 0,
-	SpatialPass  = 1u << 1,
+	DisocclusionMask = 1u << 0,
+	TemporalPass     = 1u << 1,
+	SpatialPass      = 1u << 2,
 };
 SHADER_DEFINITION_GENERATED_CODE(LightingDenoiserShaders);
+
+NOTES(Meta::RenderPass{})
+struct DenoiserDisocclusionMaskRenderPass {
+	RENDER_PASS_GENERATED_CODE();
+	
+	struct Descriptors : HLSL::BaseDescriptorTable {
+		HLSL::Texture2D<float>   depth_stencil_history      = VirtualResourceID::DepthStencilHistory;
+		HLSL::Texture2D<float>   depth_stencil              = VirtualResourceID::DepthStencil;
+		HLSL::Texture2D<float4>  gb_normal_roughness        = VirtualResourceID::GBufferNormalRoughness;
+		HLSL::Texture2D<float2>  motion_vectors             = VirtualResourceID::MotionVectors;
+		HLSL::RWTexture2D<u32>   denoiser_disocclusion_mask = VirtualResourceID::DenoiserDisocclusionMask;
+	};
+	
+	struct RootSignature : HLSL::BaseRootSignature {
+		HLSL::ConstantBuffer<SceneConstants> scene;
+		HLSL::DescriptorTable<Descriptors> descriptor_table;
+	};
+	
+	inline static PipelineID pipeline_id;
+};
 
 NOTES(Meta::RenderPass{})
 struct LightingTemporalDenoiserRenderPass {
@@ -1154,6 +1177,7 @@ struct LightingTemporalDenoiserRenderPass {
 		HLSL::Texture2D<float4>  gb_albedo_metalness                = VirtualResourceID::GBufferAlbedoMetalness;
 		HLSL::Texture2D<float4>  gb_normal_roughness                = VirtualResourceID::GBufferNormalRoughness;
 		HLSL::Texture2D<float2>  motion_vectors                     = VirtualResourceID::MotionVectors;
+		HLSL::Texture2D<u32>     denoiser_disocclusion_mask         = VirtualResourceID::DenoiserDisocclusionMask;
 		HLSL::Texture2D<float>   denoiser_accumulated_frame_count_0 = VirtualResourceID::DenoiserAccumulatedFrameCount0;
 		HLSL::Texture2D<float>   denoiser_penumbra_mask_0           = VirtualResourceID::DenoiserPenumbraMask0;
 		HLSL::Texture2D<float3>  denoiser_radiance_source_s         = VirtualResourceID::DenoiserRadianceSourceS;

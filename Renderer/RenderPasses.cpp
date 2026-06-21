@@ -61,6 +61,7 @@ static void BuildResourceTable(RecordContext* record_context, WorldEntitySystem*
 	
 	table.Set(ID::DebugGeometryDepthStencil, TextureSize(TextureFormat::D32_FLOAT, render_target_size), Flags::DSV);
 	
+	table.Set(ID::DenoiserDisocclusionMask,  TextureSize(TextureFormat::R8_UINT,        render_target_size), Flags::UAV);
 	table.Set(ID::DenoiserRadianceHistoryS0, TextureSize(TextureFormat::R9G9B9E5_FLOAT, render_target_size), Flags::UAV);
 	table.Set(ID::DenoiserRadianceHistoryS1, TextureSize(TextureFormat::R9G9B9E5_FLOAT, render_target_size), Flags::UAV);
 	table.Set(ID::DenoiserRadianceHistoryD0, TextureSize(TextureFormat::R9G9B9E5_FLOAT, render_target_size), Flags::UAV);
@@ -353,6 +354,8 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	
 	// TODO: Generate energy compensation LUT once on startup, or save it as dds and load it from disk.
 	render_passes.Add<EnergyCompensationLutRenderPass>();
+	
+	render_passes.Add<DenoiserDisocclusionMaskRenderPass>();
 	
 	auto& deferred_lighting = render_passes.Add<DeferredLightingRenderPass>();
 	deferred_lighting.atmosphere = atmosphere_parameters_gpu_address;
