@@ -65,7 +65,7 @@ void VisibilityBufferResolveRenderPass::RecordPass(RecordContext* record_context
 
 
 void DeferredLightingRenderPass::CreatePipelines(PipelineLibrary* lib) {
-	pipeline_id = CreateComputePipeline(lib, DeferredLightingShadersID);
+	pipeline_id = CreateComputePipeline(lib, DeferredLightingShadersID, DeferredLightingShaders::DeferredLighting);
 }
 
 void DeferredLightingRenderPass::RecordPass(RecordContext* record_context) {
@@ -80,6 +80,23 @@ void DeferredLightingRenderPass::RecordPass(RecordContext* record_context) {
 	auto render_target_size = GetTextureSize(record_context, VirtualResourceID::SceneRadiance);
 	CmdDispatch(record_context, DivideAndRoundUp(uint2(render_target_size), 16u));
 }
+
+void BuildVisibleLightTileListRenderPass::CreatePipelines(PipelineLibrary* lib) {
+	pipeline_id = CreateComputePipeline(lib, DeferredLightingShadersID, DeferredLightingShaders::BuildVisibleLightTileList);
+}
+
+void BuildVisibleLightTileListRenderPass::RecordPass(RecordContext* record_context) {
+	auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
+	CmdSetRootSignature(record_context, root_signature);
+	CmdSetPipelineState(record_context, pipeline_id);
+	
+	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
+	CmdSetRootArgument(record_context, root_signature.scene, VirtualResourceID::SceneConstants);
+	
+	auto render_target_size = GetTextureSize(record_context, VirtualResourceID::SceneRadiance);
+	CmdDispatch(record_context, DivideAndRoundUp(uint2(render_target_size), LightCullingConstants::visible_light_tile_size));
+}
+
 
 
 void DenoiserDisocclusionMaskRenderPass::CreatePipelines(PipelineLibrary* lib) {

@@ -1100,7 +1100,10 @@ struct VisibilityBufferResolveRenderPass {
 };
 
 NOTES(Meta::ShaderName{ "DeferredLighting.hlsl"_sl })
-enum struct DeferredLightingShaders : u32 {};
+enum struct DeferredLightingShaders : u32 {
+	DeferredLighting          = 1u << 0,
+	BuildVisibleLightTileList = 1u << 1,
+};
 SHADER_DEFINITION_GENERATED_CODE(DeferredLightingShaders);
 
 NOTES(Meta::RenderPass{})
@@ -1137,6 +1140,24 @@ struct DeferredLightingRenderPass {
 	
 	inline static PipelineID pipeline_id;
 };
+
+NOTES(Meta::RenderPass{})
+struct BuildVisibleLightTileListRenderPass {
+	RENDER_PASS_GENERATED_CODE();
+	
+	struct Descriptors : HLSL::BaseDescriptorTable {
+		HLSL::Texture2D<u32>       denoiser_disocclusion_mask = VirtualResourceID::DenoiserDisocclusionMask;
+		HLSL::RWRegularBuffer<u32> visible_light_tile_list    = VirtualResourceID::VisibleLightTileList;
+	};
+	
+	struct RootSignature : HLSL::BaseRootSignature {
+		HLSL::ConstantBuffer<SceneConstants> scene;
+		HLSL::DescriptorTable<Descriptors> descriptor_table;
+	};
+	
+	inline static PipelineID pipeline_id;
+};
+
 
 NOTES(Meta::ShaderName{ "LightingDenoiser.hlsl"_sl })
 enum struct LightingDenoiserShaders : u32 {

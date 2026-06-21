@@ -478,4 +478,8 @@ uint CreateBitMask(uint bit_count) {
 	return bit_count >= 32 ? u32_max : CreateBitMaskSmall(bit_count);
 }
 
+u32 RoundUpToPowerOf2(u32 v) {
+	return 1u << (firstbithigh(v - 1u) + 1u);
+}
+
 #endif // BASIC_HLSL

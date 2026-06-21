@@ -1,14 +1,12 @@
 #include "Basic.hlsl"
+
+#if defined(DEFERRED_LIGHTING)
 #include "BrdfSampling.hlsl"
 #include "LightSampling.hlsl"
 #include "LightEvaluation.hlsl"
 
 compile_const u32 thread_group_size = 16;
 compile_const u32 thread_group_area = thread_group_size * thread_group_size;
-
-compile_const u32 visible_light_tiles_per_thread_group = thread_group_area / LightCullingConstants::visible_light_tile_area;
-groupshared uint gs_light_indices[visible_light_tiles_per_thread_group][LightCullingConstants::visible_light_tile_area];
-
 
 [ThreadGroupSize(thread_group_size * thread_group_size, 1, 1)]
 void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
@@ -31,6 +29,8 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	bool src_tile_valid = all(src_tile_id >= 0) && all(src_tile_id < tile_list_size) && (disocclusion_mask & 0xF) != 0;
 	
 	float depth = depth_stencil[thread_id];
+	if (depth == 0.0) return;
+	
 	float3 view_space_position = TransformScreenUvToViewSpace(thread_uv, depth, scene.clip_to_view_coef, scene.jitter_offset_ndc);
 	
 	RayDesc ray_desc;
@@ -104,67 +104,104 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 		}
 	}
 	
-	bool is_light_visible = false;
-	if (depth != 0.0) {
-		is_light_visible = any(light_accumulator.specular_radiance + light_accumulator.diffuse_radiance > 0.0);;
-		
-		denoiser_radiance_source_s[thread_id] = EncodeR9G9B9E5(light_accumulator.specular_radiance * scene.exposure_estimate);
-		denoiser_radiance_source_d[thread_id] = EncodeR9G9B9E5(light_accumulator.diffuse_radiance  * scene.exposure_estimate);
-		
-		// Not multiplying by inv_pdf, the result is less noisy and biased towards the most important light.
-		// denoiser_penumbra_mask_1[thread_id] = light_sample.light_is_maybe_visible ? penumbra_mask * light_sample.inv_pdf : 0.0;
-		denoiser_penumbra_mask_1[thread_id] = light_sample.light_is_maybe_visible ? penumbra_mask : 0.0;
-	} else {
-		denoiser_radiance_source_s[thread_id] = 0;
-		denoiser_radiance_source_d[thread_id] = 0;
-		denoiser_penumbra_mask_1[thread_id] = 0.0;
-	}
+	uint thread_index_in_tile = (thread_index % LightCullingConstants::visible_light_tile_area);
 	
+	bool is_light_visible = any(light_accumulator.specular_radiance + light_accumulator.diffuse_radiance > 0.0);
+	visible_light_tile_list[dst_tile_index * LightCullingConstants::visible_light_tile_area + thread_index_in_tile] = is_light_visible ? light_sample.light_entity_index : u32_max;
 	
-	uint tile_index_in_thread_group = (thread_index / LightCullingConstants::visible_light_tile_area);
-	uint thread_index_in_tile       = (thread_index % LightCullingConstants::visible_light_tile_area);
+	denoiser_radiance_source_s[thread_id] = EncodeR9G9B9E5(light_accumulator.specular_radiance * scene.exposure_estimate);
+	denoiser_radiance_source_d[thread_id] = EncodeR9G9B9E5(light_accumulator.diffuse_radiance  * scene.exposure_estimate);
 	
-	uint visible_light_entity_index = is_light_visible ? light_sample.light_entity_index : u32_max;
+	// Not multiplying by inv_pdf, the result is less noisy and biased towards the most important light.
+	// denoiser_penumbra_mask_1[thread_id] = light_sample.light_is_maybe_visible ? penumbra_mask * light_sample.inv_pdf : 0.0;
+	denoiser_penumbra_mask_1[thread_id] = light_sample.light_is_maybe_visible ? penumbra_mask : 0.0;
+}
+#endif // defined(DEFERRED_LIGHTING)
+
+
+#if defined(BUILD_VISIBLE_LIGHT_TILE_LIST)
+#include "Generated/LightData.hlsl"
+
+groupshared u32 gs_light_entity_indices[LightCullingConstants::visible_light_tile_area];
+groupshared u32 gs_light_entity_count;
+
+void BitonicSortLightEntityIndices(u32 thread_index) {
+	u32 light_entity_count = gs_light_entity_count;
+	if (light_entity_count == 0) return;
 	
-	// Deduplicate lights within the wave.
-	bool is_highest_lane = WaveIsHighestMatchingLane(WaveMatch(visible_light_entity_index));
-	gs_light_indices[tile_index_in_thread_group][thread_index_in_tile] = is_highest_lane ? visible_light_entity_index : u32_max;
-	
-	GroupMemoryBarrierWithGroupSync();
+	light_entity_count = RoundUpToPowerOf2(light_entity_count);
 	
 	// Bitonic sort is Based on DirectX-Graphics-Samples, see license in THIRD_PARTY_LICENSES.md
-	for (u32 k = 2; k <= 64; k <<= 1) {
+	for (u32 k = 2; k <= light_entity_count; k <<= 1) {
 		for (u32 j = k >> 1; j != 0; j >>= 1) {
-			uint index_1 = (thread_index_in_tile & ~(j - 1)) << 1u | (thread_index_in_tile & (j - 1)) | j;
+			uint index_1 = (thread_index & ~(j - 1)) << 1u | (thread_index & (j - 1)) | j;
 			uint index_0 = index_1 ^ (k == 2 * j ? k - 1 : j);
 			
-			uint light_entity_index_0 = gs_light_indices[tile_index_in_thread_group][index_0];
-			uint light_entity_index_1 = gs_light_indices[tile_index_in_thread_group][index_1];
+			uint light_entity_index_0 = gs_light_entity_indices[index_0];
+			uint light_entity_index_1 = gs_light_entity_indices[index_1];
 			
 			if (light_entity_index_1 < light_entity_index_0) {
-				gs_light_indices[tile_index_in_thread_group][index_0] = light_entity_index_1;
-				gs_light_indices[tile_index_in_thread_group][index_1] = light_entity_index_0;
+				gs_light_entity_indices[index_0] = light_entity_index_1;
+				gs_light_entity_indices[index_1] = light_entity_index_0;
 			}
 			
 			GroupMemoryBarrierWithGroupSync();
 		}
 	}
+}
+
+void DeduplicateAndWriteVisibleLightTileList(u32 dst_tile_index, u32 thread_index) {
+	if (thread_index >= WaveGetLaneCount()) return;
 	
-	GroupMemoryBarrierWithGroupSync();
-	
-	if (thread_index_in_tile == 0) {
-		u32 last_index = gs_light_indices[tile_index_in_thread_group][0];
-		visible_light_tile_list[dst_tile_index * LightCullingConstants::visible_light_tile_area] = last_index;
+	u32 prefix_sum = 0;
+	for (u32 i = WaveGetLaneIndex(); i < LightCullingConstants::visible_light_tile_area; i += WaveGetLaneCount()) {
+		u32 last_index = i != 0 ? gs_light_entity_indices[i - 1] : u32_max;
+		u32 curr_index = gs_light_entity_indices[i];
 		
-		u32 write_offset = 1;
-		for (u32 i = 1; i < LightCullingConstants::visible_light_tile_area && last_index != u32_max; i += 1) {
-			u32 index = gs_light_indices[tile_index_in_thread_group][i];
-			
-			if (index != last_index) {
-				visible_light_tile_list[dst_tile_index * LightCullingConstants::visible_light_tile_area + write_offset] = index;
-				write_offset += 1;
-				last_index = index;
-			}
+		bool is_active = (curr_index != last_index) || (i == 0);
+		u32 write_offset = WavePrefixCountBits(is_active) + prefix_sum;
+		prefix_sum += WaveActiveCountBits(is_active);
+		
+		if (is_active) {
+			visible_light_tile_list[dst_tile_index * LightCullingConstants::visible_light_tile_area + write_offset] = curr_index;
 		}
 	}
 }
+
+[ThreadGroupSize(LightCullingConstants::visible_light_tile_area, 1, 1)]
+void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
+	uint2 thread_id = group_id * LightCullingConstants::visible_light_tile_size + MortonDecode(thread_index);
+	
+	uint2 tile_list_size = scene.visible_light_tile_list_size;
+	
+	uint2 dst_tile_id = (thread_id / LightCullingConstants::visible_light_tile_size);
+	uint dst_tile_index = (tile_list_size.x * dst_tile_id.y + dst_tile_id.x) + (scene.frame_index & 0x1 ? 0 : tile_list_size.x * tile_list_size.y);
+	
+	if (thread_index == 0) {
+		gs_light_entity_count = 0;
+	}
+	gs_light_entity_indices[thread_index] = u32_max;
+	
+	GroupMemoryBarrierWithGroupSync();
+	
+	uint disocclusion_mask = denoiser_disocclusion_mask[thread_id];
+	uint visible_light_entity_index = disocclusion_mask != 0 ? visible_light_tile_list[dst_tile_index * LightCullingConstants::visible_light_tile_area + thread_index] : u32_max;
+	
+	// Deduplicate lights within the wave.
+	bool is_highest_lane = WaveIsHighestMatchingLane(WaveMatch(visible_light_entity_index));
+	
+	if (is_highest_lane && visible_light_entity_index != u32_max) {
+		u32 light_index = 0;
+		InterlockedAdd(gs_light_entity_count, 1, light_index);
+		
+		gs_light_entity_indices[light_index] = visible_light_entity_index;
+	}
+	
+	GroupMemoryBarrierWithGroupSync();
+	
+	BitonicSortLightEntityIndices(thread_index);
+	
+	DeduplicateAndWriteVisibleLightTileList(dst_tile_index, thread_index);
+}
+#endif // defined(BUILD_VISIBLE_LIGHT_TILE_LIST)
+

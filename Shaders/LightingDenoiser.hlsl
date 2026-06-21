@@ -48,7 +48,10 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	float2 thread_uv = (thread_id + 0.5) * scene.inv_render_target_size;
 	
 	float depth = depth_stencil[thread_id];
-	if (depth == 0.0) return;
+	if (depth == 0.0) {
+		denoiser_disocclusion_mask[thread_id] = 0;
+		return;
+	}
 	
 	float2 motion_uv_offset  = motion_vectors[thread_id];
 	float2 history_thread_uv = thread_uv + motion_uv_offset;
@@ -79,6 +82,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	uint disocclusion_mask = 0;
 	disocclusion_mask |= valid_sample_mask_2x2; // Full bilinear footprint mask.
 	disocclusion_mask |= valid_sample_mask_4x4 == 0xFFFF ? 0x10 : 0u; // 1 bit mask for the whole CatmullRom footprint.
+	disocclusion_mask |= 0x20; // Valid depth buffer.
 	
 	denoiser_disocclusion_mask[thread_id] = disocclusion_mask;
 }

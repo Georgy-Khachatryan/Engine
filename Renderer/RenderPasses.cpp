@@ -360,6 +360,8 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	auto& deferred_lighting = render_passes.Add<DeferredLightingRenderPass>();
 	deferred_lighting.atmosphere = atmosphere_parameters_gpu_address;
 	
+	render_passes.Add<BuildVisibleLightTileListRenderPass>();
+	
 	render_passes.Add<LightingTemporalDenoiserRenderPass>();
 	render_passes.Add<LightingSpatialDenoiserRenderPass>();
 	
