@@ -77,6 +77,7 @@
     <ClCompile Include="Renderer/EntitySystemUpdateRenderPasses.cpp" />
     <ClCompile Include="Renderer/ImGuiRenderPass.cpp" />
     <ClCompile Include="Renderer/LightCullingRenderPasses.cpp" />
+    <ClCompile Include="Renderer/LightingRenderPasses.cpp" />
     <ClCompile Include="Renderer/MeshAssetImporter.cpp" />
     <ClCompile Include="Renderer/MeshletCullingRenderPasses.cpp" />
     <ClCompile Include="Renderer/MeshletRtasRenderPasses.cpp" />
