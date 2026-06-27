@@ -56,10 +56,12 @@ static void BuildResourceTable(RecordContext* record_context, WorldEntitySystem*
 	table.Set(ID::Exposure,           ExposureSettings::exposure_buffer_size * sizeof(float));
 	table.Set(ID::ExposureTexture,    TextureSize(TextureFormat::R32_FLOAT, 1, 1)); // Used only for third party SDKs.
 	
-	auto visible_light_tile_list_size = DivideAndRoundUp(render_target_size, LightCullingConstants::visible_light_tile_size);
-	table.Set(ID::VisibleLightTileList, visible_light_tile_list_size.x * visible_light_tile_list_size.y * LightCullingConstants::visible_light_tile_area * sizeof(u32) * 2u);
-	
 	table.Set(ID::DebugGeometryDepthStencil, TextureSize(TextureFormat::D32_FLOAT, render_target_size), Flags::DSV);
+	
+	auto visible_light_tile_list_size = DivideAndRoundUp(render_target_size, LightingConstants::visible_light_tile_size);
+	table.Set(ID::VisibleLightTileList,      visible_light_tile_list_size.x * visible_light_tile_list_size.y * LightingConstants::visible_light_tile_area * sizeof(u32) * 2u);
+	table.Set(ID::VisibilityHashTableKeys,   LightingConstants::visibility_hash_table_size * sizeof(u64) * 2u);
+	table.Set(ID::VisibilityHashTableValues, LightingConstants::visibility_hash_table_size * sizeof(u32) * 2u);
 	
 	table.Set(ID::DenoiserDisocclusionMask,  TextureSize(TextureFormat::R8_UINT,        render_target_size), Flags::UAV);
 	table.Set(ID::DenoiserRadianceHistoryS0, TextureSize(TextureFormat::R9G9B9E5_FLOAT, render_target_size), Flags::UAV);
@@ -123,6 +125,8 @@ static void CopyCurrentToPreviousSceneConstants(SceneConstants& scene) {
 	
 	scene.prev_jitter_offset_pixels = scene.jitter_offset_pixels;
 	scene.prev_jitter_offset_ndc    = scene.jitter_offset_ndc;
+	
+	scene.prev_world_space_camera_position = scene.world_space_camera_position;
 }
 
 void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext* record_context, WorldEntitySystem* world_system, AssetEntitySystem* asset_system, u64 world_entity_guid, Array<GpuComponentUploadBuffer> gpu_uploads) {
@@ -167,8 +171,6 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	scene.world_to_view.r1 = float4(world_to_view_rotation.r1, -view_space_camera_position.y);
 	scene.world_to_view.r2 = float4(world_to_view_rotation.r2, -view_space_camera_position.z);
 	
-	if (scene.frame_index == 0) CopyCurrentToPreviousSceneConstants(scene);
-	
 	if (renderer_world.debug_freeze_culling_camera.enabled == false) {
 		scene.culling_prev_world_to_view     = scene.culling_world_to_view;
 		scene.culling_prev_view_to_clip_coef = scene.culling_view_to_clip_coef;
@@ -185,7 +187,11 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 		renderer_world.debug_freeze_culling_camera.view_to_world_rotation = camera_entity.rotation->rotation;
 	}
 	
+	if (scene.frame_index == 0) CopyCurrentToPreviousSceneConstants(scene);
+	
 	scene.texture_world_to_pixel_scale = scene.view_to_clip_coef.x * scene.render_target_size.x * 0.5f;
+	
+	scene.visibility_hash_table_distance_to_cell_size_scale = world_entity.lighting_settings->visibility_hash_table_target_cell_size_pixels / (scene.view_to_clip_coef.x * scene.render_target_size.x * 0.5f);
 	
 	if (world_entity.anti_aliasing_settings->method != AntiAliasingMethod::None) {
 		u32 jitter_frame_index = (record_context->frame_index % 16);
@@ -198,6 +204,9 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	
 	scene.frame_index = (u32)record_context->frame_index;
 	scene.reference_path_tracer_percent = renderer_world.reference_path_tracer_percent;
+	
+	u64 blue_noise_offset_hash = ComputeHash64(record_context->frame_index / 32u);
+	scene.blue_noise_base_offset = uint2((u32)blue_noise_offset_hash, (u32)(blue_noise_offset_hash >> 32u));
 	
 	scene.exposure_estimate      = renderer_world.automatic_exposure_histogram.final_exposure;
 	scene.exposure_history_ratio = scene.exposure_estimate * scene.inv_exposure_estimate;
@@ -246,7 +255,7 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 		cascade_desc.z = roundf(scene.world_space_camera_position.z / grid_cell_size_next_level) * grid_cell_size_next_level - cascade_desc.w * 0.5f;
 	}
 	
-	scene.visible_light_tile_list_size = DivideAndRoundUp(render_target_size, LightCullingConstants::visible_light_tile_size);
+	scene.visible_light_tile_list_size = DivideAndRoundUp(render_target_size, LightingConstants::visible_light_tile_size);
 	scene.wrs_min_light_weight = world_entity.lighting_settings->wrs_min_light_weight;
 	
 	
@@ -397,6 +406,8 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	tone_mapping.scene_radiance        = scene_radiance;
 	
 	CreateResourceDescriptor(record_context, HLSL::Texture2D<float4>(scene_radiance), renderer_world.scene_descriptor_heap_offset);
+	
+	render_passes.Add<UpdateVisibilityHashTableRenderPass>();
 	
 	render_passes.Add<ImGuiRenderPass>();
 	

@@ -115,6 +115,7 @@ static void WorldComponentEntityView(StackAllocator* alloc, WorldEntitySystem& w
 	if (entity.lighting_settings && ImGui::TableCollapsingHeader("Lighting Settings")) {
 		auto& settings = *entity.lighting_settings;
 		ImGui::TableSliderFloat("WRS Min Light Weight", &settings.wrs_min_light_weight, 0.f, 1.f);
+		ImGui::TableSliderFloat("Visibility Cache Target Cell Size Pixels", &settings.visibility_hash_table_target_cell_size_pixels, 1.f, 64.f);
 	}
 	
 	if (entity.anti_aliasing_settings && ImGui::TableCollapsingHeader("Anti Aliasing Settings")) {

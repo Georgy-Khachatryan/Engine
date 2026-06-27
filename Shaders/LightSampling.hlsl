@@ -3,6 +3,39 @@
 
 #include "AtmosphereSampling.hlsl"
 #include "LightGridSampling.hlsl"
+#include "BasicHashTable.hlsl"
+
+struct VisibilityHashTableKey : HashTableKey {
+	float cell_size;
+};
+
+VisibilityHashTableKey BuildVisibilityHashTableKey(float3 shading_position, u32 light_entity_index, float3 world_space_camera_position, float3 world_space_normal, float2 random_offset_2d) {
+	compile_const float min_hash_cell_size     = 1.0 / 128.0;
+	compile_const float inv_min_hash_cell_size = 1.0 / min_hash_cell_size;
+	
+	bool apply_random_offset = true;
+	if (apply_random_offset) {
+		float center_distance_to_camera = length(shading_position - world_space_camera_position);
+		float center_cell_size = max(center_distance_to_camera * scene.visibility_hash_table_distance_to_cell_size_scale, min_hash_cell_size);
+		
+		float3x3 world_to_tangent = BuildOrthonormalBasis(world_space_normal);
+		float3x3 tangent_to_world = transpose(world_to_tangent);
+		
+		shading_position += mul(tangent_to_world, float3(random_offset_2d * center_cell_size, 0.0));
+	}
+	
+	float distance_to_camera = length(shading_position - world_space_camera_position);
+	HashCellSize cell_size = QuantizeHashCellSize(distance_to_camera * scene.visibility_hash_table_distance_to_cell_size_scale, min_hash_cell_size, inv_min_hash_cell_size);
+	
+	uint3 cell_position = ((s32x3)round(shading_position / cell_size.hash_cell_size)) & 0x1FFF;
+	
+	VisibilityHashTableKey result;
+	result.key  = (u64)cell_position.x | ((u64)cell_position.y << 13) | ((u64)cell_position.z << 26) | ((u64)(cell_size.level_of_detail + 1) << 39) | ((u64)light_entity_index << 48);
+	result.hash = WyHash32((u32)result.key, (u32)(result.key >> 32));
+	result.cell_size = cell_size.hash_cell_size;
+	
+	return result;
+}
 
 struct LightShadingInfo {
 	float3 light_direction;
@@ -86,7 +119,7 @@ LightSample SampleLightWRS(float3 shading_position, float3 world_space_normal, f
 	
 	LightSample sample;
 	sample.light_entity_index = u32_max;
-	sample.inv_pdf = 0.0;
+	sample.inv_pdf            = 0.0;
 	sample.light_is_maybe_visible = false;
 	
 	if (light_count != 0) {
@@ -145,12 +178,12 @@ LightSample SampleLightWRS(
 	
 	LightSample sample;
 	sample.light_entity_index = u32_max;
-	sample.inv_pdf = 0.0;
+	sample.inv_pdf            = 0.0;
 	sample.light_is_maybe_visible = false;
 	
 	if (light_count != 0) {
 		u32 src_light_index_in_tile = 0;
-		uint visible_light_entity_index = src_tile_valid ? visible_light_tile_list[src_tile_index * LightCullingConstants::visible_light_tile_area + src_light_index_in_tile] : u32_max;
+		uint visible_light_entity_index = src_tile_valid ? visible_light_tile_list[src_tile_index * LightingConstants::visible_light_tile_area + src_light_index_in_tile] : u32_max;
 		src_light_index_in_tile += 1;
 		
 		float weight_sum = 0.0;
@@ -168,13 +201,13 @@ LightSample SampleLightWRS(
 			
 			weight = log2(weight + 1.0);
 			
-			while (src_tile_valid && (visible_light_entity_index < light_entity_index) && (src_light_index_in_tile < LightCullingConstants::visible_light_tile_area)) {
-				visible_light_entity_index = visible_light_tile_list[src_tile_index * LightCullingConstants::visible_light_tile_area + src_light_index_in_tile];
+			while (src_tile_valid && (visible_light_entity_index < light_entity_index) && (src_light_index_in_tile < LightingConstants::visible_light_tile_area)) {
+				visible_light_entity_index = visible_light_tile_list[src_tile_index * LightingConstants::visible_light_tile_area + src_light_index_in_tile];
 				src_light_index_in_tile += 1;
 			}
 			
 			bool light_is_maybe_visible = (visible_light_entity_index == light_entity_index);
-			weight *= light_is_maybe_visible ? 64.0 : 1.0;
+			weight *= light_is_maybe_visible ? 32.0 : 1.0;
 			
 			if (weight > minimum_light_weight) {
 				weight_sum += weight;
@@ -203,30 +236,34 @@ compile_const float light_penumbra_size = 0.00459903;
 // compile_const float light_penumbra_size = 0.01;
 // compile_const float light_penumbra_size = 0.1;
 
-template<RAY_FLAG shadow_ray_flags = RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH>
-float2 TraceShadowRay(float3 ray_origin, float3 ray_direction, float ray_length, float2 noise) {
-	RayQuery<
-		RAY_FLAG_CULL_NON_OPAQUE |
-		RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES |
-		shadow_ray_flags |
-		RAY_FLAG_NONE
-	> ray_query;
+struct ShadowSampler {
+	float2 penumbra_noise;
 	
-	RayDesc ray_desc;
-	ray_desc.Origin    = ray_origin;
-	ray_desc.Direction = ray_direction;
-	ray_desc.Direction += mul(float3(noise, 0.0) * light_penumbra_size, BuildOrthonormalBasis(ray_direction));
-	ray_desc.TMin      = 0.0;
-	ray_desc.TMax      = ray_length;
-	
-	ray_query.TraceRayInline(scene_tlas, 0, 0xFF, ray_desc);
-	
-	while (ray_query.Proceed()) {
+	float EvaluateVisibility(float3 ray_origin, float3 ray_direction, float ray_length) {
+		RayQuery<
+			RAY_FLAG_CULL_NON_OPAQUE |
+			RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES |
+			RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH |
+			RAY_FLAG_NONE
+		> ray_query;
 		
+		float3x3 world_to_light = BuildOrthonormalBasis(ray_direction);
+		float3x3 light_to_world = transpose(world_to_light);
+		
+		RayDesc ray_desc;
+		ray_desc.Origin    = ray_origin;
+		ray_desc.Direction = normalize(ray_direction + mul(light_to_world, float3(penumbra_noise * light_penumbra_size, 0.0)));
+		ray_desc.TMin      = 0.0;
+		ray_desc.TMax      = ray_length;
+		
+		ray_query.TraceRayInline(scene_tlas, 0, 0xFF, ray_desc);
+		
+		while (ray_query.Proceed()) {
+			
+		}
+		
+		return ray_query.CommittedStatus() == COMMITTED_NOTHING ? 1.0 : 0.0;
 	}
-	
-	bool hit_geometry = ray_query.CommittedStatus() != COMMITTED_NOTHING;
-	return float2(hit_geometry ? 0.0 : 1.0, hit_geometry ? ray_query.CommittedRayT() * light_penumbra_size : 0.0);
-}
+};
 
 #endif // LIGHTSAMPLING_HLSL

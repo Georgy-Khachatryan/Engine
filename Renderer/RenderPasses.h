@@ -82,6 +82,9 @@ enum struct VirtualResourceID : u32 {
 	LightCullingGrid,
 	VisibleLightTileList,
 	
+	VisibilityHashTableKeys,
+	VisibilityHashTableValues,
+	
 	// Streaming feedback:
 	MeshletStreamingFeedback,
 	MeshStreamingFeedback,
@@ -909,9 +912,6 @@ struct LightCullingConstants {
 	compile_const u32 culling_command_bin_size  = 16 * 1024;
 	compile_const u32 culling_command_count     = culling_command_bin_size * culling_command_bin_count;
 	
-	compile_const u32 visible_light_tile_size = 8;
-	compile_const u32 visible_light_tile_area = visible_light_tile_size * visible_light_tile_size;
-	
 	static_assert((1u << (culling_command_bin_count - 1)) == (grid_size_cells * grid_size_cells * grid_size_cells));
 };
 
@@ -1099,10 +1099,20 @@ struct VisibilityBufferResolveRenderPass {
 	inline static PipelineID pipeline_id;
 };
 
+
+NOTES(Meta::HlslFile{ "LightData.hlsl"_sl })
+struct LightingConstants {
+	compile_const u32 visible_light_tile_size = 8;
+	compile_const u32 visible_light_tile_area = visible_light_tile_size * visible_light_tile_size;
+	
+	compile_const u32 visibility_hash_table_size = 1024u * 1024u;
+};
+
 NOTES(Meta::ShaderName{ "DeferredLighting.hlsl"_sl })
 enum struct DeferredLightingShaders : u32 {
 	DeferredLighting          = 1u << 0,
 	BuildVisibleLightTileList = 1u << 1,
+	UpdateVisibilityHashTable = 1u << 2,
 };
 SHADER_DEFINITION_GENERATED_CODE(DeferredLightingShaders);
 
@@ -1126,10 +1136,13 @@ struct DeferredLightingRenderPass {
 		HLSL::RegularBuffer<GpuLightEntityData> light_entity_data                = VirtualResourceID::GpuLightEntityData;
 		HLSL::RegularBuffer<u32>                light_culling_grid               = VirtualResourceID::LightCullingGrid;
 		HLSL::TopLevelRTAS                      scene_tlas                       = VirtualResourceID::SceneTLAS;
+		HLSL::Texture2D<float>                  denoiser_penumbra_mask_0         = VirtualResourceID::DenoiserPenumbraMask0;
 		HLSL::RWTexture2D<float>                denoiser_penumbra_mask_1         = VirtualResourceID::DenoiserPenumbraMask1;
 		HLSL::RWTexture2D<u32>                  denoiser_radiance_source_s       = VirtualResourceID::DenoiserRadianceSourceS;
 		HLSL::RWTexture2D<u32>                  denoiser_radiance_source_d       = VirtualResourceID::DenoiserRadianceSourceD;
 		HLSL::RWRegularBuffer<u32>              visible_light_tile_list          = VirtualResourceID::VisibleLightTileList;
+		HLSL::RWRegularBuffer<u64>              visibility_hash_table_keys       = VirtualResourceID::VisibilityHashTableKeys;
+		HLSL::RWRegularBuffer<u32>              visibility_hash_table_values     = VirtualResourceID::VisibilityHashTableValues;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {
@@ -1148,6 +1161,23 @@ struct BuildVisibleLightTileListRenderPass {
 	struct Descriptors : HLSL::BaseDescriptorTable {
 		HLSL::Texture2D<u32>       denoiser_disocclusion_mask = VirtualResourceID::DenoiserDisocclusionMask;
 		HLSL::RWRegularBuffer<u32> visible_light_tile_list    = VirtualResourceID::VisibleLightTileList;
+	};
+	
+	struct RootSignature : HLSL::BaseRootSignature {
+		HLSL::ConstantBuffer<SceneConstants> scene;
+		HLSL::DescriptorTable<Descriptors> descriptor_table;
+	};
+	
+	inline static PipelineID pipeline_id;
+};
+
+NOTES(Meta::RenderPass{})
+struct UpdateVisibilityHashTableRenderPass {
+	RENDER_PASS_GENERATED_CODE();
+	
+	struct Descriptors : HLSL::BaseDescriptorTable {
+		HLSL::RWRegularBuffer<u64> visibility_hash_table_keys   = VirtualResourceID::VisibilityHashTableKeys;
+		HLSL::RWRegularBuffer<u32> visibility_hash_table_values = VirtualResourceID::VisibilityHashTableValues;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {

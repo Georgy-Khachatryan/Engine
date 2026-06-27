@@ -43,8 +43,11 @@ struct SceneConstants {
 	float2 prev_jitter_offset_pixels;
 	float2 prev_jitter_offset_ndc;
 	
-	float meshlet_world_to_pixel_scale; // Used for meshlet LOD error computation.
 	float3 world_space_camera_position;
+	float meshlet_world_to_pixel_scale; // Used for meshlet LOD error computation.
+	
+	float3 prev_world_space_camera_position;
+	float visibility_hash_table_distance_to_cell_size_scale;
 	
 	float texture_world_to_pixel_scale; // Used for texture streaming feedback.
 	u32 frame_index = 0;
@@ -59,6 +62,9 @@ struct SceneConstants {
 	uint2 visible_light_tile_list_size;
 	float wrs_min_light_weight = 0.f;
 	u32 padding_1 = 0;
+	
+	uint2 blue_noise_base_offset;
+	uint2 padding_2 = 0;
 	
 	compile_const u32 light_grid_cascade_count = 8;
 	FixedCountArray<float4, light_grid_cascade_count> light_grid_cascade_descs;
@@ -126,6 +132,7 @@ struct ToneMappingSettings {
 NOTES()
 struct LightingSettings {
 	float wrs_min_light_weight = 0.2f;
+	float visibility_hash_table_target_cell_size_pixels = 16.f;
 };
 
 NOTES()

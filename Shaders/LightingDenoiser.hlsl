@@ -214,8 +214,20 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 
 
 #if defined(SPATIAL_PASS)
+
+//
+// Using tonemapping results in less fireflies, but at the cost of lost energy,
+// which ends up producing dark outlines around screen edge disocclusions.
+//
+#define ENABLE_SPATIAL_FILTER_TONE_MAPPING 0
+#if ENABLE_SPATIAL_FILTER_TONE_MAPPING
 float3 ToneMap(float3 color) { return log2(max(color + 1.0, 1.0)); }
 float3 InverseToneMap(float3 color) { return exp2(color) - 1.0; }
+#else // !ENABLE_SPATIAL_FILTER_TONE_MAPPING
+float3 ToneMap(float3 color) { return color; }
+float3 InverseToneMap(float3 color) { return color; }
+#endif // !ENABLE_SPATIAL_FILTER_TONE_MAPPING
+
 
 [ThreadGroupSize(thread_group_size * thread_group_size, 1, 1)]
 void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
@@ -231,23 +243,25 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	float3 world_space_position = mul(scene.view_to_world, float4(view_space_position, 1.0));
 	float3 world_space_normal   = DecodeHemiOctahedralMap01(normal_roughness.xy) * float3(1.0, 1.0, normal_roughness.w * 2.0 - 1.0);
 	
-	float history_frame_count = denoiser_accumulated_frame_count_1[thread_id] * 255.0;
-	
-	float blur_weight = saturate((history_frame_count - 1.0) * rcp(blur_frame_count));
-	float max_blur_radius = 24.0;
-	
+	float history_frame_count  = denoiser_accumulated_frame_count_1[thread_id] * 255.0;
 	float penumbra_size_meters = max(denoiser_penumbra_mask_1[thread_id], 0.0);
 	float world_to_pixel_scale = scene.view_to_clip_coef.x * scene.render_target_size.x * 0.5;
 	float penumbra_size_pixels = penumbra_size_meters * world_to_pixel_scale / view_space_position.z;
-	blur_weight = min(blur_weight, saturate(1.0 - clamp(penumbra_size_pixels, 0.0, max_blur_radius) / max_blur_radius));
 	
-	bool enable_spatial_filtering = (blur_weight < 1.0);
+	compile_const float max_blur_radius = 24.0;
+	compile_const float max_penumbra_blur_radius = 4.0;
+	
+	float disocclusion_blur_weight = 1.0 - Pow2(saturate((history_frame_count - 1.0) * rcp(blur_frame_count)));
+	float penumbra_blur_weight     = saturate(min(penumbra_size_pixels, max_penumbra_blur_radius) / max_blur_radius);
+	float blur_weight              = max(disocclusion_blur_weight, penumbra_blur_weight);
+	
+	bool enable_spatial_filtering = (blur_weight > 0.0);
 	
 	float3 average_radiance_s = 0.0;
 	float3 average_radiance_d = 0.0;
 	float  weight_sum         = 0.0;
 	if (enable_spatial_filtering) {
-		s32 radius = max_blur_radius * saturate(1.0 - blur_weight);
+		s32 radius = (s32)(max_blur_radius * blur_weight);
 		for (s32 i = -radius; i <= radius; i += 1) {
 			s32 x = constants.pass_index == 0 ? 0 : i;
 			s32 y = constants.pass_index == 0 ? i : 0;
@@ -288,8 +302,8 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 			sample_s = InverseToneMap(average_radiance_s);
 			sample_d = InverseToneMap(average_radiance_d);
 		} else {
-			sample_s = InverseToneMap(lerp(average_radiance_s, ToneMap(denoiser_radiance_not_blurred_s[thread_id]), blur_weight));
-			sample_d = InverseToneMap(lerp(average_radiance_d, ToneMap(denoiser_radiance_not_blurred_d[thread_id]), blur_weight));
+			sample_s = InverseToneMap(lerp(ToneMap(denoiser_radiance_not_blurred_s[thread_id]), average_radiance_s, blur_weight));
+			sample_d = InverseToneMap(lerp(ToneMap(denoiser_radiance_not_blurred_d[thread_id]), average_radiance_d, blur_weight));
 		}
 	} else if (constants.pass_index == 1) {
 		sample_s = denoiser_radiance_not_blurred_s[thread_id];
@@ -312,17 +326,18 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 		float3 conductor_f0   = albedo_metalness.xyz;
 		float3 diffuse_albedo = albedo_metalness.xyz;
 		
-		float abs_cos_theta_o = abs(dot(world_space_normal, -normalize(view_space_position)));
+		float3 world_space_ray_direction = mul((float3x3)scene.view_to_world, normalize(view_space_position));
+		float abs_cos_theta_o = abs(dot(world_space_normal, -world_space_ray_direction));
 		
 		float2 preintegrated_brdf = SampleGgxSingleScatteringEnergyLUT(ggx_preintegrated_brdf_lut, abs_cos_theta_o, roughness);
 		float3 specular_demodulation = lerp(dielectric_f0, conductor_f0, metalness) * preintegrated_brdf.x + preintegrated_brdf.y;
 		
-		result_radiance_s *= max(specular_demodulation, 1.0 / 64.0);
+		result_radiance_s *= max(specular_demodulation, 1.0 / 128.0);
 		result_radiance_d *= diffuse_albedo;
 		
 		float3 result_radiance = result_radiance_s + result_radiance_d;
 		
-		// result_radiance = PlasmaHeatMap(1.0 - saturate(blur_weight));
+		// result_radiance = PlasmaHeatMap(blur_weight);
 		
 		scene_radiance[thread_id] = float4(result_radiance, 1.0);
 	}

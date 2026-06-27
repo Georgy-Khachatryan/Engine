@@ -118,9 +118,12 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 			float2 single_scattering_energy = SampleGgxSingleScatteringEnergyLUT(ggx_single_scattering_energy_lut, abs_cos_theta_o, roughness);
 			
 			if (light_sample.light_entity_index != u32_max) {
+				ShadowSampler shadow_sampler;
+				shadow_sampler.penumbra_noise = ConcentricMapping(ComputeRandomUnorm16x2(hash));
+				
 				EvaluateBRDF(
 					light_accumulator,
-					ConcentricMapping(ComputeRandomUnorm16x2(hash)),
+					shadow_sampler,
 					ray_desc.Origin,
 					world_to_tangent,
 					wo,
