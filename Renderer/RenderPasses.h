@@ -85,6 +85,8 @@ enum struct VirtualResourceID : u32 {
 	VisibilityHashTableKeys,
 	VisibilityHashTableValues,
 	
+	IndirectDiffuse,
+	
 	// Streaming feedback:
 	MeshletStreamingFeedback,
 	MeshStreamingFeedback,
@@ -1133,6 +1135,7 @@ struct DeferredLightingRenderPass {
 		HLSL::Texture2D<float4>                 gb_albedo_metalness              = VirtualResourceID::GBufferAlbedoMetalness;
 		HLSL::Texture2D<float4>                 gb_normal_roughness              = VirtualResourceID::GBufferNormalRoughness;
 		HLSL::Texture2D<float2>                 motion_vectors                   = VirtualResourceID::MotionVectors;
+		HLSL::Texture2D<float3>                 indirect_diffuse                 = VirtualResourceID::IndirectDiffuse;
 		HLSL::RegularBuffer<GpuLightEntityData> light_entity_data                = VirtualResourceID::GpuLightEntityData;
 		HLSL::RegularBuffer<u32>                light_culling_grid               = VirtualResourceID::LightCullingGrid;
 		HLSL::TopLevelRTAS                      scene_tlas                       = VirtualResourceID::SceneTLAS;
@@ -1183,6 +1186,47 @@ struct UpdateVisibilityHashTableRenderPass {
 	struct RootSignature : HLSL::BaseRootSignature {
 		HLSL::ConstantBuffer<SceneConstants> scene;
 		HLSL::DescriptorTable<Descriptors> descriptor_table;
+	};
+	
+	inline static PipelineID pipeline_id;
+};
+
+NOTES(Meta::ShaderName{ "IndirectLighting.hlsl"_sl })
+enum struct IndirectLightingShaders : u32 {
+	IndirectDiffuse = 1u << 0,
+};
+SHADER_DEFINITION_GENERATED_CODE(IndirectLightingShaders);
+
+NOTES(Meta::RenderPass{})
+struct IndirectDiffuseRenderPass {
+	RENDER_PASS_GENERATED_CODE();
+	
+	GpuAddress atmosphere;
+	
+	struct Descriptors : HLSL::BaseDescriptorTable {
+		HLSL::Texture2D<float2>                     ggx_single_scattering_energy_lut = VirtualResourceID::GgxSingleScatteringEnergyLUT;
+		HLSL::Texture2D<float2>                     ggx_preintegrated_brdf_lut       = VirtualResourceID::GgxPreintegratedBrdfLUT;
+		HLSL::Texture2D<float3>                     sky_panorama_lut                 = VirtualResourceID::SkyPanoramaLut;
+		HLSL::Texture2D<float3>                     transmittance_lut                = VirtualResourceID::TransmittanceLut;
+		HLSL::Texture2DArray<float2>                blue_noise_2d                    = VirtualResourceID::BlueNoise2D;
+		HLSL::Texture2D<float>                      depth_stencil                    = VirtualResourceID::DepthStencil;
+		HLSL::Texture2D<float4>                     gb_normal_roughness              = VirtualResourceID::GBufferNormalRoughness;
+		HLSL::Texture2D<float2>                     motion_vectors                   = VirtualResourceID::MotionVectors;
+		HLSL::RegularBuffer<GpuLightEntityData>     light_entity_data                = VirtualResourceID::GpuLightEntityData;
+		HLSL::RegularBuffer<GpuTransform>           mesh_transforms                  = VirtualResourceID::MeshEntityGpuTransform;
+		HLSL::RegularBuffer<GpuMeshAssetData>       mesh_asset_data                  = VirtualResourceID::GpuMeshAssetData;
+		HLSL::RegularBuffer<GpuMeshEntityData>      mesh_entity_data                 = VirtualResourceID::GpuMeshEntityData;
+		HLSL::RegularBuffer<GpuMaterialTextureData> material_texture_data            = VirtualResourceID::MaterialAssetTextureData;
+		HLSL::ByteBuffer                            mesh_asset_buffer                = VirtualResourceID::MeshAssetBuffer;
+		HLSL::RegularBuffer<u32>                    light_culling_grid               = VirtualResourceID::LightCullingGrid;
+		HLSL::TopLevelRTAS                          scene_tlas                       = VirtualResourceID::SceneTLAS;
+		HLSL::RWTexture2D<u32>                      indirect_diffuse                 = VirtualResourceID::IndirectDiffuse;
+	};
+	
+	struct RootSignature : HLSL::BaseRootSignature {
+		HLSL::ConstantBuffer<SceneConstants> scene;
+		HLSL::DescriptorTable<Descriptors> descriptor_table;
+		HLSL::ConstantBuffer<AtmosphereParameters> atmosphere;
 	};
 	
 	inline static PipelineID pipeline_id;
