@@ -87,6 +87,10 @@ enum struct VirtualResourceID : u32 {
 	
 	IndirectDiffuse,
 	
+	// Radiance cache:
+	RadianceHashTableKeys,
+	RadianceHashTableValues,
+	
 	// Streaming feedback:
 	MeshletStreamingFeedback,
 	MeshStreamingFeedback,
@@ -1108,6 +1112,7 @@ struct LightingConstants {
 	compile_const u32 visible_light_tile_area = visible_light_tile_size * visible_light_tile_size;
 	
 	compile_const u32 visibility_hash_table_size = 1024u * 1024u;
+	compile_const u32 radiance_hash_table_size   = 1024u * 1024u;
 };
 
 NOTES(Meta::ShaderName{ "DeferredLighting.hlsl"_sl })
@@ -1193,7 +1198,8 @@ struct UpdateVisibilityHashTableRenderPass {
 
 NOTES(Meta::ShaderName{ "IndirectLighting.hlsl"_sl })
 enum struct IndirectLightingShaders : u32 {
-	IndirectDiffuse = 1u << 0,
+	IndirectDiffuse         = 1u << 0,
+	UpdateRadianceHashTable = 1u << 1,
 };
 SHADER_DEFINITION_GENERATED_CODE(IndirectLightingShaders);
 
@@ -1220,6 +1226,8 @@ struct IndirectDiffuseRenderPass {
 		HLSL::ByteBuffer                            mesh_asset_buffer                = VirtualResourceID::MeshAssetBuffer;
 		HLSL::RegularBuffer<u32>                    light_culling_grid               = VirtualResourceID::LightCullingGrid;
 		HLSL::TopLevelRTAS                          scene_tlas                       = VirtualResourceID::SceneTLAS;
+		HLSL::RWRegularBuffer<u64>                  radiance_hash_table_keys         = VirtualResourceID::RadianceHashTableKeys;
+		HLSL::RWByteBuffer                          radiance_hash_table_values       = VirtualResourceID::RadianceHashTableValues;
 		HLSL::RWTexture2D<u32>                      indirect_diffuse                 = VirtualResourceID::IndirectDiffuse;
 	};
 	
@@ -1227,6 +1235,23 @@ struct IndirectDiffuseRenderPass {
 		HLSL::ConstantBuffer<SceneConstants> scene;
 		HLSL::DescriptorTable<Descriptors> descriptor_table;
 		HLSL::ConstantBuffer<AtmosphereParameters> atmosphere;
+	};
+	
+	inline static PipelineID pipeline_id;
+};
+
+NOTES(Meta::RenderPass{})
+struct UpdateRadianceHashTableRenderPass {
+	RENDER_PASS_GENERATED_CODE();
+	
+	struct Descriptors : HLSL::BaseDescriptorTable {
+		HLSL::RWRegularBuffer<u64> radiance_hash_table_keys   = VirtualResourceID::RadianceHashTableKeys;
+		HLSL::RWByteBuffer         radiance_hash_table_values = VirtualResourceID::RadianceHashTableValues;
+	};
+	
+	struct RootSignature : HLSL::BaseRootSignature {
+		HLSL::ConstantBuffer<SceneConstants> scene;
+		HLSL::DescriptorTable<Descriptors> descriptor_table;
 	};
 	
 	inline static PipelineID pipeline_id;

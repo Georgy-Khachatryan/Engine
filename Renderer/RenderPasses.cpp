@@ -65,6 +65,9 @@ static void BuildResourceTable(RecordContext* record_context, WorldEntitySystem*
 	
 	table.Set(ID::IndirectDiffuse, TextureSize(TextureFormat::R9G9B9E5_FLOAT, render_target_size), Flags::UAV);
 	
+	table.Set(ID::RadianceHashTableKeys,   LightingConstants::radiance_hash_table_size * sizeof(u64) * 2u);
+	table.Set(ID::RadianceHashTableValues, LightingConstants::radiance_hash_table_size * sizeof(u64) * 2u);
+	
 	table.Set(ID::DenoiserDisocclusionMask,  TextureSize(TextureFormat::R8_UINT,        render_target_size), Flags::UAV);
 	table.Set(ID::DenoiserRadianceHistoryS0, TextureSize(TextureFormat::R9G9B9E5_FLOAT, render_target_size), Flags::UAV);
 	table.Set(ID::DenoiserRadianceHistoryS1, TextureSize(TextureFormat::R9G9B9E5_FLOAT, render_target_size), Flags::UAV);
@@ -194,6 +197,7 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	scene.texture_world_to_pixel_scale = scene.view_to_clip_coef.x * scene.render_target_size.x * 0.5f;
 	
 	scene.visibility_hash_table_distance_to_cell_size_scale = world_entity.lighting_settings->visibility_hash_table_target_cell_size_pixels / (scene.view_to_clip_coef.x * scene.render_target_size.x * 0.5f);
+	scene.radiance_hash_table_distance_to_cell_size_scale   = world_entity.lighting_settings->radiance_hash_table_target_cell_size_pixels / (scene.view_to_clip_coef.x * scene.render_target_size.x * 0.5f);
 	
 	if (world_entity.anti_aliasing_settings->method != AntiAliasingMethod::None) {
 		u32 jitter_frame_index = (record_context->frame_index % 16);
@@ -370,6 +374,8 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	
 	auto& indirect_diffuse = render_passes.Add<IndirectDiffuseRenderPass>();
 	indirect_diffuse.atmosphere = atmosphere_parameters_gpu_address;
+	
+	render_passes.Add<UpdateRadianceHashTableRenderPass>();
 	
 	auto& deferred_lighting = render_passes.Add<DeferredLightingRenderPass>();
 	deferred_lighting.atmosphere = atmosphere_parameters_gpu_address;

@@ -107,6 +107,31 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 				single_scattering_energy,
 				light_sample
 			);
+			
+			// Insert:
+			{
+				RadianceHashTableKey key = BuildRadianceHashTableKey(ray_desc.Origin, scene.world_space_camera_position, world_space_normal);
+				HashTableFindResult result = HashTableAddOrFind(radiance_hash_table_keys, key, LightingConstants::radiance_hash_table_size, LightingConstants::radiance_hash_table_size);
+				if (result.is_found) {
+					u32 dst_index  = result.hash_index + LightingConstants::radiance_hash_table_size;
+					u32 dst_offset = dst_index * sizeof(float16x4);
+					
+					NvInterlockedAddFp16x2(radiance_hash_table_values, dst_offset + 0, light_accumulator.radiance.xy);
+					NvInterlockedAddFp16x2(radiance_hash_table_values, dst_offset + 4, float2(light_accumulator.radiance.z, 1.0));
+				}
+			}
+			
+			// Lookup:
+			{
+				RadianceHashTableKey key = BuildRadianceHashTableKey(ray_desc.Origin, scene.prev_world_space_camera_position, world_space_normal);
+				HashTableFindResult result = HashTableFind(radiance_hash_table_keys, key, LightingConstants::radiance_hash_table_size);
+				if (result.is_found) {
+					u32 src_index  = result.hash_index;
+					u32 src_offset = src_index * sizeof(float16x4);
+					
+					light_accumulator.radiance = radiance_hash_table_values.Load<float16x3>(src_offset);
+				}
+			}
 		}
 	} else {
 		light_accumulator.radiance = SampleSkyPanoramaLUT(atmosphere, sky_panorama_lut, transmittance_lut, scene.world_space_camera_position, ray_desc.Direction, false);
@@ -115,3 +140,60 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	indirect_diffuse[thread_id] = EncodeR9G9B9E5(light_accumulator.radiance * scene.exposure_estimate);
 }
 #endif // defined(INDIRECT_DIFFUSE)
+
+
+#if defined(UPDATE_RADIANCE_HASH_TABLE)
+#include "Generated/LightData.hlsl"
+
+[ThreadGroupSize(256, 1, 1)]
+void MainCS(uint thread_id : SV_DispatchThreadID) {
+	if (thread_id >= LightingConstants::radiance_hash_table_size) return;
+	
+	uint src_index = thread_id;
+	uint dst_index = thread_id + LightingConstants::radiance_hash_table_size;
+	
+	float16x4 radiance_and_sample_count = radiance_hash_table_values.Load<float16x4>(dst_index * sizeof(float16x4));
+	
+	float3 radiance = 0.0;
+	if (radiance_and_sample_count.w > 0.0) {
+		// Make sure to clamp infinities to float16_max on very bright hash cells. Even if this introduces
+		// a hue shift, such bright radiance would almost certainly saturate to white during tone mapping.
+		compile_const float float16_max = 65504.0;
+		radiance = min((float3)radiance_and_sample_count.xyz, float16_max) / min((float)radiance_and_sample_count.w, float16_max);
+	}
+	
+	u16x4 history_payload = radiance_hash_table_values.Load<u16x4>(src_index * sizeof(float16x4));
+	
+	float3 history_radiance   = asfloat16(history_payload.xyz);
+	u32   history_frame_count = (history_payload.w & 0xFF);
+	u32   unused_frame_count  = radiance_and_sample_count.w <= 0.0 ? (history_payload.w >> 8) : 0;
+	
+	u32   max_frame_count    = 32;
+	float accumulation_ratio = 1.0 / (history_frame_count + 1.0);
+	
+	u16x4 new_history_payload = 0;
+	if (radiance_and_sample_count.w > 0) {
+		radiance = lerp(history_radiance, radiance, accumulation_ratio);
+		u32 result_frame_count = min(history_frame_count + 1, max_frame_count);
+		
+		new_history_payload.xyz = asuint16(float16x3(radiance));
+		new_history_payload.w  |= (u16)(result_frame_count & 0xFF);
+	} else {
+		new_history_payload.xyz = asuint16(float16x3(history_radiance));
+		new_history_payload.w  |= (u16)((history_frame_count & 0xFF));
+		new_history_payload.w  |= (u16)((unused_frame_count + 1) << 8);
+	}
+	bool kill_hash_cell = (unused_frame_count >= 32);
+	
+	if (kill_hash_cell) {
+		new_history_payload = 0;
+		radiance_hash_table_keys[src_index] = 0;
+		radiance_hash_table_keys[dst_index] = 0;
+	} else {
+		radiance_hash_table_keys[src_index] = radiance_hash_table_keys[dst_index];
+	}
+	
+	radiance_hash_table_values.Store<u16x4>(dst_index * sizeof(u16x4), u16x4(0u, 0u, 0u, 0u));
+	radiance_hash_table_values.Store<u16x4>(src_index * sizeof(u16x4), new_history_payload);
+}
+#endif// defined(UPDATE_RADIANCE_HASH_TABLE)

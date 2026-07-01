@@ -70,6 +70,21 @@ void IndirectDiffuseRenderPass::RecordPass(RecordContext* record_context) {
 	CmdDispatch(record_context, DivideAndRoundUp(uint2(render_target_size), 16u));
 }
 
+void UpdateRadianceHashTableRenderPass::CreatePipelines(PipelineLibrary* lib) {
+	pipeline_id = CreateComputePipeline(lib, IndirectLightingShadersID, IndirectLightingShaders::UpdateRadianceHashTable);
+}
+
+void UpdateRadianceHashTableRenderPass::RecordPass(RecordContext* record_context) {
+	auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
+	CmdSetRootSignature(record_context, root_signature);
+	CmdSetPipelineState(record_context, pipeline_id);
+	
+	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
+	CmdSetRootArgument(record_context, root_signature.scene, VirtualResourceID::SceneConstants);
+	
+	CmdDispatch(record_context, DivideAndRoundUp(LightingConstants::radiance_hash_table_size, 256u));
+}
+
 
 void DenoiserDisocclusionMaskRenderPass::CreatePipelines(PipelineLibrary* lib) {
 	pipeline_id = CreateComputePipeline(lib, LightingDenoiserShadersID, LightingDenoiserShaders::DisocclusionMask);

@@ -37,6 +37,32 @@ VisibilityHashTableKey BuildVisibilityHashTableKey(float3 shading_position, u32 
 	return result;
 }
 
+struct RadianceHashTableKey : HashTableKey {
+	
+};
+
+RadianceHashTableKey BuildRadianceHashTableKey(float3 shading_position, float3 world_space_camera_position, float3 world_space_normal) {
+	compile_const float min_hash_cell_size     = 1.0 / 128.0;
+	compile_const float inv_min_hash_cell_size = 1.0 / min_hash_cell_size;
+	
+	float distance_to_camera = length(shading_position - world_space_camera_position);
+	HashCellSize cell_size = QuantizeHashCellSize(distance_to_camera * scene.radiance_hash_table_distance_to_cell_size_scale, min_hash_cell_size, inv_min_hash_cell_size);
+	
+	uint3 cell_position = ((s32x3)round(shading_position / cell_size.hash_cell_size)) & 0x1FFF;
+	uint3 cell_normal   = select(world_space_normal >= 0.0, 1u, 0u);
+	
+	uint2 key;
+	key.x = (cell_position.x & 0xFFFFu) | (cell_position.y                 << 16u);
+	key.y = (cell_position.z & 0xFFFFu) | ((cell_size.level_of_detail + 1) << 16u) | (cell_normal.x << 29) | (cell_normal.y << 30) | (cell_normal.z << 31);
+	
+	RadianceHashTableKey result;
+	result.key  = (u64)key.x | ((u64)key.y << 32);
+	result.hash = WyHash32(key.x, key.y);
+	
+	return result;
+}
+
+
 struct LightShadingInfo {
 	float3 light_direction;
 	float shadow_ray_length;
