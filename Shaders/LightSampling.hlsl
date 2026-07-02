@@ -62,6 +62,19 @@ RadianceHashTableKey BuildRadianceHashTableKey(float3 shading_position, float3 w
 	return result;
 }
 
+s32x2 ComputeStochasticBilinearSamplePosition(float2 sample_uv, float2 guide_buffer_size, float2 motion_uv_offset, float2 blue_noise) {
+	float2 blue_noise_offset = ConcentricMapping(blue_noise);
+	float2 sample_position   = sample_uv * guide_buffer_size;
+	
+	float2 candidate_position_0 = sample_position + blue_noise_offset;
+	float2 candidate_position_1 = sample_position - blue_noise_offset;
+	
+	candidate_position_0 = select(candidate_position_0 < 0.0, candidate_position_1, candidate_position_0);
+	candidate_position_0 = select(candidate_position_0 >= guide_buffer_size, candidate_position_1, candidate_position_0);
+	
+	return (s32x2)floor(candidate_position_0 + motion_uv_offset * guide_buffer_size);
+}
+
 
 struct LightShadingInfo {
 	float3 light_direction;

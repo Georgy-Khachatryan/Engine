@@ -57,9 +57,9 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	uint disocclusion_mask = denoiser_disocclusion_mask[thread_id];
 	
 	float2 motion_uv_offset = motion_vectors[thread_id];
-	float2 src_tile_blue_noise = ConcentricMapping(blue_noise_2d[uint3(thread_id % 128, scene.frame_index % 32)]);
+	float2 src_tile_blue_noise = blue_noise_2d[uint3(thread_id % 128, scene.frame_index % 32)];
 	
-	s32x2 src_tile_id = (s32x2)round((thread_uv + motion_uv_offset) * tile_list_size + (src_tile_blue_noise - 0.5));
+	s32x2 src_tile_id = ComputeStochasticBilinearSamplePosition(thread_uv, tile_list_size, motion_uv_offset, src_tile_blue_noise);
 	uint2 dst_tile_id = (thread_id / LightingConstants::visible_light_tile_size);
 	
 	uint src_tile_index = (tile_list_size.x * src_tile_id.y + src_tile_id.x) + (scene.frame_index & 0x1 ? tile_list_size.x * tile_list_size.y : 0);

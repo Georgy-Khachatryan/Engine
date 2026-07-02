@@ -63,6 +63,10 @@ static void BuildResourceTable(RecordContext* record_context, WorldEntitySystem*
 	table.Set(ID::VisibilityHashTableKeys,   LightingConstants::visibility_hash_table_size * sizeof(u64) * 2u);
 	table.Set(ID::VisibilityHashTableValues, LightingConstants::visibility_hash_table_size * sizeof(u32) * 2u);
 	
+	auto indirect_diffuse_cdf_tile_list_size = DivideAndRoundUp(render_target_size, LightingConstants::cdf_tile_size);
+	table.Set(ID::IndirectDiffuseTileCDF,    TextureSize(TextureFormat::R16_FLOAT, indirect_diffuse_cdf_tile_list_size * LightingConstants::cdf_tile_size, 1, LightingConstants::cdf_mip_count), Flags::UAV);
+	table.Set(ID::IndirectDiffuseDirections, TextureSize(TextureFormat::R8_UINT,   indirect_diffuse_cdf_tile_list_size * LightingConstants::cdf_tile_size), Flags::UAV);
+	
 	table.Set(ID::IndirectDiffuse, TextureSize(TextureFormat::R9G9B9E5_FLOAT, render_target_size), Flags::UAV);
 	
 	table.Set(ID::RadianceHashTableKeys,   LightingConstants::radiance_hash_table_size * sizeof(u64) * 2u);
@@ -263,6 +267,7 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	
 	scene.visible_light_tile_list_size = DivideAndRoundUp(render_target_size, LightingConstants::visible_light_tile_size);
 	scene.wrs_min_light_weight = world_entity.lighting_settings->wrs_min_light_weight;
+	scene.indirect_diffuse_cdf_tile_list_size = DivideAndRoundUp(render_target_size, LightingConstants::cdf_tile_size);
 	
 	
 	auto gpu_scene_constants = AllocateGpuComponentUploadBuffer(record_context, 1, world_entity.gpu_scene_constants);
@@ -375,6 +380,7 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	auto& indirect_diffuse = render_passes.Add<IndirectDiffuseRenderPass>();
 	indirect_diffuse.atmosphere = atmosphere_parameters_gpu_address;
 	
+	render_passes.Add<IndirectBuildGuideBuffersRenderPass>();
 	render_passes.Add<UpdateRadianceHashTableRenderPass>();
 	
 	auto& deferred_lighting = render_passes.Add<DeferredLightingRenderPass>();

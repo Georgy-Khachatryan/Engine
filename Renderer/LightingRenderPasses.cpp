@@ -85,6 +85,26 @@ void UpdateRadianceHashTableRenderPass::RecordPass(RecordContext* record_context
 	CmdDispatch(record_context, DivideAndRoundUp(LightingConstants::radiance_hash_table_size, 256u));
 }
 
+void IndirectBuildGuideBuffersRenderPass::CreatePipelines(PipelineLibrary* lib) {
+	pipeline_id = CreateComputePipeline(lib, IndirectLightingShadersID, IndirectLightingShaders::BuildGuideBuffers);
+}
+
+void IndirectBuildGuideBuffersRenderPass::RecordPass(RecordContext* record_context) {
+	auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
+	CmdSetRootSignature(record_context, root_signature);
+	CmdSetPipelineState(record_context, pipeline_id);
+	
+	for (u32 i = 0; i < LightingConstants::cdf_mip_count; i += 1) {
+		descriptor_table.indirect_diffuse_tile_cdf[i].Bind(VirtualResourceID::IndirectDiffuseTileCDF, i);
+	}
+	
+	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
+	CmdSetRootArgument(record_context, root_signature.scene, VirtualResourceID::SceneConstants);
+	
+	auto render_target_size = GetTextureSize(record_context, VirtualResourceID::SceneRadiance);
+	CmdDispatch(record_context, DivideAndRoundUp(uint2(render_target_size), 16u));
+}
+
 
 void DenoiserDisocclusionMaskRenderPass::CreatePipelines(PipelineLibrary* lib) {
 	pipeline_id = CreateComputePipeline(lib, LightingDenoiserShadersID, LightingDenoiserShaders::DisocclusionMask);

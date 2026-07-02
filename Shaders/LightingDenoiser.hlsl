@@ -30,8 +30,8 @@ uint ValidateHistory2x2(float2 sample_coordinates, float3 world_space_position, 
 		
 		bool is_disocclusion =
 			abs(dot(world_space_position - history_world_space_position, world_space_normal)) > 0.005 * view_space_depth * n_dot_v ||
-			any(history_uv < 0.5 * scene.inv_render_target_size) ||
-			any(history_uv > (1.0 - 0.5 * scene.inv_render_target_size)) ||
+			any(history_uv <  0.0) ||
+			any(history_uv >= 1.0) ||
 			history_depth == 0.0;
 		
 		if (is_disocclusion == false) {
@@ -279,8 +279,8 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 			bool is_disocclusion =
 				abs(dot(world_space_position - history_world_space_position, world_space_normal)) > 0.005 * view_space_position.z ||
 				dot(history_world_space_normal, world_space_normal) < 0.975 ||
-				any(history_uv <= 0.5 * scene.inv_render_target_size) ||
-				any(history_uv >= (1.0 - 0.5 * scene.inv_render_target_size)) ||
+				any(history_uv <  0.0) ||
+				any(history_uv >= 1.0) ||
 				history_depth == 0.0;
 			
 			if (is_disocclusion == false) {
