@@ -1115,7 +1115,7 @@ struct VisibilityBufferResolveRenderPass {
 
 NOTES(Meta::HlslFile{ "LightData.hlsl"_sl })
 struct LightingConstants {
-	compile_const u32 cdf_mip_count                   = 5u;
+	compile_const u32 cdf_mip_count                   = 4u;
 	compile_const u32 cdf_tile_size                   = 1u << cdf_mip_count;
 	compile_const u32 cdf_tile_area                   = cdf_tile_size * cdf_tile_size;
 	compile_const float inv_cdf_tile_area             = 1.f / cdf_tile_area;
