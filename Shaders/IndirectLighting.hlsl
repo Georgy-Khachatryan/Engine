@@ -5,8 +5,8 @@ compile_const float inv_cdf_encoding_scale = 1.0 / cdf_encoding_scale;
 
 enum struct CdfTileFlags : u32 {
 	None        = 0u,
-	KeepAlive   = 1u << 16,
-	NeedsUpdate = 1u << 17,
+	KeepAlive   = 1u << 30,
+	NeedsUpdate = 1u << 31,
 };
 
 #if defined(INDIRECT_DIFFUSE)
@@ -314,13 +314,15 @@ void MainCS(uint thread_id : SV_DispatchThreadID) {
 	uint dst_index = thread_id + LightingConstants::cdf_hash_table_size;
 	
 	u32 history_payload = cdf_hash_table_values[src_index];
+	u64 key = cdf_hash_table_keys[dst_index];
 	
 	u32 history_frame_count = (history_payload & 0xFF);
 	u32 unused_frame_count  = (history_payload & CdfTileFlags::KeepAlive) == 0 ? (history_payload >> 8) & 0xFF : 0;
+	u32 encoded_cell_normal = (u32)(key >> 58);
 	
 	u32 max_frame_count = 32;
 	
-	u32 new_history_payload = 0;
+	u32 new_history_payload = (encoded_cell_normal << 16u);
 	if (history_payload & CdfTileFlags::KeepAlive) {
 		u32 result_frame_count = min(history_frame_count + 1, max_frame_count);
 		new_history_payload |= (result_frame_count & 0xFF);
@@ -336,7 +338,7 @@ void MainCS(uint thread_id : SV_DispatchThreadID) {
 		cdf_hash_table_keys[src_index] = 0;
 		cdf_hash_table_keys[dst_index] = 0;
 	} else {
-		cdf_hash_table_keys[src_index] = cdf_hash_table_keys[dst_index];
+		cdf_hash_table_keys[src_index] = key;
 	}
 	
 	cdf_hash_table_values[src_index] = new_history_payload;
@@ -399,12 +401,9 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	// Initial estimate of the distribution:
 	u32 history_frame_count = (history_payload & 0xFF);
 	if (history_frame_count < 2) {
-		// TODO: Can check nearby cells, or cells one level above or below.
-#define USE_CDF_COSINE_WEIGHTED_HEMISPHERICAL_DISTRIBUTION_INITIAL_ESTIMATE 0
+#define USE_CDF_COSINE_WEIGHTED_HEMISPHERICAL_DISTRIBUTION_INITIAL_ESTIMATE 1
 #if USE_CDF_COSINE_WEIGHTED_HEMISPHERICAL_DISTRIBUTION_INITIAL_ESTIMATE
-		u64 key = cdf_hash_table_keys[hash_index];
-		uint2 encoded_cell_normal = uint2((uint)(key >> 58), (uint)(key >> 61)) & 0x7;
-		_Static_assert(CdfHashTableKey::normal_bit_count == 3, "Incorrect CdfHashTableKey normal bit count.");
+		uint2 encoded_cell_normal = uint2(history_payload >> 16, history_payload >> 19) & 0x7;
 		
 		// Start accumulation from a cosine weighted hemispherical distribution:
 		float3 texel_direction = DecodeOctahedralMap01((MortonDecode(thread_index) + 0.5) * (1.0 / LightingConstants::cdf_tile_size));

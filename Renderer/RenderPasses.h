@@ -1230,14 +1230,11 @@ struct IndirectDiffuseRenderPass {
 		HLSL::Texture2D<float2>                     ggx_single_scattering_energy_lut = VirtualResourceID::GgxSingleScatteringEnergyLUT;
 		HLSL::Texture2D<float2>                     ggx_preintegrated_brdf_lut       = VirtualResourceID::GgxPreintegratedBrdfLUT;
 		HLSL::Texture2D<float>                      tile_cdf_solid_angle             = VirtualResourceID::TileCdfSolidAngle;
-		HLSL::Texture2D<u32>                        denoiser_disocclusion_mask       = VirtualResourceID::DenoiserDisocclusionMask;
 		HLSL::Texture2D<float3>                     sky_panorama_lut                 = VirtualResourceID::SkyPanoramaLut;
 		HLSL::Texture2D<float3>                     transmittance_lut                = VirtualResourceID::TransmittanceLut;
-		HLSL::Texture2DArray<float>                 blue_noise_1d                    = VirtualResourceID::BlueNoise1D;
 		HLSL::Texture2DArray<float2>                blue_noise_2d                    = VirtualResourceID::BlueNoise2D;
 		HLSL::Texture2D<float>                      depth_stencil                    = VirtualResourceID::DepthStencil;
 		HLSL::Texture2D<float4>                     gb_normal_roughness              = VirtualResourceID::GBufferNormalRoughness;
-		HLSL::Texture2D<float2>                     motion_vectors                   = VirtualResourceID::MotionVectors;
 		HLSL::Texture2D<float>                      indirect_diffuse_tile_cdf        = VirtualResourceID::IndirectDiffuseTileCDF;
 		HLSL::RegularBuffer<GpuLightEntityData>     light_entity_data                = VirtualResourceID::GpuLightEntityData;
 		HLSL::RegularBuffer<GpuTransform>           mesh_transforms                  = VirtualResourceID::MeshEntityGpuTransform;
@@ -1286,7 +1283,6 @@ struct IndirectDiffuseTileCdfRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
-		HLSL::RegularBuffer<u64> cdf_hash_table_keys         = VirtualResourceID::CdfHashTableKeys;
 		HLSL::RegularBuffer<u32> cdf_hash_table_values       = VirtualResourceID::CdfHashTableValues;
 		HLSL::RWTexture2D<u32>   indirect_diffuse_directions = VirtualResourceID::IndirectDiffuseDirections;
 		FixedCountArray<HLSL::RWTexture2D<float>, LightingConstants::cdf_mip_count> indirect_diffuse_tile_cdf;
