@@ -48,7 +48,7 @@ RadianceHashTableKey BuildRadianceHashTableKey(float3 shading_position, float3 w
 	float distance_to_camera = length(shading_position - world_space_camera_position);
 	HashCellSize cell_size = QuantizeHashCellSize(distance_to_camera * scene.radiance_hash_table_distance_to_cell_size_scale, min_hash_cell_size, inv_min_hash_cell_size);
 	
-	uint3 cell_position = ((s32x3)round(shading_position / cell_size.hash_cell_size)) & 0x1FFF;
+	uint3 cell_position = (s32x3)round(shading_position / cell_size.hash_cell_size);
 	uint3 cell_normal   = select(world_space_normal >= 0.0, 1u, 0u);
 	
 	uint2 key;
@@ -61,6 +61,33 @@ RadianceHashTableKey BuildRadianceHashTableKey(float3 shading_position, float3 w
 	
 	return result;
 }
+
+struct CdfHashTableKey : HashTableKey {
+	compile_const u32 normal_bit_count = 3u;
+};
+
+CdfHashTableKey BuildCdfHashTableKey(float3 shading_position, float3 world_space_camera_position, float3 world_space_normal) {
+	compile_const float min_hash_cell_size     = 1.0 / 128.0;
+	compile_const float inv_min_hash_cell_size = 1.0 / min_hash_cell_size;
+	
+	float distance_to_camera = length(shading_position - world_space_camera_position);
+	HashCellSize cell_size = QuantizeHashCellSize(distance_to_camera * scene.cdf_hash_table_distance_to_cell_size_scale, min_hash_cell_size, inv_min_hash_cell_size);
+	
+	uint3 cell_position = (s32x3)round(shading_position / cell_size.hash_cell_size);
+	uint2 cell_normal   = (uint2)clamp(EncodeOctahedralMap01(world_space_normal) * 8.0, 0.0, 7.0);
+	_Static_assert(CdfHashTableKey::normal_bit_count == 3, "Incorrect CdfHashTableKey normal bit count.");
+	
+	uint2 key;
+	key.x = (cell_position.x & 0xFFFFu) | (cell_position.y                 << 16u);
+	key.y = (cell_position.z & 0xFFFFu) | ((cell_size.level_of_detail + 1) << 16u) | (cell_normal.x << 26) | (cell_normal.y << 29);
+	
+	CdfHashTableKey result;
+	result.key  = (u64)key.x | ((u64)key.y << 32);
+	result.hash = WyHash32(key.x, key.y);
+	
+	return result;
+}
+
 
 s32x2 ComputeStochasticBilinearSamplePosition(float2 sample_uv, float2 guide_buffer_size, float2 motion_uv_offset, float2 blue_noise) {
 	float2 blue_noise_offset = ConcentricMapping(blue_noise);

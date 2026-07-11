@@ -90,6 +90,9 @@ enum struct VirtualResourceID : u32 {
 	IndirectDiffuseTileCDF,
 	TileCdfSolidAngle,
 	
+	CdfHashTableKeys,
+	CdfHashTableValues,
+	
 	// Radiance cache:
 	RadianceHashTableKeys,
 	RadianceHashTableValues,
@@ -1112,16 +1115,19 @@ struct VisibilityBufferResolveRenderPass {
 
 NOTES(Meta::HlslFile{ "LightData.hlsl"_sl })
 struct LightingConstants {
+	compile_const u32 cdf_mip_count                   = 5u;
+	compile_const u32 cdf_tile_size                   = 1u << cdf_mip_count;
+	compile_const u32 cdf_tile_area                   = cdf_tile_size * cdf_tile_size;
+	compile_const float inv_cdf_tile_area             = 1.f / cdf_tile_area;
+	compile_const u32 cdf_hash_table_atlas_size_tiles = 128u;
+	compile_const u32 cdf_hash_table_atlas_size       = cdf_hash_table_atlas_size_tiles * cdf_tile_size;
+	
 	compile_const u32 visible_light_tile_size = 8;
 	compile_const u32 visible_light_tile_area = visible_light_tile_size * visible_light_tile_size;
 	
 	compile_const u32 visibility_hash_table_size = 1024u * 1024u;
 	compile_const u32 radiance_hash_table_size   = 1024u * 1024u;
-	
-	compile_const u32 cdf_mip_count = 5u;
-	compile_const u32 cdf_tile_size = 1u << cdf_mip_count;
-	compile_const u32 cdf_tile_area = cdf_tile_size * cdf_tile_size;
-	compile_const float inv_cdf_tile_area = 1.f / cdf_tile_area;
+	compile_const u32 cdf_hash_table_size        = cdf_hash_table_atlas_size_tiles * cdf_hash_table_atlas_size_tiles;
 };
 
 NOTES(Meta::ShaderName{ "DeferredLighting.hlsl"_sl })
@@ -1209,7 +1215,8 @@ NOTES(Meta::ShaderName{ "IndirectLighting.hlsl"_sl })
 enum struct IndirectLightingShaders : u32 {
 	IndirectDiffuse         = 1u << 0,
 	UpdateRadianceHashTable = 1u << 1,
-	IndirectDiffuseTileCDF  = 1u << 2,
+	UpdateCdfHashTable      = 1u << 2,
+	IndirectDiffuseTileCDF  = 1u << 3,
 };
 SHADER_DEFINITION_GENERATED_CODE(IndirectLightingShaders);
 
@@ -1242,8 +1249,10 @@ struct IndirectDiffuseRenderPass {
 		HLSL::TopLevelRTAS                          scene_tlas                       = VirtualResourceID::SceneTLAS;
 		HLSL::RWRegularBuffer<u64>                  radiance_hash_table_keys         = VirtualResourceID::RadianceHashTableKeys;
 		HLSL::RWByteBuffer                          radiance_hash_table_values       = VirtualResourceID::RadianceHashTableValues;
+		HLSL::RWRegularBuffer<u64>                  cdf_hash_table_keys              = VirtualResourceID::CdfHashTableKeys;
+		HLSL::RWRegularBuffer<u32>                  cdf_hash_table_values            = VirtualResourceID::CdfHashTableValues;
 		HLSL::RWTexture2D<u32>                      indirect_diffuse                 = VirtualResourceID::IndirectDiffuse;
-		HLSL::RWTexture2D<float2>                   indirect_diffuse_directions      = VirtualResourceID::IndirectDiffuseDirections;
+		HLSL::RWTexture2D<u32>                      indirect_diffuse_directions      = VirtualResourceID::IndirectDiffuseDirections;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {
@@ -1277,9 +1286,27 @@ struct IndirectDiffuseTileCdfRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
-		HLSL::Texture2D<float3> indirect_diffuse            = VirtualResourceID::IndirectDiffuse;
-		HLSL::Texture2D<float2> indirect_diffuse_directions = VirtualResourceID::IndirectDiffuseDirections;
+		HLSL::RegularBuffer<u64> cdf_hash_table_keys         = VirtualResourceID::CdfHashTableKeys;
+		HLSL::RegularBuffer<u32> cdf_hash_table_values       = VirtualResourceID::CdfHashTableValues;
+		HLSL::RWTexture2D<u32>   indirect_diffuse_directions = VirtualResourceID::IndirectDiffuseDirections;
 		FixedCountArray<HLSL::RWTexture2D<float>, LightingConstants::cdf_mip_count> indirect_diffuse_tile_cdf;
+	};
+	
+	struct RootSignature : HLSL::BaseRootSignature {
+		HLSL::ConstantBuffer<SceneConstants> scene;
+		HLSL::DescriptorTable<Descriptors> descriptor_table;
+	};
+	
+	inline static PipelineID pipeline_id;
+};
+
+NOTES(Meta::RenderPass{})
+struct UpdateCdfHashTableRenderPass {
+	RENDER_PASS_GENERATED_CODE();
+	
+	struct Descriptors : HLSL::BaseDescriptorTable {
+		HLSL::RWRegularBuffer<u64> cdf_hash_table_keys   = VirtualResourceID::CdfHashTableKeys;
+		HLSL::RWRegularBuffer<u32> cdf_hash_table_values = VirtualResourceID::CdfHashTableValues;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {

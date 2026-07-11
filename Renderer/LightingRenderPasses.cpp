@@ -85,6 +85,21 @@ void UpdateRadianceHashTableRenderPass::RecordPass(RecordContext* record_context
 	CmdDispatch(record_context, DivideAndRoundUp(LightingConstants::radiance_hash_table_size, 256u));
 }
 
+void UpdateCdfHashTableRenderPass::CreatePipelines(PipelineLibrary* lib) {
+	pipeline_id = CreateComputePipeline(lib, IndirectLightingShadersID, IndirectLightingShaders::UpdateCdfHashTable);
+}
+
+void UpdateCdfHashTableRenderPass::RecordPass(RecordContext* record_context) {
+	auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
+	CmdSetRootSignature(record_context, root_signature);
+	CmdSetPipelineState(record_context, pipeline_id);
+	
+	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
+	CmdSetRootArgument(record_context, root_signature.scene, VirtualResourceID::SceneConstants);
+	
+	CmdDispatch(record_context, DivideAndRoundUp(LightingConstants::cdf_hash_table_size, 256u));
+}
+
 void IndirectDiffuseTileCdfRenderPass::CreatePipelines(PipelineLibrary* lib) {
 	pipeline_id = CreateComputePipeline(lib, IndirectLightingShadersID, IndirectLightingShaders::IndirectDiffuseTileCDF);
 }

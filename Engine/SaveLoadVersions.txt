@@ -337,6 +337,12 @@ struct LightingSettings {
 		visibility_hash_table_target_cell_size_pixels float32 0;
 		radiance_hash_table_target_cell_size_pixels float32 0;
 	}
+	/*Version*/ 3 {
+		wrs_min_light_weight float32 0;
+		visibility_hash_table_target_cell_size_pixels float32 0;
+		radiance_hash_table_target_cell_size_pixels float32 0;
+		cdf_hash_table_target_cell_size_pixels float32 0;
+	}
 }
 
 struct NameComponent {

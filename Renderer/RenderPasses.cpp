@@ -63,15 +63,17 @@ static void BuildResourceTable(RecordContext* record_context, WorldEntitySystem*
 	table.Set(ID::VisibilityHashTableKeys,   LightingConstants::visibility_hash_table_size * sizeof(u64) * 2u);
 	table.Set(ID::VisibilityHashTableValues, LightingConstants::visibility_hash_table_size * sizeof(u32) * 2u);
 	
-	auto indirect_diffuse_cdf_tile_list_size = DivideAndRoundUp(render_target_size, LightingConstants::cdf_tile_size);
-	table.Set(ID::IndirectDiffuseTileCDF,    TextureSize(TextureFormat::R16_FLOAT, indirect_diffuse_cdf_tile_list_size * LightingConstants::cdf_tile_size, 1, LightingConstants::cdf_mip_count), Flags::UAV);
-	table.Set(ID::IndirectDiffuseDirections, TextureSize(TextureFormat::R8G8_UNORM, render_target_size), Flags::UAV);
+	table.Set(ID::IndirectDiffuseTileCDF,    TextureSize(TextureFormat::R16_FLOAT, uint2(LightingConstants::cdf_hash_table_atlas_size, LightingConstants::cdf_hash_table_atlas_size), 1, LightingConstants::cdf_mip_count), Flags::UAV);
+	table.Set(ID::IndirectDiffuseDirections, TextureSize(TextureFormat::R32_UINT,  uint2(LightingConstants::cdf_hash_table_atlas_size, LightingConstants::cdf_hash_table_atlas_size)), Flags::UAV);
 	table.Set(ID::TileCdfSolidAngle,         TextureSize(TextureFormat::R16_FLOAT, LightingConstants::cdf_tile_size), Flags::UAV);
 	
 	table.Set(ID::IndirectDiffuse, TextureSize(TextureFormat::R9G9B9E5_FLOAT, render_target_size), Flags::UAV);
 	
 	table.Set(ID::RadianceHashTableKeys,   LightingConstants::radiance_hash_table_size * sizeof(u64) * 2u);
 	table.Set(ID::RadianceHashTableValues, LightingConstants::radiance_hash_table_size * sizeof(u64) * 2u);
+	
+	table.Set(ID::CdfHashTableKeys,   LightingConstants::cdf_hash_table_size * sizeof(u64) * 2u);
+	table.Set(ID::CdfHashTableValues, LightingConstants::cdf_hash_table_size * sizeof(u32));
 	
 	table.Set(ID::DenoiserDisocclusionMask,  TextureSize(TextureFormat::R8_UINT,        render_target_size), Flags::UAV);
 	table.Set(ID::DenoiserRadianceHistoryS0, TextureSize(TextureFormat::R9G9B9E5_FLOAT, render_target_size), Flags::UAV);
@@ -203,6 +205,7 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	
 	scene.visibility_hash_table_distance_to_cell_size_scale = world_entity.lighting_settings->visibility_hash_table_target_cell_size_pixels / (scene.view_to_clip_coef.x * scene.render_target_size.x * 0.5f);
 	scene.radiance_hash_table_distance_to_cell_size_scale   = world_entity.lighting_settings->radiance_hash_table_target_cell_size_pixels / (scene.view_to_clip_coef.x * scene.render_target_size.x * 0.5f);
+	scene.cdf_hash_table_distance_to_cell_size_scale        = world_entity.lighting_settings->cdf_hash_table_target_cell_size_pixels / (scene.view_to_clip_coef.x * scene.render_target_size.x * 0.5f);
 	
 	if (world_entity.anti_aliasing_settings->method != AntiAliasingMethod::None) {
 		u32 jitter_frame_index = (record_context->frame_index % 16);
@@ -381,8 +384,10 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	auto& indirect_diffuse = render_passes.Add<IndirectDiffuseRenderPass>();
 	indirect_diffuse.atmosphere = atmosphere_parameters_gpu_address;
 	
-	render_passes.Add<IndirectDiffuseTileCdfRenderPass>();
 	render_passes.Add<UpdateRadianceHashTableRenderPass>();
+	render_passes.Add<UpdateCdfHashTableRenderPass>();
+	
+	render_passes.Add<IndirectDiffuseTileCdfRenderPass>();
 	
 	auto& deferred_lighting = render_passes.Add<DeferredLightingRenderPass>();
 	deferred_lighting.atmosphere = atmosphere_parameters_gpu_address;

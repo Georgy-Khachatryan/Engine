@@ -3,11 +3,18 @@
 compile_const float cdf_encoding_scale = 1024.0;
 compile_const float inv_cdf_encoding_scale = 1.0 / cdf_encoding_scale;
 
+enum struct CdfTileFlags : u32 {
+	None        = 0u,
+	KeepAlive   = 1u << 16,
+	NeedsUpdate = 1u << 17,
+};
+
 #if defined(INDIRECT_DIFFUSE)
 #include "BrdfSampling.hlsl"
 #include "LightSampling.hlsl"
 #include "LightEvaluation.hlsl"
 #include "GeometrySampling.hlsl"
+#include "TextureSampling.hlsl"
 #include "SDK/NvAPI/include/nvHLSLExtns.h"
 
 uint SampleInverseCDF1x2(float p, inout float random) {
@@ -44,7 +51,7 @@ float4 SampleDirectionInverseCDF(uint2 src_tile_id, float3 world_space_normal, f
 	}
 	
 	float2 octahedral_direction = (octahedral_coordinates + diffuse_blue_noise) * (1.0 / LightingConstants::cdf_tile_size);
-	float3 direction = DecodeOctahedralMap(octahedral_direction * 2.0 - 1.0);
+	float3 direction = DecodeOctahedralMap01(octahedral_direction);
 	
 	float inv_pdf = 0.0;
 	if (weight > 0.0) {
@@ -86,27 +93,27 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	ray_desc.TMin   = 0.0;
 	ray_desc.TMax   = 1024.0;
 	
-	float2 diffuse_blue_noise   = blue_noise_2d[uint3(thread_id % 128, scene.frame_index % 32)];
-	float2 src_tile_blue_noise  = blue_noise_2d[uint3((thread_id + 63) % 128, scene.frame_index % 32)];
-	
-	float2 motion_uv_offset = motion_vectors[thread_id];
-	uint  disocclusion_mask = denoiser_disocclusion_mask[thread_id];
-	
-	uint2 tile_list_size = scene.indirect_diffuse_cdf_tile_list_size;
-	s32x2 src_tile_id = ComputeStochasticBilinearSamplePosition(thread_uv, tile_list_size, motion_uv_offset, src_tile_blue_noise);
-	bool src_tile_valid = all(src_tile_id >= 0) && all(src_tile_id < tile_list_size) && (disocclusion_mask & 0xF) != 0;
+	ray_desc.Origin += world_space_normal * (1.0 / 1024.0);
+	float3 cdf_hash_table_key_origin = ray_desc.Origin;
 	
 	float inv_pdf = 0.0;
-	if (src_tile_valid) {
-		float4 direction_and_inv_pdf = SampleDirectionInverseCDF(src_tile_id, world_space_normal, diffuse_blue_noise);
-		ray_desc.Direction = direction_and_inv_pdf.xyz;
-		inv_pdf = direction_and_inv_pdf.w;
-	} else {
-		ray_desc.Direction = mul(tangent_to_world, CosineWeightedHemisphereMapping(diffuse_blue_noise));
-		inv_pdf = 1.0;
+	{
+		float2 diffuse_blue_noise = blue_noise_2d[uint3(thread_id % 128, scene.frame_index % 32)];
+		
+		CdfHashTableKey key = BuildCdfHashTableKey(cdf_hash_table_key_origin, scene.prev_world_space_camera_position, world_space_normal);
+		HashTableFindResult result = HashTableFind(cdf_hash_table_keys, key, LightingConstants::cdf_hash_table_size);
+		if (result.is_found) {
+			uint2 src_tile_id = MortonDecode(result.hash_index);
+			
+			float4 direction_and_inv_pdf = SampleDirectionInverseCDF(src_tile_id, world_space_normal, diffuse_blue_noise);
+			ray_desc.Direction = direction_and_inv_pdf.xyz;
+			inv_pdf = direction_and_inv_pdf.w;
+		} else {
+			ray_desc.Direction = mul(tangent_to_world, CosineWeightedHemisphereMapping(diffuse_blue_noise));
+			inv_pdf = 1.0;
+		}
 	}
 	
-	ray_desc.Origin += world_space_normal * (1.0 / 1024.0);
 	
 	RayQuery<
 		RAY_FLAG_CULL_NON_OPAQUE |
@@ -204,9 +211,37 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	} else {
 		light_accumulator.radiance = SampleSkyPanoramaLUT(atmosphere, sky_panorama_lut, transmittance_lut, scene.world_space_camera_position, ray_desc.Direction, false);
 	}
+	light_accumulator.radiance *= inv_pdf;
 	
-	indirect_diffuse[thread_id] = EncodeR9G9B9E5(light_accumulator.radiance * inv_pdf * scene.exposure_estimate);
-	indirect_diffuse_directions[thread_id] = EncodeOctahedralMap(ray_desc.Direction) * 0.5 + 0.5;
+	indirect_diffuse[thread_id] = EncodeR9G9B9E5(light_accumulator.radiance * scene.exposure_estimate);
+	
+	{
+		CdfHashTableKey key = BuildCdfHashTableKey(cdf_hash_table_key_origin, scene.world_space_camera_position, world_space_normal);
+		HashTableFindResult result = HashTableAddOrFind(cdf_hash_table_keys, key, LightingConstants::cdf_hash_table_size, LightingConstants::cdf_hash_table_size);
+		if (result.is_found) {
+			float weight = dot(light_accumulator.radiance, rec709_luminance_coefficients);
+			
+			float2 octahedral_direction = EncodeOctahedralMap01(ray_desc.Direction);
+			float2 coordinates = (MortonDecode(result.hash_index) + octahedral_direction) * LightingConstants::cdf_tile_size;
+			
+			float4 bilinear_weights = ComputeBilinearWeights(coordinates);
+			uint2 pixel_coordinates = (uint2)ComputeBilinearSamplePixelCoordinates(coordinates);
+			
+			[unroll]
+			for (u32 i = 0; i < 4; i += 1) {
+				uint2 output_coordinates = (pixel_coordinates + MortonDecode2x2(i));
+				uint weight_u32 = (u32)(weight * bilinear_weights[i] * 1024.0);
+				
+				InterlockedAdd(indirect_diffuse_directions[output_coordinates], weight_u32);
+			}
+			
+			uint4 match_mask = WaveMatch(result.hash_index);
+			if (WaveIsHighestMatchingLane(match_mask)) {
+				InterlockedOr(cdf_hash_table_values[result.hash_index], CdfTileFlags::KeepAlive);
+			}
+		}
+	}
+	
 }
 #endif // defined(INDIRECT_DIFFUSE)
 
@@ -268,6 +303,47 @@ void MainCS(uint thread_id : SV_DispatchThreadID) {
 #endif // defined(UPDATE_RADIANCE_HASH_TABLE)
 
 
+#if defined(UPDATE_CDF_HASH_TABLE)
+#include "Generated/LightData.hlsl"
+
+[ThreadGroupSize(256, 1, 1)]
+void MainCS(uint thread_id : SV_DispatchThreadID) {
+	if (thread_id >= LightingConstants::cdf_hash_table_size) return;
+	
+	uint src_index = thread_id;
+	uint dst_index = thread_id + LightingConstants::cdf_hash_table_size;
+	
+	u32 history_payload = cdf_hash_table_values[src_index];
+	
+	u32 history_frame_count = (history_payload & 0xFF);
+	u32 unused_frame_count  = (history_payload & CdfTileFlags::KeepAlive) == 0 ? (history_payload >> 8) & 0xFF : 0;
+	
+	u32 max_frame_count = 32;
+	
+	u32 new_history_payload = 0;
+	if (history_payload & CdfTileFlags::KeepAlive) {
+		u32 result_frame_count = min(history_frame_count + 1, max_frame_count);
+		new_history_payload |= (result_frame_count & 0xFF);
+		new_history_payload |= CdfTileFlags::NeedsUpdate;
+	} else {
+		new_history_payload |= (history_frame_count & 0xFF);
+		new_history_payload |= ((unused_frame_count + 1) << 8);
+	}
+	bool kill_hash_cell = (unused_frame_count >= 8);
+	
+	if (kill_hash_cell) {
+		new_history_payload = 0;
+		cdf_hash_table_keys[src_index] = 0;
+		cdf_hash_table_keys[dst_index] = 0;
+	} else {
+		cdf_hash_table_keys[src_index] = cdf_hash_table_keys[dst_index];
+	}
+	
+	cdf_hash_table_values[src_index] = new_history_payload;
+}
+#endif // defined(UPDATE_CDF_HASH_TABLE)
+
+
 #if defined(INDIRECT_DIFFUSE_TILE_CDF)
 #include "Generated/LightData.hlsl"
 #include "TextureSampling.hlsl"
@@ -281,33 +357,23 @@ groupshared uint gs_directional_weight_sum;
 [ThreadGroupSize(thread_group_area, 1, 1)]
 void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	uint2 thread_id = group_id * thread_group_size + MortonDecode(thread_index);
+	uint hash_index = MortonEncode(group_id);
+	uint history_payload = cdf_hash_table_values[hash_index];
+	
+	if ((history_payload & CdfTileFlags::NeedsUpdate) == 0) return;
 	
 	if (thread_index == 0) {
 		gs_directional_weight_sum = 0;
 	}
-	gs_directional_weight[thread_index] = 0;
 	
 	GroupMemoryBarrierWithGroupSync();
 	
 	{
-		float3 radiance = indirect_diffuse[thread_id];
-		float  weight   = dot(radiance, rec709_luminance_coefficients);
+		uint weight_u32 = indirect_diffuse_directions[thread_id];
+		indirect_diffuse_directions[thread_id] = 0;
 		
-		float2 octahedral_direction = indirect_diffuse_directions[thread_id];
-		float4 bilinear_weights = ComputeBilinearWeights(octahedral_direction * LightingConstants::cdf_tile_size);
-		uint2 pixel_coordinates = (uint2)ComputeBilinearSamplePixelCoordinates(octahedral_direction * LightingConstants::cdf_tile_size);
-		
-		uint weight_sum_u32 = 0;
-		[unroll]
-		for (u32 i = 0; i < 4; i += 1) {
-			uint octahedral_index = MortonEncode(pixel_coordinates + MortonDecode2x2(i));
-			uint weight_u32 = (u32)(weight * bilinear_weights[i] * 1024);
-			
-			InterlockedAdd(gs_directional_weight[octahedral_index], weight_u32);
-			weight_sum_u32 += weight_u32;
-		}
-		
-		InterlockedAdd(gs_directional_weight_sum, weight_sum_u32);
+		gs_directional_weight[thread_index] = weight_u32;
+		InterlockedAdd(gs_directional_weight_sum, weight_u32);
 	}
 	
 	GroupMemoryBarrierWithGroupSync();
@@ -328,7 +394,30 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	float new_mip_0 = gs_directional_weight[thread_index] * rcp_weight_sum * cdf_encoding_scale;
 	float old_mip_0 = indirect_diffuse_tile_cdf[0][thread_id];
 	
-	float mip_0 = lerp(old_mip_0, new_mip_0, 1.0 / 32.0);
+	compile_const u32 initial_estimate_frame_count = 4u;
+	
+	// Initial estimate of the distribution:
+	u32 history_frame_count = (history_payload & 0xFF);
+	if (history_frame_count < 2) {
+		// TODO: Can check nearby cells, or cells one level above or below.
+#define USE_CDF_COSINE_WEIGHTED_HEMISPHERICAL_DISTRIBUTION_INITIAL_ESTIMATE 0
+#if USE_CDF_COSINE_WEIGHTED_HEMISPHERICAL_DISTRIBUTION_INITIAL_ESTIMATE
+		u64 key = cdf_hash_table_keys[hash_index];
+		uint2 encoded_cell_normal = uint2((uint)(key >> 58), (uint)(key >> 61)) & 0x7;
+		_Static_assert(CdfHashTableKey::normal_bit_count == 3, "Incorrect CdfHashTableKey normal bit count.");
+		
+		// Start accumulation from a cosine weighted hemispherical distribution:
+		float3 texel_direction = DecodeOctahedralMap01((MortonDecode(thread_index) + 0.5) * (1.0 / LightingConstants::cdf_tile_size));
+		float3 cell_normal     = DecodeOctahedralMap01((encoded_cell_normal + 0.5) * (1.0 / 8.0));
+		old_mip_0 = saturate(dot(texel_direction, cell_normal)) * 4.0 * LightingConstants::inv_cdf_tile_area * cdf_encoding_scale;
+#else // !USE_CDF_COSINE_WEIGHTED_HEMISPHERICAL_DISTRIBUTION_INITIAL_ESTIMATE
+		// Start accumulation from a uniform spherical distribution:
+		old_mip_0 = LightingConstants::inv_cdf_tile_area * cdf_encoding_scale;
+#endif // !USE_CDF_COSINE_WEIGHTED_HEMISPHERICAL_DISTRIBUTION_INITIAL_ESTIMATE
+	}
+	
+	float accumulation_ratio = 1.0 / max(history_frame_count, initial_estimate_frame_count);
+	float mip_0 = lerp(old_mip_0, new_mip_0, accumulation_ratio);
 	indirect_diffuse_tile_cdf[0][thread_id] = mip_0;
 	
 	GroupMemoryBarrierWithGroupSync();

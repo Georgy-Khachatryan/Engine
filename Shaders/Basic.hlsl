@@ -230,6 +230,10 @@ float2 EncodeOctahedralMap(float3 value) {
 	float2 result = value.xy * (1.0 / (abs(value.x) + abs(value.y) + abs(value.z)));
 	return select(value.z >= 0.0, result, (1.0 - abs(result.yx)) * select(result.xy >= 0.0, 1.0, -1.0));
 }
+
+float2 EncodeOctahedralMap01(float3 value) {
+	return EncodeOctahedralMap(value) * 0.5 + 0.5;
+}
  
 // Optimized octahedron decoding by Rune Stubbe.
 template<typename T>
@@ -239,10 +243,19 @@ vector<T, 3> DecodeOctahedralMap(vector<T, 2> value) {
 	return normalize(vector<T, 3>(result.xy + select(result.xy >= (T)0.0, -t, t), result.z));
 }
 
+template<typename T>
+vector<T, 3> DecodeOctahedralMap01(vector<T, 2> value) {
+	return DecodeOctahedralMap<T>(value * (T)2.0 - (T)1.0);
+}
+
 // Based on https://x.com/rygorous/status/1292942936817115136
 float2 EncodeHemiOctahedralMap(float3 value) {
 	float2 t = value.xy * (1.0 / (abs(value.x) + abs(value.y) + abs(value.z)));
 	return float2(t.x + t.y, t.x - t.y);
+}
+
+float2 EncodeHemiOctahedralMap01(float3 value) {
+	return EncodeHemiOctahedralMap(value) * 0.5 + 0.5;
 }
 
 template<typename T>
