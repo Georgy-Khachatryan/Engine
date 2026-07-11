@@ -1,6 +1,7 @@
 #ifndef BASIC_HLSL
 #define BASIC_HLSL
 
+#if defined(ROOT_SIGNATURE_FILEPATH)
 SamplerState sampler_linear_clamp  : register(s0);
 SamplerState sampler_nearest_clamp : register(s1);
 SamplerState sampler_linear_wrap   : register(s2);
@@ -8,6 +9,7 @@ SamplerState sampler_nearest_wrap  : register(s3);
 SamplerState sampler_aniso_wrap    : register(s4);
 SamplerState sampler_min_clamp     : register(s5);
 SamplerState sampler_max_clamp     : register(s6);
+#endif // defined(ROOT_SIGNATURE_FILEPATH)
 
 
 #define compile_const static const
@@ -64,7 +66,9 @@ struct FixedCountArray {
 #define NV_SHADER_EXTN_SLOT u0
 #define NV_SHADER_EXTN_REGISTER_SPACE space1
 
+#if defined(ROOT_SIGNATURE_FILEPATH)
 #include ROOT_SIGNATURE_FILEPATH
+#endif // defined(ROOT_SIGNATURE_FILEPATH)
 
 
 compile_const float PI                  = 3.1415927;
@@ -146,6 +150,14 @@ uint2 MortonDecode(uint code) {
 	t ^= t >> 4;
 	
 	return uint2(t, t >> 16) & 0xFF;
+}
+
+uint2 MortonEncode2x2(uint2 coordinates) {
+	return uint2(coordinates.x & 0x1, (coordinates.y & 0x1) << 1);
+}
+
+uint2 MortonDecode2x2(uint code) {
+	return uint2(code, code >> 1) & 0x1;
 }
 
 float3 DecodeSRGB(float3 x) { return select(x < 0.04045, (x / 12.92), pow((x + 0.055) / 1.055, 2.4)); }
@@ -322,6 +334,10 @@ float2 ConcentricMapping(float2 uv) {
 float3 CosineWeightedHemisphereMapping(float2 uv) {
 	float2 disk_sample = ConcentricMapping(uv);
 	return float3(disk_sample, sqrt(max(1.0 - Pow2(disk_sample.x) - Pow2(disk_sample.y), 0.0)));
+}
+
+float TriangleSolidAngle(float3 p0, float3 p1, float3 p2) {
+	return atan2(dot(p0, cross(p1, p2)), dot(p0, p1) + dot(p1, p2) + dot(p2, p0) + 1.0) * 2.0;
 }
 
 

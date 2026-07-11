@@ -129,7 +129,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 		HashTableShadowSampler shadow_sampler;
 		shadow_sampler.penumbra_noise = ConcentricMapping(blue_noise_2d[uint3((thread_id + uint2(61, 67) + scene.blue_noise_base_offset) % 128, scene.frame_index % 32)]);
 		shadow_sampler.hashed_visibility        = find_result.is_found ? saturate(f16tof32(visibility_hash_table_values[dst_index])) : 0.0;
-		shadow_sampler.hashed_visibility_weight = find_result.is_found ? saturate(penumbra_size_meters / key.cell_size) : 0.0;
+		shadow_sampler.hashed_visibility_weight = find_result.is_found ? smoothstep(0.6, 1.0, penumbra_size_meters / key.cell_size) : 0.0;
 		shadow_sampler.penumbra_mask            = 0.0;
 		shadow_sampler.is_shadow_trace_visible  = false;
 		
@@ -172,7 +172,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	}
 	
 	// TODO: Denoise indirect diffuse separately.
-	light_accumulator.AddDiffuse(indirect_diffuse[thread_id]);
+	light_accumulator.AddDiffuse(indirect_diffuse[thread_id] * scene.inv_exposure_estimate);
 	
 	uint thread_index_in_tile = (thread_index % LightingConstants::visible_light_tile_area);
 	visible_light_tile_list[dst_tile_index * LightingConstants::visible_light_tile_area + thread_index_in_tile] = is_shadow_trace_visible ? light_sample.light_entity_index : u32_max;

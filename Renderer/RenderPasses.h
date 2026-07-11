@@ -88,6 +88,7 @@ enum struct VirtualResourceID : u32 {
 	IndirectDiffuse,
 	IndirectDiffuseDirections,
 	IndirectDiffuseTileCDF,
+	TileCdfSolidAngle,
 	
 	// Radiance cache:
 	RadianceHashTableKeys,
@@ -1033,6 +1034,7 @@ struct EnergyCompensationLutRenderPass {
 	struct Descriptors : HLSL::BaseDescriptorTable {
 		HLSL::RWTexture2D<float2> ggx_single_scattering_energy_lut = VirtualResourceID::GgxSingleScatteringEnergyLUT;
 		HLSL::RWTexture2D<float2> ggx_preintegrated_brdf_lut       = VirtualResourceID::GgxPreintegratedBrdfLUT;
+		HLSL::RWTexture2D<float>  tile_cdf_solid_angle             = VirtualResourceID::TileCdfSolidAngle;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {
@@ -1116,8 +1118,10 @@ struct LightingConstants {
 	compile_const u32 visibility_hash_table_size = 1024u * 1024u;
 	compile_const u32 radiance_hash_table_size   = 1024u * 1024u;
 	
-	compile_const u32 cdf_mip_count = 4u;
+	compile_const u32 cdf_mip_count = 5u;
 	compile_const u32 cdf_tile_size = 1u << cdf_mip_count;
+	compile_const u32 cdf_tile_area = cdf_tile_size * cdf_tile_size;
+	compile_const float inv_cdf_tile_area = 1.f / cdf_tile_area;
 };
 
 NOTES(Meta::ShaderName{ "DeferredLighting.hlsl"_sl })
@@ -1205,7 +1209,7 @@ NOTES(Meta::ShaderName{ "IndirectLighting.hlsl"_sl })
 enum struct IndirectLightingShaders : u32 {
 	IndirectDiffuse         = 1u << 0,
 	UpdateRadianceHashTable = 1u << 1,
-	BuildGuideBuffers       = 1u << 2,
+	IndirectDiffuseTileCDF  = 1u << 2,
 };
 SHADER_DEFINITION_GENERATED_CODE(IndirectLightingShaders);
 
@@ -1218,6 +1222,7 @@ struct IndirectDiffuseRenderPass {
 	struct Descriptors : HLSL::BaseDescriptorTable {
 		HLSL::Texture2D<float2>                     ggx_single_scattering_energy_lut = VirtualResourceID::GgxSingleScatteringEnergyLUT;
 		HLSL::Texture2D<float2>                     ggx_preintegrated_brdf_lut       = VirtualResourceID::GgxPreintegratedBrdfLUT;
+		HLSL::Texture2D<float>                      tile_cdf_solid_angle             = VirtualResourceID::TileCdfSolidAngle;
 		HLSL::Texture2D<u32>                        denoiser_disocclusion_mask       = VirtualResourceID::DenoiserDisocclusionMask;
 		HLSL::Texture2D<float3>                     sky_panorama_lut                 = VirtualResourceID::SkyPanoramaLut;
 		HLSL::Texture2D<float3>                     transmittance_lut                = VirtualResourceID::TransmittanceLut;
@@ -1238,7 +1243,7 @@ struct IndirectDiffuseRenderPass {
 		HLSL::RWRegularBuffer<u64>                  radiance_hash_table_keys         = VirtualResourceID::RadianceHashTableKeys;
 		HLSL::RWByteBuffer                          radiance_hash_table_values       = VirtualResourceID::RadianceHashTableValues;
 		HLSL::RWTexture2D<u32>                      indirect_diffuse                 = VirtualResourceID::IndirectDiffuse;
-		HLSL::RWTexture2D<u32>                      indirect_diffuse_directions      = VirtualResourceID::IndirectDiffuseDirections;
+		HLSL::RWTexture2D<float2>                   indirect_diffuse_directions      = VirtualResourceID::IndirectDiffuseDirections;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {
@@ -1268,12 +1273,12 @@ struct UpdateRadianceHashTableRenderPass {
 };
 
 NOTES(Meta::RenderPass{})
-struct IndirectBuildGuideBuffersRenderPass {
+struct IndirectDiffuseTileCdfRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
-		HLSL::Texture2D<float3>  indirect_diffuse            = VirtualResourceID::IndirectDiffuse;
-		HLSL::Texture2D<u32>     indirect_diffuse_directions = VirtualResourceID::IndirectDiffuseDirections;
+		HLSL::Texture2D<float3> indirect_diffuse            = VirtualResourceID::IndirectDiffuse;
+		HLSL::Texture2D<float2> indirect_diffuse_directions = VirtualResourceID::IndirectDiffuseDirections;
 		FixedCountArray<HLSL::RWTexture2D<float>, LightingConstants::cdf_mip_count> indirect_diffuse_tile_cdf;
 	};
 	

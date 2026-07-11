@@ -134,16 +134,18 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 
 #if defined(ENERGY_COMPENSATION_LUT)
 #include "BrdfSampling.hlsl"
+#include "Generated/LightData.hlsl"
 
-compile_const u32 thread_group_size   = 1024;
+compile_const u32 thread_group_size   = 32;
+compile_const u32 thread_group_area   = thread_group_size * thread_group_size;
 compile_const u32 sample_grid_size_xy = 128;
 compile_const u32 sample_count        = sample_grid_size_xy * sample_grid_size_xy;
-compile_const u32 samples_per_thread  = sample_count / thread_group_size;
+compile_const u32 samples_per_thread  = sample_count / thread_group_area;
 compile_const u32 min_wave_size       = 16;
 
-groupshared float4 gs_single_scattering_energy[thread_group_size / min_wave_size];
+groupshared float4 gs_single_scattering_energy[thread_group_area / min_wave_size];
 
-[ThreadGroupSize(thread_group_size, 1, 1)][WaveSize(min_wave_size, 128)]
+[ThreadGroupSize(thread_group_area, 1, 1)][WaveSize(min_wave_size, 128)]
 void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	float2 group_uv = group_id * (1.0 / (energy_compensation_lut_size - 1));
 	
@@ -187,13 +189,29 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	if (thread_index == 0) {
 		float4 group_single_scattering_energy = wave_single_scattering_energy;
 		
-		u32 wave_count = thread_group_size / WaveGetLaneCount();
+		u32 wave_count = thread_group_area / WaveGetLaneCount();
 		for (u32 i = 1; i < wave_count; i += 1) {
 			group_single_scattering_energy += gs_single_scattering_energy[i];
 		}
 		
 		ggx_single_scattering_energy_lut[group_id] = group_single_scattering_energy.xy / sample_count;
 		ggx_preintegrated_brdf_lut[group_id]       = group_single_scattering_energy.zw / sample_count;
+	}
+	
+	uint2 thread_id = group_id  * thread_group_size + MortonDecode(thread_index);
+	if (all(thread_id < LightingConstants::cdf_tile_size)) {
+		float4 sample_rect = (uint4(thread_id, thread_id + 1u) * (1.0 / LightingConstants::cdf_tile_size)) * 2.0 - 1.0;
+		
+		float3 n0 = DecodeOctahedralMap(sample_rect.xy);
+		float3 n1 = DecodeOctahedralMap(sample_rect.zy);
+		float3 n2 = DecodeOctahedralMap(sample_rect.xw);
+		float3 n3 = DecodeOctahedralMap(sample_rect.zw);
+		
+		float solid_angle = TriangleSolidAngle(n0, n1, n3) + TriangleSolidAngle(n0, n3, n2);
+		
+		// Scale tile_cdf_solid_angle by cdf_tile_area * (1.0 / PI) to get a reasonable value range to store in a texture.
+		tile_cdf_solid_angle[thread_id] = solid_angle * LightingConstants::cdf_tile_area * (1.0 / PI);
+		// tile_cdf_solid_angle[thread_id] = 4.0;
 	}
 }
 #endif // defined(ENERGY_COMPENSATION_LUT)

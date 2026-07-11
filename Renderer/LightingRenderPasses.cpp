@@ -85,11 +85,11 @@ void UpdateRadianceHashTableRenderPass::RecordPass(RecordContext* record_context
 	CmdDispatch(record_context, DivideAndRoundUp(LightingConstants::radiance_hash_table_size, 256u));
 }
 
-void IndirectBuildGuideBuffersRenderPass::CreatePipelines(PipelineLibrary* lib) {
-	pipeline_id = CreateComputePipeline(lib, IndirectLightingShadersID, IndirectLightingShaders::BuildGuideBuffers);
+void IndirectDiffuseTileCdfRenderPass::CreatePipelines(PipelineLibrary* lib) {
+	pipeline_id = CreateComputePipeline(lib, IndirectLightingShadersID, IndirectLightingShaders::IndirectDiffuseTileCDF);
 }
 
-void IndirectBuildGuideBuffersRenderPass::RecordPass(RecordContext* record_context) {
+void IndirectDiffuseTileCdfRenderPass::RecordPass(RecordContext* record_context) {
 	auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
 	CmdSetRootSignature(record_context, root_signature);
 	CmdSetPipelineState(record_context, pipeline_id);
@@ -101,8 +101,8 @@ void IndirectBuildGuideBuffersRenderPass::RecordPass(RecordContext* record_conte
 	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
 	CmdSetRootArgument(record_context, root_signature.scene, VirtualResourceID::SceneConstants);
 	
-	auto render_target_size = GetTextureSize(record_context, VirtualResourceID::SceneRadiance);
-	CmdDispatch(record_context, DivideAndRoundUp(uint2(render_target_size), 16u));
+	auto render_target_size = GetTextureSize(record_context, VirtualResourceID::IndirectDiffuseTileCDF);
+	CmdDispatch(record_context, DivideAndRoundUp(uint2(render_target_size), LightingConstants::cdf_tile_size));
 }
 
 

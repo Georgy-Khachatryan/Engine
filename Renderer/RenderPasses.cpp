@@ -65,7 +65,8 @@ static void BuildResourceTable(RecordContext* record_context, WorldEntitySystem*
 	
 	auto indirect_diffuse_cdf_tile_list_size = DivideAndRoundUp(render_target_size, LightingConstants::cdf_tile_size);
 	table.Set(ID::IndirectDiffuseTileCDF,    TextureSize(TextureFormat::R16_FLOAT, indirect_diffuse_cdf_tile_list_size * LightingConstants::cdf_tile_size, 1, LightingConstants::cdf_mip_count), Flags::UAV);
-	table.Set(ID::IndirectDiffuseDirections, TextureSize(TextureFormat::R8_UINT,   indirect_diffuse_cdf_tile_list_size * LightingConstants::cdf_tile_size), Flags::UAV);
+	table.Set(ID::IndirectDiffuseDirections, TextureSize(TextureFormat::R8G8_UNORM, render_target_size), Flags::UAV);
+	table.Set(ID::TileCdfSolidAngle,         TextureSize(TextureFormat::R16_FLOAT, LightingConstants::cdf_tile_size), Flags::UAV);
 	
 	table.Set(ID::IndirectDiffuse, TextureSize(TextureFormat::R9G9B9E5_FLOAT, render_target_size), Flags::UAV);
 	
@@ -380,7 +381,7 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	auto& indirect_diffuse = render_passes.Add<IndirectDiffuseRenderPass>();
 	indirect_diffuse.atmosphere = atmosphere_parameters_gpu_address;
 	
-	render_passes.Add<IndirectBuildGuideBuffersRenderPass>();
+	render_passes.Add<IndirectDiffuseTileCdfRenderPass>();
 	render_passes.Add<UpdateRadianceHashTableRenderPass>();
 	
 	auto& deferred_lighting = render_passes.Add<DeferredLightingRenderPass>();
