@@ -45,8 +45,9 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	float4 prev_p0 = TransformModelToClipSpace(v0, prev_model_to_world, mesh_asset, meshlet, scene.prev_world_to_view, scene.prev_view_to_clip_coef);
 	float4 prev_p1 = TransformModelToClipSpace(v1, prev_model_to_world, mesh_asset, meshlet, scene.prev_world_to_view, scene.prev_view_to_clip_coef);
 	float4 prev_p2 = TransformModelToClipSpace(v2, prev_model_to_world, mesh_asset, meshlet, scene.prev_world_to_view, scene.prev_view_to_clip_coef);
-	float3 prev_p  = BarycentricInterpolation(b.barycentrics, prev_p0.xyw, prev_p1.xyw, prev_p2.xyw);
-	motion_vectors[thread_id] = NdcToScreenUv(prev_p.xy / prev_p.z) - thread_uv;
+	float4 prev_p  = BarycentricInterpolation(b.barycentrics, prev_p0, prev_p1, prev_p2);
+	motion_vectors[thread_id]       = NdcToScreenUv(prev_p.xy / prev_p.w) - thread_uv;
+	depth_motion_vectors[thread_id] = (prev_p.z / prev_p.w) - depth_stencil[thread_id];
 	
 	float3 model_space_normal  = DecodeAndInterpolateUnitVector(b.barycentrics, v0.normal,  v1.normal,  v2.normal);
 	float3 model_space_tangent = DecodeAndInterpolateUnitVector(b.barycentrics, v0.tangent, v1.tangent, v2.tangent);

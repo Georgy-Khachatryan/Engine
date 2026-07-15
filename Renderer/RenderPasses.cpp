@@ -34,7 +34,8 @@ static void BuildResourceTable(RecordContext* record_context, WorldEntitySystem*
 	table.Set(ID::SceneRadiance,       TextureSize(TextureFormat::R16G16B16A16_FLOAT, render_target_size), Flags::UAV | Flags::RTV);
 	table.Set(ID::DepthStencil,        TextureSize(TextureFormat::D32_FLOAT,          render_target_size), Flags::DSV);
 	table.Set(ID::DepthStencilHistory, TextureSize(TextureFormat::D32_FLOAT,          render_target_size), Flags::DSV);
-	table.Set(ID::MotionVectors,       TextureSize(TextureFormat::R16G16_FLOAT,       render_target_size), Flags::UAV | Flags::RTV);
+	table.Set(ID::MotionVectors,       TextureSize(TextureFormat::R16G16_FLOAT,       render_target_size), Flags::UAV);
+	table.Set(ID::DepthMotionVectors,  TextureSize(TextureFormat::R16_FLOAT,          render_target_size), Flags::UAV);
 	table.Set(ID::VisibilityBuffer,    TextureSize(TextureFormat::R32_UINT,           render_target_size), Flags::RTV);
 	table.Set(ID::SceneRadianceResult, TextureSize(TextureFormat::R16G16B16A16_FLOAT, render_target_size), Flags::UAV);
 	

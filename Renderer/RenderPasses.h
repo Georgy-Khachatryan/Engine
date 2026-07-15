@@ -44,6 +44,7 @@ enum struct VirtualResourceID : u32 {
 	GBufferAlbedoMetalness,
 	GBufferNormalRoughness,
 	MotionVectors,
+	DepthMotionVectors,
 	SceneRadianceResult,
 	SceneConstants,
 	CullingHZB,
@@ -1100,6 +1101,7 @@ struct VisibilityBufferResolveRenderPass {
 		HLSL::ByteBuffer                            mesh_asset_buffer     = VirtualResourceID::MeshAssetBuffer;
 		HLSL::RegularBuffer<uint2>                  visible_meshlets      = VirtualResourceID::VisibleMeshlets;
 		HLSL::RWTexture2D<float2>                   motion_vectors        = VirtualResourceID::MotionVectors;
+		HLSL::RWTexture2D<float>                    depth_motion_vectors  = VirtualResourceID::DepthMotionVectors;
 		HLSL::RWTexture2D<float4>                   gb_albedo_metalness   = VirtualResourceID::GBufferAlbedoMetalness;
 		HLSL::RWTexture2D<float4>                   gb_normal_roughness   = VirtualResourceID::GBufferNormalRoughness;
 	};
@@ -1327,11 +1329,12 @@ struct DenoiserDisocclusionMaskRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
-		HLSL::Texture2D<float>   depth_stencil_history      = VirtualResourceID::DepthStencilHistory;
-		HLSL::Texture2D<float>   depth_stencil              = VirtualResourceID::DepthStencil;
-		HLSL::Texture2D<float4>  gb_normal_roughness        = VirtualResourceID::GBufferNormalRoughness;
-		HLSL::Texture2D<float2>  motion_vectors             = VirtualResourceID::MotionVectors;
-		HLSL::RWTexture2D<u32>   denoiser_disocclusion_mask = VirtualResourceID::DenoiserDisocclusionMask;
+		HLSL::Texture2D<float>  depth_stencil_history      = VirtualResourceID::DepthStencilHistory;
+		HLSL::Texture2D<float>  depth_stencil              = VirtualResourceID::DepthStencil;
+		HLSL::Texture2D<float4> gb_normal_roughness        = VirtualResourceID::GBufferNormalRoughness;
+		HLSL::Texture2D<float2> motion_vectors             = VirtualResourceID::MotionVectors;
+		HLSL::Texture2D<float>  depth_motion_vectors       = VirtualResourceID::DepthMotionVectors;
+		HLSL::RWTexture2D<u32>  denoiser_disocclusion_mask = VirtualResourceID::DenoiserDisocclusionMask;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {
