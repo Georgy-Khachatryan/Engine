@@ -24,3 +24,6 @@ SDK/XeSS
 ; Visual studio files:
 .vs/
 *.vcxproj.user
+
+; Nsight:
+imgui.ini

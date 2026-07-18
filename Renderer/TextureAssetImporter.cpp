@@ -12,8 +12,10 @@
 #define STBI_NO_STDIO
 #define STBIR_FORCE_MINIMUM_SCANLINES_FOR_SPLITS 256
 #define STBIR_MALLOC(size, user_data) (((StackAllocator*)(user_data))->Allocate(size, texture_row_pitch_alignment))
-#define STBIR_FREE(size, user_data) ((void)(user_data))
-// TODO: #define STBI_MALLOC(...)
+#define STBIR_FREE(size, user_data) ((void)(size)),((void)(user_data))
+#define STBI_MALLOC(size, user_data) (((StackAllocator*)(user_data))->Allocate(size, texture_row_pitch_alignment))
+#define STBI_REALLOC(data, old_size, new_size, user_data) (((StackAllocator*)(user_data))->Reallocate(data, old_size, new_size, texture_row_pitch_alignment))
+#define STBI_FREE(data, user_data) ((void)(data)), ((void)(user_data))
 
 #include <SDK/stb/stb_image.h>
 #include <SDK/stb/stb_image_resize2.h>
@@ -180,10 +182,8 @@ TextureImportResult ImportTextureFile(StackAllocator* alloc, ThreadPool* thread_
 	
 	s32x2 stb_image_size;
 	s32 stb_image_channel_count = 0;
-	auto* stb_image_result = stbi_load_from_memory((u8*)file_data.data, (s32)file_data.count, &stb_image_size.x, &stb_image_size.y, &stb_image_channel_count, 4);
+	auto* stb_image_result = stbi_load_from_memory((u8*)file_data.data, (s32)file_data.count, &stb_image_size.x, &stb_image_size.y, &stb_image_channel_count, 4, alloc);
 	if (stb_image_result == nullptr) return {};
-	
-	defer{ stbi_image_free(stb_image_result); };
 	
 	
 	u32 max_image_size = (u32)Math::Max(Math::Max(stb_image_size.x, stb_image_size.y), 1);

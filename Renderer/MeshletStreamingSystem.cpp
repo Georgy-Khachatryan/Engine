@@ -202,7 +202,7 @@ void UpdateMeshletStreamingSystem(MeshletStreamingSystem* system, AsyncTransferQ
 			move_inputs.limits.rtas_max_size_bytes = requirements.rtas_max_size_bytes;
 			auto move_requirements = GetMeshletRtasMemoryRequirements(record_context->context, move_inputs.limits);
 			
-			// Move build and move scratch are not used at the same time, could reuse the same memory if needed.
+			// Build scratch and move scratch are not used at the same time, the same memory can be reused.
 			u32 meshlet_descs_scratch_size      = AlignUp(inputs.limits.max_meshlet_count * 16u * 2u, rtas_alignment);
 			u32 indirect_arguments_scratch_size = AlignUp(inputs.limits.max_meshlet_count * 64u, rtas_alignment);
 			u32 vertex_buffer_scratch_size      = AlignUp(inputs.limits.max_total_vertex_count * (u32)sizeof(float3), rtas_alignment);
