@@ -99,6 +99,11 @@ static void WorldComponentEntityView(StackAllocator* alloc, WorldEntitySystem& w
 				ImGui::Checkbox("", &renderer_world.debug_freeze_culling_camera.enabled);
 				ImGui::EndTableItem();
 			}
+			
+			if (ImGui::BeginTableItem("Enable Async Compute")) {
+				ImGui::Checkbox("", &renderer_world.enable_async_compute);
+				ImGui::EndTableItem();
+			}
 		}
 		
 		if (ImGui::TableCollapsingHeader("Reference Path Tracer", ImGuiTreeNodeFlags_DefaultOpen)) {

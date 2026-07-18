@@ -3,6 +3,7 @@
 #include "GraphicsApi/GraphicsApi.h"
 #include "GraphicsApi/RecordContext.h"
 #include "RenderPasses.h"
+#include "RenderPassArray.h"
 
 static void BuildResourceTable(RecordContext* record_context, WorldEntitySystem* world_system, AssetEntitySystem* asset_system, RendererWorld* renderer_world, uint2 render_target_size) {
 	using ID    = VirtualResourceID;
@@ -20,6 +21,11 @@ static void BuildResourceTable(RecordContext* record_context, WorldEntitySystem*
 	table.Set(ID::MeshEntityCullingCommands,   MeshletConstants::mesh_entity_culling_command_count   * sizeof(u32));
 	table.Set(ID::MeshletGroupCullingCommands, MeshletConstants::meshlet_group_culling_command_count * sizeof(uint2));
 	table.Set(ID::MeshletCullingCommands,      MeshletConstants::meshlet_culling_command_count       * sizeof(uint2));
+	
+	table.Set(ID::RtVisibleMeshlets,             MeshletConstants::max_total_blas_meshlets                * sizeof(uint2));
+	table.Set(ID::RtMeshletGroupCullingCommands, MeshletConstants::rt_meshlet_group_culling_command_count * sizeof(uint2));
+	table.Set(ID::RtMeshletCullingCommands,      MeshletConstants::rt_meshlet_culling_command_count       * sizeof(uint2));
+	
 	table.Set(ID::MeshletIndirectArguments,    (u32)MeshletCullingIndirectArgumentsLayout::Count     * sizeof(uint4));
 	table.Set(ID::MeshletStreamingFeedback,    gpu_memory_page_size);
 	table.Set(ID::MeshStreamingFeedback,       mesh_assets->capacity * sizeof(u32) + sizeof(u32));
@@ -91,40 +97,6 @@ static void BuildResourceTable(RecordContext* record_context, WorldEntitySystem*
 	table.SwapHistory(ID::DepthStencil,                   ID::DepthStencilHistory);
 	table.SwapHistory(ID::DenoiserAccumulatedFrameCount0, ID::DenoiserAccumulatedFrameCount1);
 	table.SwapHistory(ID::DenoiserPenumbraMask0,          ID::DenoiserPenumbraMask1);
-}
-
-using RecordPassCallback = void(*)(void*, RecordContext*);
-
-struct RenderPassArrayEntry {
-	RecordPassCallback record_pass = nullptr;
-	void* render_pass = nullptr;
-	String debug_name = "Unknown"_sl;
-};
-
-struct RenderPassArray {
-	StackAllocator* alloc = nullptr;
-	Array<RenderPassArrayEntry> render_passes;
-	
-	template<typename RenderPassT>
-	RenderPassT& Add(String debug_name_substitution = ""_sl) {
-		auto* render_pass = NewFromAlloc(alloc, RenderPassT);
-		
-		RenderPassArrayEntry entry;
-		entry.render_pass = render_pass;
-		entry.record_pass = [](void* render_pass, RecordContext* record_context) { return ((RenderPassT*)render_pass)->RecordPass(record_context); };
-		entry.debug_name  = debug_name_substitution.count != 0 ? debug_name_substitution : RenderPassT::debug_name;
-		ArrayAppend(render_passes, alloc, entry);
-		
-		return *render_pass;
-	}
-};
-
-static void ReplayRenderPasses(RenderPassArray& array, RecordContext* record_context) {
-	for (auto& entry : array.render_passes) {
-		CmdProfilerBeginScope(record_context, entry.debug_name);
-		entry.record_pass(entry.render_pass, record_context);
-		CmdProfilerEndScope(record_context);
-	}
 }
 
 static void CopyCurrentToPreviousSceneConstants(SceneConstants& scene) {
@@ -285,39 +257,89 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	
 	RenderPassArray render_passes;
 	render_passes.alloc = record_context->alloc;
+	render_passes.frame_index = record_context->frame_index;
+	render_passes.enable_async_compute = renderer_world.enable_async_compute;
 	
-	auto& entity_system_update = render_passes.Add<EntitySystemUpdateRenderPass>();
-	entity_system_update.world_system = world_system;
-	entity_system_update.asset_system = asset_system;
-	entity_system_update.upload_buffers = gpu_uploads;
+	auto& last_frame_submit_end = renderer_world.last_frame_submit_end;
+	if (last_frame_submit_end.submit_index == 0) {
+		last_frame_submit_end = render_passes.AddSignal(CommandQueueType::Graphics);
+	}
+	render_passes.AddWait(CommandQueueType::Compute, last_frame_submit_end);
 	
-	auto& update_meshlet_page_table = render_passes.Add<UpdateMeshletPageTableRenderPass>();
-	update_meshlet_page_table.meshlet_streaming_system = renderer_context->meshlet_streaming_system;
+	{
+		render_passes.PushQueue(CommandQueueType::Compute);
+		defer{ render_passes.PopQueue(); };
+		
+		auto& entity_system_update = render_passes.Add<EntitySystemUpdateRenderPass>();
+		entity_system_update.world_system = world_system;
+		entity_system_update.asset_system = asset_system;
+		entity_system_update.upload_buffers = gpu_uploads;
+		
+		auto& update_meshlet_page_table = render_passes.Add<UpdateMeshletPageTableRenderPass>();
+		update_meshlet_page_table.meshlet_streaming_system = renderer_context->meshlet_streaming_system;
+		
+		render_passes.Add<MeshletClearBuffersRenderPass>().world_system = world_system;
+		
+		auto& meshlet_rtas_decode_vertex_buffer = render_passes.Add<MeshletRtasDecodeVertexBufferRenderPass>();
+		meshlet_rtas_decode_vertex_buffer.meshlet_streaming_system = renderer_context->meshlet_streaming_system;
+		
+		auto& meshlet_rtas_build = render_passes.Add<MeshletRtasBuildRenderPass>();
+		meshlet_rtas_build.meshlet_streaming_system  = renderer_context->meshlet_streaming_system;
+		meshlet_rtas_build.mesh_asset_buffer_address = renderer_context->mesh_asset_buffer_address;
+		meshlet_rtas_build.scratch_buffer_address    = renderer_context->streaming_scratch_buffer_address;
+		
+		auto& meshlet_rtas_write_offsets = render_passes.Add<MeshletRtasWriteOffsetsRenderPass>();
+		meshlet_rtas_write_offsets.meshlet_streaming_system    = renderer_context->meshlet_streaming_system;
+		meshlet_rtas_write_offsets.meshlet_rtas_buffer_address = renderer_context->meshlet_rtas_buffer_address;
+		
+		auto& meshlet_rtas_update_offsets = render_passes.Add<MeshletRtasUpdateOffsetsRenderPass>();
+		meshlet_rtas_update_offsets.meshlet_streaming_system    = renderer_context->meshlet_streaming_system;
+		meshlet_rtas_update_offsets.meshlet_rtas_buffer_address = renderer_context->meshlet_rtas_buffer_address;
+		
+		render_passes.Add<TransmittanceLutRenderPass>().atmosphere = atmosphere_parameters_gpu_address;
+		render_passes.Add<MultipleScatteringLutRenderPass>().atmosphere = atmosphere_parameters_gpu_address;
+		render_passes.Add<SkyPanoramaLutRenderPass>().atmosphere = atmosphere_parameters_gpu_address;
+		
+		render_passes.Add<MeshletAllocateStreamingFeedbackRenderPass>().asset_system = asset_system;
+	}
 	
-	render_passes.Add<MeshletClearBuffersRenderPass>().world_system = world_system;
+	render_passes.AddWait(CommandQueueType::Graphics, render_passes.AddSignal(CommandQueueType::Compute));
 	
-	auto& meshlet_rtas_decode_vertex_buffer = render_passes.Add<MeshletRtasDecodeVertexBufferRenderPass>();
-	meshlet_rtas_decode_vertex_buffer.meshlet_streaming_system = renderer_context->meshlet_streaming_system;
+	{
+		render_passes.PushQueue(CommandQueueType::Compute);
+		defer{ render_passes.PopQueue(); };
+		
+		auto& light_entity_culling = render_passes.Add<LightEntityCullingRenderPass>();
+		light_entity_culling.world_system = world_system;
+		
+		render_passes.Add<LightCullingRenderPass>();
+		render_passes.Add<LightListRenderPass>();
+	}
 	
-	auto& meshlet_rtas_build = render_passes.Add<MeshletRtasBuildRenderPass>();
-	meshlet_rtas_build.meshlet_streaming_system  = renderer_context->meshlet_streaming_system;
-	meshlet_rtas_build.mesh_asset_buffer_address = renderer_context->mesh_asset_buffer_address;
-	meshlet_rtas_build.scratch_buffer_address    = renderer_context->streaming_scratch_buffer_address;
-	
-	auto& meshlet_rtas_write_offsets = render_passes.Add<MeshletRtasWriteOffsetsRenderPass>();
-	meshlet_rtas_write_offsets.meshlet_streaming_system    = renderer_context->meshlet_streaming_system;
-	meshlet_rtas_write_offsets.meshlet_rtas_buffer_address = renderer_context->meshlet_rtas_buffer_address;
-	
-	auto& meshlet_rtas_update_offsets = render_passes.Add<MeshletRtasUpdateOffsetsRenderPass>();
-	meshlet_rtas_update_offsets.meshlet_streaming_system    = renderer_context->meshlet_streaming_system;
-	meshlet_rtas_update_offsets.meshlet_rtas_buffer_address = renderer_context->meshlet_rtas_buffer_address;
-	
-	render_passes.Add<TransmittanceLutRenderPass>().atmosphere = atmosphere_parameters_gpu_address;
-	render_passes.Add<MultipleScatteringLutRenderPass>().atmosphere = atmosphere_parameters_gpu_address;
-	render_passes.Add<SkyPanoramaLutRenderPass>().atmosphere = atmosphere_parameters_gpu_address;
-	
-	
-	render_passes.Add<MeshletAllocateStreamingFeedbackRenderPass>().asset_system = asset_system;
+	{
+		render_passes.PushQueue(CommandQueueType::Compute);
+		defer{ render_passes.PopQueue(); };
+		
+		{
+			auto& raytracing_mesh_entity_culling = render_passes.Add<MeshEntityCullingRenderPass>("RaytracingMeshEntityCulling"_sl);
+			raytracing_mesh_entity_culling.pass = MeshletCullingPass::Raytracing;
+			raytracing_mesh_entity_culling.world_system = world_system;
+			render_passes.Add<MeshletGroupCullingRenderPass>("RaytracingMeshletGroupCulling"_sl).pass = MeshletCullingPass::Raytracing;
+			render_passes.Add<MeshletCullingRenderPass>("RaytracingMeshletCulling"_sl).pass = MeshletCullingPass::Raytracing;
+		}
+		
+		{
+			auto& meshlet_blas_build_indirect_arguments = render_passes.Add<MeshletBlasBuildIndirectArgumentsRenderPass>();
+			meshlet_blas_build_indirect_arguments.world_system = world_system;
+			meshlet_blas_build_indirect_arguments.scratch_buffer_address = renderer_context->streaming_scratch_buffer_address;
+			
+			auto& meshlet_blas_write_addresses = render_passes.Add<MeshletBlasWriteAddressesRenderPass>();
+			meshlet_blas_write_addresses.meshlet_rtas_buffer_address = renderer_context->meshlet_rtas_buffer_address;
+			
+			auto& build_tlas = render_passes.Add<BuildTlasRenderPass>();
+			build_tlas.world_system = world_system;
+		}
+	}
 	
 	{
 		render_passes.Add<MeshEntityCullingRenderPass>().world_system = world_system;
@@ -337,31 +359,21 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 		render_passes.Add<BuildHzbRenderPass>();
 	}
 	
-	render_passes.Add<AtmosphereCompositeRenderPass>().atmosphere = atmosphere_parameters_gpu_address;
 	render_passes.Add<VisibilityBufferResolveRenderPass>();
 	
+	// TODO: Generate energy compensation LUT once on startup, or save it as dds and load it from disk.
+	render_passes.Add<EnergyCompensationLutRenderPass>();
+	render_passes.Add<DenoiserDisocclusionMaskRenderPass>();
 	
-	{
-		auto& raytracing_mesh_entity_culling = render_passes.Add<MeshEntityCullingRenderPass>("RaytracingMeshEntityCulling"_sl);
-		raytracing_mesh_entity_culling.pass = MeshletCullingPass::Raytracing;
-		raytracing_mesh_entity_culling.world_system = world_system;
-		render_passes.Add<MeshletGroupCullingRenderPass>("RaytracingMeshletGroupCulling"_sl).pass = MeshletCullingPass::Raytracing;
-		render_passes.Add<MeshletCullingRenderPass>("RaytracingMeshletCulling"_sl).pass = MeshletCullingPass::Raytracing;
-	}
+	
+	render_passes.AddWait(CommandQueueType::Graphics, render_passes.AddSignal(CommandQueueType::Compute)); 
+	
+	
+	render_passes.Add<AtmosphereCompositeRenderPass>().atmosphere = atmosphere_parameters_gpu_address;
 	
 	{
 		auto& copy_meshlet_culling_statistics = render_passes.Add<CopyMeshletCullingStatisticsRenderPass>();
 		copy_meshlet_culling_statistics.readback_queue = &renderer_world.meshlet_culling_statistics_readback_queue;
-		
-		auto& meshlet_blas_build_indirect_arguments = render_passes.Add<MeshletBlasBuildIndirectArgumentsRenderPass>();
-		meshlet_blas_build_indirect_arguments.world_system = world_system;
-		meshlet_blas_build_indirect_arguments.scratch_buffer_address = renderer_context->streaming_scratch_buffer_address;
-		
-		auto& meshlet_blas_write_addresses = render_passes.Add<MeshletBlasWriteAddressesRenderPass>();
-		meshlet_blas_write_addresses.meshlet_rtas_buffer_address = renderer_context->meshlet_rtas_buffer_address;
-		
-		auto& build_tlas = render_passes.Add<BuildTlasRenderPass>();
-		build_tlas.world_system = world_system;
 		
 		auto& copy_streaming_feedback = render_passes.Add<CopyStreamingFeedbackRenderPass>();
 		copy_streaming_feedback.meshlet_streaming_feedback_queue = &renderer_world.meshlet_streaming_feedback_queue;
@@ -370,33 +382,25 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	}
 	
 	{
-		auto& light_entity_culling = render_passes.Add<LightEntityCullingRenderPass>();
-		light_entity_culling.world_system = world_system;
+		auto& indirect_diffuse = render_passes.Add<IndirectDiffuseRenderPass>();
+		indirect_diffuse.atmosphere = atmosphere_parameters_gpu_address;
 		
-		render_passes.Add<LightCullingRenderPass>();
-		render_passes.Add<LightListRenderPass>();
+		render_passes.Add<UpdateRadianceHashTableRenderPass>();
+		render_passes.Add<UpdateCdfHashTableRenderPass>();
+		render_passes.Add<IndirectDiffuseTileCdfRenderPass>();
 	}
 	
-	// TODO: Generate energy compensation LUT once on startup, or save it as dds and load it from disk.
-	render_passes.Add<EnergyCompensationLutRenderPass>();
+	{
+		auto& deferred_lighting = render_passes.Add<DeferredLightingRenderPass>();
+		deferred_lighting.atmosphere = atmosphere_parameters_gpu_address;
+		
+		render_passes.Add<BuildVisibleLightTileListRenderPass>();
+	}
 	
-	render_passes.Add<DenoiserDisocclusionMaskRenderPass>();
-	
-	auto& indirect_diffuse = render_passes.Add<IndirectDiffuseRenderPass>();
-	indirect_diffuse.atmosphere = atmosphere_parameters_gpu_address;
-	
-	render_passes.Add<UpdateRadianceHashTableRenderPass>();
-	render_passes.Add<UpdateCdfHashTableRenderPass>();
-	
-	render_passes.Add<IndirectDiffuseTileCdfRenderPass>();
-	
-	auto& deferred_lighting = render_passes.Add<DeferredLightingRenderPass>();
-	deferred_lighting.atmosphere = atmosphere_parameters_gpu_address;
-	
-	render_passes.Add<BuildVisibleLightTileListRenderPass>();
-	
-	render_passes.Add<LightingTemporalDenoiserRenderPass>();
-	render_passes.Add<LightingSpatialDenoiserRenderPass>();
+	{
+		render_passes.Add<LightingTemporalDenoiserRenderPass>();
+		render_passes.Add<LightingSpatialDenoiserRenderPass>();
+	}
 	
 	if (renderer_world.reference_path_tracer_percent != 0.f) {
 		render_passes.Add<ReferencePathTracerRenderPass>().atmosphere = atmosphere_parameters_gpu_address;
@@ -432,6 +436,8 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	CreateResourceDescriptor(record_context, HLSL::Texture2D<float4>(scene_radiance), renderer_world.scene_descriptor_heap_offset);
 	
 	render_passes.Add<UpdateVisibilityHashTableRenderPass>();
+	
+	last_frame_submit_end = render_passes.AddSignal(CommandQueueType::Graphics);
 	
 	render_passes.Add<ImGuiRenderPass>();
 	

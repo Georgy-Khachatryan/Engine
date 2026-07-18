@@ -68,6 +68,12 @@ void MeshEntityCullingRenderPass::RecordPass(RecordContext* record_context) {
 	CmdSetRootSignature(record_context, root_signature);
 	CmdSetPipelineState(record_context, pipeline_ids[(u32)pass]);
 	
+	if (pass == MeshletCullingPass::Raytracing) {
+		descriptor_table.mesh_entity_culling_commands   = VirtualResourceID::None;
+		descriptor_table.meshlet_group_culling_commands = VirtualResourceID::RtMeshletGroupCullingCommands;
+		descriptor_table.culling_hzb                    = VirtualResourceID::None;
+	}
+	
 	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
 	CmdSetRootArgument(record_context, root_signature.scene, VirtualResourceID::SceneConstants);
 	
@@ -91,6 +97,12 @@ void MeshletGroupCullingRenderPass::RecordPass(RecordContext* record_context) {
 	auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
 	CmdSetRootSignature(record_context, root_signature);
 	CmdSetPipelineState(record_context, pipeline_ids[(u32)pass]);
+	
+	if (pass == MeshletCullingPass::Raytracing) {
+		descriptor_table.meshlet_group_culling_commands = VirtualResourceID::RtMeshletGroupCullingCommands;
+		descriptor_table.meshlet_culling_commands       = VirtualResourceID::RtMeshletCullingCommands;
+		descriptor_table.culling_hzb                    = VirtualResourceID::None;
+	}
 	
 	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
 	CmdSetRootArgument(record_context, root_signature.scene, VirtualResourceID::SceneConstants);
@@ -123,6 +135,15 @@ void MeshletCullingRenderPass::RecordPass(RecordContext* record_context) {
 	auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
 	CmdSetRootSignature(record_context, root_signature);
 	CmdSetPipelineState(record_context, pipeline_ids[(u32)pass]);
+	
+	if (pass == MeshletCullingPass::Raytracing) {
+		descriptor_table.texture_streaming_feedback = VirtualResourceID::None;
+		descriptor_table.meshlet_culling_commands   = VirtualResourceID::RtMeshletCullingCommands;
+		descriptor_table.visible_meshlets           = VirtualResourceID::RtVisibleMeshlets;
+		descriptor_table.culling_hzb                = VirtualResourceID::None;
+	} else {
+		descriptor_table.instance_meshlet_counts    = VirtualResourceID::None;
+	}
 	
 	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
 	CmdSetRootArgument(record_context, root_signature.scene, VirtualResourceID::SceneConstants);

@@ -31,12 +31,16 @@ struct CommandQueueContextD3D12 {
 	
 	ID3D12GraphicsCommandList7* command_list = nullptr;
 	FixedCountArray<ID3D12CommandAllocator*, number_of_frames_in_flight> command_allocators = {};
+	
+	u64 last_command_allocator_reset_index = 0;
+	D3D12_COMMAND_LIST_TYPE type = D3D12_COMMAND_LIST_TYPE_NONE;
 };
 
 struct GraphicsContextD3D12 : GraphicsContext {
 	ID3D12Device10* device = nullptr;
 	
 	CommandQueueContextD3D12 graphics_context;
+	CommandQueueContextD3D12 compute_context;
 	CommandQueueContextD3D12 async_copy_context;
 	
 	FixedCountArray<ID3D12DescriptorHeap*,       (u32)DescriptorHeapType::Count> descriptor_heaps;
@@ -68,3 +72,7 @@ extern void ProfilerEndScope(ID3D12GraphicsCommandList* command_list);
 
 extern void ProfilerBeginScope(const char* label, ID3D12CommandQueue* command_list);
 extern void ProfilerEndScope(ID3D12CommandQueue* command_list);
+
+void ResetCommandQueueContext(GraphicsContextD3D12* context, CommandQueueContextD3D12* queue_context, u64 submit_index);
+void SubmitCommandQueueContext(GraphicsContextD3D12* context, CommandQueueContextD3D12* queue_context, ArrayView<u64> wait_indices, u64 signal_index);
+CommandQueueContextD3D12& GetCommandQueueContext(GraphicsContextD3D12* context, CommandQueueType queue_type);

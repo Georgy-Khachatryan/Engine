@@ -151,7 +151,7 @@ struct BuildInputsTLAS {
 
 
 NOTES()
-enum struct CommandQueueType : u32 {
+enum struct CommandQueueType : u8 {
 	Graphics = 0,
 	Compute  = 1,
 	
@@ -211,9 +211,15 @@ struct PipelineID {
 
 enum struct ResourceAccessFlags : u8 {
 	None                 = 0,
-	IsTexture            = 1u << 0,
-	IsFullResourceAccess = 1u << 1,
-	IsErased             = 1u << 2,
+	DepthPlane           = 1u << 0,
+	StencilPlane         = 1u << 1,
+	PlaneMask            = DepthPlane | StencilPlane,
+	IsTexture            = 1u << 2,
+	IsFullResourceAccess = 1u << 3,
+	IsErased             = 1u << 4,
+	IsFolded             = 1u << 5,
+	IsFirstAccess        = 1u << 6,
+	IsLastAccess         = 1u << 7,
 };
 ENUM_FLAGS_OPERATORS(ResourceAccessFlags);
 
@@ -225,7 +231,7 @@ struct ResourceAccessDefinition {
 	ResourceAccessMask access_mask = ResourceAccessMask::None;
 	
 	ResourceAccessFlags flags = ResourceAccessFlags::None;
-	u8 plane_mask = 0;
+	u8 command_list_index = 0;
 	
 	u8 mip_index = 0;
 	u8 mip_count = 0;
@@ -486,6 +492,21 @@ struct PipelineStateDescription {
 	const PipelineDepthStencil* depth_stencil = nullptr;
 	const PipelineRasterizer*   rasterizer    = nullptr;
 };
+
+compile_const u64 max_command_lists_per_frame = 256; // Command list index fits into u8.
+
+struct QueueSubmitIndex {
+	u64 submit_index = 0;
+	CommandQueueType queue_type = CommandQueueType::Graphics;
+};
+
+inline u64 EncodeQueueSubmitIndex(u64 submit_index, u64 command_list_index) {
+	return submit_index * max_command_lists_per_frame + command_list_index;
+}
+
+inline u64 EncodeEndOfQueueSubmitIndex(u64 submit_index) {
+	return submit_index * max_command_lists_per_frame + (max_command_lists_per_frame - 1);
+}
 
 
 struct GpuReadbackQueueElement {

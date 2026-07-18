@@ -36,8 +36,13 @@ static CommandPacketT& AppendPacket(RecordContext* record_context) {
 }
 
 static void AppendResourceAccesses(RecordContext* record_context, ArrayView<ResourceAccessDefinition> resource_accesses) {
-	record_context->state_cache.is_dirty = true;
-
+	auto& state_cache = record_context->state_cache;
+	state_cache.is_dirty = true;
+	
+	for (auto& access : resource_accesses) {
+		access.command_list_index = state_cache.command_list_index;
+	}
+	
 	ArrayAppend(record_context->resource_accesses, record_context->alloc, ArrayCopy(resource_accesses, record_context->alloc));
 	ArrayAppend(record_context->resource_access_command_prefix_sum, record_context->alloc, record_context->command_count);
 }
@@ -51,15 +56,14 @@ static ResourceAccessDefinition CreateBufferResourceAccess(VirtualResourceID res
 	return access;
 }
 
-static ResourceAccessDefinition CreateTextureResourceAccess(VirtualResourceID resource_id, PipelineStagesMask stages_mask, ResourceAccessMask access_mask, u8 plane_mask = 0) {
+static ResourceAccessDefinition CreateTextureResourceAccess(VirtualResourceID resource_id, PipelineStagesMask stages_mask, ResourceAccessMask access_mask, ResourceAccessFlags plane_mask = ResourceAccessFlags::None) {
 	ResourceAccessDefinition access;
 	access.resource_id = resource_id;
 	access.array_index = 0;
 	access.array_count = 1;
 	access.mip_index   = 0;
 	access.mip_count   = 1;
-	access.plane_mask  = plane_mask;
-	access.flags       = ResourceAccessFlags::IsTexture;
+	access.flags       = ResourceAccessFlags::IsTexture | plane_mask;
 	access.stages_mask = stages_mask;
 	access.access_mask = access_mask;
 	return access;
@@ -137,19 +141,23 @@ static void AppendResourceBindings(RecordContext* record_context, ArrayView<Reso
 			bool depth_write = HasAnyFlags(state_cache.depth_stencil_access, DepthStencilAccess::DepthWrite);
 			auto stages_mask = depth_write ? PipelineStagesMask::DepthStencilRW : PipelineStagesMask::DepthStencilRO;
 			auto access_mask = depth_write ? ResourceAccessMask::DepthStencilRW : ResourceAccessMask::DepthStencilRO;
-			ArrayAppend(resource_accesses, CreateTextureResourceAccess(state_cache.depth_stencil, stages_mask, access_mask, 0x1));
+			ArrayAppend(resource_accesses, CreateTextureResourceAccess(state_cache.depth_stencil, stages_mask, access_mask, ResourceAccessFlags::DepthPlane));
 		}
 		
 		if (HasAnyFlags(state_cache.depth_stencil_access, DepthStencilAccess::StencilAccess)) {
 			bool stencil_write = HasAnyFlags(state_cache.depth_stencil_access, DepthStencilAccess::StencilWrite);
 			auto stages_mask = stencil_write ? PipelineStagesMask::DepthStencilRW : PipelineStagesMask::DepthStencilRO;
 			auto access_mask = stencil_write ? ResourceAccessMask::DepthStencilRW : ResourceAccessMask::DepthStencilRO;
-			ArrayAppend(resource_accesses, CreateTextureResourceAccess(state_cache.depth_stencil, stages_mask, access_mask, 0x2));
+			ArrayAppend(resource_accesses, CreateTextureResourceAccess(state_cache.depth_stencil, stages_mask, access_mask, ResourceAccessFlags::StencilPlane));
 		}
 	}
 	
 	for (auto& access : indirect_accesses) {
 		ArrayAppend(resource_accesses, access);
+	}
+	
+	for (auto& access : resource_accesses) {
+		access.command_list_index = state_cache.command_list_index;
 	}
 	
 	ArrayAppend(record_context->resource_accesses, record_context->alloc, resource_accesses);
@@ -463,4 +471,18 @@ void CmdDispatchDLSS(RecordContext* record_context, const DlssDispatchContext& d
 	resource_accesses[4] = CreateTextureResourceAccess(dispatch_context.exposure_texture, PipelineStagesMask::ComputeShader, ResourceAccessMask::SRV);
 	
 	AppendResourceAccesses(record_context, resource_accesses);
+}
+
+void QueueCmdSubmit(RecordContext* record_context, CommandQueueType queue_type, const FixedCountArray<u64, (u32)CommandQueueType::Count>& wait_indices, u64 signal_index) {
+	RecordContextSubmitRange submit_range;
+	submit_range.wait_indices = wait_indices;
+	submit_range.signal_index = signal_index;
+	submit_range.queue_type   = queue_type;
+	submit_range.end_resource_access_range_index = (u32)record_context->resource_access_command_prefix_sum.count;
+	ArrayAppend(record_context->submit_range_prefix_sum, record_context->alloc, submit_range);
+	
+	DebugAssert(record_context->submit_range_prefix_sum.count <= max_command_lists_per_frame, "Too many command lists in a single frame.");
+	
+	auto& state_cache = record_context->state_cache;
+	state_cache.command_list_index = (u8)record_context->submit_range_prefix_sum.count;
 }

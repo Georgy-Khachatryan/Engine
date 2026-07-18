@@ -25,8 +25,16 @@ struct RecordContextStateCache {
 	CommandQueueType current_render_pass_type = CommandQueueType::Graphics;
 	PipelineStagesMask stages_mask = PipelineStagesMask::None;
 	DepthStencilAccess depth_stencil_access = DepthStencilAccess::None;
+	u8 command_list_index = 0;
 	
 	bool is_dirty = false;
+};
+
+struct RecordContextSubmitRange {
+	FixedCountArray<u64, (u32)CommandQueueType::Count> wait_indices = {};
+	u64 signal_index = 0;
+	u32 end_resource_access_range_index = 0;
+	CommandQueueType queue_type = CommandQueueType::Graphics;
 };
 
 struct RecordContext {
@@ -47,6 +55,7 @@ struct RecordContext {
 	
 	Array<ArrayView<ResourceAccessDefinition>> resource_accesses;
 	Array<u32> resource_access_command_prefix_sum;
+	Array<RecordContextSubmitRange> submit_range_prefix_sum;
 	
 	RecordContextStateCache state_cache;
 };
@@ -86,6 +95,8 @@ void CmdSetConstantBuffer(RecordContext* record_context, u32 offset, GpuAddress 
 
 void CmdProfilerBeginScope(RecordContext* record_context, String label);
 void CmdProfilerEndScope(RecordContext* record_context);
+
+void QueueCmdSubmit(RecordContext* record_context, CommandQueueType queue_type, const FixedCountArray<u64, (u32)CommandQueueType::Count>& wait_indices, u64 signal_index);
 
 void ReplayRecordContext(GraphicsContext* context, RecordContext* record_context);
 

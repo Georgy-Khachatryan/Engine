@@ -74,6 +74,11 @@ enum struct VirtualResourceID : u32 {
 	MeshletGroupCullingCommands,
 	MeshletCullingCommands,
 	MeshletIndirectArguments,
+	
+	RtVisibleMeshlets,
+	RtMeshletGroupCullingCommands,
+	RtMeshletCullingCommands,
+	
 	InstanceMeshletCounts,
 	MeshletRtasIndirectArguments,
 	
@@ -559,7 +564,7 @@ struct MeshletBlasWriteAddressesRenderPass {
 	struct Descriptors : HLSL::BaseDescriptorTable {
 		HLSL::RegularBuffer<uint4> indirect_arguments      = VirtualResourceID::MeshletIndirectArguments;
 		HLSL::ByteBuffer           mesh_asset_buffer       = VirtualResourceID::MeshAssetBuffer;
-		HLSL::RegularBuffer<uint2> visible_meshlets        = VirtualResourceID::VisibleMeshlets;
+		HLSL::RegularBuffer<uint2> visible_meshlets        = VirtualResourceID::RtVisibleMeshlets;
 		HLSL::RWRegularBuffer<u32> instance_meshlet_counts = VirtualResourceID::InstanceMeshletCounts;
 		HLSL::RWByteBuffer         scratch_buffer          = VirtualResourceID::StreamingScratchBuffer;
 	};
@@ -629,10 +634,12 @@ struct MeshletConstants {
 	compile_const u32 meshlet_group_culling_command_bin_count = 8;
 	compile_const u32 meshlet_group_culling_command_bin_size  = 16 * 1024;
 	compile_const u32 meshlet_group_culling_command_count     = meshlet_group_culling_command_bin_size * (meshlet_group_culling_command_bin_count + disocclusion_bin_count);
+	compile_const u32 rt_meshlet_group_culling_command_count  = meshlet_group_culling_command_bin_size * meshlet_group_culling_command_bin_count;
 	
 	compile_const u32 meshlet_culling_command_bin_count  = 6;
 	compile_const u32 meshlet_culling_command_bin_size   = 16 * 1024;
 	compile_const u32 meshlet_culling_command_count      = meshlet_culling_command_bin_size * (meshlet_culling_command_bin_count + disocclusion_bin_count);
+	compile_const u32 rt_meshlet_culling_command_count   = meshlet_culling_command_bin_size * meshlet_culling_command_bin_count;
 	
 	compile_const u32 max_meshlet_blas_count  = 512;
 	compile_const u32 max_total_blas_meshlets = 64 * 1024;
@@ -724,9 +731,9 @@ struct MeshletAllocateStreamingFeedbackRenderPass {
 	AssetEntitySystem* asset_system = nullptr;
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
-		HLSL::RegularBuffer<u32> mesh_asset_alive_mask = VirtualResourceID::MeshAssetAliveMask;
-		HLSL::RWRegularBuffer<GpuMeshAssetData> mesh_asset_data = VirtualResourceID::GpuMeshAssetData;
-		HLSL::RWRegularBuffer<u32> meshlet_streaming_feedback = VirtualResourceID::MeshletStreamingFeedback;
+		HLSL::RegularBuffer<u32>                mesh_asset_alive_mask      = VirtualResourceID::MeshAssetAliveMask;
+		HLSL::RWRegularBuffer<GpuMeshAssetData> mesh_asset_data            = VirtualResourceID::GpuMeshAssetData;
+		HLSL::RWRegularBuffer<u32>              meshlet_streaming_feedback = VirtualResourceID::MeshletStreamingFeedback;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {
@@ -744,19 +751,18 @@ struct MeshEntityCullingRenderPass {
 	MeshletCullingPass pass = MeshletCullingPass::Main;
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
-		HLSL::RegularBuffer<u32>               mesh_alive_mask   = VirtualResourceID::MeshEntityAliveMask;
-		HLSL::RegularBuffer<GpuTransform> prev_mesh_transforms   = VirtualResourceID::MeshEntityPrevGpuTransform;
-		HLSL::RegularBuffer<GpuTransform>      mesh_transforms   = VirtualResourceID::MeshEntityGpuTransform;
-		HLSL::RegularBuffer<GpuMeshAssetData>  mesh_asset_data   = VirtualResourceID::GpuMeshAssetData;
-		HLSL::RegularBuffer<GpuMeshEntityData> mesh_entity_data  = VirtualResourceID::GpuMeshEntityData;
-		HLSL::ByteBuffer                       mesh_asset_buffer = VirtualResourceID::MeshAssetBuffer;
-		
-		HLSL::Texture2D<float> culling_hzb = VirtualResourceID::CullingHZB;
+		HLSL::RegularBuffer<u32>               mesh_alive_mask      = VirtualResourceID::MeshEntityAliveMask;
+		HLSL::RegularBuffer<GpuTransform>      prev_mesh_transforms = VirtualResourceID::MeshEntityPrevGpuTransform;
+		HLSL::RegularBuffer<GpuTransform>      mesh_transforms      = VirtualResourceID::MeshEntityGpuTransform;
+		HLSL::RegularBuffer<GpuMeshAssetData>  mesh_asset_data      = VirtualResourceID::GpuMeshAssetData;
+		HLSL::RegularBuffer<GpuMeshEntityData> mesh_entity_data     = VirtualResourceID::GpuMeshEntityData;
+		HLSL::ByteBuffer                       mesh_asset_buffer    = VirtualResourceID::MeshAssetBuffer;
+		HLSL::Texture2D<float>                 culling_hzb          = VirtualResourceID::CullingHZB;
 		
 		HLSL::RWRegularBuffer<u32>   mesh_streaming_feedback        = VirtualResourceID::MeshStreamingFeedback;
 		HLSL::RWRegularBuffer<u32>   mesh_entity_culling_commands   = VirtualResourceID::MeshEntityCullingCommands;
 		HLSL::RWRegularBuffer<uint2> meshlet_group_culling_commands = VirtualResourceID::MeshletGroupCullingCommands;
-		HLSL::RWRegularBuffer<uint4> indirect_arguments = VirtualResourceID::MeshletIndirectArguments;
+		HLSL::RWRegularBuffer<uint4> indirect_arguments             = VirtualResourceID::MeshletIndirectArguments;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {
@@ -774,18 +780,17 @@ struct MeshletGroupCullingRenderPass {
 	MeshletCullingPass pass = MeshletCullingPass::Main;
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
-		HLSL::RegularBuffer<GpuTransform> prev_mesh_transforms   = VirtualResourceID::MeshEntityPrevGpuTransform;
-		HLSL::RegularBuffer<GpuTransform>      mesh_transforms   = VirtualResourceID::MeshEntityGpuTransform;
-		HLSL::RegularBuffer<GpuMeshAssetData>  mesh_asset_data   = VirtualResourceID::GpuMeshAssetData;
-		HLSL::RegularBuffer<GpuMeshEntityData> mesh_entity_data  = VirtualResourceID::GpuMeshEntityData;
-		HLSL::ByteBuffer                       mesh_asset_buffer = VirtualResourceID::MeshAssetBuffer;
-		
-		HLSL::Texture2D<float> culling_hzb = VirtualResourceID::CullingHZB;
+		HLSL::RegularBuffer<GpuTransform>      prev_mesh_transforms = VirtualResourceID::MeshEntityPrevGpuTransform;
+		HLSL::RegularBuffer<GpuTransform>      mesh_transforms      = VirtualResourceID::MeshEntityGpuTransform;
+		HLSL::RegularBuffer<GpuMeshAssetData>  mesh_asset_data      = VirtualResourceID::GpuMeshAssetData;
+		HLSL::RegularBuffer<GpuMeshEntityData> mesh_entity_data     = VirtualResourceID::GpuMeshEntityData;
+		HLSL::ByteBuffer                       mesh_asset_buffer    = VirtualResourceID::MeshAssetBuffer;
+		HLSL::Texture2D<float>                 culling_hzb          = VirtualResourceID::CullingHZB;
 		
 		HLSL::RWRegularBuffer<uint2> meshlet_group_culling_commands = VirtualResourceID::MeshletGroupCullingCommands;
-		HLSL::RWRegularBuffer<uint2> meshlet_culling_commands = VirtualResourceID::MeshletCullingCommands;
-		HLSL::RWRegularBuffer<uint4> indirect_arguments = VirtualResourceID::MeshletIndirectArguments;
-		HLSL::RWRegularBuffer<u32> meshlet_streaming_feedback = VirtualResourceID::MeshletStreamingFeedback;
+		HLSL::RWRegularBuffer<uint2> meshlet_culling_commands       = VirtualResourceID::MeshletCullingCommands;
+		HLSL::RWRegularBuffer<uint4> indirect_arguments             = VirtualResourceID::MeshletIndirectArguments;
+		HLSL::RWRegularBuffer<u32>   meshlet_streaming_feedback     = VirtualResourceID::MeshletStreamingFeedback;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {
@@ -808,20 +813,19 @@ struct MeshletCullingRenderPass {
 	MeshletCullingPass pass = MeshletCullingPass::Main;
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
-		HLSL::RegularBuffer<GpuTransform> prev_mesh_transforms   = VirtualResourceID::MeshEntityPrevGpuTransform;
-		HLSL::RegularBuffer<GpuTransform>      mesh_transforms   = VirtualResourceID::MeshEntityGpuTransform;
-		HLSL::RegularBuffer<GpuMeshAssetData>  mesh_asset_data   = VirtualResourceID::GpuMeshAssetData;
-		HLSL::RegularBuffer<GpuMeshEntityData> mesh_entity_data  = VirtualResourceID::GpuMeshEntityData;
-		HLSL::ByteBuffer                       mesh_asset_buffer = VirtualResourceID::MeshAssetBuffer;
+		HLSL::RegularBuffer<GpuTransform>           prev_mesh_transforms  = VirtualResourceID::MeshEntityPrevGpuTransform;
+		HLSL::RegularBuffer<GpuTransform>           mesh_transforms       = VirtualResourceID::MeshEntityGpuTransform;
+		HLSL::RegularBuffer<GpuMeshAssetData>       mesh_asset_data       = VirtualResourceID::GpuMeshAssetData;
+		HLSL::RegularBuffer<GpuMeshEntityData>      mesh_entity_data      = VirtualResourceID::GpuMeshEntityData;
+		HLSL::ByteBuffer                            mesh_asset_buffer     = VirtualResourceID::MeshAssetBuffer;
 		HLSL::RegularBuffer<GpuMaterialTextureData> material_texture_data = VirtualResourceID::MaterialAssetTextureData;
+		HLSL::Texture2D<float>                      culling_hzb           = VirtualResourceID::CullingHZB;
 		
-		HLSL::Texture2D<float> culling_hzb = VirtualResourceID::CullingHZB;
-		
-		HLSL::RWRegularBuffer<u32> texture_streaming_feedback = VirtualResourceID::TextureStreamingFeedback;
-		HLSL::RWRegularBuffer<uint2> meshlet_culling_commands = VirtualResourceID::MeshletCullingCommands;
-		HLSL::RWRegularBuffer<uint2> visible_meshlets         = VirtualResourceID::VisibleMeshlets;
-		HLSL::RWRegularBuffer<uint4> indirect_arguments       = VirtualResourceID::MeshletIndirectArguments;
-		HLSL::RWRegularBuffer<u32>   instance_meshlet_counts  = VirtualResourceID::InstanceMeshletCounts;
+		HLSL::RWRegularBuffer<u32>   texture_streaming_feedback = VirtualResourceID::TextureStreamingFeedback;
+		HLSL::RWRegularBuffer<uint2> meshlet_culling_commands   = VirtualResourceID::MeshletCullingCommands;
+		HLSL::RWRegularBuffer<uint2> visible_meshlets           = VirtualResourceID::VisibleMeshlets;
+		HLSL::RWRegularBuffer<uint4> indirect_arguments         = VirtualResourceID::MeshletIndirectArguments;
+		HLSL::RWRegularBuffer<u32>   instance_meshlet_counts    = VirtualResourceID::InstanceMeshletCounts;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {
@@ -899,10 +903,9 @@ struct BuildHzbRenderPass {
 
 NOTES(Meta::ShaderName{ "LightCulling.hlsl"_sl })
 enum struct LightCullingShaders : u32 {
-	ClearBuffers       = 1u << 0,
-	LightEntityCulling = 1u << 1,
-	LightCulling       = 1u << 2,
-	LightList          = 1u << 3,
+	LightEntityCulling = 1u << 0,
+	LightCulling       = 1u << 1,
+	LightList          = 1u << 2,
 };
 SHADER_DEFINITION_GENERATED_CODE(LightCullingShaders);
 

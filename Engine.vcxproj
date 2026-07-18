@@ -86,6 +86,7 @@
     <ClCompile Include="Renderer/ReferencePathTracerRenderPasses.cpp" />
     <ClCompile Include="Renderer/Renderer.cpp" />
     <ClCompile Include="Renderer/RendererEntities.cpp" />
+    <ClCompile Include="Renderer/RenderPassArray.cpp" />
     <ClCompile Include="Renderer/RenderPasses.cpp" />
     <ClCompile Include="Renderer/TextureAssetImporter.cpp" />
     <ClCompile Include="Renderer/TextureStreamingSystem.cpp" />
@@ -131,6 +132,7 @@
     <ClInclude Include="Renderer/MeshStreamingSystem.h" />
     <ClInclude Include="Renderer/Renderer.h" />
     <ClInclude Include="Renderer/RendererEntities.h" />
+    <ClInclude Include="Renderer/RenderPassArray.h" />
     <ClInclude Include="Renderer/RenderPasses.h" />
     <ClInclude Include="Renderer/StreamingSystem.h" />
     <ClInclude Include="Renderer/TextureAsset.h" />
