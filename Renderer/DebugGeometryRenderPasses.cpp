@@ -239,8 +239,6 @@ void DebugGeometryRenderPass::CreatePipelines(PipelineLibrary* lib) {
 }
 
 void DebugGeometryRenderPass::RecordPass(RecordContext* record_context) {
-	if (debug_mesh_instance_arrays.count == 0) return;
-	
 	CmdClearDepthStencil(record_context, VirtualResourceID::DebugGeometryDepthStencil);
 	CmdSetRenderTargets(record_context, VirtualResourceID::SceneRadiance, VirtualResourceID::DebugGeometryDepthStencil);
 	
@@ -267,21 +265,55 @@ void DebugGeometryRenderPass::RecordPass(RecordContext* record_context) {
 	auto vertex_buffer_gpu_address = GpuAddress(VirtualResourceID::DebugMeshBuffer, 0u);
 	auto index_buffer_gpu_address  = GpuAddress(VirtualResourceID::DebugMeshBuffer, (u32)(debug_geometry_buffer->vertex_count * sizeof(float4)));
 	
-	auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
-	descriptor_table.vertices.Bind(vertex_buffer_gpu_address, (u32)(debug_geometry_buffer->vertex_count * sizeof(float4)));
-	descriptor_table.instances.Bind(instances_gpu_address, (u32)(debug_mesh_instance_count * sizeof(DebugMeshInstance)));
-	
 	CmdSetIndexBufferView(record_context, index_buffer_gpu_address, (u32)(debug_geometry_buffer->index_count * sizeof(u32)), TextureFormat::R32_UINT);
-	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
 	
-	u32 mesh_instance_offset = 0;
-	for (auto [instance_type, debug_mesh_instances] : debug_mesh_instance_arrays) {
-		auto& layout = debug_geometry_buffer->mesh_layouts[(u32)instance_type];
+	if (debug_mesh_instance_arrays.count != 0) {
+		auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
+		descriptor_table.vertices.Bind(vertex_buffer_gpu_address, (u32)(debug_geometry_buffer->vertex_count * sizeof(float4)));
+		descriptor_table.instances.Bind(instances_gpu_address, (u32)(debug_mesh_instance_count * sizeof(DebugMeshInstance)));
+		CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
 		
-		CmdSetRootArgument(record_context, root_signature.constants, { instance_type });
-		CmdDrawIndexedInstanced(record_context, layout.index_count, (u32)debug_mesh_instances.count, layout.index_offset, layout.vertex_offset, mesh_instance_offset);
+		u32 mesh_instance_offset = 0;
+		for (auto [instance_type, debug_mesh_instances] : debug_mesh_instance_arrays) {
+			auto& layout = debug_geometry_buffer->mesh_layouts[(u32)instance_type];
+			
+			CmdSetRootArgument(record_context, root_signature.constants, { instance_type });
+			CmdDrawIndexedInstanced(record_context, layout.index_count, (u32)debug_mesh_instances.count, layout.index_offset, layout.vertex_offset, mesh_instance_offset);
+			
+			mesh_instance_offset += (u32)debug_mesh_instances.count;
+		}
+	}
+	
+	{
+		auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
+		descriptor_table.vertices.Bind(vertex_buffer_gpu_address, (u32)(debug_geometry_buffer->vertex_count * sizeof(float4)));
+		descriptor_table.instances.Bind(VirtualResourceID::DebugMeshInstances);
+		CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
 		
-		mesh_instance_offset += (u32)debug_mesh_instances.count;
+		u32 indirect_arguments_offset = 0;
+		for (u32 i = 0; i < (u32)DebugMeshInstanceType::Count; i += 1) {
+			auto& layout = debug_geometry_buffer->mesh_layouts[(u32)i];
+			
+			CmdSetRootArgument(record_context, root_signature.constants, { (DebugMeshInstanceType)i });
+			CmdDrawIndexedInstancedIndirect(record_context, GpuAddress(VirtualResourceID::DebugGeometryIndirectArguments, i * sizeof(DebugGeometryIndirectArguments)));
+		}
 	}
 }
 
+void DebugGeometryClearBuffersRenderPass::RecordPass(RecordContext* record_context) {
+	auto [gpu_address, cpu_address] = AllocateTransientUploadBuffer<DebugGeometryIndirectArguments>(record_context, (u32)DebugMeshInstanceType::Count);
+	
+	for (u32 i = 0; i < (u32)DebugMeshInstanceType::Count; i += 1) {
+		auto& layout = debug_geometry_buffer->mesh_layouts[(u32)i];
+		
+		DebugGeometryIndirectArguments arguments;
+		arguments.index_count_per_instance = layout.index_count;
+		arguments.instance_count           = 0;
+		arguments.start_index_location     = layout.index_offset;
+		arguments.base_vertex_location     = layout.vertex_offset;
+		arguments.start_instance_location  = i * DebugGeometrySettings::debug_mesh_instance_count;
+		memcpy(cpu_address + i, &arguments, sizeof(arguments));
+	}
+	
+	CmdCopyBufferToBuffer(record_context, gpu_address, VirtualResourceID::DebugGeometryIndirectArguments, (u32)DebugMeshInstanceType::Count * sizeof(DebugGeometryIndirectArguments));
+}

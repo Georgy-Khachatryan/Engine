@@ -1057,7 +1057,10 @@ void ReplayRecordContext(GraphicsContext* api_context, RecordContext* record_con
 	
 	auto resources = ArrayView<VirtualResource>(record_context->resource_table->virtual_resources);
 	
-	for (auto& resource : resources) {
+	extern ArrayView<String> virtual_resource_id_names;
+	for (u32 resource_index = 0; resource_index < resources.count; resource_index += 1) {
+		auto& resource = resources[resource_index];
+		
 		if (resource.type == VirtualResource::Type::VirtualTexture && resource.texture.size != resource.texture.allocated_size) {
 			if (resource.texture.resource.handle != nullptr) {
 				ReleaseTextureResource(context, resource.texture.resource, ResourceReleaseCondition::EndOfThisGpuFrame);
@@ -1065,6 +1068,8 @@ void ReplayRecordContext(GraphicsContext* api_context, RecordContext* record_con
 			
 			resource.texture.resource = CreateTextureResource(context, resource.texture.size, resource.flags);
 			resource.texture.allocated_size = resource.texture.size;
+			
+			SetNameD3D12(alloc, resource.texture.resource.d3d12, virtual_resource_id_names[resource_index]);
 		} else if (resource.type == VirtualResource::Type::VirtualBuffer && resource.buffer.size != resource.buffer.allocated_size) {
 			if (resource.buffer.resource.handle != nullptr) {
 				ReleaseBufferResource(context, resource.buffer.resource, ResourceReleaseCondition::EndOfThisGpuFrame);
@@ -1072,6 +1077,8 @@ void ReplayRecordContext(GraphicsContext* api_context, RecordContext* record_con
 			
 			resource.buffer.resource = CreateBufferResource(context, resource.buffer.size, resource.flags);
 			resource.buffer.allocated_size = resource.buffer.size;
+			
+			SetNameD3D12(alloc, resource.buffer.resource.d3d12, virtual_resource_id_names[resource_index]);
 		}
 	}
 	

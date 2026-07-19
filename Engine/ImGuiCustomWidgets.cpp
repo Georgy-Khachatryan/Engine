@@ -69,6 +69,10 @@ ImGuiMouseButton ImGui::EndMouseLock(ImGuiMouseLock& lock) {
 	return lock.locked_mouse_button;
 }
 
+ImVec2 ImGuiMouseLock::GetMousePos() {
+	return locked_mouse_button != ImGuiMouseButton_COUNT ? locked_mouse_pos : ImGui::GetMousePos();
+}
+
 
 struct InputTextHeapStringCallbackData {
 	String string;

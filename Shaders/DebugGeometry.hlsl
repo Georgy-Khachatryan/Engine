@@ -52,6 +52,9 @@ InputPS MainVS(uint start_vertex_location : SV_StartVertexLocation, uint vertex_
 
 #if defined(PIXEL_SHADER)
 float4 MainPS(InputPS input, float3 bary : SV_Barycentrics) : SV_Target0  {
-	return float4(lerp(input.normal * 0.5 + 0.5, input.color.xyz, input.color.w), 1.0);
+	uint2 tile_coordinates = (uint2)input.position.xy / 16u;
+	bool is_occluded = ((tile_coordinates.x ^ tile_coordinates.y) & 0x1) && (input.position.z < depth_stencil[(uint2)input.position.xy]);
+	
+	return float4(lerp(input.normal * 0.5 + 0.5, input.color.xyz, input.color.w) * (is_occluded ? 0.125 : 1.0), 1.0);
 }
 #endif // defined(PIXEL_SHADER)

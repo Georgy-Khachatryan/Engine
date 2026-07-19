@@ -29,6 +29,7 @@ struct ImGuiMouseLock {
 	ImVec2 locked_mouse_pos;
 	
 	void Update(ImGuiMouseButton button);
+	ImVec2 GetMousePos();
 };
 
 #define ImGuiScopeID(...) ImGui::PushID(__VA_ARGS__); defer{ ImGui::PopID(); }

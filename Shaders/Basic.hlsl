@@ -165,11 +165,19 @@ float3 EncodeSRGB(float3 x) { return select(x < 0.0031308, 12.92 * x, (1.055 * p
 float4 DecodeSRGB(float4 x) { return float4(DecodeSRGB(x.xyz), x.w); }
 float4 EncodeSRGB(float4 x) { return float4(EncodeSRGB(x.xyz), x.w); }
 
-float4 DecodeR8G8B8A8_UNORM(uint encoded) { return float4(uint4(encoded >> 0, encoded >> 8, encoded >> 16, encoded >> 24) & 0xFF) * (1.0 / 255.0); }
+float4 DecodeR8G8B8A8_UNORM(uint encoded) { return unpack_u8u32(encoded) * (1.0 / 255.0); }
 float4 DecodeR8G8B8A8_UNORM_SRGB(uint encoded) { return DecodeSRGB(DecodeR8G8B8A8_UNORM(encoded)); }
+
+uint EncodeR8G8B8A8_UNORM(float4 x) { return pack_clamp_u8(s32x4(x * 255.0)); }
+uint EncodeR8G8B8A8_UNORM(float3 x, float a = 1.0) { return EncodeR8G8B8A8_UNORM(float4(x, a)); }
+uint EncodeR8G8B8A8_UNORM_SRGB(float4 x) { return EncodeR8G8B8A8_UNORM(EncodeSRGB(x)); }
+uint EncodeR8G8B8A8_UNORM_SRGB(float3 x, float a = 1.0) { return EncodeR8G8B8A8_UNORM_SRGB(float4(x, a)); }
 
 float4 DecodeR16G16B16A16_SNORM(s16x4 encoded) { return float4(encoded) * (1.0 / s16_max); }
 float2 DecodeR16G16_SNORM(s16x2 encoded) { return float2(encoded) * (1.0 / s16_max); }
+
+s16x4 EncodeR16G16B16A16_SNORM(float4 x) { return (s16x4)(x * s16_max); }
+s16x2 EncodeR16G16_SNORM(float2 x) { return (s16x2)(x * s16_max); }
 
 template<typename T = float>
 vector<T, 3> DecodeR10G10B10(uint encoded) { return vector<T, 3>(uint3(encoded >> 0, encoded >> 10, encoded >> 20) & 0x3FF) / (T)1023.0; }
@@ -433,7 +441,7 @@ float3 TransformScreenUvToViewSpace(float2 uv, float clip_space_depth, float4 cl
 // Tom Duff, James Burgess, Per Christensen, Christophe Hery, Andrew Kensler, Max Liani, and Ryusuke Villemin.
 // 2017. Building an Orthonormal Basis, Revisited. https://jcgt.org/published/0006/01/01/
 float3x3 BuildOrthonormalBasis(float3 normal) {
-	float sign = normal.z < 0.f ? -1.0 : +1.0;
+	float sign = normal.z < 0.0 ? -1.0 : +1.0;
 	
 	float a = -1.0 / (sign + normal.z);
 	float b = normal.x * normal.y * a;
@@ -460,6 +468,30 @@ float3x3 QuatToRotationMatrix(quat q) {
 	result[2] = float3(      2.0 * (q.x * q.z - q.y * q.w),       2.0 * (q.y * q.z + q.x * q.w), 1.0 - 2.0 * (q.x * q.x + q.y * q.y));
 	return result;
 }
+
+quat AxisAxisZToQuat(float3 normal) {
+	quat result;
+	
+	// Similar idea to "Building an Orthonormal Basis, Revisited". Instead of checking
+	// if the normal is close to -Z axis, use a different transform for each hemisphere.
+	if (normal.z >= 0.0) {
+		// Rotate the normal in the upper hemisphere directly using half way quaternion:
+		// quat(cross(normal, z), dot(normal, z)) + quat(0.0, 0.0, 0.0, 1.0)
+		result = quat(normal.y, -normal.x, 0.0, 1.0 + normal.z); // 1.0 + normal.z >= 1.0
+	} else {
+		// In the negative hemisphere first rotate the normal to -Z axis using half way quaternion,
+		// and then rotate it around X axis by 180dg:
+		// quat(1.0, 0.0, 0.0, 0.0) * (quat(cross(normal, -z), dot(normal, -z)) + quat(0.0, 0.0, 0.0, 1.0))
+		result = quat(1.0 - normal.z, 0.0, normal.x, normal.y); // 1.0 - normal.z > 1.0
+	}
+	
+	// Normalization is needed because we're using half way quaternions,
+	// i.e. the average between 2x rotation and the identity rotation.
+	return normalize(result);
+}
+
+quat Conjugate(quat v) { return quat(-v.x, -v.y, -v.z, v.w); }
+
 
 #if defined(GENERATED_MESHDATA_HLSL)
 float3 TransformModelToWorldSpace(float3 model_space_position, GpuTransform model_to_world) {

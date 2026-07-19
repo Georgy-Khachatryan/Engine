@@ -26,7 +26,7 @@ struct ShaderCompilerStatistics {
 ArrayView<u64> CompileDirtyShaderPermutations(ShaderCompiler* compiler, StackAllocator* alloc);
 PipelineShaderBytecode GetShadersForPipelineIndex(ShaderCompiler* compiler, u64 pipeline_definition_index, ArrayView<u64> compiled_shader_mask);
 
-String GetShaderPermutationName(StackAllocator* alloc, const ShaderDefinition& definition, u64 permutation);
+String GetShaderPermutationName(StackAllocator* alloc, ShaderCompiler* compiler, u64 pipeline_definition_index);
 ShaderCompilerStatistics GetShaderCompilerStatistics(ShaderCompiler* compiler, StackAllocator* alloc);
 
 ShaderCompiler* CreateShaderCompiler(StackAllocator* alloc, ArrayView<String> root_signature_filenames, ArrayView<ShaderDefinition> shader_definitions, ArrayView<PipelineDefinition> pipeline_definitions);

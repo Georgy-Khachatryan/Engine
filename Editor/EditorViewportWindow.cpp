@@ -197,7 +197,8 @@ void EditorViewportWindow(StackAllocator* alloc, UndoRedoSystem& undo_redo_syste
 	mouse_lock.Update(ImGuiMouseButton_Right);
 	auto locked_mouse_button = ImGui::EndMouseLock(mouse_lock);
 	
-	auto mouse_uv = float2((ImGui::GetMousePos() - window_pos) / window_size);
+	auto window_relative_mouse_position = mouse_lock.GetMousePos() - window_pos;
+	auto mouse_uv = float2(window_relative_mouse_position / window_size);
 	CameraControls(camera_entity, scene_focused, scene_hovered, locked_mouse_button, mouse_uv, float2(window_size));
 	
 	ImGuiDrawList3D draw_list_3d;
@@ -217,6 +218,7 @@ void EditorViewportWindow(StackAllocator* alloc, UndoRedoSystem& undo_redo_syste
 	auto renderer_world = world_entity.renderer_world;
 	renderer_world->window_size                  = float2(window_size);
 	renderer_world->delta_time                   = ImGui::GetIO().DeltaTime;
+	renderer_world->mouse_cursor_position        = s32x2(window_relative_mouse_position);
 	renderer_world->debug_mesh_instance_arrays   = draw_list_3d.Flush();
 	renderer_world->scene_descriptor_heap_offset = scene_descriptor_heap_offset;
 }

@@ -130,6 +130,8 @@ static void CreateShaderPermutation(HeapAllocator* heap, ShaderPermutation& shad
 	shader.is_dirty = false;
 }
 
+static String GetShaderPermutationName(StackAllocator* alloc, const ShaderDefinition& definition, u64 permutation);
+
 struct IncludeHandler : IDxcIncludeHandler {
 	StackAllocator* alloc = nullptr;
 	IDxcIncludeHandler* dxc_default_include_handler = nullptr;
@@ -316,7 +318,7 @@ PipelineShaderBytecode GetShadersForPipelineIndex(ShaderCompiler* compiler, u64 
 	return result;
 }
 
-String GetShaderPermutationName(StackAllocator* alloc, const ShaderDefinition& definition, u64 permutation) {
+static String GetShaderPermutationName(StackAllocator* alloc, const ShaderDefinition& definition, u64 permutation) {
 	FixedCapacityArray<String, 65> strings;
 	ArrayAppend(strings, definition.filename);
 	
@@ -325,6 +327,12 @@ String GetShaderPermutationName(StackAllocator* alloc, const ShaderDefinition& d
 	}
 	
 	return StringJoin(alloc, strings, "-"_sl);
+}
+
+String GetShaderPermutationName(StackAllocator* alloc, ShaderCompiler* compiler, u64 pipeline_definition_index) {
+	auto& pipeline_definition = compiler->pipeline_definitions[pipeline_definition_index];
+	auto& shader_definition   = compiler->shader_definitions[pipeline_definition.shader_id.index];
+	return GetShaderPermutationName(alloc, shader_definition, pipeline_definition.permutation);
 }
 
 ShaderCompilerStatistics GetShaderCompilerStatistics(ShaderCompiler* compiler, StackAllocator* alloc) {

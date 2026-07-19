@@ -64,6 +64,8 @@ static void BuildResourceTable(RecordContext* record_context, WorldEntitySystem*
 	table.Set(ID::ExposureTexture,    TextureSize(TextureFormat::R32_FLOAT, 1, 1)); // Used only for third party SDKs.
 	
 	table.Set(ID::DebugGeometryDepthStencil, TextureSize(TextureFormat::D32_FLOAT, render_target_size), Flags::DSV);
+	table.Set(ID::DebugMeshInstances, DebugGeometrySettings::debug_mesh_instance_count * sizeof(DebugMeshInstance) * (u32)DebugMeshInstanceType::Count);
+	table.Set(ID::DebugGeometryIndirectArguments, (u32)DebugMeshInstanceType::Count * 20u);
 	
 	auto visible_light_tile_list_size = DivideAndRoundUp(render_target_size, LightingConstants::visible_light_tile_size);
 	table.Set(ID::VisibleLightTileList,      visible_light_tile_list_size.x * visible_light_tile_list_size.y * LightingConstants::visible_light_tile_area * sizeof(u32) * 2u);
@@ -191,6 +193,7 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	
 	scene.frame_index = (u32)record_context->frame_index;
 	scene.reference_path_tracer_percent = renderer_world.reference_path_tracer_percent;
+	scene.mouse_cursor_position = renderer_world.mouse_cursor_position;
 	
 	u64 blue_noise_offset_hash = ComputeHash64(record_context->frame_index / 32u);
 	scene.blue_noise_base_offset = uint2((u32)blue_noise_offset_hash, (u32)(blue_noise_offset_hash >> 32u));
@@ -279,6 +282,8 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 		update_meshlet_page_table.meshlet_streaming_system = renderer_context->meshlet_streaming_system;
 		
 		render_passes.Add<MeshletClearBuffersRenderPass>().world_system = world_system;
+		
+		render_passes.Add<DebugGeometryClearBuffersRenderPass>().debug_geometry_buffer = &renderer_context->debug_geometry_buffer;
 		
 		auto& meshlet_rtas_decode_vertex_buffer = render_passes.Add<MeshletRtasDecodeVertexBufferRenderPass>();
 		meshlet_rtas_decode_vertex_buffer.meshlet_streaming_system = renderer_context->meshlet_streaming_system;

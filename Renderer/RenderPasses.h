@@ -121,6 +121,8 @@ enum struct VirtualResourceID : u32 {
 	// Debug geometry:
 	DebugGeometryDepthStencil,
 	DebugMeshBuffer,
+	DebugMeshInstances,
+	DebugGeometryIndirectArguments,
 	
 	// Opaque handles from external SDKs:
 	XessHandle,
@@ -164,6 +166,22 @@ struct AtmosphereParameters {
 	
 	float3 sun_color = 1.f;
 	float sun_disk_radiance = 30.f; // W/(m^2*sr)
+};
+
+
+NOTES(Meta::HlslFile{ "DebugGeometryData.hlsl"_sl })
+struct DebugGeometryIndirectArguments {
+	u32 index_count_per_instance = 0;
+	u32 instance_count           = 0;
+	u32 start_index_location     = 0;
+	u32 base_vertex_location     = 0;
+	u32 start_instance_location  = 0;
+};
+
+NOTES()
+struct DebugDescriptorTable : HLSL::BaseDescriptorTable {
+	HLSL::RWRegularBuffer<DebugMeshInstance>              debug_mesh_instances              = VirtualResourceID::DebugMeshInstances;
+	HLSL::RWRegularBuffer<DebugGeometryIndirectArguments> debug_geometry_indirect_arguments = VirtualResourceID::DebugGeometryIndirectArguments;
 };
 
 
@@ -1531,6 +1549,18 @@ NOTES(Meta::ShaderName{ "DebugGeometry.hlsl"_sl })
 enum struct DebugGeometryShaders : u32 {};
 SHADER_DEFINITION_GENERATED_CODE(DebugGeometryShaders);
 
+NOTES(Meta::HlslFile{ debug_geometry_data_filename })
+struct DebugGeometrySettings {
+	compile_const u32 debug_mesh_instance_count = 16 * 1024;
+};
+
+NOTES(Meta::RenderPass{})
+struct DebugGeometryClearBuffersRenderPass {
+	RENDER_PASS_GENERATED_CODE();
+	
+	DebugGeometryBuffer* debug_geometry_buffer = nullptr;
+};
+
 NOTES(Meta::RenderPass{ CommandQueueType::Graphics })
 struct DebugGeometryRenderPass {
 	RENDER_PASS_GENERATED_CODE();
@@ -1539,6 +1569,7 @@ struct DebugGeometryRenderPass {
 	DebugGeometryBuffer* debug_geometry_buffer = nullptr;
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
+		HLSL::Texture2D<float> depth_stencil = VirtualResourceID::DepthStencil;
 		HLSL::RegularBuffer<float4>            vertices;
 		HLSL::RegularBuffer<DebugMeshInstance> instances;
 	};

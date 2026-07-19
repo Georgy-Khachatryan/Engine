@@ -94,6 +94,12 @@ void ReportErrorV(StackAllocator* alloc, u64 source_location, String format, Arr
 	error_context.ReportErrorV(alloc, String{ file.data + offset, length }, format, arguments);
 }
 
+void ReportError(StackAllocator* alloc, String format) {
+	ErrorReportContext error_context;
+	error_context.filepath = "Unknown File"_sl;
+	error_context.ReportErrorV(alloc, {}, format, {});
+}
+
 void CheckFieldIsReflected(StackAllocator* alloc, TypeInfoStruct* type_info, TypeInfoStructField& field) {
 	if (field.type == nullptr) {
 		ReportError(alloc, field.source_location, "Type of field '%' in struct '%' is not reflected."_sl, field.name, type_info->name);

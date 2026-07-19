@@ -443,15 +443,33 @@ void WriteCodeForRenderPasses(StackAllocator* alloc, ArrayView<TypeInfo*> hlsl_f
 		builder.Append("static CreatePipelinesCallback create_pipeline_callbacks_internal[] = {\n"_sl);
 		builder.Indent();
 		
-		for (u32 i = 0; i < root_signature_file.root_signatures.count; i += 1) {
-			auto name = root_signature_file.root_signatures[i].render_pass_name;
-			builder.Append("&%::CreatePipelines,\n"_sl, name);
+		for (auto& root_signature : root_signature_file.root_signatures) {
+			builder.Append("&%::CreatePipelines,\n"_sl, root_signature.render_pass_name);
 		}
 		
 		builder.Unindent();
 		builder.Append("};\n\n"_sl);
 		
 		builder.Append("ArrayView<CreatePipelinesCallback> create_pipeline_callbacks = { create_pipeline_callbacks_internal, % };\n\n"_sl, root_signature_file.root_signatures.count);
+	}
+	
+	{
+		builder.Append("static String virtual_resource_id_names_internal[] = {\n"_sl);
+		builder.Indent();
+		
+		auto* type_info_enum = TypeInfoCast<TypeInfoEnum>(TypeInfoOf<VirtualResourceID>());
+		if (type_info_enum == nullptr) {
+			ReportError(alloc, "VirtualResourceID is not reflected."_sl);
+		}
+		
+		for (auto& field : type_info_enum->fields) {
+			builder.Append("\"%\"_sl,\n"_sl, field.name);
+		}
+		
+		builder.Unindent();
+		builder.Append("};\n\n"_sl);
+		
+		builder.Append("ArrayView<String> virtual_resource_id_names = { virtual_resource_id_names_internal, % };\n\n"_sl, type_info_enum->fields.count);
 	}
 	
 	WriteGeneratedFile(alloc, "Renderer/Generated/RootSignature.cpp"_sl, builder.ToString());

@@ -18,8 +18,13 @@ static void SafeRelease(ResourceT*& resource) {
 	resource = nullptr;
 }
 
+void SetNameD3D12(StackAllocator* alloc, ID3D12Object* object, String name) {
+	TempAllocationScope(alloc);
+	object->SetName((wchar_t*)StringUtf8ToUtf16(alloc, name).data);
+}
+
 static void BuildPipelineStates(GraphicsContextD3D12* context, StackAllocator* alloc, bool build_only_dirty_pipelines = true);
-static void BuildRootSignatures(GraphicsContextD3D12* context, StackAllocator* alloc, ArrayView<ArrayView<u32>> root_signature_streams);
+static void BuildRootSignatures(GraphicsContextD3D12* context, StackAllocator* alloc, ArrayView<ArrayView<u32>> root_signature_streams, ArrayView<String> root_signature_filenames);
 static ID3D12CommandSignature* CreateCommandSignature(ID3D12Device10* device, D3D12_INDIRECT_ARGUMENT_TYPE type, u32 byte_stride);
 static CommandQueueContextD3D12 CreateCommandQueueContext(ID3D12Device10* device, D3D12_COMMAND_LIST_TYPE type);
 
@@ -170,7 +175,7 @@ GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
 		context->shader_compiler = CreateShaderCompiler(alloc, root_signature_filenames, shader_definition_table, context->pipeline_definitions);
 		SaveLoadShaderCache(context->shader_compiler, alloc, SaveLoadDirection::Loading);
 		
-		BuildRootSignatures(context, alloc, root_signature_streams);
+		BuildRootSignatures(context, alloc, root_signature_streams, root_signature_filenames);
 		BuildPipelineStates(context, alloc, false);
 	}
 	
@@ -469,10 +474,12 @@ static void BuildPipelineStates(GraphicsContextD3D12* context, StackAllocator* a
 			auto pipeline_state_description = CreatePipelineStateDescription(definition.pipeline_state_stream);
 			CreateGraphicsPipelineState(context, pipeline_state_description, bytecode, definition.root_signature_id.index, i);
 		}
+		
+		SetNameD3D12(alloc, context->pipeline_state_table[i], GetShaderPermutationName(alloc, context->shader_compiler, i));
 	}
 }
 
-static void BuildRootSignatures(GraphicsContextD3D12* context, StackAllocator* alloc, ArrayView<ArrayView<u32>> root_signature_streams) {
+static void BuildRootSignatures(GraphicsContextD3D12* context, StackAllocator* alloc, ArrayView<ArrayView<u32>> root_signature_streams, ArrayView<String> root_signature_filenames) {
 	ProfilerScope("BuildRootSignatures");
 	
 	FixedCapacityArray<D3D12_STATIC_SAMPLER_DESC1, 7> sampler_descs;
@@ -607,6 +614,8 @@ static void BuildRootSignatures(GraphicsContextD3D12* context, StackAllocator* a
 		}
 		
 		context->root_signature_table[root_signature_index] = root_signature;
+		
+		SetNameD3D12(alloc, root_signature, root_signature_filenames[root_signature_index]);
 	}
 }
 

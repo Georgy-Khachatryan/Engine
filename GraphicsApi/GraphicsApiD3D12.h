@@ -73,6 +73,8 @@ extern void ProfilerEndScope(ID3D12GraphicsCommandList* command_list);
 extern void ProfilerBeginScope(const char* label, ID3D12CommandQueue* command_list);
 extern void ProfilerEndScope(ID3D12CommandQueue* command_list);
 
+void SetNameD3D12(StackAllocator* alloc, ID3D12Object* object, String name);
+
 void ResetCommandQueueContext(GraphicsContextD3D12* context, CommandQueueContextD3D12* queue_context, u64 submit_index);
 void SubmitCommandQueueContext(GraphicsContextD3D12* context, CommandQueueContextD3D12* queue_context, ArrayView<u64> wait_indices, u64 signal_index);
 CommandQueueContextD3D12& GetCommandQueueContext(GraphicsContextD3D12* context, CommandQueueType queue_type);

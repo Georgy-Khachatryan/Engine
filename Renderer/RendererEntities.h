@@ -71,6 +71,9 @@ struct SceneConstants {
 	uint2 indirect_diffuse_cdf_tile_list_size;
 	uint2 blue_noise_base_offset;
 	
+	s32x2 mouse_cursor_position;
+	uint2 padding_3 = 0;
+	
 	compile_const u32 light_grid_cascade_count = 8;
 	FixedCountArray<float4, light_grid_cascade_count> light_grid_cascade_descs;
 };
@@ -184,6 +187,7 @@ struct RendererWorld {
 	
 	float2 window_size = float2(1.f, 1.f);
 	float  delta_time  = 0.f;
+	s32x2 mouse_cursor_position;
 	
 	float meshlet_target_error_pixels = 1.f;
 	float reference_path_tracer_percent = 0.f;

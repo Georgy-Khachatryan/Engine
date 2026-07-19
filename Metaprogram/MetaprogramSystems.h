@@ -25,4 +25,5 @@ void WriteCodeForMathLibrary(StackAllocator* alloc);
 void ReportErrorV(StackAllocator* alloc, u64 source_location, String format, ArrayView<StringFormatArgument> arguments);
 template<typename ... Args>
 void ReportError(StackAllocator* alloc, u64 source_location, String format, Args ... args) { FORMAT_PROC_BODY(ReportErrorV, alloc, source_location, format); }
+void ReportError(StackAllocator* alloc, String format);
 void CheckFieldIsReflected(StackAllocator* alloc, TypeInfoStruct* type_info, TypeInfoStructField& field);
