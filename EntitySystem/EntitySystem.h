@@ -56,6 +56,15 @@ union alignas(void*) ComponentStream {
 	ECS::GpuComponent<u8> gpu;
 };
 
+struct GpuComponentStreamAllocation {
+	void* handle = nullptr;
+	u32 size = 0;
+	
+	VirtualResourceID resource_id = (VirtualResourceID)0;
+	EntityTypeID entity_type_id;
+	ComponentTypeID component_type_id;
+};
+
 NOTES()
 enum struct SaveLoadFlags : u32 {
 	None = 0,
@@ -121,6 +130,8 @@ struct EntitySystemBase {
 	HashTable<u64, TypedEntityID> entity_guid_to_entity_id;
 	ArrayView<EntityTypeArray> entity_type_arrays;
 	u64 guid_random_seed = 0x7C7C4065B00D53D3ull;
+	
+	ArrayView<GpuComponentStreamAllocation> gpu_component_stream_allocations;
 	bool clear_gpu_mask_component_streams = false;
 	
 	HeapAllocator heap;
@@ -130,7 +141,7 @@ struct WorldEntitySystem : EntitySystemBase {};
 struct AssetEntitySystem : EntitySystemBase {};
 
 
-void InitializeEntitySystem(EntitySystemBase& system);
+void InitializeEntitySystem(EntitySystemBase& system, StackAllocator* alloc);
 void SaveLoadEntitySystem(SaveLoadBuffer& buffer, EntitySystemBase& system);
 bool SaveLoadEntitySystemToFile(StackAllocator* alloc, EntitySystemBase& system, String filepath, SaveLoadDirection direction);
 void ResetEntitySystem(EntitySystemBase& system);

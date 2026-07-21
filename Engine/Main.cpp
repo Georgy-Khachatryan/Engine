@@ -14,7 +14,7 @@
 #include "UndoRedoSystem.h"
 
 
-static void ApplicatingStatisticsWindow(WorldEntitySystem& world_system, AssetEntitySystem& asset_system, u64 world_entity_guid, u64 frame_initial_size, u64 frame_allocation_size, u64 transient_upload_allocation_size, u64 transient_readback_allocation_size, u64 imgui_heap_size, s32* swap_chain_format_index) {
+static void ApplicationStatisticsWindow(WorldEntitySystem& world_system, AssetEntitySystem& asset_system, u64 world_entity_guid, u64 frame_initial_size, u64 frame_allocation_size, u64 transient_upload_allocation_size, u64 transient_readback_allocation_size, u64 imgui_heap_size, s32* swap_chain_format_index) {
 	auto world_entity = QueryEntityByGUID<WorldEntityType>(world_system, world_entity_guid);
 	auto& meshlet_culling_statistics = world_entity.renderer_world->meshlet_culling_statistics;
 	
@@ -72,11 +72,11 @@ s32 main() {
 	
 	
 	WorldEntitySystem world_system;
-	InitializeEntitySystem(world_system);
+	InitializeEntitySystem(world_system, &alloc);
 	defer{ ReleaseHeapAllocator(world_system.heap); };
 	
 	AssetEntitySystem asset_system;
-	InitializeEntitySystem(asset_system);
+	InitializeEntitySystem(asset_system, &alloc);
 	defer{ ReleaseHeapAllocator(asset_system.heap); };
 	
 	UndoRedoSystem undo_redo_system;
@@ -100,23 +100,32 @@ s32 main() {
 		WindowSwapChainBeginFrame(swap_chain, graphics_context, &alloc);
 		ImGuiBeginFrame(window);
 		
-		ApplicatingStatisticsWindow(world_system, asset_system, world_entity_guid, frame_initial_size, frame_allocation_size, transient_upload_allocation_size, transient_readback_allocation_size, imgui_heap.ComputeTotalMemoryUsage(), &swap_chain_format_index);
+		ApplicationStatisticsWindow(world_system, asset_system, world_entity_guid, frame_initial_size, frame_allocation_size, transient_upload_allocation_size, transient_readback_allocation_size, imgui_heap.ComputeTotalMemoryUsage(), &swap_chain_format_index);
 		
 		LevelEditorUpdate(&alloc, graphics_context, undo_redo_system, world_system, asset_system, level_editor_io, world_entity_guid);
 		
 		Array<GpuComponentUploadBuffer> gpu_uploads;
 		auto* record_context = BeginRecordContext(&alloc, renderer_context, swap_chain, resource_table);
 		
-		UpdateEditorEntityComponents(&alloc, world_system, asset_system);
-		UpdateStreamingSystems(renderer_context, thread_pool, record_context, &world_system, &asset_system, world_entity_guid);
-		UpdateEntityGpuComponents(&alloc, record_context, world_system, asset_system, gpu_uploads);
-		UpdateRendererEntityGpuComponents(&alloc, thread_pool, renderer_context->async_transfer_queue, record_context, asset_system, gpu_uploads);
-		UpdateAsyncTransferQueue(renderer_context->async_transfer_queue);
+		// Update shared asset_system:
+		{
+			UpdateAssetStreamingSystems(renderer_context, thread_pool, record_context, asset_system);
+			
+			UpdateEditorAssetComponents(&alloc, asset_system);
+			UpdateRendererAssetGpuComponents(&alloc, record_context, asset_system, gpu_uploads);
+		}
+		
+		// Update world_system:
+		{
+			UpdateWorldSystemReadback(record_context, world_system, world_entity_guid);
+			UpdateEntityGpuComponents(&alloc, record_context, world_system, asset_system, gpu_uploads);
+		}
 		
 		BuildRenderPassesForFrame(renderer_context, record_context, &world_system, &asset_system, world_entity_guid, gpu_uploads);
 		WindowSwapChainEndFrame(swap_chain, graphics_context, &alloc, record_context);
 		
-		ReleaseEntityComponents(&alloc, world_system, asset_system);
+		ReleaseAssetComponents(&alloc, asset_system);
+		ReleaseEntityComponents(&alloc, world_system);
 		
 		ClearEntityMasks(world_system);
 		ClearEntityMasks(asset_system);
@@ -128,6 +137,8 @@ s32 main() {
 	WaitForInFlightSubmits(graphics_context);
 	
 	ReleaseTextureAssets(&alloc, graphics_context, asset_system);
+	ReleaseEntitySystemGpuStreamAllocations(graphics_context, world_system);
+	ReleaseEntitySystemGpuStreamAllocations(graphics_context, asset_system);
 	
 	return 0;
 }

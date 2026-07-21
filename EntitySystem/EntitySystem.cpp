@@ -202,11 +202,40 @@ static void CreateEntityTypeArrays(EntitySystemBase& system) {
 	system.clear_gpu_mask_component_streams = true;
 }
 
-void InitializeEntitySystem(EntitySystemBase& system) {
+static void CreateGpuComponentStreamAllocations(EntitySystemBase& system, StackAllocator* alloc) {
+	u32 gpu_component_count = 0;
+	for (auto& type_info : entity_type_info_table) {
+		gpu_component_count += type_info.gpu_component_count;
+	}
+	
+	// Extract all of the GPU component streams into a flat list that is persistent across entity system resets.
+	Array<GpuComponentStreamAllocation> gpu_component_stream_allocations;
+	ArrayReserve(gpu_component_stream_allocations, alloc, gpu_component_count);
+	
+	for (u32 entity_type_index = 0; entity_type_index < entity_type_info_table.count; entity_type_index += 1) {
+		auto& type_info = entity_type_info_table[entity_type_index];
+		
+		for (u32 i = 0; i < type_info.virtual_resource_ids.count; i += 1) {
+			u32 resource_id = type_info.virtual_resource_ids[i];
+			if (resource_id == 0) continue;
+			
+			auto& allocation = ArrayEmplace(gpu_component_stream_allocations);
+			allocation.resource_id          = (VirtualResourceID)resource_id;
+			allocation.component_type_id    = type_info.component_type_ids[i];
+			allocation.entity_type_id.index = entity_type_index;
+		}
+	}
+	
+	system.gpu_component_stream_allocations = gpu_component_stream_allocations;
+}
+
+void InitializeEntitySystem(EntitySystemBase& system, StackAllocator* alloc) {
 	system.heap = CreateHeapAllocator(2 * 1024 * 1024);
 	
 	bool random_success = _rdrand64_step(&system.guid_random_seed) != 0;
 	DebugAssert(random_success, "Failed to initialize random number generator.");
+	
+	CreateGpuComponentStreamAllocations(system, alloc);
 	
 	CreateEntityTypeArrays(system);
 }

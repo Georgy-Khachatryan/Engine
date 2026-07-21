@@ -11,38 +11,35 @@ static void AllocateGpuComponentStreams(RecordContext* record_context, EntitySys
 	entity_system->clear_gpu_mask_component_streams = false;
 	
 	auto* resource_table = record_context->resource_table;
-	for (auto& array : entity_system->entity_type_arrays) {
-		auto& entity_type_info = entity_type_info_table[array.entity_type_id.index];
-		auto virtual_resource_ids = entity_type_info_table[array.entity_type_id.index].virtual_resource_ids;
+	for (auto& allocation : entity_system->gpu_component_stream_allocations) {
+		auto& array = entity_system->entity_type_arrays[allocation.entity_type_id.index];
+		if (array.capacity == 0) continue;
 		
-		for (u32 i = 0; i < entity_type_info.gpu_component_count; i += 1) {
-			u32 component_stream_index = entity_type_info.cpu_component_count + i;
-			
-			auto component_type_id = entity_type_info.component_type_ids[component_stream_index];
-			auto resource_id = (VirtualResourceID)entity_type_info.virtual_resource_ids[component_stream_index];
-			auto type_info = component_type_info_table[component_type_id.index];
-			
-			auto& virtual_resource = resource_table->virtual_resources[(u32)resource_id];
-			u32 capacity = type_info.component_type == ComponentType::GpuMask ? DivideAndRoundUp(array.capacity, 64u) : array.capacity;
-			
-			// TODO: Fill buffer with zeroes instead of recreating it.
-			bool clear_component_stream = clear_gpu_mask_component_streams && type_info.component_type == ComponentType::GpuMask && capacity != 0;
-			
-			u32 new_size = (u32)(capacity * type_info.size_bytes);
-			u32 old_size = virtual_resource.buffer.size;
-			if (new_size <= old_size && clear_component_stream == false) continue;
-			
+		auto type_info = component_type_info_table[allocation.component_type_id.index];
+		
+		// TODO: Fill buffer with zeroes instead of recreating it.
+		bool clear_component_stream = clear_gpu_mask_component_streams && (type_info.component_type == ComponentType::GpuMask);
+		
+		u32 capacity = type_info.component_type == ComponentType::GpuMask ? DivideAndRoundUp(array.capacity, 64u) : array.capacity;
+		u32 new_size = (u32)(capacity * type_info.size_bytes);
+		u32 old_size = allocation.size;
+		
+		if (old_size < new_size || clear_component_stream) {
 			auto new_resource = CreateBufferResource(record_context->context, new_size, CreateResourceFlags::UAV);
-			auto old_resource = virtual_resource.buffer.resource;
+			auto old_resource = NativeBufferResource{ allocation.handle };
 			
-			resource_table->Set(resource_id, new_resource, new_size);
 			ReleaseBufferResource(record_context->context, old_resource, ResourceReleaseCondition::EndOfThisGpuFrame);
 			
-			if (old_resource.handle == nullptr || clear_component_stream) continue;
+			allocation.handle = new_resource.handle;
+			allocation.size   = new_size;
 			
-			auto old_resource_id = resource_table->AddTransient(old_resource, old_size);
-			CmdCopyBufferToBuffer(record_context, old_resource_id, resource_id, old_size);
+			if (old_resource.handle != nullptr && clear_component_stream == false) {
+				auto old_resource_id = resource_table->AddTransient(old_resource, old_size);
+				CmdCopyBufferToBuffer(record_context, old_resource_id, allocation.resource_id, old_size);
+			}
 		}
+		
+		resource_table->Set(allocation.resource_id, { allocation.handle }, allocation.size);
 	}
 }
 

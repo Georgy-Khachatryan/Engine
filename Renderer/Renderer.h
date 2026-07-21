@@ -4,6 +4,7 @@
 
 struct AssetEntitySystem;
 struct AsyncTransferQueue;
+struct EntitySystemBase;
 struct GpuComponentUploadBuffer;
 struct GraphicsContext;
 struct MeshletStreamingSystem;
@@ -46,6 +47,10 @@ struct RendererContext {
 	MeshStreamingSystem*    mesh_streaming_system    = nullptr;
 	TextureStreamingSystem* texture_streaming_system = nullptr;
 	
+	GpuReadbackQueue meshlet_streaming_feedback_queue;
+	GpuReadbackQueue mesh_streaming_feedback_queue;
+	GpuReadbackQueue texture_streaming_feedback_queue;
+	
 	NativeBufferResource mesh_asset_buffer;
 	u64 mesh_asset_buffer_size    = 0;
 	u64 mesh_asset_buffer_address = 0;
@@ -62,6 +67,15 @@ struct RendererContext {
 	u64 streaming_scratch_buffer_size    = 0;
 	u64 streaming_scratch_buffer_address = 0;
 	
+	NativeBufferResource meshlet_streaming_feedback_buffer;
+	u64 meshlet_streaming_feedback_buffer_size = 0;
+	
+	NativeBufferResource mesh_streaming_feedback_buffer;
+	u64 mesh_streaming_feedback_buffer_size = 0;
+	
+	NativeBufferResource texture_streaming_feedback_buffer;
+	u64 texture_streaming_feedback_buffer_size = 0;
+	
 	DebugGeometryBuffer debug_geometry_buffer;
 	
 	NativeTextureResource blue_noise_1d;
@@ -74,7 +88,11 @@ void ReleaseRendererContext(RendererContext* context, StackAllocator* alloc);
 VirtualResourceTable* CreateResourceTable(StackAllocator* alloc);
 void ReleaseResourceTable(GraphicsContext* graphics_context, VirtualResourceTable* resource_table);
 
+void ReleaseEntitySystemGpuStreamAllocations(GraphicsContext* graphics_context, EntitySystemBase& entity_system);
+
 RecordContext* BeginRecordContext(StackAllocator* alloc, RendererContext* context, WindowSwapChain* swap_chain, VirtualResourceTable* resource_table);
 void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext* record_context, WorldEntitySystem* world_system, AssetEntitySystem* asset_system, u64 world_entity_guid, Array<GpuComponentUploadBuffer> gpu_uploads);
 
-void UpdateStreamingSystems(RendererContext* renderer_context, ThreadPool* thread_pool, RecordContext* record_context, WorldEntitySystem* world_system, AssetEntitySystem* asset_system, u64 world_entity_guid);
+void UpdateWorldSystemReadback(RecordContext* record_context, WorldEntitySystem& world_system, u64 world_entity_guid);
+
+void UpdateAssetStreamingSystems(RendererContext* renderer_context, ThreadPool* thread_pool, RecordContext* record_context, AssetEntitySystem& asset_system);

@@ -10,8 +10,8 @@ void SaveLoad(SaveLoadBuffer& buffer, EditorSelectionStateComponent& data, u64 v
 }
 
 
-void UpdateEditorEntityComponents(StackAllocator* alloc, WorldEntitySystem& world_system, AssetEntitySystem& asset_system) {
-	ProfilerScope("UpdateEditorEntityComponents");
+void UpdateEditorAssetComponents(StackAllocator* alloc, AssetEntitySystem& asset_system) {
+	ProfilerScope("UpdateEditorAssetComponents");
 	
 	for (auto* entity_array : QueryEntities<WorldAssetType>(alloc, asset_system)) {
 		ProfilerScope("WorldAssetComponentUpdate");

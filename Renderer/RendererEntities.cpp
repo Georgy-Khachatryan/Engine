@@ -9,8 +9,39 @@
 #include "RenderPasses.h"
 #include "TextureAsset.h"
 
-void UpdateRendererEntityGpuComponents(StackAllocator* alloc, ThreadPool* thread_pool, AsyncTransferQueue* async_transfer_queue, RecordContext* record_context, AssetEntitySystem& asset_system, Array<GpuComponentUploadBuffer>& gpu_uploads) {
-	ProfilerScope("UpdateRendererEntityGpuComponents");
+void UpdateEntityAliveMasks(StackAllocator* alloc, RecordContext* record_context, EntitySystemBase& entity_system, Array<GpuComponentUploadBuffer>& gpu_uploads) {
+	ProfilerScope("UpdateEntityAliveMasks");
+	
+	for (auto* entity_array : QueryEntities<AliveEntityMaskQuery>(alloc, entity_system)) {
+		if (entity_array->count == 0) continue;
+		
+		auto created_mask = entity_array->created_mask;
+		auto removed_mask = entity_array->removed_mask;
+		auto created_or_removed_mask = ArrayViewAllocate<u64>(alloc, created_mask.count);
+		
+		u64 created_or_removed_qword_count = 0;
+		for (u64 qword_index = 0; qword_index < created_mask.count; qword_index += 1) {
+			u64 created_or_removed_qword = created_mask[qword_index] | removed_mask[qword_index];
+			created_or_removed_mask[qword_index] = created_or_removed_qword;
+			created_or_removed_qword_count += created_or_removed_qword != 0 ? 1 : 0;
+		}
+		
+		if (created_or_removed_qword_count != 0) {
+			auto streams = ExtractComponentStreams<AliveEntityMaskQuery>(entity_array);
+			auto gpu_alive_mask = AllocateGpuComponentUploadBuffer(record_context, created_or_removed_qword_count, streams.alive_mask);
+			
+			for (u64 qword_index = 0; qword_index < created_or_removed_mask.count; qword_index += 1) {
+				if (created_or_removed_mask[qword_index] != 0) {
+					AppendGpuTransferCommand(gpu_alive_mask, qword_index, AliveEntityMask{ entity_array->alive_mask[qword_index] });
+				}
+			}
+			ArrayAppend(gpu_uploads, alloc, gpu_alive_mask);
+		}
+	}
+}
+
+void UpdateRendererAssetGpuComponents(StackAllocator* alloc, RecordContext* record_context, AssetEntitySystem& asset_system, Array<GpuComponentUploadBuffer>& gpu_uploads) {
+	ProfilerScope("UpdateRendererAssetGpuComponents");
 	
 	for (auto* entity_array : QueryEntities<MeshAssetType>(alloc, asset_system)) {
 		ProfilerScope("MeshAssetTypeGpuComponentUpdate");
@@ -85,6 +116,8 @@ void UpdateRendererEntityGpuComponents(StackAllocator* alloc, ThreadPool* thread
 		}
 		ArrayAppend(gpu_uploads, alloc, gpu_texture_data);
 	}
+	
+	UpdateEntityAliveMasks(alloc, record_context, asset_system, gpu_uploads);
 }
 
 void ReleaseTextureAssets(StackAllocator* alloc, GraphicsContext* graphics_context, AssetEntitySystem& asset_system) {

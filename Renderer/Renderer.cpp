@@ -13,6 +13,7 @@ compile_const u32 mesh_asset_buffer_size               = MeshletPageHeader::page
 compile_const u32 meshlet_rtas_buffer_size             = (128u * 1024u) * MeshletPageHeader::runtime_page_count;
 compile_const u32 meshlet_blas_buffer_size             = 16 * 1024 * 1024;
 compile_const u32 max_transient_resource_table_entries = 16;
+compile_const u32 max_mesh_asset_count                 = 16 * 1024 - 1;
 compile_const u32 texture_heap_size                    = 64 * 1024 * 1024;
 compile_const u32 streaming_scratch_buffer_size        = 16 * 1024 * 1024;
 
@@ -60,6 +61,17 @@ RendererContext* CreateRendererContext(StackAllocator* alloc) {
 		context->streaming_scratch_buffer_address = GetBufferGpuVirtualAddress(context->streaming_scratch_buffer);
 	}
 	
+	{
+		context->meshlet_streaming_feedback_buffer_size = gpu_memory_page_size;
+		context->meshlet_streaming_feedback_buffer      = CreateBufferResource(graphics_context, (u32)context->meshlet_streaming_feedback_buffer_size, CreateResourceFlags::UAV);
+		
+		context->mesh_streaming_feedback_buffer_size = max_mesh_asset_count * sizeof(u32) + sizeof(u32);
+		context->mesh_streaming_feedback_buffer      = CreateBufferResource(graphics_context, (u32)context->mesh_streaming_feedback_buffer_size, CreateResourceFlags::UAV);
+		
+		context->texture_streaming_feedback_buffer_size = persistent_srv_descriptor_count * sizeof(u32);
+		context->texture_streaming_feedback_buffer      = CreateBufferResource(graphics_context, (u32)context->texture_streaming_feedback_buffer_size, CreateResourceFlags::UAV);
+	}
+	
 	context->meshlet_streaming_system = CreateMeshletStreamingSystem(alloc, meshlet_rtas_buffer_size);
 	context->mesh_streaming_system    = CreateMeshStreamingSystem(alloc, mesh_asset_buffer_size - MeshletPageHeader::page_size * MeshletPageHeader::runtime_page_count);
 	context->texture_streaming_system = CreateTextureStreamingSystem(graphics_context, alloc, texture_heap_size);
@@ -71,6 +83,9 @@ RendererContext* CreateRendererContext(StackAllocator* alloc) {
 }
 
 void ReleaseRendererContext(RendererContext* context, StackAllocator* alloc) {
+	ReleaseBufferResource(context->graphics_context, context->meshlet_streaming_feedback_buffer);
+	ReleaseBufferResource(context->graphics_context, context->mesh_streaming_feedback_buffer);
+	ReleaseBufferResource(context->graphics_context, context->texture_streaming_feedback_buffer);
 	ReleaseBufferResource(context->graphics_context, context->debug_geometry_buffer.resource);
 	ReleaseBufferResource(context->graphics_context, context->mesh_asset_buffer);
 	ReleaseBufferResource(context->graphics_context, context->meshlet_blas_buffer);
@@ -128,17 +143,12 @@ void ReleaseResourceTable(GraphicsContext* graphics_context, VirtualResourceTabl
 			resource.opaque.release_user_data(&resource, graphics_context);
 		}
 	}
-	
-	ReleaseBufferResource(graphics_context, resource_table->virtual_resources[(u32)VirtualResourceID::GpuLightEntityData].buffer.resource);
-	ReleaseBufferResource(graphics_context, resource_table->virtual_resources[(u32)VirtualResourceID::GpuMeshAssetData].buffer.resource);
-	ReleaseBufferResource(graphics_context, resource_table->virtual_resources[(u32)VirtualResourceID::GpuMeshEntityData].buffer.resource);
-	ReleaseBufferResource(graphics_context, resource_table->virtual_resources[(u32)VirtualResourceID::LightEntityAliveMask].buffer.resource);
-	ReleaseBufferResource(graphics_context, resource_table->virtual_resources[(u32)VirtualResourceID::MaterialAssetTextureData].buffer.resource);
-	ReleaseBufferResource(graphics_context, resource_table->virtual_resources[(u32)VirtualResourceID::MeshAssetAliveMask].buffer.resource);
-	ReleaseBufferResource(graphics_context, resource_table->virtual_resources[(u32)VirtualResourceID::MeshEntityAliveMask].buffer.resource);
-	ReleaseBufferResource(graphics_context, resource_table->virtual_resources[(u32)VirtualResourceID::MeshEntityGpuTransform].buffer.resource);
-	ReleaseBufferResource(graphics_context, resource_table->virtual_resources[(u32)VirtualResourceID::MeshEntityPrevGpuTransform].buffer.resource);
-	ReleaseBufferResource(graphics_context, resource_table->virtual_resources[(u32)VirtualResourceID::SceneConstants].buffer.resource);
+}
+
+void ReleaseEntitySystemGpuStreamAllocations(GraphicsContext* graphics_context, EntitySystemBase& entity_system) {
+	for (auto& allocation : entity_system.gpu_component_stream_allocations) {
+		ReleaseBufferResource(graphics_context, { allocation.handle });
+	}
 }
 
 RecordContext* BeginRecordContext(StackAllocator* alloc, RendererContext* context, WindowSwapChain* swap_chain, VirtualResourceTable* resource_table) {
@@ -148,28 +158,32 @@ RecordContext* BeginRecordContext(StackAllocator* alloc, RendererContext* contex
 	record_context->resource_table = resource_table;
 	record_context->frame_index    = context->graphics_context->frame_submit_index;
 	
-	resource_table->virtual_resources.count = (u64)VirtualResourceID::Count;
-	resource_table->Set(VirtualResourceID::CurrentBackBuffer, WindowSwapGetCurrentBackBuffer(swap_chain), swap_chain->size);
-	resource_table->Set(VirtualResourceID::MeshAssetBuffer,        context->mesh_asset_buffer,              (u32)context->mesh_asset_buffer_size);
-	resource_table->Set(VirtualResourceID::MeshletRtasBuffer,      context->meshlet_rtas_buffer,            (u32)context->meshlet_rtas_buffer_size);
-	resource_table->Set(VirtualResourceID::MeshletBlasBuffer,      context->meshlet_blas_buffer,            (u32)context->meshlet_blas_buffer_size);
-	resource_table->Set(VirtualResourceID::StreamingScratchBuffer, context->streaming_scratch_buffer,       (u32)context->streaming_scratch_buffer_size);
-	resource_table->Set(VirtualResourceID::DebugMeshBuffer,        context->debug_geometry_buffer.resource, (u32)context->debug_geometry_buffer.resource_size);
-	resource_table->Set(VirtualResourceID::BlueNoise1D,            context->blue_noise_1d,                  TextureSize(TextureFormat::R8_UNORM,   128u, 128u, 32u));
-	resource_table->Set(VirtualResourceID::BlueNoise2D,            context->blue_noise_2d,                  TextureSize(TextureFormat::R8G8_UNORM, 128u, 128u, 32u));
+	using ID = VirtualResourceID;
+	resource_table->virtual_resources.count = (u64)ID::Count;
+	resource_table->Set(ID::CurrentBackBuffer, WindowSwapGetCurrentBackBuffer(swap_chain), swap_chain->size);
+	resource_table->Set(ID::MeshAssetBuffer,          context->mesh_asset_buffer,                 (u32)context->mesh_asset_buffer_size);
+	resource_table->Set(ID::MeshletRtasBuffer,        context->meshlet_rtas_buffer,               (u32)context->meshlet_rtas_buffer_size);
+	resource_table->Set(ID::MeshletBlasBuffer,        context->meshlet_blas_buffer,               (u32)context->meshlet_blas_buffer_size);
+	resource_table->Set(ID::StreamingScratchBuffer,   context->streaming_scratch_buffer,          (u32)context->streaming_scratch_buffer_size);
+	resource_table->Set(ID::MeshletStreamingFeedback, context->meshlet_streaming_feedback_buffer, (u32)context->meshlet_streaming_feedback_buffer_size);
+	resource_table->Set(ID::MeshStreamingFeedback,    context->mesh_streaming_feedback_buffer,    (u32)context->mesh_streaming_feedback_buffer_size);
+	resource_table->Set(ID::TextureStreamingFeedback, context->texture_streaming_feedback_buffer, (u32)context->texture_streaming_feedback_buffer_size);
+	resource_table->Set(ID::DebugMeshBuffer,          context->debug_geometry_buffer.resource,    (u32)context->debug_geometry_buffer.resource_size);
+	resource_table->Set(ID::BlueNoise1D,              context->blue_noise_1d,                     TextureSize(TextureFormat::R8_UNORM,   128u, 128u, 32u));
+	resource_table->Set(ID::BlueNoise2D,              context->blue_noise_2d,                     TextureSize(TextureFormat::R8G8_UNORM, 128u, 128u, 32u));
 	
 	u64 buffer_index = context->transient_buffer_index;
-	resource_table->Set(VirtualResourceID::TransientUploadBuffer, context->upload_buffers[buffer_index], upload_buffer_size, context->upload_buffer_cpu_addresses[buffer_index]);
-	resource_table->Set(VirtualResourceID::TransientReadbackBuffer, context->readback_buffers[buffer_index], readback_buffer_size, context->readback_buffer_cpu_addresses[buffer_index]);
+	resource_table->Set(ID::TransientUploadBuffer,   context->upload_buffers[buffer_index],   upload_buffer_size,   context->upload_buffer_cpu_addresses[buffer_index]);
+	resource_table->Set(ID::TransientReadbackBuffer, context->readback_buffers[buffer_index], readback_buffer_size, context->readback_buffer_cpu_addresses[buffer_index]);
 	context->transient_buffer_index = (buffer_index + 1) % number_of_frames_in_flight;
 	
 	return record_context;
 }
 
-void UpdateStreamingSystems(RendererContext* renderer_context, ThreadPool* thread_pool, RecordContext* record_context, WorldEntitySystem* world_system, AssetEntitySystem* asset_system, u64 world_entity_guid) {
-	ProfilerScope("UpdateStreamingSystems");
+void UpdateWorldSystemReadback(RecordContext* record_context, WorldEntitySystem& world_system, u64 world_entity_guid) {
+	ProfilerScope("UpdateWorldSystemReadback");
 	
-	auto world_entity = QueryEntityByGUID<WorldEntityQuery>(*world_system, world_entity_guid);
+	auto world_entity = QueryEntityByGUID<WorldEntityQuery>(world_system, world_entity_guid);
 	auto& renderer_world = *world_entity.renderer_world;
 	
 	auto meshlet_culling_statistics = renderer_world.meshlet_culling_statistics_readback_queue.Load(record_context->frame_index);
@@ -183,12 +197,18 @@ void UpdateStreamingSystems(RendererContext* renderer_context, ThreadPool* threa
 	} else {
 		renderer_world.automatic_exposure_histogram = {};
 	}
+}
+
+void UpdateAssetStreamingSystems(RendererContext* renderer_context, ThreadPool* thread_pool, RecordContext* record_context, AssetEntitySystem& asset_system) {
+	ProfilerScope("UpdateAssetStreamingSystems");
 	
-	UpdateMeshStreamingFiles(renderer_context->mesh_streaming_system, thread_pool, record_context, asset_system);
-	UpdateTextureStreamingFiles(renderer_context->texture_streaming_system, thread_pool, renderer_context->async_transfer_queue, record_context, asset_system);
+	UpdateMeshStreamingFiles(renderer_context->mesh_streaming_system, thread_pool, record_context, &asset_system);
+	UpdateTextureStreamingFiles(renderer_context->texture_streaming_system, thread_pool, renderer_context->async_transfer_queue, record_context, &asset_system);
 	
-	UpdateMeshStreamingSystem(renderer_context->mesh_streaming_system, renderer_context->async_transfer_queue, record_context, asset_system, &renderer_world.mesh_streaming_feedback_queue);
-	UpdateMeshletStreamingSystem(renderer_context->meshlet_streaming_system, renderer_context->async_transfer_queue, record_context, asset_system, &renderer_world.meshlet_streaming_feedback_queue);
-	UpdateTextureStreamingSystem(renderer_context->texture_streaming_system, renderer_context->async_transfer_queue, record_context, asset_system, &renderer_world.texture_streaming_feedback_queue);
+	UpdateMeshStreamingSystem(renderer_context->mesh_streaming_system,       renderer_context->async_transfer_queue, record_context, &asset_system, &renderer_context->mesh_streaming_feedback_queue);
+	UpdateMeshletStreamingSystem(renderer_context->meshlet_streaming_system, renderer_context->async_transfer_queue, record_context, &asset_system, &renderer_context->meshlet_streaming_feedback_queue);
+	UpdateTextureStreamingSystem(renderer_context->texture_streaming_system, renderer_context->async_transfer_queue, record_context, &asset_system, &renderer_context->texture_streaming_feedback_queue);
+	
+	UpdateAsyncTransferQueue(renderer_context->async_transfer_queue);
 }
 

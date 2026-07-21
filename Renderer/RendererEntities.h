@@ -5,11 +5,9 @@
 #include "EntitySystem/Components.h"
 #include "GraphicsApi/GraphicsApiTypes.h"
 
-struct AsyncTransferQueue;
 struct DebugMeshInstanceArray;
 struct GpuComponentUploadBuffer;
 struct RecordContext;
-struct ThreadPool;
 
 NOTES(Meta::HlslFile{ "SceneData.hlsl"_sl })
 struct SceneConstants {
@@ -202,9 +200,6 @@ struct RendererWorld {
 	MeshletCullingStatistics meshlet_culling_statistics;
 	AutomaticExposureHistogram automatic_exposure_histogram;
 	
-	GpuReadbackQueue meshlet_streaming_feedback_queue;
-	GpuReadbackQueue mesh_streaming_feedback_queue;
-	GpuReadbackQueue texture_streaming_feedback_queue;
 	GpuReadbackQueue meshlet_culling_statistics_readback_queue;
 	GpuReadbackQueue automatic_exposure_readback_queue;
 	
@@ -354,6 +349,11 @@ struct GpuLightEntityQuery {
 	ECS::GpuComponent<GpuLightEntityData> gpu_light_entity_data;
 };
 
+NOTES(Meta::ComponentQuery{})
+struct AliveEntityMaskQuery {
+	ECS::GpuMaskComponent<AliveEntityMask> alive_mask;
+};
 
-void UpdateRendererEntityGpuComponents(StackAllocator* alloc, ThreadPool* thread_pool, AsyncTransferQueue* async_transfer_queue, RecordContext* record_context, AssetEntitySystem& asset_system, Array<GpuComponentUploadBuffer>& gpu_uploads);
+void UpdateEntityAliveMasks(StackAllocator* alloc, RecordContext* record_context, EntitySystemBase& entity_system, Array<GpuComponentUploadBuffer>& gpu_uploads);
+void UpdateRendererAssetGpuComponents(StackAllocator* alloc, RecordContext* record_context, AssetEntitySystem& asset_system, Array<GpuComponentUploadBuffer>& gpu_uploads);
 void ReleaseTextureAssets(StackAllocator* alloc, GraphicsContext* graphics_context, AssetEntitySystem& asset_system);

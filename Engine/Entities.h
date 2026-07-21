@@ -9,6 +9,9 @@
 #include "Renderer/TextureAsset.h"
 #include "WorldAsset.h"
 
+struct RecordContext;
+struct GpuComponentUploadBuffer;
+
 NOTES(Meta::EntityType{ 1 }, Meta::ComponentQuery{})
 struct WorldEntityType {
 	ECS::Component<GuidComponent> guid;
@@ -85,14 +88,7 @@ struct TransformComponentQuery {
 };
 
 
-NOTES(Meta::ComponentQuery{})
-struct AliveEntityMaskQuery {
-	ECS::GpuMaskComponent<AliveEntityMask> alive_mask;
-};
-
-
-struct RecordContext;
-struct GpuComponentUploadBuffer;
 void UpdateEntityGpuComponents(StackAllocator* alloc, RecordContext* record_context, WorldEntitySystem& world_system, AssetEntitySystem& asset_system, Array<GpuComponentUploadBuffer>& gpu_uploads);
 
-void ReleaseEntityComponents(StackAllocator* alloc, WorldEntitySystem& world_system, AssetEntitySystem& asset_system);
+void ReleaseAssetComponents(StackAllocator* alloc, AssetEntitySystem& asset_system);
+void ReleaseEntityComponents(StackAllocator* alloc, WorldEntitySystem& world_system);
