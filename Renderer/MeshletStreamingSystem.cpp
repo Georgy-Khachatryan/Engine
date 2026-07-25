@@ -236,6 +236,14 @@ void UpdateMeshletStreamingSystem(MeshletStreamingSystem* system, AsyncTransferQ
 					
 					page.state      = MeshletRuntimePageState::BuildRTAS;
 					page.wait_index = EncodeGpuFrameWaitIndex(current_frame_index);
+					
+					// Since RTAS build is performed on the GPU timeline, we can make RTAS ready in the same frame we build it.
+					MeshletRuntimePageUpdateCommand page_table_update_command;
+					page_table_update_command.type               = MeshletPageUpdateCommandType::RtasIn;
+					page_table_update_command.runtime_page_index = runtime_page_index;
+					page_table_update_command.mesh_asset_index   = page.mesh_asset_index;
+					page_table_update_command.asset_page_index   = page.asset_page_index;
+					ArrayAppend(page_table_update_commands, page_table_update_command);
 				}
 			}
 		}
@@ -246,16 +254,6 @@ void UpdateMeshletStreamingSystem(MeshletStreamingSystem* system, AsyncTransferQ
 			
 			page.state      = MeshletRuntimePageState::Ready;
 			page.wait_index = 0;
-			
-			// Don't allow deallocating this page while we have an outstanding page table update command.
-			page.cache_frame_index = (u32)current_frame_index;
-			
-			MeshletRuntimePageUpdateCommand page_table_update_command;
-			page_table_update_command.type               = MeshletPageUpdateCommandType::RtasIn;
-			page_table_update_command.runtime_page_index = runtime_page_index;
-			page_table_update_command.mesh_asset_index   = page.mesh_asset_index;
-			page_table_update_command.asset_page_index   = page.asset_page_index;
-			ArrayAppend(page_table_update_commands, page_table_update_command);
 		}
 		
 		if (page.state == MeshletRuntimePageState::PageOut) {
