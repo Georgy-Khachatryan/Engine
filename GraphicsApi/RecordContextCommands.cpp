@@ -481,7 +481,7 @@ void QueueCmdSubmit(RecordContext* record_context, CommandQueueType queue_type, 
 	submit_range.end_resource_access_range_index = (u32)record_context->resource_access_command_prefix_sum.count;
 	ArrayAppend(record_context->submit_range_prefix_sum, record_context->alloc, submit_range);
 	
-	DebugAssert(record_context->submit_range_prefix_sum.count <= max_command_lists_per_frame, "Too many command lists in a single frame.");
+	DebugAssert(record_context->submit_range_prefix_sum.count <= max_command_lists_per_view, "Too many command lists in a single view.");
 	
 	auto& state_cache = record_context->state_cache;
 	state_cache.command_list_index = (u8)record_context->submit_range_prefix_sum.count;

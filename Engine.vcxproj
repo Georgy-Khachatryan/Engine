@@ -50,6 +50,7 @@
     
     <!-- Editor. -->
     <ClCompile Include="Editor/EditorEntities.cpp" />
+    <ClCompile Include="Editor/EditorIconCache.cpp" />
     <ClCompile Include="Editor/EditorOutlinerWindow.cpp" />
     <ClCompile Include="Editor/EditorPropertiesWindow.cpp" />
     <ClCompile Include="Editor/EditorShaderStatisticsWindow.cpp" />

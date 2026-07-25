@@ -205,7 +205,7 @@ static void ProcessLevelEditorIO(UndoRedoSystem& undo_redo_system, WorldEntitySy
 }
 
 
-void LevelEditorUpdate(StackAllocator* alloc, GraphicsContext* graphics_context, UndoRedoSystem& undo_redo_system, WorldEntitySystem& world_system, AssetEntitySystem& asset_system, LevelEditorIO& level_editor_io, u64& world_entity_guid) {
+void LevelEditorUpdate(StackAllocator* alloc, GraphicsContext* graphics_context, UndoRedoSystem& undo_redo_system, WorldEntitySystem& world_system, AssetEntitySystem& asset_system, LevelEditorIO& level_editor_io, u64& world_entity_guid, Array<LevelEditorView>& level_editor_views) {
 	ProfilerScope("LevelEditorUpdate");
 	
 	auto asset_selection_state_entity = QueryFirstEntityByType<EditorSelectionStateEntity>(asset_system);
@@ -213,6 +213,8 @@ void LevelEditorUpdate(StackAllocator* alloc, GraphicsContext* graphics_context,
 	
 	auto world_selection_state_entity = QueryFirstEntityByType<EditorSelectionStateEntity>(world_system);
 	LevelEditorShortcuts(alloc, undo_redo_system, world_system, asset_system, world_selection_state_entity, asset_selection_state_entity, world_entity_guid);
+	
+	EditorIconCacheBegin(level_editor_io.icon_cache, graphics_context);
 	
 	EditorUndoRedoHistoryWindow(undo_redo_system);
 	
@@ -226,5 +228,7 @@ void LevelEditorUpdate(StackAllocator* alloc, GraphicsContext* graphics_context,
 	
 	EditorPropertiesWindow(alloc, undo_redo_system, world_system, asset_system, world_selection_state_entity, asset_selection_state_entity, world_entity_guid);
 	
-	EditorViewportWindow(alloc, undo_redo_system, world_system, asset_system, world_selection_state_entity, world_entity_guid, graphics_context);
+	EditorViewportWindow(alloc, undo_redo_system, world_system, asset_system, world_selection_state_entity, world_entity_guid, graphics_context, level_editor_views);
+	
+	EditorIconCacheEnd(alloc, level_editor_io.icon_cache, graphics_context, asset_system, level_editor_views);
 }

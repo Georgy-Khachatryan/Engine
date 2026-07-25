@@ -44,7 +44,7 @@ QueueSubmitIndex RenderPassArray::AddSignal(CommandQueueType queue_type) {
 	auto& queue = queues[(u32)queue_type];
 	auto* range = GetQueueSubmitRange(alloc, submit_range_order, queue, queue_type);
 	
-	range->signal_index = EncodeQueueSubmitIndex(frame_index, queue.submit_ranges.count - 1);
+	range->signal_index = EncodeQueueSubmitIndex(frame_index, view_index, queue.submit_ranges.count - 1);
 	
 	return { range->signal_index, queue_type };
 }

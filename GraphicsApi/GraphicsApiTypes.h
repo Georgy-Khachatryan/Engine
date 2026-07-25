@@ -493,19 +493,21 @@ struct PipelineStateDescription {
 	const PipelineRasterizer*   rasterizer    = nullptr;
 };
 
-compile_const u64 max_command_lists_per_frame = 256; // Command list index fits into u8.
+compile_const u64 max_command_lists_per_view = 256; // Command list index fits into u8.
+compile_const u64 max_views_per_frame        = 256;
 
 struct QueueSubmitIndex {
 	u64 submit_index = 0;
 	CommandQueueType queue_type = CommandQueueType::Graphics;
 };
 
-inline u64 EncodeQueueSubmitIndex(u64 submit_index, u64 command_list_index) {
-	return submit_index * max_command_lists_per_frame + command_list_index;
+inline u64 EncodeQueueSubmitIndex(u64 submit_index, u64 view_index, u64 command_list_index) {
+	static_assert(max_command_lists_per_view == 256 && max_views_per_frame == 256);
+	return (submit_index << 16u) | (view_index << 8u) | (command_list_index << 0u);
 }
 
 inline u64 EncodeEndOfQueueSubmitIndex(u64 submit_index) {
-	return submit_index * max_command_lists_per_frame + (max_command_lists_per_frame - 1);
+	return EncodeQueueSubmitIndex(submit_index, max_views_per_frame - 1, max_command_lists_per_view - 1);
 }
 
 

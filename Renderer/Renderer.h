@@ -41,7 +41,8 @@ struct RendererContext {
 	FixedCountArray<NativeBufferResource, number_of_frames_in_flight> readback_buffers;
 	FixedCountArray<u8*, number_of_frames_in_flight> upload_buffer_cpu_addresses;
 	FixedCountArray<u8*, number_of_frames_in_flight> readback_buffer_cpu_addresses;
-	u64 transient_buffer_index = 0;
+	u32 upload_buffer_offset   = 0;
+	u32 readback_buffer_offset = 0;
 	
 	MeshletStreamingSystem* meshlet_streaming_system = nullptr;
 	MeshStreamingSystem*    mesh_streaming_system    = nullptr;
@@ -50,6 +51,8 @@ struct RendererContext {
 	GpuReadbackQueue meshlet_streaming_feedback_queue;
 	GpuReadbackQueue mesh_streaming_feedback_queue;
 	GpuReadbackQueue texture_streaming_feedback_queue;
+	
+	QueueSubmitIndex last_frame_submit_end;
 	
 	NativeBufferResource mesh_asset_buffer;
 	u64 mesh_asset_buffer_size    = 0;
@@ -84,6 +87,7 @@ struct RendererContext {
 
 RendererContext* CreateRendererContext(StackAllocator* alloc);
 void ReleaseRendererContext(RendererContext* context, StackAllocator* alloc);
+void RendererBeginFrame(RendererContext* context);
 
 VirtualResourceTable* CreateResourceTable(StackAllocator* alloc);
 void ReleaseResourceTable(GraphicsContext* graphics_context, VirtualResourceTable* resource_table);
@@ -91,7 +95,9 @@ void ReleaseResourceTable(GraphicsContext* graphics_context, VirtualResourceTabl
 void ReleaseEntitySystemGpuStreamAllocations(GraphicsContext* graphics_context, EntitySystemBase& entity_system);
 
 RecordContext* BeginRecordContext(StackAllocator* alloc, RendererContext* context, WindowSwapChain* swap_chain, VirtualResourceTable* resource_table);
-void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext* record_context, WorldEntitySystem* world_system, AssetEntitySystem* asset_system, u64 world_entity_guid, Array<GpuComponentUploadBuffer> gpu_uploads);
+void EndRecordContext(StackAllocator* alloc, RecordContext* record_context, RendererContext* context, Array<RecordContext*>& record_contexts);
+
+void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext* record_context, WorldEntitySystem* world_system, AssetEntitySystem* asset_system, u64 world_entity_guid, Array<GpuComponentUploadBuffer> gpu_uploads, u32 view_index, u32 view_count);
 
 void UpdateWorldSystemReadback(RecordContext* record_context, WorldEntitySystem& world_system, u64 world_entity_guid);
 

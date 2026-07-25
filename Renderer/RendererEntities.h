@@ -190,9 +190,7 @@ struct RendererWorld {
 	float meshlet_target_error_pixels = 1.f;
 	float reference_path_tracer_percent = 0.f;
 	bool  reset_reference_path_tracer   = false;
-	
-	QueueSubmitIndex last_frame_submit_end;
-	bool enable_async_compute = true;
+	bool  enable_async_compute          = true;
 	
 	u32 scene_descriptor_heap_offset = 0; // Descriptor index for the final image.
 	

@@ -151,16 +151,23 @@ void ReleaseEntitySystemGpuStreamAllocations(GraphicsContext* graphics_context, 
 	}
 }
 
+void RendererBeginFrame(RendererContext* context) {
+	context->upload_buffer_offset   = 0;
+	context->readback_buffer_offset = 0;
+}
+
 RecordContext* BeginRecordContext(StackAllocator* alloc, RendererContext* context, WindowSwapChain* swap_chain, VirtualResourceTable* resource_table) {
 	auto* record_context = NewFromAlloc(alloc, RecordContext);
 	record_context->alloc          = alloc;
 	record_context->context        = context->graphics_context;
 	record_context->resource_table = resource_table;
 	record_context->frame_index    = context->graphics_context->frame_submit_index;
+	record_context->upload_buffer_offset   = context->upload_buffer_offset;
+	record_context->readback_buffer_offset = context->readback_buffer_offset;
 	
 	using ID = VirtualResourceID;
 	resource_table->virtual_resources.count = (u64)ID::Count;
-	resource_table->Set(ID::CurrentBackBuffer, WindowSwapGetCurrentBackBuffer(swap_chain), swap_chain->size);
+	resource_table->Set(ID::CurrentBackBuffer,        WindowSwapGetCurrentBackBuffer(swap_chain), swap_chain->size);
 	resource_table->Set(ID::MeshAssetBuffer,          context->mesh_asset_buffer,                 (u32)context->mesh_asset_buffer_size);
 	resource_table->Set(ID::MeshletRtasBuffer,        context->meshlet_rtas_buffer,               (u32)context->meshlet_rtas_buffer_size);
 	resource_table->Set(ID::MeshletBlasBuffer,        context->meshlet_blas_buffer,               (u32)context->meshlet_blas_buffer_size);
@@ -172,12 +179,18 @@ RecordContext* BeginRecordContext(StackAllocator* alloc, RendererContext* contex
 	resource_table->Set(ID::BlueNoise1D,              context->blue_noise_1d,                     TextureSize(TextureFormat::R8_UNORM,   128u, 128u, 32u));
 	resource_table->Set(ID::BlueNoise2D,              context->blue_noise_2d,                     TextureSize(TextureFormat::R8G8_UNORM, 128u, 128u, 32u));
 	
-	u64 buffer_index = context->transient_buffer_index;
+	u64 buffer_index = (record_context->frame_index % number_of_frames_in_flight);
 	resource_table->Set(ID::TransientUploadBuffer,   context->upload_buffers[buffer_index],   upload_buffer_size,   context->upload_buffer_cpu_addresses[buffer_index]);
 	resource_table->Set(ID::TransientReadbackBuffer, context->readback_buffers[buffer_index], readback_buffer_size, context->readback_buffer_cpu_addresses[buffer_index]);
-	context->transient_buffer_index = (buffer_index + 1) % number_of_frames_in_flight;
 	
 	return record_context;
+}
+
+void EndRecordContext(StackAllocator* alloc, RecordContext* record_context, RendererContext* context, Array<RecordContext*>& record_contexts) {
+	context->upload_buffer_offset   = record_context->upload_buffer_offset;
+	context->readback_buffer_offset = record_context->readback_buffer_offset;
+	
+	ArrayAppend(record_contexts, alloc, record_context);
 }
 
 void UpdateWorldSystemReadback(RecordContext* record_context, WorldEntitySystem& world_system, u64 world_entity_guid) {

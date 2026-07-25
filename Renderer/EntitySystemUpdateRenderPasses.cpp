@@ -51,12 +51,12 @@ void EntitySystemUpdateRenderPass::RecordPass(RecordContext* record_context) {
 	AllocateGpuComponentStreams(record_context, world_system);
 	AllocateGpuComponentStreams(record_context, asset_system);
 	
-	if (upload_buffers.count != 0) {
+	if (gpu_uploads.count != 0) {
 		CmdSetRootSignature(record_context, root_signature);
 		CmdSetPipelineState(record_context, pipeline_id);
 	}
 	
-	for (auto& upload_buffer : upload_buffers) {
+	for (auto& upload_buffer : gpu_uploads) {
 		auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
 		descriptor_table.src_data.Bind(upload_buffer.data_gpu_address, upload_buffer.count * upload_buffer.stride);
 		descriptor_table.dst_indices.Bind(upload_buffer.indices_gpu_address, upload_buffer.count * sizeof(u32));

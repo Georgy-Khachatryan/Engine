@@ -37,6 +37,7 @@ struct RenderPassArray {
 	FixedCapacityArray<CommandQueueType, 8> queue_type_stack;
 	u64 frame_index = 0;
 	
+	u32 view_index = 0;
 	CommandQueueType current_queue_type = CommandQueueType::Graphics;
 	bool enable_async_compute = false;
 	

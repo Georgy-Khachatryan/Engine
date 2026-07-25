@@ -164,6 +164,19 @@ static void EntityViewTable(StackAllocator* alloc, EntitySystemBase& entity_syst
 						level_editor_io.world_asset_guid_to_load = guid;
 					}
 				}
+				
+				if (ImGui::IsItemHovered()) {
+					ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.f, 0.f));
+					ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,  ImVec2(0.f, 0.f));
+					ImGui::PushStyleVar(ImGuiStyleVar_PopupBorderSize, 0.f);
+					
+					if (entity_type_id.index == ECS::GetEntityTypeID<MeshAssetType>::id.index && ImGui::BeginTooltip()) {
+						u32 icon_index = EditorIconCacheQueryMeshIcon(level_editor_io.icon_cache, guid);
+						ImGui::ImageButtonEx("AssetIcon", icon_index, ImVec2(128.f, 128.f));
+						ImGui::EndTooltip();
+					}
+					ImGui::PopStyleVar(3);
+				}
 			}
 			
 			if (ImGui::TableSetColumnIndex(1)) {

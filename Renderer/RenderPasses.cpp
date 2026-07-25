@@ -112,7 +112,7 @@ static void CopyCurrentToPreviousSceneConstants(SceneConstants& scene) {
 	scene.prev_world_space_camera_position = scene.world_space_camera_position;
 }
 
-void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext* record_context, WorldEntitySystem* world_system, AssetEntitySystem* asset_system, u64 world_entity_guid, Array<GpuComponentUploadBuffer> gpu_uploads) {
+void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext* record_context, WorldEntitySystem* world_system, AssetEntitySystem* asset_system, u64 world_entity_guid, Array<GpuComponentUploadBuffer> gpu_uploads, u32 view_index, u32 view_count) {
 	ProfilerScope("BuildRenderPassesForFrame");
 	
 	auto world_entity  = QueryEntityByGUID<WorldEntityQuery>(*world_system, world_entity_guid);
@@ -120,6 +120,9 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	
 	auto& renderer_world = *world_entity.renderer_world;
 	auto& camera         = *camera_entity.camera;
+	
+	bool is_first_view = (view_index == 0);
+	bool is_last_view  = (view_index == view_count - 1);
 	
 	// Clamp render target size to a reasonable minimum. Aspect ratio for view to clip is still computed using unclamped values.
 	uint2 render_target_size = uint2((u32)Math::Max(renderer_world.window_size.x, 32.f), (u32)Math::Max(renderer_world.window_size.y, 32.f));
@@ -255,11 +258,12 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	
 	
 	RenderPassArray render_passes;
-	render_passes.alloc = record_context->alloc;
-	render_passes.frame_index = record_context->frame_index;
+	render_passes.alloc                = record_context->alloc;
+	render_passes.frame_index          = record_context->frame_index;
+	render_passes.view_index           = view_index;
 	render_passes.enable_async_compute = renderer_world.enable_async_compute;
 	
-	auto& last_frame_submit_end = renderer_world.last_frame_submit_end;
+	auto& last_frame_submit_end = renderer_context->last_frame_submit_end;
 	if (last_frame_submit_end.submit_index == 0) {
 		last_frame_submit_end = render_passes.AddSignal(CommandQueueType::Graphics);
 	}
@@ -272,36 +276,43 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 		auto& entity_system_update = render_passes.Add<EntitySystemUpdateRenderPass>();
 		entity_system_update.world_system = world_system;
 		entity_system_update.asset_system = asset_system;
-		entity_system_update.upload_buffers = gpu_uploads;
+		entity_system_update.gpu_uploads  = gpu_uploads;
 		
-		auto& update_meshlet_page_table = render_passes.Add<UpdateMeshletPageTableRenderPass>();
-		update_meshlet_page_table.meshlet_streaming_system = renderer_context->meshlet_streaming_system;
+		auto& meshlet_clear_buffers = render_passes.Add<MeshletClearBuffersRenderPass>();
+		meshlet_clear_buffers.world_system             = world_system;
+		meshlet_clear_buffers.clear_streaming_feedback = is_first_view; // Streaming feedback buffers are shared across all views. Clear only for the first view.
 		
-		render_passes.Add<MeshletClearBuffersRenderPass>().world_system = world_system;
+		auto& debug_geometry_clear_buffers = render_passes.Add<DebugGeometryClearBuffersRenderPass>();
+		debug_geometry_clear_buffers.debug_geometry_buffer = &renderer_context->debug_geometry_buffer;
 		
-		render_passes.Add<DebugGeometryClearBuffersRenderPass>().debug_geometry_buffer = &renderer_context->debug_geometry_buffer;
-		
-		auto& meshlet_rtas_decode_vertex_buffer = render_passes.Add<MeshletRtasDecodeVertexBufferRenderPass>();
-		meshlet_rtas_decode_vertex_buffer.meshlet_streaming_system = renderer_context->meshlet_streaming_system;
-		
-		auto& meshlet_rtas_build = render_passes.Add<MeshletRtasBuildRenderPass>();
-		meshlet_rtas_build.meshlet_streaming_system  = renderer_context->meshlet_streaming_system;
-		meshlet_rtas_build.mesh_asset_buffer_address = renderer_context->mesh_asset_buffer_address;
-		meshlet_rtas_build.scratch_buffer_address    = renderer_context->streaming_scratch_buffer_address;
-		
-		auto& meshlet_rtas_write_offsets = render_passes.Add<MeshletRtasWriteOffsetsRenderPass>();
-		meshlet_rtas_write_offsets.meshlet_streaming_system    = renderer_context->meshlet_streaming_system;
-		meshlet_rtas_write_offsets.meshlet_rtas_buffer_address = renderer_context->meshlet_rtas_buffer_address;
-		
-		auto& meshlet_rtas_update_offsets = render_passes.Add<MeshletRtasUpdateOffsetsRenderPass>();
-		meshlet_rtas_update_offsets.meshlet_streaming_system    = renderer_context->meshlet_streaming_system;
-		meshlet_rtas_update_offsets.meshlet_rtas_buffer_address = renderer_context->meshlet_rtas_buffer_address;
+		// Streaming system updates.
+		if (is_first_view) {
+			auto& update_meshlet_page_table = render_passes.Add<UpdateMeshletPageTableRenderPass>();
+			update_meshlet_page_table.meshlet_streaming_system = renderer_context->meshlet_streaming_system;
+			
+			auto& meshlet_rtas_decode_vertex_buffer = render_passes.Add<MeshletRtasDecodeVertexBufferRenderPass>();
+			meshlet_rtas_decode_vertex_buffer.meshlet_streaming_system = renderer_context->meshlet_streaming_system;
+			
+			auto& meshlet_rtas_build = render_passes.Add<MeshletRtasBuildRenderPass>();
+			meshlet_rtas_build.meshlet_streaming_system  = renderer_context->meshlet_streaming_system;
+			meshlet_rtas_build.mesh_asset_buffer_address = renderer_context->mesh_asset_buffer_address;
+			meshlet_rtas_build.scratch_buffer_address    = renderer_context->streaming_scratch_buffer_address;
+			
+			auto& meshlet_rtas_write_offsets = render_passes.Add<MeshletRtasWriteOffsetsRenderPass>();
+			meshlet_rtas_write_offsets.meshlet_streaming_system    = renderer_context->meshlet_streaming_system;
+			meshlet_rtas_write_offsets.meshlet_rtas_buffer_address = renderer_context->meshlet_rtas_buffer_address;
+			
+			auto& meshlet_rtas_update_offsets = render_passes.Add<MeshletRtasUpdateOffsetsRenderPass>();
+			meshlet_rtas_update_offsets.meshlet_streaming_system    = renderer_context->meshlet_streaming_system;
+			meshlet_rtas_update_offsets.meshlet_rtas_buffer_address = renderer_context->meshlet_rtas_buffer_address;
+			
+			auto& meshlet_allocate_streaming_feedback = render_passes.Add<MeshletAllocateStreamingFeedbackRenderPass>();
+			meshlet_allocate_streaming_feedback.asset_system = asset_system;
+		}
 		
 		render_passes.Add<TransmittanceLutRenderPass>().atmosphere = atmosphere_parameters_gpu_address;
 		render_passes.Add<MultipleScatteringLutRenderPass>().atmosphere = atmosphere_parameters_gpu_address;
 		render_passes.Add<SkyPanoramaLutRenderPass>().atmosphere = atmosphere_parameters_gpu_address;
-		
-		render_passes.Add<MeshletAllocateStreamingFeedbackRenderPass>().asset_system = asset_system;
 	}
 	
 	render_passes.AddWait(CommandQueueType::Graphics, render_passes.AddSignal(CommandQueueType::Compute));
@@ -372,12 +383,11 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	
 	render_passes.Add<AtmosphereCompositeRenderPass>().atmosphere = atmosphere_parameters_gpu_address;
 	
-	{
-		auto& copy_meshlet_culling_statistics = render_passes.Add<CopyMeshletCullingStatisticsRenderPass>();
-		copy_meshlet_culling_statistics.readback_queue = &renderer_world.meshlet_culling_statistics_readback_queue;
-	}
+	auto& copy_meshlet_culling_statistics = render_passes.Add<CopyMeshletCullingStatisticsRenderPass>();
+	copy_meshlet_culling_statistics.readback_queue = &renderer_world.meshlet_culling_statistics_readback_queue;
 	
-	{
+	// Streaming feedback buffers are shared across all views. Readback only for the last view.
+	if (is_last_view) {
 		auto& copy_streaming_feedback = render_passes.Add<CopyStreamingFeedbackRenderPass>();
 		copy_streaming_feedback.meshlet_streaming_feedback_queue = &renderer_context->meshlet_streaming_feedback_queue;
 		copy_streaming_feedback.mesh_streaming_feedback_queue    = &renderer_context->mesh_streaming_feedback_queue;
@@ -442,7 +452,9 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	
 	last_frame_submit_end = render_passes.AddSignal(CommandQueueType::Graphics);
 	
-	render_passes.Add<ImGuiRenderPass>();
+	if (is_last_view) {
+		render_passes.Add<ImGuiRenderPass>();
+	}
 	
 	ReplayRenderPasses(render_passes, record_context);
 }

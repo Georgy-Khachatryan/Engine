@@ -237,10 +237,16 @@ static void GenerateVectorFunctions(StringBuilder& builder, u32 count, String ty
 	
 	if (count == 2) {
 		builder.Append("inline %0 Dot(const %1& lh, const %1& rh) { return lh.x * rh.x + lh.y * rh.y; }\n"_sl, type, name);
+		builder.Append("inline %0 Lerp(const %0& lh, const %0& rh, %1 t) { return %0(Lerp(lh.x, rh.x, t), Lerp(lh.y, rh.y, t)); }\n"_sl, name, type);
+		builder.Append("inline %0 Lerp(const %0& lh, const %0& rh, const %0& t) { return %0(Lerp(lh.x, rh.x, t.x), Lerp(lh.y, rh.y, t.y)); }\n"_sl, name);
 	} else if (count == 3) {
 		builder.Append("inline %0 Dot(const %1& lh, const %1& rh) { return lh.x * rh.x + lh.y * rh.y + lh.z * rh.z; }\n"_sl, type, name);
+		builder.Append("inline %0 Lerp(const %0& lh, const %0& rh, %1 t) { return %0(Lerp(lh.x, rh.x, t), Lerp(lh.y, rh.y, t), Lerp(lh.z, rh.z, t)); }\n"_sl, name, type);
+		builder.Append("inline %0 Lerp(const %0& lh, const %0& rh, const %0& t) { return %0(Lerp(lh.x, rh.x, t.x), Lerp(lh.y, rh.y, t.y), Lerp(lh.z, rh.z, t.z)); }\n"_sl, name);
 	} else if (count == 4) {
 		builder.Append("inline %0 Dot(const %1& lh, const %1& rh) { return lh.x * rh.x + lh.y * rh.y + lh.z * rh.z + lh.w * rh.w; }\n"_sl, type, name);
+		builder.Append("inline %0 Lerp(const %0& lh, const %0& rh, %1 t) { return %0(Lerp(lh.x, rh.x, t), Lerp(lh.y, rh.y, t), Lerp(lh.z, rh.z, t), Lerp(lh.w, rh.w, t)); }\n"_sl, name, type);
+		builder.Append("inline %0 Lerp(const %0& lh, const %0& rh, const %0& t) { return %0(Lerp(lh.x, rh.x, t.x), Lerp(lh.y, rh.y, t.y), Lerp(lh.z, rh.z, t.z), Lerp(lh.w, rh.w, t.w)); }\n"_sl, name);
 	}
 	
 	builder.Append("inline %0 LengthSquare(const %1& v) { return Dot(v, v); }\n"_sl, type, name);
@@ -269,6 +275,8 @@ static void GenerateScalarFunctions(StringBuilder& builder) {
 	
 	builder.Append("inline float Min(float lh, float rh) { return lh < rh ? lh : rh; }\n"_sl);
 	builder.Append("inline float Max(float lh, float rh) { return lh > rh ? lh : rh; }\n\n"_sl);
+	
+	builder.Append("inline float Lerp(float lh, float rh, float t) { return lh * (1.f - t) + rh * t; }\n\n"_sl);
 }
 
 void WriteCodeForMathLibrary(StackAllocator* alloc) {

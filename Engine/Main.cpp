@@ -70,10 +70,16 @@ s32 main() {
 	auto* resource_table = CreateResourceTable(&alloc);
 	defer{ ReleaseResourceTable(graphics_context, resource_table); };
 	
+	auto* icon_resource_table = CreateResourceTable(&alloc);
+	defer{ ReleaseResourceTable(graphics_context, icon_resource_table); };
 	
 	WorldEntitySystem world_system;
 	InitializeEntitySystem(world_system, &alloc);
 	defer{ ReleaseHeapAllocator(world_system.heap); };
+	
+	WorldEntitySystem icon_world_system;
+	InitializeEntitySystem(icon_world_system, &alloc);
+	defer{ ReleaseHeapAllocator(icon_world_system.heap); };
 	
 	AssetEntitySystem asset_system;
 	InitializeEntitySystem(asset_system, &alloc);
@@ -86,6 +92,7 @@ s32 main() {
 	LevelEditorIO level_editor_io;
 	u64 world_entity_guid = LoadOrCreateDefaultEntitySystems(&alloc, world_system, asset_system);
 	
+	CreateEditorIconCache(&alloc, icon_world_system, level_editor_io);
 	
 	u64 frame_allocation_size = 0;
 	u64 transient_upload_allocation_size   = 0;
@@ -99,46 +106,63 @@ s32 main() {
 		ResizeWindowSwapChain(swap_chain, graphics_context, window->size, swap_chain_formats[swap_chain_format_index]);
 		WindowSwapChainBeginFrame(swap_chain, graphics_context, &alloc);
 		ImGuiBeginFrame(window);
+		RendererBeginFrame(renderer_context);
 		
 		ApplicationStatisticsWindow(world_system, asset_system, world_entity_guid, frame_initial_size, frame_allocation_size, transient_upload_allocation_size, transient_readback_allocation_size, imgui_heap.ComputeTotalMemoryUsage(), &swap_chain_format_index);
 		
-		LevelEditorUpdate(&alloc, graphics_context, undo_redo_system, world_system, asset_system, level_editor_io, world_entity_guid);
+		Array<LevelEditorView> level_editor_views;
+		LevelEditorUpdate(&alloc, graphics_context, undo_redo_system, world_system, asset_system, level_editor_io, world_entity_guid, level_editor_views);
 		
-		Array<GpuComponentUploadBuffer> gpu_uploads;
-		auto* record_context = BeginRecordContext(&alloc, renderer_context, swap_chain, resource_table);
+		Array<RecordContext*> record_contexts;
+		ArrayReserve(record_contexts, &alloc, level_editor_views.count);
 		
-		// Update shared asset_system:
-		{
-			UpdateAssetStreamingSystems(renderer_context, thread_pool, record_context, asset_system);
+		for (u32 view_index = 0; view_index < level_editor_views.count; view_index += 1) {
+			auto& view = level_editor_views[view_index];
 			
-			UpdateEditorAssetComponents(&alloc, asset_system);
-			UpdateRendererAssetGpuComponents(&alloc, record_context, asset_system, gpu_uploads);
+			// TODO: Better way to associate a resource table with a given view.
+			Array<GpuComponentUploadBuffer> gpu_uploads;
+			auto* record_context = BeginRecordContext(&alloc, renderer_context, swap_chain, view_index == 0 ? resource_table : icon_resource_table);
+			defer{ EndRecordContext(&alloc, record_context, renderer_context, record_contexts); };
+			
+			// Update shared asset_system:
+			if (view_index == 0) {
+				UpdateAssetStreamingSystems(renderer_context, thread_pool, record_context, asset_system);
+				
+				UpdateEditorAssetComponents(&alloc, asset_system);
+				UpdateRendererAssetGpuComponents(&alloc, record_context, asset_system, gpu_uploads);
+			}
+			
+			// Update world_system:
+			{
+				UpdateWorldSystemReadback(record_context, *view.world_system, view.world_entity_guid);
+				UpdateEntityGpuComponents(&alloc, record_context, *view.world_system, asset_system, gpu_uploads);
+			}
+			
+			BuildRenderPassesForFrame(renderer_context, record_context, view.world_system, &asset_system, view.world_entity_guid, gpu_uploads, view_index, (u32)level_editor_views.count);
 		}
 		
-		// Update world_system:
-		{
-			UpdateWorldSystemReadback(record_context, world_system, world_entity_guid);
-			UpdateEntityGpuComponents(&alloc, record_context, world_system, asset_system, gpu_uploads);
+		WindowSwapChainEndFrame(swap_chain, graphics_context, &alloc, record_contexts);
+		
+		ReleaseEntityComponents(&alloc, asset_system);
+		for (auto& view : level_editor_views) {
+			ReleaseEntityComponents(&alloc, *view.world_system);
 		}
 		
-		BuildRenderPassesForFrame(renderer_context, record_context, &world_system, &asset_system, world_entity_guid, gpu_uploads);
-		WindowSwapChainEndFrame(swap_chain, graphics_context, &alloc, record_context);
-		
-		ReleaseAssetComponents(&alloc, asset_system);
-		ReleaseEntityComponents(&alloc, world_system);
-		
-		ClearEntityMasks(world_system);
 		ClearEntityMasks(asset_system);
+		for (auto& view : level_editor_views) {
+			ClearEntityMasks(*view.world_system);
+		}
 		
 		frame_allocation_size = (alloc.total_allocated_size - frame_initial_size);
-		transient_upload_allocation_size   = record_context->upload_buffer_offset;
-		transient_readback_allocation_size = record_context->readback_buffer_offset;
+		transient_upload_allocation_size   = renderer_context->upload_buffer_offset;
+		transient_readback_allocation_size = renderer_context->readback_buffer_offset;
 	}
 	WaitForInFlightSubmits(graphics_context);
 	
 	ReleaseTextureAssets(&alloc, graphics_context, asset_system);
-	ReleaseEntitySystemGpuStreamAllocations(graphics_context, world_system);
 	ReleaseEntitySystemGpuStreamAllocations(graphics_context, asset_system);
+	ReleaseEntitySystemGpuStreamAllocations(graphics_context, world_system);
+	ReleaseEntitySystemGpuStreamAllocations(graphics_context, icon_world_system);
 	
 	return 0;
 }

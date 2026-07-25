@@ -6,7 +6,7 @@
 
 compile_const u32 number_of_back_buffers = 3;
 compile_const u32 persistent_srv_descriptor_count = 1024;
-compile_const u32 transient_srv_descriptor_count  = 1024;
+compile_const u32 transient_srv_descriptor_count  = 16384;
 
 struct RecordContext;
 
@@ -50,7 +50,7 @@ void ReleaseWindowSwapChain(WindowSwapChain* swap_chain, GraphicsContext* contex
 void ResizeWindowSwapChain(WindowSwapChain* swap_chain, GraphicsContext* context, uint2 size, TextureFormat format);
 NativeTextureResource WindowSwapGetCurrentBackBuffer(WindowSwapChain* swap_chain);
 void WindowSwapChainBeginFrame(WindowSwapChain* swap_chain, GraphicsContext* context, StackAllocator* alloc);
-void WindowSwapChainEndFrame(WindowSwapChain* swap_chain, GraphicsContext* context, StackAllocator* alloc, RecordContext* record_context);
+void WindowSwapChainEndFrame(WindowSwapChain* swap_chain, GraphicsContext* context, StackAllocator* alloc, ArrayView<RecordContext*> record_contexts);
 
 u32 AllocateTransientSrvDescriptorTable(GraphicsContext* context, u32 count);
 u32 AllocatePersistentSrvDescriptor(GraphicsContext* context);

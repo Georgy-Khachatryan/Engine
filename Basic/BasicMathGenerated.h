@@ -26,6 +26,8 @@ namespace Math {
 	inline float Min(float lh, float rh) { return lh < rh ? lh : rh; }
 	inline float Max(float lh, float rh) { return lh > rh ? lh : rh; }
 
+	inline float Lerp(float lh, float rh, float t) { return lh * (1.f - t) + rh * t; }
+
 	struct Vec2u32 {
 		u32 x; u32 y;
 
@@ -1635,6 +1637,8 @@ namespace Math {
 
 	inline float Cross(const Vec2f& lh, const Vec2f& rh) { return lh.x * rh.y - lh.y * rh.x; }
 	inline float Dot(const Vec2f& lh, const Vec2f& rh) { return lh.x * rh.x + lh.y * rh.y; }
+	inline Vec2f Lerp(const Vec2f& lh, const Vec2f& rh, float t) { return Vec2f(Lerp(lh.x, rh.x, t), Lerp(lh.y, rh.y, t)); }
+	inline Vec2f Lerp(const Vec2f& lh, const Vec2f& rh, const Vec2f& t) { return Vec2f(Lerp(lh.x, rh.x, t.x), Lerp(lh.y, rh.y, t.y)); }
 	inline float LengthSquare(const Vec2f& v) { return Dot(v, v); }
 	inline float Length(const Vec2f& v) { return sqrtf(Dot(v, v)); }
 	inline Vec2f Normalize(const Vec2f& v) { return v * (1.f / Length(v)); }
@@ -1720,6 +1724,8 @@ namespace Math {
 	}
 
 	inline float Dot(const Vec3f& lh, const Vec3f& rh) { return lh.x * rh.x + lh.y * rh.y + lh.z * rh.z; }
+	inline Vec3f Lerp(const Vec3f& lh, const Vec3f& rh, float t) { return Vec3f(Lerp(lh.x, rh.x, t), Lerp(lh.y, rh.y, t), Lerp(lh.z, rh.z, t)); }
+	inline Vec3f Lerp(const Vec3f& lh, const Vec3f& rh, const Vec3f& t) { return Vec3f(Lerp(lh.x, rh.x, t.x), Lerp(lh.y, rh.y, t.y), Lerp(lh.z, rh.z, t.z)); }
 	inline float LengthSquare(const Vec3f& v) { return Dot(v, v); }
 	inline float Length(const Vec3f& v) { return sqrtf(Dot(v, v)); }
 	inline Vec3f Normalize(const Vec3f& v) { return v * (1.f / Length(v)); }
@@ -1804,6 +1810,8 @@ namespace Math {
 	inline Vec4f Max(const Vec4f& lh, const Vec4f& rh) { return Vec4f(Max(lh.x, rh.x), Max(lh.y, rh.y), Max(lh.z, rh.z), Max(lh.w, rh.w)); }
 
 	inline float Dot(const Vec4f& lh, const Vec4f& rh) { return lh.x * rh.x + lh.y * rh.y + lh.z * rh.z + lh.w * rh.w; }
+	inline Vec4f Lerp(const Vec4f& lh, const Vec4f& rh, float t) { return Vec4f(Lerp(lh.x, rh.x, t), Lerp(lh.y, rh.y, t), Lerp(lh.z, rh.z, t), Lerp(lh.w, rh.w, t)); }
+	inline Vec4f Lerp(const Vec4f& lh, const Vec4f& rh, const Vec4f& t) { return Vec4f(Lerp(lh.x, rh.x, t.x), Lerp(lh.y, rh.y, t.y), Lerp(lh.z, rh.z, t.z), Lerp(lh.w, rh.w, t.w)); }
 	inline float LengthSquare(const Vec4f& v) { return Dot(v, v); }
 	inline float Length(const Vec4f& v) { return sqrtf(Dot(v, v)); }
 	inline Vec4f Normalize(const Vec4f& v) { return v * (1.f / Length(v)); }

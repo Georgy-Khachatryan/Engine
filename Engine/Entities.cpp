@@ -113,14 +113,8 @@ static void ReleaseNameComponents(StackAllocator* alloc, EntitySystemBase& entit
 	}
 }
 
-void ReleaseAssetComponents(StackAllocator* alloc, AssetEntitySystem& asset_system) {
-	ProfilerScope("ReleaseAssetComponents");
-	
-	ReleaseNameComponents(alloc, asset_system);
-}
-
-void ReleaseEntityComponents(StackAllocator* alloc, WorldEntitySystem& world_system) {
+void ReleaseEntityComponents(StackAllocator* alloc, EntitySystemBase& entity_system) {
 	ProfilerScope("ReleaseEntityComponents");
 	
-	ReleaseNameComponents(alloc, world_system);
+	ReleaseNameComponents(alloc, entity_system);
 }

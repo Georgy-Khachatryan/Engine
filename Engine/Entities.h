@@ -90,5 +90,4 @@ struct TransformComponentQuery {
 
 void UpdateEntityGpuComponents(StackAllocator* alloc, RecordContext* record_context, WorldEntitySystem& world_system, AssetEntitySystem& asset_system, Array<GpuComponentUploadBuffer>& gpu_uploads);
 
-void ReleaseAssetComponents(StackAllocator* alloc, AssetEntitySystem& asset_system);
-void ReleaseEntityComponents(StackAllocator* alloc, WorldEntitySystem& world_system);
+void ReleaseEntityComponents(StackAllocator* alloc, EntitySystemBase& entity_system);

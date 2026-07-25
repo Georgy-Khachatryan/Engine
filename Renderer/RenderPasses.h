@@ -228,7 +228,7 @@ struct EntitySystemUpdateRenderPass {
 	
 	WorldEntitySystem* world_system = nullptr;
 	AssetEntitySystem* asset_system  = nullptr;
-	ArrayView<GpuComponentUploadBuffer> upload_buffers;
+	ArrayView<GpuComponentUploadBuffer> gpu_uploads;
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
 		HLSL::ByteBuffer   src_data;
@@ -449,10 +449,11 @@ struct MeshletRtasDecodeVertexBufferRenderPass {
 	struct Descriptors : HLSL::BaseDescriptorTable {
 		HLSL::RegularBuffer<u32>                                 packed_group_indices;
 		HLSL::RegularBuffer<MeshletRtasDecodeVertexBufferInputs> decode_vertex_buffer_inputs;
-		HLSL::RWRegularBuffer<u32> rtas_indirect_arguments = VirtualResourceID::MeshletRtasIndirectArguments;
-		HLSL::RegularBuffer<GpuMeshAssetData> mesh_asset_data = VirtualResourceID::GpuMeshAssetData;
-		HLSL::ByteBuffer   mesh_asset_buffer = VirtualResourceID::MeshAssetBuffer;
-		HLSL::RWByteBuffer scratch_buffer    = VirtualResourceID::StreamingScratchBuffer;
+		
+		HLSL::RWRegularBuffer<u32>            rtas_indirect_arguments = VirtualResourceID::MeshletRtasIndirectArguments;
+		HLSL::RegularBuffer<GpuMeshAssetData> mesh_asset_data         = VirtualResourceID::GpuMeshAssetData;
+		HLSL::ByteBuffer                      mesh_asset_buffer       = VirtualResourceID::MeshAssetBuffer;
+		HLSL::RWByteBuffer                    scratch_buffer          = VirtualResourceID::StreamingScratchBuffer;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {
@@ -477,8 +478,9 @@ struct MeshletRtasBuildRenderPass {
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
 		HLSL::RegularBuffer<MeshletRtasBuildIndirectArgumentsInputs> meshlet_rtas_inputs;
-		HLSL::ByteBuffer mesh_asset_buffer = VirtualResourceID::MeshAssetBuffer;
-		HLSL::RWByteBuffer scratch_buffer = VirtualResourceID::StreamingScratchBuffer;
+		
+		HLSL::ByteBuffer   mesh_asset_buffer = VirtualResourceID::MeshAssetBuffer;
+		HLSL::RWByteBuffer scratch_buffer    = VirtualResourceID::StreamingScratchBuffer;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {
@@ -530,8 +532,8 @@ struct MeshletRtasUpdateOffsetsRenderPass {
 	struct Descriptors : HLSL::BaseDescriptorTable {
 		HLSL::RegularBuffer<MeshletRtasUpdateOffsetsInputs> update_offsets_inputs;
 		HLSL::RWRegularBuffer<u32> rtas_indirect_arguments = VirtualResourceID::MeshletRtasIndirectArguments;
-		HLSL::RWByteBuffer scratch_buffer    = VirtualResourceID::StreamingScratchBuffer;
-		HLSL::RWByteBuffer mesh_asset_buffer = VirtualResourceID::MeshAssetBuffer;
+		HLSL::RWByteBuffer         scratch_buffer          = VirtualResourceID::StreamingScratchBuffer;
+		HLSL::RWByteBuffer         mesh_asset_buffer       = VirtualResourceID::MeshAssetBuffer;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {
@@ -714,17 +716,18 @@ struct MeshletClearBuffersRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
 	WorldEntitySystem* world_system = nullptr;
+	bool clear_streaming_feedback = false;
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
-		HLSL::RWRegularBuffer<u32> rtas_indirect_arguments    = VirtualResourceID::MeshletRtasIndirectArguments;
-		HLSL::RWRegularBuffer<uint4> indirect_arguments       = VirtualResourceID::MeshletIndirectArguments;
-		HLSL::RWRegularBuffer<u32> meshlet_streaming_feedback = VirtualResourceID::MeshletStreamingFeedback;
-		HLSL::RWRegularBuffer<u32> mesh_streaming_feedback    = VirtualResourceID::MeshStreamingFeedback;
-		HLSL::RWRegularBuffer<u32> texture_streaming_feedback = VirtualResourceID::TextureStreamingFeedback;
-		HLSL::RWRegularBuffer<u32> culling_hzb_build_state    = VirtualResourceID::CullingHzbBuildState;
-		HLSL::RWRegularBuffer<u32> instance_meshlet_counts    = VirtualResourceID::InstanceMeshletCounts;
+		HLSL::RWRegularBuffer<u32>   rtas_indirect_arguments          = VirtualResourceID::MeshletRtasIndirectArguments;
+		HLSL::RWRegularBuffer<uint4> indirect_arguments               = VirtualResourceID::MeshletIndirectArguments;
+		HLSL::RWRegularBuffer<u32>   meshlet_streaming_feedback       = VirtualResourceID::MeshletStreamingFeedback;
+		HLSL::RWRegularBuffer<u32>   mesh_streaming_feedback          = VirtualResourceID::MeshStreamingFeedback;
+		HLSL::RWRegularBuffer<u32>   texture_streaming_feedback       = VirtualResourceID::TextureStreamingFeedback;
+		HLSL::RWRegularBuffer<u32>   culling_hzb_build_state          = VirtualResourceID::CullingHzbBuildState;
+		HLSL::RWRegularBuffer<u32>   instance_meshlet_counts          = VirtualResourceID::InstanceMeshletCounts;
 		HLSL::RWRegularBuffer<uint4> light_culling_indirect_arguments = VirtualResourceID::LightCullingIndirectArguments;
-		HLSL::RWRegularBuffer<u32> light_culling_grid         = VirtualResourceID::LightCullingGrid;
+		HLSL::RWRegularBuffer<u32>   light_culling_grid               = VirtualResourceID::LightCullingGrid;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {

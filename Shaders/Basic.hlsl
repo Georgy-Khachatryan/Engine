@@ -404,15 +404,15 @@ float4 TransformViewToClipSpace(float3 view_space_position, float4 view_to_clip_
 	return result;
 }
 
-float4 TransformViewToClipSpaceDirection(float3 view_space_position, float4 view_to_clip_coef) {
+float4 TransformViewToClipSpaceDirection(float3 view_space_direction, float4 view_to_clip_coef) {
 	float4 result;
-	result.xy = view_space_position.xy * view_to_clip_coef.xy;
+	result.xy = view_space_direction.xy * view_to_clip_coef.xy;
 	
 	if (IsPerspectiveMatrix(view_to_clip_coef)) {
 		result.z = 0.0;
-		result.w = view_space_position.z;
+		result.w = view_space_direction.z;
 	} else {
-		result.z = view_space_position.z * view_to_clip_coef.z;
+		result.z = view_space_direction.z * view_to_clip_coef.z;
 		result.w = 0.0;
 	}
 	

@@ -1099,13 +1099,15 @@ void WindowSwapChainBeginFrame(WindowSwapChain* api_swap_chain, GraphicsContext*
 	}
 }
 
-void WindowSwapChainEndFrame(WindowSwapChain* api_swap_chain, GraphicsContext* api_context, StackAllocator* alloc, RecordContext* record_context) {
+void WindowSwapChainEndFrame(WindowSwapChain* api_swap_chain, GraphicsContext* api_context, StackAllocator* alloc, ArrayView<RecordContext*> record_contexts) {
 	ProfilerScope("WindowSwapChainEndFrame");
 	
 	auto* swap_chain = (WindowSwapChainD3D12*)api_swap_chain;
 	auto* context    = (GraphicsContextD3D12*)api_context;
 	
-	ReplayRecordContext(context, record_context);
+	for (auto* record_context : record_contexts) {
+		ReplayRecordContext(context, record_context);
+	}
 	
 	u32 sync_interval = 1;
 	if (FAILED(swap_chain->dxgi_swap_chain->Present(sync_interval, 0))) {
