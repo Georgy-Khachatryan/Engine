@@ -115,6 +115,30 @@ static void WorldComponentEntityView(StackAllocator* alloc, WorldEntitySystem& w
 				ImGui::EndTableItem();
 			}
 		}
+		
+		if (ImGui::TableCollapsingHeader("Meshlet Culling")) {
+			auto& meshlet_culling_statistics = renderer_world.meshlet_culling_statistics;
+			
+			if (ImGui::BeginTableItem("Raster Passes Meshlet Count")) {
+				ImGui::Text("%llu", meshlet_culling_statistics.meshlet_count);
+				ImGui::EndTableItem();
+			}
+			
+			if (ImGui::BeginTableItem("Main Pass Meshlet Count")) {
+				ImGui::Text("%llu", meshlet_culling_statistics.meshlet_count_main_pass);
+				ImGui::EndTableItem();
+			}
+			
+			if (ImGui::BeginTableItem("Disocclusion Pass Meshlet Count")) {
+				ImGui::Text("%llu", meshlet_culling_statistics.meshlet_count_disocclusion_pass);
+				ImGui::EndTableItem();
+			}
+			
+			if (ImGui::BeginTableItem("Raytracing Pass Meshlet Count")) {
+				ImGui::Text("%llu", meshlet_culling_statistics.meshlet_count_raytracing_pass);
+				ImGui::EndTableItem();
+			}
+		}
 	}
 	
 	if (entity.lighting_settings && ImGui::TableCollapsingHeader("Lighting Settings")) {

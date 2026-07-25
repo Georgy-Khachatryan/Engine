@@ -3,6 +3,7 @@
 #include "Engine/ImGuiCustomWidgets.h"
 #include "Engine/UndoRedoSystem.h"
 #include "LevelEditor.h"
+#include "Renderer/Renderer.h"
 
 compile_const auto assets_save_load_path = "./Assets/Assets.csb"_sl;
 
@@ -34,7 +35,7 @@ static void CreateDefaultWorldSystem(WorldEntitySystem& world_system, u64 world_
 	world_entity.global_light_entity->guid = global_light_entity.guid->guid;
 }
 
-u64 LoadOrCreateDefaultEntitySystems(StackAllocator* alloc, WorldEntitySystem& world_system, AssetEntitySystem& asset_system) {
+static u64 LoadOrCreateDefaultEntitySystems(StackAllocator* alloc, WorldEntitySystem& world_system, AssetEntitySystem& asset_system) {
 	TempAllocationScope(alloc);
 	
 	if (SaveLoadEntitySystemToFile(alloc, asset_system, assets_save_load_path, SaveLoadDirection::Loading) == false) {
@@ -50,6 +51,29 @@ u64 LoadOrCreateDefaultEntitySystems(StackAllocator* alloc, WorldEntitySystem& w
 	}
 	
 	return world_entity_guid;
+}
+
+struct LevelEditor {
+	WorldEntitySystem world_system;
+	VirtualResourceTable* resource_table = nullptr;
+	
+	u64 world_entity_guid = 0;
+};
+
+LevelEditor* CreateLevelEditor(StackAllocator* alloc, GraphicsContext* graphics_context, AssetEntitySystem& asset_system) {
+	auto* level_editor = NewFromAlloc(alloc, LevelEditor);
+	level_editor->resource_table = CreateResourceTable(alloc);
+	InitializeEntitySystem(level_editor->world_system, alloc);
+	
+	level_editor->world_entity_guid = LoadOrCreateDefaultEntitySystems(alloc, level_editor->world_system, asset_system);
+	
+	return level_editor;
+}
+
+void ReleaseLevelEditor(LevelEditor* level_editor, GraphicsContext* graphics_context) {
+	ReleaseEntitySystemGpuStreamAllocations(graphics_context, level_editor->world_system);
+	ReleaseHeapAllocator(level_editor->world_system.heap);
+	ReleaseResourceTable(graphics_context, level_editor->resource_table);
 }
 
 
@@ -205,8 +229,11 @@ static void ProcessLevelEditorIO(UndoRedoSystem& undo_redo_system, WorldEntitySy
 }
 
 
-void LevelEditorUpdate(StackAllocator* alloc, GraphicsContext* graphics_context, UndoRedoSystem& undo_redo_system, WorldEntitySystem& world_system, AssetEntitySystem& asset_system, LevelEditorIO& level_editor_io, u64& world_entity_guid, Array<LevelEditorView>& level_editor_views) {
+void LevelEditorUpdate(StackAllocator* alloc, GraphicsContext* graphics_context, UndoRedoSystem& undo_redo_system, AssetEntitySystem& asset_system, LevelEditorIO& level_editor_io, Array<EditorWorldView>& editor_world_views) {
 	ProfilerScope("LevelEditorUpdate");
+	
+	auto& world_system = level_editor_io.level_editor->world_system;
+	auto& world_entity_guid = level_editor_io.level_editor->world_entity_guid;
 	
 	auto asset_selection_state_entity = QueryFirstEntityByType<EditorSelectionStateEntity>(asset_system);
 	LevelEditorSaveLoadShortcuts(alloc, undo_redo_system, world_system, asset_system, asset_selection_state_entity, level_editor_io, world_entity_guid);
@@ -228,7 +255,7 @@ void LevelEditorUpdate(StackAllocator* alloc, GraphicsContext* graphics_context,
 	
 	EditorPropertiesWindow(alloc, undo_redo_system, world_system, asset_system, world_selection_state_entity, asset_selection_state_entity, world_entity_guid);
 	
-	EditorViewportWindow(alloc, undo_redo_system, world_system, asset_system, world_selection_state_entity, world_entity_guid, graphics_context, level_editor_views);
+	EditorViewportWindow(alloc, undo_redo_system, world_system, asset_system, world_selection_state_entity, world_entity_guid, graphics_context, level_editor_io.level_editor->resource_table, editor_world_views);
 	
-	EditorIconCacheEnd(alloc, level_editor_io.icon_cache, graphics_context, asset_system, level_editor_views);
+	EditorIconCacheEnd(alloc, level_editor_io.icon_cache, graphics_context, asset_system, editor_world_views);
 }

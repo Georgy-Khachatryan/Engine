@@ -174,7 +174,7 @@ static void DrawDebugFrustumCullingBounds(ImGuiDrawList3D* draw_list_3d, CameraE
 	}
 }
 
-void EditorViewportWindow(StackAllocator* alloc, UndoRedoSystem& undo_redo_system, WorldEntitySystem& world_system, AssetEntitySystem& asset_system, EditorSelectionStateEntity world_selection_state_entity, u64 world_entity_guid, GraphicsContext* graphics_context, Array<LevelEditorView>& level_editor_views) {
+void EditorViewportWindow(StackAllocator* alloc, UndoRedoSystem& undo_redo_system, WorldEntitySystem& world_system, AssetEntitySystem& asset_system, EditorSelectionStateEntity world_selection_state_entity, u64 world_entity_guid, GraphicsContext* graphics_context, VirtualResourceTable* resource_table, Array<EditorWorldView>& editor_world_views) {
 	auto world_entity  = QueryEntityByGUID<WorldEntityType>(world_system,  world_entity_guid);
 	auto camera_entity = QueryEntityByGUID<CameraEntityType>(world_system, world_entity.camera_entity->guid);
 	
@@ -222,7 +222,8 @@ void EditorViewportWindow(StackAllocator* alloc, UndoRedoSystem& undo_redo_syste
 	renderer_world->debug_mesh_instance_arrays   = draw_list_3d.Flush();
 	renderer_world->scene_descriptor_heap_offset = scene_descriptor_heap_offset;
 	
-	auto& viewport_view = ArrayEmplace(level_editor_views, alloc);
-	viewport_view.world_system      = &world_system;
-	viewport_view.world_entity_guid = world_entity_guid;
+	auto& world_view = ArrayEmplace(editor_world_views, alloc);
+	world_view.resource_table    = resource_table;
+	world_view.world_system      = &world_system;
+	world_view.world_entity_guid = world_entity_guid;
 }

@@ -1,11 +1,14 @@
 #include "Basic/Basic.h"
-#include "Engine/ImGuiCustomWidgets.h"
 #include "Engine/Entities.h"
+#include "Engine/ImGuiCustomWidgets.h"
 #include "GraphicsApi/GraphicsApi.h"
 #include "LevelEditor.h"
+#include "Renderer/Renderer.h"
 
 struct EditorIconCache {
-	WorldEntitySystem* world_system = nullptr;
+	WorldEntitySystem world_system;
+	VirtualResourceTable* resource_table = nullptr;
+	
 	u64 world_entity_guid = 0;
 	u64 mesh_entity_guid  = 0;
 	
@@ -13,16 +16,19 @@ struct EditorIconCache {
 	u32 scene_descriptor_heap_offset = 0;
 };
 
-void CreateEditorIconCache(StackAllocator* alloc, WorldEntitySystem& icon_world_system, LevelEditorIO& level_editor_io) {
+EditorIconCache* CreateEditorIconCache(StackAllocator* alloc, GraphicsContext* graphics_context) {
 	auto* icon_cache = NewFromAlloc(alloc, EditorIconCache);
-	icon_cache->world_system = &icon_world_system;
+	icon_cache->resource_table = CreateResourceTable(alloc);
+	InitializeEntitySystem(icon_cache->world_system, alloc);
 	
-	icon_cache->world_entity_guid = GenerateRandomNumber64(icon_world_system.guid_random_seed);
+	auto& world_system = icon_cache->world_system;
 	
-	auto world_entity  = CreateEntity<WorldEntityType>(icon_world_system, icon_cache->world_entity_guid);
-	auto camera_entity = CreateEntity<CameraEntityType>(icon_world_system);
-	auto mesh_entity   = CreateEntity<MeshEntityType>(icon_world_system);
-	auto global_light_entity = CreateEntity<LightEntityType>(icon_world_system);
+	icon_cache->world_entity_guid = GenerateRandomNumber64(world_system.guid_random_seed);
+	
+	auto world_entity  = CreateEntity<WorldEntityType>(world_system, icon_cache->world_entity_guid);
+	auto camera_entity = CreateEntity<CameraEntityType>(world_system);
+	auto mesh_entity   = CreateEntity<MeshEntityType>(world_system);
+	auto global_light_entity = CreateEntity<LightEntityType>(world_system);
 	
 	icon_cache->mesh_entity_guid = mesh_entity.guid->guid;
 	
@@ -40,8 +46,15 @@ void CreateEditorIconCache(StackAllocator* alloc, WorldEntitySystem& icon_world_
 	world_entity.tone_mapping_settings->method  = ToneMappingMethod::GT7_SDR;
 	world_entity.anti_aliasing_settings->method = AntiAliasingMethod::None;
 	
-	level_editor_io.icon_cache = icon_cache;
+	return icon_cache;
 }
+
+void ReleaseEditorIconCache(EditorIconCache* icon_cache, GraphicsContext* graphics_context) {
+	ReleaseEntitySystemGpuStreamAllocations(graphics_context, icon_cache->world_system);
+	ReleaseHeapAllocator(icon_cache->world_system.heap);
+	ReleaseResourceTable(graphics_context, icon_cache->resource_table);
+}
+
 
 u32 EditorIconCacheQueryMeshIcon(EditorIconCache* icon_cache, u64 mesh_asset_guid) {
 	icon_cache->mesh_asset_guid = mesh_asset_guid;
@@ -53,9 +66,11 @@ void EditorIconCacheBegin(EditorIconCache* icon_cache, GraphicsContext* graphics
 	icon_cache->scene_descriptor_heap_offset = AllocateTransientSrvDescriptorTable(graphics_context, 1);
 }
 
-void EditorIconCacheEnd(StackAllocator* alloc, EditorIconCache* icon_cache, GraphicsContext* graphics_context, AssetEntitySystem& asset_system, Array<LevelEditorView>& level_editor_views) {
-	auto world_entity = QueryEntityByGUID<WorldEntityType>(*icon_cache->world_system, icon_cache->world_entity_guid);
-	auto camera_entity = QueryEntityByGUID<CameraEntityType>(*icon_cache->world_system, world_entity.camera_entity->guid);
+void EditorIconCacheEnd(StackAllocator* alloc, EditorIconCache* icon_cache, GraphicsContext* graphics_context, AssetEntitySystem& asset_system, Array<EditorWorldView>& editor_world_views) {
+	auto& world_system = icon_cache->world_system;
+	
+	auto world_entity = QueryEntityByGUID<WorldEntityType>(world_system, icon_cache->world_entity_guid);
+	auto camera_entity = QueryEntityByGUID<CameraEntityType>(world_system, world_entity.camera_entity->guid);
 	
 	u32 scene_descriptor_heap_offset = icon_cache->scene_descriptor_heap_offset;
 	
@@ -65,13 +80,13 @@ void EditorIconCacheEnd(StackAllocator* alloc, EditorIconCache* icon_cache, Grap
 	u64 mesh_asset_guid = icon_cache->mesh_asset_guid;
 	
 	{
-		auto mesh_entity_id = FindEntityByGUID(*icon_cache->world_system, icon_cache->mesh_entity_guid);
-		auto mesh_entity = ExtractComponentStreams<MeshEntityType>(&icon_cache->world_system->entity_type_arrays[mesh_entity_id.entity_type_id.index], mesh_entity_id.entity_id);
+		auto mesh_entity_id = FindEntityByGUID(world_system, icon_cache->mesh_entity_guid);
+		auto mesh_entity = ExtractComponentStreams<MeshEntityType>(&world_system.entity_type_arrays[mesh_entity_id.entity_type_id.index], mesh_entity_id.entity_id);
 		
 		if (mesh_entity.mesh_asset->guid != mesh_asset_guid) {
 			mesh_entity.mesh_asset->guid = mesh_asset_guid;
 			
-			BitArraySetBit(icon_cache->world_system->entity_type_arrays[mesh_entity_id.entity_type_id.index].dirty_mask, mesh_entity_id.entity_id.index);
+			BitArraySetBit(world_system.entity_type_arrays[mesh_entity_id.entity_type_id.index].dirty_mask, mesh_entity_id.entity_id.index);
 		}
 	}
 	
@@ -130,8 +145,9 @@ void EditorIconCacheEnd(StackAllocator* alloc, EditorIconCache* icon_cache, Grap
 		renderer_world->debug_mesh_instance_arrays   = draw_list_3d.Flush();
 		renderer_world->reference_path_tracer_percent = 1.f;
 		
-		auto& viewport_view = ArrayEmplace(level_editor_views, alloc);
-		viewport_view.world_system      = icon_cache->world_system;
-		viewport_view.world_entity_guid = icon_cache->world_entity_guid;
+		auto& world_view = ArrayEmplace(editor_world_views, alloc);
+		world_view.resource_table    = icon_cache->resource_table;
+		world_view.world_system      = &world_system;
+		world_view.world_entity_guid = icon_cache->world_entity_guid;
 	}
 }
