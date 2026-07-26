@@ -171,8 +171,7 @@ static void EntityViewTable(StackAllocator* alloc, EntitySystemBase& entity_syst
 					ImGui::PushStyleVar(ImGuiStyleVar_PopupBorderSize, 0.f);
 					
 					if (entity_type_id.index == ECS::GetEntityTypeID<MeshAssetType>::id.index && ImGui::BeginTooltip()) {
-						u32 icon_index = EditorIconCacheQueryMeshIcon(level_editor_io.icon_cache, guid);
-						ImGui::ImageButtonEx("AssetIcon", icon_index, ImVec2(128.f, 128.f));
+						EditorIconCacheDrawMeshIcon(level_editor_io.icon_cache, guid);
 						ImGui::EndTooltip();
 					}
 					ImGui::PopStyleVar(3);

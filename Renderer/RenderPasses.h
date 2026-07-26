@@ -31,6 +31,7 @@ enum struct VirtualResourceID : u32 {
 	
 	// Core resources:
 	CurrentBackBuffer,
+	ExternalOutput,
 	TransientUploadBuffer,
 	TransientReadbackBuffer,
 	BlueNoise1D,
@@ -1509,6 +1510,9 @@ struct ToneMappingGpuConstants {
 	float blend_ratio = 0.f;
 	float fade_start  = 0.f;
 	float fade_end    = 0.f;
+	
+	uint2 output_offset;
+	u32 use_external_output;
 };
 
 NOTES(Meta::RenderPass{})
@@ -1516,11 +1520,14 @@ struct ToneMappingRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
 	ToneMappingSettings tone_mapping_settings;
-	VirtualResourceID scene_radiance = VirtualResourceID::None;
+	VirtualResourceID scene_radiance  = VirtualResourceID::None;
+	VirtualResourceID external_output = VirtualResourceID::None;
+	uint2 output_offset = 0;
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
 		HLSL::RegularBuffer<float> exposure = VirtualResourceID::Exposure;
 		HLSL::RWTexture2D<float4> scene_radiance;
+		HLSL::RWTexture2D<float4> external_output;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {

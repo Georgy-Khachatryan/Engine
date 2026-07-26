@@ -95,6 +95,11 @@ static void BuildResourceTable(RecordContext* record_context, WorldEntitySystem*
 	table.SwapHistory(ID::DepthStencil,                   ID::DepthStencilHistory);
 	table.SwapHistory(ID::DenoiserAccumulatedFrameCount0, ID::DenoiserAccumulatedFrameCount1);
 	table.SwapHistory(ID::DenoiserPenumbraMask0,          ID::DenoiserPenumbraMask1);
+	
+	auto& output_settings = renderer_world->output_settings;
+	if (output_settings.mode == SceneOutputMode::ExternalRenderTarget) {
+		table.Set(ID::ExternalOutput, output_settings.external.resource, output_settings.external.size);
+	}
 }
 
 static void CopyCurrentToPreviousSceneConstants(SceneConstants& scene) {
@@ -446,7 +451,16 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	tone_mapping.tone_mapping_settings = *world_entity.tone_mapping_settings;
 	tone_mapping.scene_radiance        = scene_radiance;
 	
-	CreateResourceDescriptor(record_context, HLSL::Texture2D<float4>(scene_radiance), renderer_world.scene_descriptor_heap_offset);
+	auto& output_settings = renderer_world.output_settings;
+	
+	auto scene_output = scene_radiance;
+	if (output_settings.mode == SceneOutputMode::ExternalRenderTarget) {
+		tone_mapping.external_output = VirtualResourceID::ExternalOutput;
+		tone_mapping.output_offset   = output_settings.external.output_offset;
+		scene_output = VirtualResourceID::ExternalOutput;
+	}
+	
+	CreateResourceDescriptor(record_context, HLSL::Texture2D<float4>(scene_output), output_settings.descriptor_index);
 	
 	render_passes.Add<UpdateVisibilityHashTableRenderPass>();
 	

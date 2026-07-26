@@ -47,7 +47,6 @@ EditorIconCache* CreateEditorIconCache(StackAllocator* alloc, GraphicsContext* g
 void ReleaseEditorIconCache(EditorIconCache* icon_cache, GraphicsContext* graphics_context);
 
 
-void EditorIconCacheBegin(EditorIconCache* icon_cache, GraphicsContext* graphics_context);
-void EditorIconCacheEnd(StackAllocator* alloc, EditorIconCache* icon_cache, GraphicsContext* graphics_context, AssetEntitySystem& asset_system, Array<EditorWorldView>& editor_world_views);
-u32 EditorIconCacheQueryMeshIcon(EditorIconCache* icon_cache, u64 mesh_asset_guid);
+void EditorIconCacheUpdate(StackAllocator* alloc, EditorIconCache* icon_cache, GraphicsContext* graphics_context, AssetEntitySystem& asset_system, Array<EditorWorldView>& editor_world_views);
+void EditorIconCacheDrawMeshIcon(EditorIconCache* icon_cache, u64 mesh_asset_guid);
 

@@ -9,9 +9,7 @@
       </AdditionalIncludeDirectories>
       
       <PreprocessorDefinitions>
-        IMGUI_DEFINE_MATH_OPERATORS;
-        IMGUI_DISABLE_OBSOLETE_FUNCTIONS;
-        IMGUI_ENABLE_CUSTOM_CHANGES;
+        IMGUI_USER_CONFIG="ImGuiConfigurationFile.h";
         %(PreprocessorDefinitions)
       </PreprocessorDefinitions>
     </ClCompile>
@@ -33,6 +31,7 @@
     <ClInclude Include="$(SdkDir)imgui/imstb_rectpack.h" />
     <ClInclude Include="$(SdkDir)imgui/imstb_textedit.h" />
     <ClInclude Include="$(SdkDir)imgui/imstb_truetype.h" />
+    <ClInclude Include="$(SdkDir)imgui/ImGuiConfigurationFile.h" />
   </ItemGroup>
   
 </Project>

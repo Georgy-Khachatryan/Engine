@@ -220,7 +220,10 @@ void EditorViewportWindow(StackAllocator* alloc, UndoRedoSystem& undo_redo_syste
 	renderer_world->delta_time                   = ImGui::GetIO().DeltaTime;
 	renderer_world->mouse_cursor_position        = s32x2(window_relative_mouse_position);
 	renderer_world->debug_mesh_instance_arrays   = draw_list_3d.Flush();
-	renderer_world->scene_descriptor_heap_offset = scene_descriptor_heap_offset;
+	
+	auto& output_settings = renderer_world->output_settings;
+	output_settings.mode = SceneOutputMode::InternalRenderTarget;
+	output_settings.descriptor_index = scene_descriptor_heap_offset;
 	
 	auto& world_view = ArrayEmplace(editor_world_views, alloc);
 	world_view.resource_table    = resource_table;

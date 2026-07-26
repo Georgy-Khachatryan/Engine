@@ -6,7 +6,7 @@
 // Driving Toward Reality: Physically Based Tone Mapping and Perceptual Fidelity in Gran Turismo 7
 // See license in THIRD_PARTY_LICENSES.md
 //
-static ToneMappingGpuConstants InitializeToneMappingGpuConstants(const ToneMappingSettings& settings) {
+static ToneMappingGpuConstants InitializeToneMappingGpuConstants(const ToneMappingSettings& settings, uint2 output_offset, bool use_external_output) {
 	ToneMappingGpuConstants constants;
 	
 	constants.method = settings.method;
@@ -32,6 +32,9 @@ static ToneMappingGpuConstants InitializeToneMappingGpuConstants(const ToneMappi
 	constants.blend_ratio = settings.blend_ratio;
 	constants.fade_start  = settings.fade_start;
 	constants.fade_end    = settings.fade_end;
+	
+	constants.output_offset       = output_offset;
+	constants.use_external_output = use_external_output ? 1u : 0u;
 	
 	return constants;
 }
@@ -92,9 +95,10 @@ void ToneMappingRenderPass::CreatePipelines(PipelineLibrary* lib) {
 
 void ToneMappingRenderPass::RecordPass(RecordContext* record_context) {
 	auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
-	descriptor_table.scene_radiance = scene_radiance;
+	descriptor_table.scene_radiance  = scene_radiance;
+	descriptor_table.external_output = external_output;
 	
-	auto constants = InitializeToneMappingGpuConstants(tone_mapping_settings);
+	auto constants = InitializeToneMappingGpuConstants(tone_mapping_settings, output_offset, external_output != VirtualResourceID::None);
 	
 	auto [gpu_address, cpu_address] = AllocateTransientUploadBuffer<ToneMappingGpuConstants>(record_context);
 	memcpy(cpu_address, &constants, sizeof(constants));

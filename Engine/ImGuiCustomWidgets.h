@@ -41,7 +41,7 @@ namespace ImGui {
 	bool ColorEditN(const char* label, float* color, u32 component_count);
 	bool EntityComboBox(StackAllocator* alloc, const char* label, EntitySystemBase* entity_system, u64* guid, EntityTypeID entity_type_id);
 	bool EntityComboBoxWithColor(StackAllocator* alloc, const char* label, EntitySystemBase* entity_system, float* color, u32 channel_count, u64* guid, EntityTypeID entity_type_id);
-	bool ImageButtonEx(const char* str_id, ImTextureRef tex_ref, const ImVec2& image_size, ImGuiButtonFlags flags = 0);
+	bool ImageButtonEx(const char* str_id, ImTextureRef tex_ref, const ImVec2& image_size, ImGuiButtonFlags flags = 0, const ImVec2& uv_min = ImVec2(0.f, 0.f), const ImVec2& uv_max = ImVec2(1.f, 1.f));
 	bool EntityDragDropSource(EntityTypeID entity_type_id, u64 guid);
 	bool EntityDragDropTarget(EntityTypeID entity_type_id, u64* guid);
 	

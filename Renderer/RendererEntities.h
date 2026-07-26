@@ -179,6 +179,27 @@ struct AutomaticExposureHistogram {
 	float final_exposure = 1.f;
 };
 
+enum struct SceneOutputMode : u32 {
+	InternalRenderTarget = 0,
+	ExternalRenderTarget = 1,
+};
+
+struct SceneOutputSettings {
+	SceneOutputMode mode = SceneOutputMode::InternalRenderTarget;
+	u32 descriptor_index = u32_max;
+	
+	struct {
+		
+	} internal;
+	
+	struct {
+		NativeTextureResource resource;
+		TextureSize size;
+		
+		uint2 output_offset = 0;
+	} external;
+};
+
 NOTES(Meta::SaveLoadOptions{ SaveLoadFlags::None })
 struct RendererWorld {
 	SceneConstants scene_constants;
@@ -192,7 +213,7 @@ struct RendererWorld {
 	bool  reset_reference_path_tracer   = false;
 	bool  enable_async_compute          = true;
 	
-	u32 scene_descriptor_heap_offset = 0; // Descriptor index for the final image.
+	SceneOutputSettings output_settings;
 	
 	DebugFreezeCullingCamera debug_freeze_culling_camera;
 	MeshletCullingStatistics meshlet_culling_statistics;

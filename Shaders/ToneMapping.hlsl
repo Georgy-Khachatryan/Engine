@@ -28,5 +28,9 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	float3 result_rec2020 = ApplyToneMapping(radiance_rec2020);
 	float3 result_rec709  = mul(rec2020_to_rec709, result_rec2020);
 	
-	scene_radiance[thread_id] = float4(result_rec709, 1.0);
+	if (constants.use_external_output == 0) {
+		scene_radiance[thread_id] = float4(result_rec709, 1.0);
+	} else {
+		external_output[thread_id + constants.output_offset] = float4(EncodeSRGB(result_rec709), 1.0);
+	}
 }

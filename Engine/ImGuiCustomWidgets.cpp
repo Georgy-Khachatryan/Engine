@@ -376,7 +376,7 @@ bool ImGui::EntityDragDropTarget(EntityTypeID entity_type_id, u64* guid) {
 	return (current_guid != *guid);
 }
 
-bool ImGui::ImageButtonEx(const char* str_id, ImTextureRef tex_ref, const ImVec2& image_size, ImGuiButtonFlags flags) {
+bool ImGui::ImageButtonEx(const char* str_id, ImTextureRef tex_ref, const ImVec2& image_size, ImGuiButtonFlags flags, const ImVec2& uv_min, const ImVec2& uv_max) {
 	auto* window = ImGui::GetCurrentWindow();
 	if (window->SkipItems) return false;
 	
@@ -392,7 +392,7 @@ bool ImGui::ImageButtonEx(const char* str_id, ImTextureRef tex_ref, const ImVec2
 	bool hovered, held;
 	bool pressed = ImGui::ButtonBehavior(bb, id, &hovered, &held, flags);
 	
-	window->DrawList->AddImage(tex_ref, bb.Min + padding, bb.Max - padding);
+	window->DrawList->AddImage(tex_ref, bb.Min + padding, bb.Max - padding, uv_min, uv_max);
 	
 	return pressed;
 }
