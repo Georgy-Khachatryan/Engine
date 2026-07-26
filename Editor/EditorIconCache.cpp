@@ -102,35 +102,41 @@ void ReleaseEditorIconCache(EditorIconCache* icon_cache, GraphicsContext* graphi
 }
 
 
-void EditorIconCacheDrawMeshIcon(EditorIconCache* icon_cache, u64 mesh_asset_guid) {
-	auto* element = HashTableFind(icon_cache->icon_guid_to_index, mesh_asset_guid);
-	if (element == nullptr && icon_cache->icon_guid_to_index.count < icon_cache_area_icons) {
-		auto [new_element, is_inserted] = HashTableAddOrFind(icon_cache->icon_guid_to_index, mesh_asset_guid, ArrayPopLast(icon_cache->free_icon_indices));
-		DebugAssert(is_inserted, "Failed to add icon entry.");
-		element = new_element;
+void EditorIconCacheDrawIcon(EditorIconCache* icon_cache, u64 mesh_asset_guid, EntityTypeID entity_type_id) {
+	// TODO: Material and texture entity type icons.
+	bool is_supported_entity_type =
+		entity_type_id.index == ECS::GetEntityTypeID<MeshAssetType>::id.index;
+	
+	u32 icon_index = u32_max;
+	if (is_supported_entity_type) {
+		auto* element = HashTableFind(icon_cache->icon_guid_to_index, mesh_asset_guid);
+		if (element == nullptr && icon_cache->icon_guid_to_index.count < icon_cache_area_icons) {
+			auto [new_element, is_inserted] = HashTableAddOrFind(icon_cache->icon_guid_to_index, mesh_asset_guid, ArrayPopLast(icon_cache->free_icon_indices));
+			DebugAssert(is_inserted, "Failed to add icon entry.");
+			element = new_element;
+			
+			auto& icon = icon_cache->icons[element->value];
+			icon.guid           = mesh_asset_guid;
+			icon.entity_type_id = entity_type_id;
+			icon.state          = EditorIconState::Wait;
+		}
 		
-		auto& icon = icon_cache->icons[element->value];
-		icon.guid           = mesh_asset_guid;
-		icon.entity_type_id = {}; // TODO: Different entity type icons.
-		icon.state          = EditorIconState::Wait;
+		if (element != nullptr) {
+			icon_index = element->value;
+			icon_cache->icons[icon_index].cache_frame_index = icon_cache->cache_frame_index;
+		} else {
+			icon_cache->deallocate_icon_count += 1;
+		}
 	}
 	
-	if (element != nullptr) {
-		icon_cache->icons[element->value].cache_frame_index = icon_cache->cache_frame_index;
-	} else {
-		icon_cache->deallocate_icon_count += 1;
-	}
-	
-	if (element != nullptr && icon_cache->icons[element->value].state == EditorIconState::Ready) {
-		u32 icon_index = element->value;
-		
+	if (icon_index != u32_max && icon_cache->icons[icon_index].state == EditorIconState::Ready) {
 		auto icon_coordinates = float2((float)(icon_index % icon_cache_size_icons), (float)(icon_index / icon_cache_size_icons));
 		auto uv_min = icon_coordinates * (1.f / icon_cache_size_icons);
 		auto uv_max = uv_min + (1.f / icon_cache_size_icons);
 		
 		ImGui::ImageButtonEx("AssetIcon", icon_cache->icon_atlas_texture_id, ImVec2(icon_size_pixels, icon_size_pixels), ImGuiButtonFlags_None, uv_min, uv_max);
 	} else {
-		float4 color = float4(Math::DecodeR10G10B10((u32)mesh_asset_guid), 1.f);
+		float4 color = float4(Math::DecodeR10G10B10((u32)ComputeHash64(entity_type_id.index)), 1.f);
 		ImGui::ColorButton("AssetIcon", color, ImGuiColorEditFlags_None, ImVec2(icon_size_pixels, icon_size_pixels));
 	}
 }

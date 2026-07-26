@@ -392,7 +392,7 @@ bool ImGui::ImageButtonEx(const char* str_id, ImTextureRef tex_ref, const ImVec2
 	bool hovered, held;
 	bool pressed = ImGui::ButtonBehavior(bb, id, &hovered, &held, flags);
 	
-	window->DrawList->AddImage(tex_ref, bb.Min + padding, bb.Max - padding, uv_min, uv_max);
+	window->DrawList->AddImageRounded(tex_ref, bb.Min + padding, bb.Max - padding, uv_min, uv_max, IM_COL32_WHITE, style.FrameRounding);
 	
 	return pressed;
 }
@@ -433,12 +433,12 @@ bool ImGui::TableCollapsingHeader(const char* label, ImGuiTreeNodeFlags flags) {
 	return result;
 }
 
-void ImGui::TableLabelText(const char* label) {
+void ImGui::TableLabelText(const char* label, float max_width) {
 	auto* window = ImGui::GetCurrentWindow();
 	if (window->SkipItems) return;
 	
 	auto& style = ImGui::GetStyle();
-	float width = ImGui::GetContentRegionAvail().x;
+	float width = max_width > 0.f ? max_width : ImGui::GetContentRegionAvail().x;
 	
 	auto label_size = ImGui::CalcTextSize(label);
 	ImRect bb(window->DC.CursorPos, window->DC.CursorPos + ImVec2(width, label_size.y + style.FramePadding.y * 2.f));

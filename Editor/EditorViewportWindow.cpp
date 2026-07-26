@@ -182,6 +182,7 @@ void EditorViewportWindow(StackAllocator* alloc, UndoRedoSystem& undo_redo_syste
 	
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.f, 0.f));
 	ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,  ImVec2(0.f, 0.f));
+	ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 0.f);
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.f);
 	ImGui::Begin("Scene", nullptr, ImGuiWindowFlags_NoScrollbar);
 	
@@ -212,7 +213,7 @@ void EditorViewportWindow(StackAllocator* alloc, UndoRedoSystem& undo_redo_syste
 	}
 	
 	ImGui::End();
-	ImGui::PopStyleVar(3);
+	ImGui::PopStyleVar(4);
 	
 	
 	auto renderer_world = world_entity.renderer_world;

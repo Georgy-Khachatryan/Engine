@@ -4,6 +4,8 @@
 #include "Engine/ImGuiCustomWidgets.h"
 #include "Engine/UndoRedoSystem.h"
 
+#include <SDK/imgui/imgui_internal.h>
+
 static void EntityCreationComboBox(const char* label, const char* hint, EntitySystemBase& entity_system, UndoRedoSystem& undo_redo_system, EditorSelectionStateEntity selection_state_entity, ArrayView<const EntityTypeID> entity_type_ids) {
 	if (ImGui::BeginCombo(label, hint, ImGuiComboFlags_WidthFitPreview) == false) return;
 	
@@ -107,6 +109,20 @@ static ArrayView<EntityViewTableEntry> EntityQueryToArrayView(ArrayView<EntityTy
 	return entity_view_table_entries;
 }
 
+static void EntitySelectableActions(LevelEditorIO& level_editor_io, EntityTypeID entity_type_id, u64 guid) {
+	ImGui::EntityDragDropSource(entity_type_id, guid);
+	
+	if (ImGui::IsItemClicked(ImGuiMouseButton_Left) && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+		if (entity_type_id.index == ECS::GetEntityTypeID<CameraEntityType>::id.index) {
+			level_editor_io.camera_entity_guid_to_set = guid;
+		}
+		
+		if (entity_type_id.index == ECS::GetEntityTypeID<WorldAssetType>::id.index) {
+			level_editor_io.world_asset_guid_to_load = guid;
+		}
+	}
+}
+
 static void EntityViewTable(StackAllocator* alloc, EntitySystemBase& entity_system, UndoRedoSystem& undo_redo_system, LevelEditorIO& level_editor_io, EditorSelectionStateEntity selection_state_entity, String search_pattern) {
 	ProfilerScope("EntityViewTable");
 	TempAllocationScope(alloc);
@@ -153,29 +169,8 @@ static void EntityViewTable(StackAllocator* alloc, EntitySystemBase& entity_syst
 				bool is_selected = HashTableFind(selected_entities_hash_table, guid) != nullptr;
 				ImGui::SetNextItemSelectionUserData(index);
 				ImGui::Selectable(name.count ? name.data : entity_type_name.data, is_selected, ImGuiSelectableFlags_SpanAllColumns);
-				ImGui::EntityDragDropSource(entity_type_id, guid);
 				
-				if (ImGui::IsItemClicked(ImGuiMouseButton_Left) && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-					if (entity_type_id.index == ECS::GetEntityTypeID<CameraEntityType>::id.index) {
-						level_editor_io.camera_entity_guid_to_set = guid;
-					}
-					
-					if (entity_type_id.index == ECS::GetEntityTypeID<WorldAssetType>::id.index) {
-						level_editor_io.world_asset_guid_to_load = guid;
-					}
-				}
-				
-				if (ImGui::IsItemHovered()) {
-					ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.f, 0.f));
-					ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,  ImVec2(0.f, 0.f));
-					ImGui::PushStyleVar(ImGuiStyleVar_PopupBorderSize, 0.f);
-					
-					if (entity_type_id.index == ECS::GetEntityTypeID<MeshAssetType>::id.index && ImGui::BeginTooltip()) {
-						EditorIconCacheDrawMeshIcon(level_editor_io.icon_cache, guid);
-						ImGui::EndTooltip();
-					}
-					ImGui::PopStyleVar(3);
-				}
+				EntitySelectableActions(level_editor_io, entity_type_id, guid);
 			}
 			
 			if (ImGui::TableSetColumnIndex(1)) {
@@ -193,7 +188,111 @@ static void EntityViewTable(StackAllocator* alloc, EntitySystemBase& entity_syst
 	ApplyEntitySelectionRequests(ms_io, entity_view_table_entries, entity_system, undo_redo_system, selection_state_entity);
 }
 
-static void EntityViewTableWithCreationAndSearch(StackAllocator* alloc, const char* creation_combo_box_label, UndoRedoSystem& undo_redo_system, EntitySystemBase& entity_system, EditorSelectionStateEntity selection_state_entity, ArrayView<const EntityTypeID> entity_type_ids, LevelEditorIO& level_editor_io) {
+static void EntityViewGrid(StackAllocator* alloc, EntitySystemBase& entity_system, UndoRedoSystem& undo_redo_system, LevelEditorIO& level_editor_io, EditorSelectionStateEntity selection_state_entity, String search_pattern) {
+	ProfilerScope("EntityViewGrid");
+	TempAllocationScope(alloc);
+	
+	auto& selected_entities_hash_table = selection_state_entity.selection_state->selected_entities_hash_table;
+	auto entity_view_table_entries = EntityQueryToArrayView(QueryEntities<GuidNameQuery>(alloc, entity_system), alloc, search_pattern);
+	
+	auto* ms_io = ImGui::BeginMultiSelect(ImGuiMultiSelectFlags_ClearOnClickVoid | ImGuiMultiSelectFlags_BoxSelect2d, (s32)selected_entities_hash_table.count, (s32)entity_view_table_entries.count);
+	ApplyEntitySelectionRequests(ms_io, entity_view_table_entries, entity_system, undo_redo_system, selection_state_entity);
+	
+	auto& style = ImGui::GetStyle();
+	
+	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(4.f, 4.f));
+	
+	float2 icon_size_pixels    = 128.f;
+	float2 content_size_pixels = icon_size_pixels + float2(0.f, ImGui::GetTextLineHeightWithSpacing());
+	float2 card_size_pixels    = content_size_pixels + float2(style.WindowPadding) * 2.f;
+	
+	float width = ImGui::GetContentRegionAvail().x;
+	u32 size_cards_x = (u32)Math::Max((s32)floorf((width + style.ItemSpacing.x) / (card_size_pixels.x + style.ItemSpacing.x)), 1);
+	u32 size_cards_y = DivideAndRoundUp((u32)entity_view_table_entries.count, size_cards_x);
+	
+	float column_extra_spacing = 0.f;
+	float2 card_size_with_spacing_pixels = card_size_pixels + float2(style.ItemSpacing);
+	
+	if (size_cards_x > 1) {
+		card_size_with_spacing_pixels.x = card_size_pixels.x + floorf((width - size_cards_x * card_size_pixels.x) / (size_cards_x - 1));
+		column_extra_spacing = width - card_size_with_spacing_pixels.x * (size_cards_x - 1) - card_size_pixels.x;
+	}
+	
+	auto corner_position = ImGui::GetCursorScreenPos();
+	
+	ImGuiListClipper clipper;
+	clipper.Begin((s32)size_cards_y, card_size_with_spacing_pixels.y);
+	if (ms_io->RangeSrcItem != -1) clipper.IncludeItemByIndex((s32)(ms_io->RangeSrcItem / size_cards_x));
+	
+	auto* draw_list = ImGui::GetWindowDrawList();
+	
+	ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0.f, 0.f));
+	ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 4.f);
+	ImGui::PushStyleColor(ImGuiCol_NavCursor, 0u);
+	while (clipper.Step()) {
+		u32 display_start = (u32)clipper.DisplayStart * size_cards_x;
+		u32 display_end   = Math::Min((u32)clipper.DisplayEnd * size_cards_x, (u32)entity_view_table_entries.count);
+		
+		for (u32 index = display_start; index < display_end; index += 1) {
+			float2 card_coordinates = float2((float)(index % size_cards_x), (float)(index / size_cards_x));
+			
+			auto [entity_id, entity_type_id, score] = entity_view_table_entries[index];
+			auto entity_type_name = entity_type_name_table[entity_type_id.index];
+			
+			auto streams = ExtractComponentStreams<GuidNameQuery>(&entity_system.entity_type_arrays[entity_type_id.index], entity_id);
+			auto& [guid] = *streams.guid;
+			auto& [name] = *streams.name;
+			
+			ImGuiScopeID((void*)guid);
+			
+			auto card_position = corner_position + card_coordinates * card_size_with_spacing_pixels + float2(Math::Min(card_coordinates.x, column_extra_spacing), 0.f);
+			ImGui::SetCursorScreenPos(card_position);
+			
+			ImGui::PushStyleColor(ImGuiCol_Header, 0u);
+			ImGui::PushStyleColor(ImGuiCol_HeaderHovered, 0u);
+			ImGui::PushStyleColor(ImGuiCol_HeaderActive, 0u);
+			ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.f, 0.f));
+			
+			bool is_selected = HashTableFind(selected_entities_hash_table, guid) != nullptr;
+			ImGui::SetNextItemSelectionUserData(index);
+			ImGui::Selectable("##Card", is_selected, ImGuiSelectableFlags_None, card_size_pixels);
+			
+			ImGui::PopStyleVar();
+			ImGui::PopStyleColor(3);
+			
+			bool held = ImGui::IsItemActive();
+			
+			// Custom Selectable frame with border and rounding.
+			u32 color = ImGui::GetColorU32((held && is_selected) ? ImGuiCol_HeaderActive : is_selected ? ImGuiCol_HeaderHovered : ImGuiCol_Header);
+			ImGui::RenderFrame(card_position, card_position + card_size_pixels, color, true, style.FrameRounding + style.WindowPadding.x);
+			
+			EntitySelectableActions(level_editor_io, entity_type_id, guid);
+			
+			
+			ImGui::SetCursorScreenPos(card_position + float2(style.WindowPadding));
+			ImGui::BeginGroup();
+			
+			EditorIconCacheDrawIcon(level_editor_io.icon_cache, guid, entity_type_id);
+			ImGui::TableLabelText(name.count ? name.data : entity_type_name.data, content_size_pixels.x);
+			
+			ImGui::EndGroup();
+		}
+	}
+	ImGui::PopStyleColor();
+	ImGui::PopStyleVar(3);
+	
+	ms_io = ImGui::EndMultiSelect();
+	ApplyEntitySelectionRequests(ms_io, entity_view_table_entries, entity_system, undo_redo_system, selection_state_entity);
+}
+
+enum struct EntityOutlinerStyle : u32 {
+	Table = 0,
+	Grid  = 1,
+	
+	Count
+};
+
+static void EntityViewTableWithCreationAndSearch(StackAllocator* alloc, const char* creation_combo_box_label, UndoRedoSystem& undo_redo_system, EntitySystemBase& entity_system, EditorSelectionStateEntity selection_state_entity, ArrayView<const EntityTypeID> entity_type_ids, LevelEditorIO& level_editor_io, EntityOutlinerStyle outliner_style) {
 	EntityCreationComboBox("##CreateEntity", creation_combo_box_label, entity_system, undo_redo_system, selection_state_entity, entity_type_ids);
 	
 	ImGui::SameLine();
@@ -207,7 +306,11 @@ static void EntityViewTableWithCreationAndSearch(StackAllocator* alloc, const ch
 	auto& search_pattern = selection_state_entity.selection_state->search_pattern;
 	ImGui::InputTextWithHint("##SearchEntities", "Search", search_pattern, &entity_system.heap);
 	
-	EntityViewTable(alloc, entity_system, undo_redo_system, level_editor_io, selection_state_entity, search_pattern);
+	if (outliner_style == EntityOutlinerStyle::Table) {
+		EntityViewTable(alloc, entity_system, undo_redo_system, level_editor_io, selection_state_entity, search_pattern);
+	} else if (outliner_style == EntityOutlinerStyle::Grid) {
+		EntityViewGrid(alloc, entity_system, undo_redo_system, level_editor_io, selection_state_entity, search_pattern);
+	}
 }
 
 void EditorOutlinerWindow(StackAllocator* alloc, UndoRedoSystem& undo_redo_system, WorldEntitySystem& world_system, EditorSelectionStateEntity selection_state_entity, LevelEditorIO& level_editor_io) {
@@ -218,7 +321,7 @@ void EditorOutlinerWindow(StackAllocator* alloc, UndoRedoSystem& undo_redo_syste
 	};
 	
 	ImGui::Begin("Outliner");
-	EntityViewTableWithCreationAndSearch(alloc, "Create Entity", undo_redo_system, world_system, selection_state_entity, ArrayViewCreate(creatable_world_entity_type_ids), level_editor_io);
+	EntityViewTableWithCreationAndSearch(alloc, "Create Entity", undo_redo_system, world_system, selection_state_entity, ArrayViewCreate(creatable_world_entity_type_ids), level_editor_io, EntityOutlinerStyle::Table);
 	ImGui::End();
 }
 
@@ -231,6 +334,6 @@ void EditorAssetBrowserWindow(StackAllocator* alloc, UndoRedoSystem& undo_redo_s
 	};
 	
 	ImGui::Begin("Asset Browser");
-	EntityViewTableWithCreationAndSearch(alloc, "Create Asset", undo_redo_system, asset_system, selection_state_entity, ArrayViewCreate(creatable_asset_entity_type_ids), level_editor_io);
+	EntityViewTableWithCreationAndSearch(alloc, "Create Asset", undo_redo_system, asset_system, selection_state_entity, ArrayViewCreate(creatable_asset_entity_type_ids), level_editor_io, EntityOutlinerStyle::Grid); // TODO: Switchable Table/Grid style.
 	ImGui::End();
 }
