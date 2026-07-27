@@ -7,23 +7,26 @@
 #include "Renderer/Renderer.h"
 
 enum struct EditorIconState : u32 {
-	Free   = 0,
-	Wait   = 1,
-	Render = 2,
-	Ready  = 3,
+	Free        = 0,
+	Wait        = 1,
+	Invalidated = 2,
+	Render      = 3,
+	Ready       = 4,
 };
 
 struct EditorIconEntry {
 	u64 guid = 0;
+	u64 dependencies_mask = 0; // Bloom filter of all dependencies of this icon.
+	
 	EntityTypeID entity_type_id;
 	EditorIconState state = EditorIconState::Free;
 	u32 cache_frame_index = 0;
 };
 
-compile_const u32 icon_size_pixels = 128u;
-compile_const u32 icon_cache_size_icons = 8u;
-compile_const u32 icon_cache_area_icons = icon_cache_size_icons * icon_cache_size_icons;
-compile_const u32 icon_cache_size_pixels = icon_cache_size_icons * icon_size_pixels;
+compile_const u32 icon_size_pixels        = 128u;
+compile_const u32 icon_cache_size_icons   = 8u;
+compile_const u32 icon_cache_area_icons   = icon_cache_size_icons * icon_cache_size_icons;
+compile_const u32 icon_cache_size_pixels  = icon_cache_size_icons * icon_size_pixels;
 compile_const u32 icon_render_frame_count = 32u; // Enough to stream in the assets.
 
 struct EditorIconCache {
@@ -103,18 +106,41 @@ void ReleaseEditorIconCache(EditorIconCache* icon_cache, GraphicsContext* graphi
 	ReleaseResourceTable(graphics_context, icon_cache->resource_table);
 }
 
-static void InvalidateIconsWithMask(EditorIconCache* icon_cache, GuidQuery streams, ArrayView<u64> dirty_mask) {
-	for (u64 i : BitArrayIt(dirty_mask)) {
-		auto* element = HashTableFind(icon_cache->icon_guid_to_index, streams.guid[i].guid);
-		if (element == nullptr) continue;
-		
-		icon_cache->icons[element->value].state = EditorIconState::Wait;
-		
-		if (icon_cache->currently_rendering_icon_index == element->value) {
-			icon_cache->currently_rendering_icon_index = u32_max;
-			icon_cache->currently_rendering_frame_index = 0;
-		}
-	}
+
+// TODO: Implement a generic way to iterate over referenced entities.
+static u64 DependenciesFromGUID(u64 guid) {
+	return 1ull << (guid & 0x3F);
+}
+
+static u64 GatherTextureAssetDependencies(AssetEntitySystem& asset_system, u64 guid) {
+	if (guid == 0) return 0;
+	
+	return DependenciesFromGUID(guid);
+}
+
+static u64 GatherMaterialAssetDependencies(AssetEntitySystem& asset_system, u64 guid) {
+	if (guid == 0) return 0;
+	
+	auto material_asset = QueryEntityByGUID<MaterialAssetType>(asset_system, guid);
+	
+	u64 dependencies_mask = DependenciesFromGUID(guid);
+	dependencies_mask |= GatherTextureAssetDependencies(asset_system, material_asset.texture_data->albedo.guid);
+	dependencies_mask |= GatherTextureAssetDependencies(asset_system, material_asset.texture_data->normal.guid);
+	dependencies_mask |= GatherTextureAssetDependencies(asset_system, material_asset.texture_data->roughness.guid);
+	dependencies_mask |= GatherTextureAssetDependencies(asset_system, material_asset.texture_data->metalness.guid);
+	
+	return dependencies_mask;
+}
+
+static u64 GatherMeshAssetDependencies(AssetEntitySystem& asset_system, u64 guid) {
+	if (guid == 0) return 0;
+	
+	auto mesh_asset = QueryEntityByGUID<MeshAssetType>(asset_system, guid);
+	
+	u64 dependencies_mask = DependenciesFromGUID(guid);
+	dependencies_mask |= GatherMaterialAssetDependencies(asset_system, mesh_asset.material_asset->guid);
+	
+	return dependencies_mask;
 }
 
 static void DrawDefaultEntityTypeIcon(EntityTypeID entity_type_id) {
@@ -159,7 +185,8 @@ void EditorIconCacheDrawIcon(EditorIconCache* icon_cache, EntitySystemBase& enti
 		}
 	}
 	
-	if (icon_index != u32_max && (icon_cache->icons[icon_index].state == EditorIconState::Ready || icon_cache->icons[icon_index].state == EditorIconState::Render)) {
+	auto icon_state = icon_index != u32_max ? icon_cache->icons[icon_index].state : EditorIconState::Free;
+	if (icon_state == EditorIconState::Ready || icon_state == EditorIconState::Render || icon_state == EditorIconState::Invalidated) {
 		auto icon_coordinates = float2((float)(icon_index % icon_cache_size_icons), (float)(icon_index / icon_cache_size_icons));
 		auto uv_min = icon_coordinates * (1.f / icon_cache_size_icons);
 		auto uv_max = uv_min + (1.f / icon_cache_size_icons);
@@ -181,36 +208,44 @@ void EditorIconCacheUpdate(StackAllocator* alloc, EditorIconCache* icon_cache, G
 	draw_list_3d.alloc = alloc;
 	
 	
-	//
-	// TODO: Implement something more robust for asset invalidation. For example if we update a texture,
-	// we should rerender material icons that use it, and we should rerender all meshes that use this material.
-	//
-	
-	// Invalidate dirty or recreated icons:
 	{
-		FixedCapacityArray<EntityTypeArray*, 2> entity_type_arrays;
+		FixedCapacityArray<EntityTypeArray*, 3> entity_type_arrays;
 		ArrayAppend(entity_type_arrays, QueryEntityTypeArray<MaterialAssetType>(asset_system));
+		ArrayAppend(entity_type_arrays, QueryEntityTypeArray<TextureAssetType>(asset_system));
 		ArrayAppend(entity_type_arrays, QueryEntityTypeArray<MeshAssetType>(asset_system));
 		
+		u64 dirty_dependencies_mask = 0;
 		for (auto* entity_array : entity_type_arrays) {
 			auto streams = ExtractComponentStreams<GuidQuery>(entity_array);
-			InvalidateIconsWithMask(icon_cache, streams, entity_array->dirty_mask);
-			InvalidateIconsWithMask(icon_cache, streams, entity_array->created_mask);
-		}
-	}
-	
-	// Invalidate material icons when material preview mesh is changed.
-	if (icon_cache->material_icon_mesh_guid != editor_settings_entity.icon_cache_settings->material_icon_mesh.guid) {
-		icon_cache->material_icon_mesh_guid = editor_settings_entity.icon_cache_settings->material_icon_mesh.guid;
-		
-		for (u32 icon_index = 0; icon_index < icon_cache_area_icons; icon_index += 1) {
-			auto& icon = icon_cache->icons[icon_index];
-			if (icon.entity_type_id.index != ECS::GetEntityTypeID<MaterialAssetType>::id.index) continue;
-			icon.state = EditorIconState::Wait;
 			
-			if (icon_cache->currently_rendering_icon_index == icon_index) {
-				icon_cache->currently_rendering_icon_index = u32_max;
-				icon_cache->currently_rendering_frame_index = 0;
+			for (u64 i : BitArrayIt(entity_array->dirty_mask)) {
+				dirty_dependencies_mask |= DependenciesFromGUID(streams.guid[i].guid);
+			}
+			
+			for (u64 i : BitArrayIt(entity_array->created_mask)) {
+				dirty_dependencies_mask |= DependenciesFromGUID(streams.guid[i].guid);
+			}
+		}
+		
+		// Invalidate material icons when material preview mesh is changed.
+		bool invalidate_materials = false;
+		if (icon_cache->material_icon_mesh_guid != editor_settings_entity.icon_cache_settings->material_icon_mesh.guid) {
+			icon_cache->material_icon_mesh_guid = editor_settings_entity.icon_cache_settings->material_icon_mesh.guid;
+			invalidate_materials = true;
+		}
+		
+		// Invalidate dirty or recreated icons:
+		if (dirty_dependencies_mask != 0 || invalidate_materials) {
+			for (u32 icon_index = 0; icon_index < icon_cache_area_icons; icon_index += 1) {
+				auto& icon = icon_cache->icons[icon_index];
+				if ((icon.dependencies_mask & dirty_dependencies_mask) == 0 && (invalidate_materials == false || icon.entity_type_id.index != ECS::GetEntityTypeID<MaterialAssetType>::id.index)) continue;
+				
+				icon.state = EditorIconState::Invalidated;
+				
+				if (icon_cache->currently_rendering_icon_index == icon_index) {
+					icon_cache->currently_rendering_icon_index = u32_max;
+					icon_cache->currently_rendering_frame_index = 0;
+				}
 			}
 		}
 	}
@@ -254,7 +289,7 @@ void EditorIconCacheUpdate(StackAllocator* alloc, EditorIconCache* icon_cache, G
 	if (rendering_icon_index == u32_max) {
 		for (u32 icon_index = 0; icon_index < icon_cache_area_icons; icon_index += 1) {
 			auto& icon = icon_cache->icons[icon_index];
-			if (icon.state == EditorIconState::Wait) {
+			if (icon.state == EditorIconState::Wait || icon.state == EditorIconState::Invalidated) {
 				icon.state = EditorIconState::Render;
 				rendering_icon_index = icon_index;
 				break;
@@ -263,11 +298,12 @@ void EditorIconCacheUpdate(StackAllocator* alloc, EditorIconCache* icon_cache, G
 		icon_cache->currently_rendering_icon_index = rendering_icon_index;
 	}
 	
-	u64 mesh_asset_guid     = 0;
-	u64 material_asset_guid = 0;
 	
-	if (rendering_icon_index != u32_max) {
+	if (rendering_icon_index != u32_max && icon_cache->currently_rendering_frame_index == 0) {
 		auto& icon = icon_cache->icons[rendering_icon_index];
+		
+		u64 mesh_asset_guid     = 0;
+		u64 material_asset_guid = 0;
 		
 		if (icon.entity_type_id.index == ECS::GetEntityTypeID<MeshAssetType>::id.index) {
 			mesh_asset_guid     = icon.guid;
@@ -276,66 +312,72 @@ void EditorIconCacheUpdate(StackAllocator* alloc, EditorIconCache* icon_cache, G
 			mesh_asset_guid     = icon_cache->material_icon_mesh_guid;
 			material_asset_guid = icon.guid;
 		}
-	}
-	
-	if (rendering_icon_index != u32_max) {
+		
+		
 		auto mesh_entity_id = FindEntityByGUID(world_system, icon_cache->mesh_entity_guid);
 		auto mesh_entity = ExtractComponentStreams<MeshEntityType>(&world_system.entity_type_arrays[mesh_entity_id.entity_type_id.index], mesh_entity_id.entity_id);
+		BitArraySetBit(world_system.entity_type_arrays[mesh_entity_id.entity_type_id.index].dirty_mask, mesh_entity_id.entity_id.index);
 		
 		mesh_entity.mesh_asset->guid     = mesh_asset_guid;
 		mesh_entity.material_asset->guid = material_asset_guid;
 		
-		if (icon_cache->currently_rendering_frame_index == 0) {
-			BitArraySetBit(world_system.entity_type_arrays[mesh_entity_id.entity_type_id.index].dirty_mask, mesh_entity_id.entity_id.index);
+		
+		u64 dependencies_mask = GatherMeshAssetDependencies(asset_system, mesh_asset_guid) | GatherMaterialAssetDependencies(asset_system, material_asset_guid);
+		if (material_asset_guid == 0 && mesh_asset_guid != 0) {
+			auto mesh_asset = QueryEntityByGUID<MeshAssetType>(asset_system, mesh_asset_guid);
+			dependencies_mask |= GatherMaterialAssetDependencies(asset_system, mesh_asset.material_asset->guid);
+		}
+		icon.dependencies_mask = dependencies_mask;
+		
+		
+		//
+		// Position the camera such that the mesh AABB corners are within the frustum.
+		// Using convex hull or k-dop vertices could result in an even a better fit.
+		//
+		if (mesh_asset_guid != 0) {
+			auto mesh_asset = QueryEntityByGUID<MeshAssetType>(asset_system, mesh_asset_guid);
+			
+			auto& aabb   = *mesh_asset.aabb;
+			auto& camera = *camera_entity.camera;
+			
+			// Scale FOV to have some padding around the edges.
+			float inner_fov_scale = 0.95f;
+			float4 view_to_clip_coef = Math::PerspectiveViewToClip(camera.vertical_fov_degrees * Math::degrees_to_radians * inner_fov_scale, icon_size_pixels, camera.near_depth);
+			
+			auto view_to_world_rotation = Math::QuatToRotationMatrix(camera_entity.rotation->rotation);
+			auto world_to_view_rotation = Math::Transpose(view_to_world_rotation);
+			
+			float3 planes[4];
+			planes[0] = float3(-view_to_clip_coef.x, 0.f, -1.f);
+			planes[1] = float3(+view_to_clip_coef.x, 0.f, -1.f);
+			planes[2] = float3(0.f, +view_to_clip_coef.y, -1.f);
+			planes[3] = float3(0.f, -view_to_clip_coef.y, -1.f);
+			
+			// Find distances to each frustum plane.
+			float4 distance = -FLT_MAX;
+			for (u32 i = 0; i < 8; i += 1) {
+				float3 world_space_position = Math::Lerp(aabb.min, aabb.max, float3(uint3(i, i >> 1, i >> 2) & 0x1));
+				float3 view_space_position  = world_to_view_rotation * world_space_position;
+				
+				for (u32 plane_index = 0; plane_index < 4; plane_index += 1) {
+					distance[plane_index] = Math::Max(distance[plane_index], Math::Dot(view_space_position, planes[plane_index]));
+				}
+				
+				// float radius = Math::Length(aabb.max - aabb.min) * 0.5f;
+				// draw_list_3d.AddSphere(world_space_position, radius * 0.01f, u32_max);
+			}
+			
+			float px = (distance[0] - distance[1]) / (2.f * planes[0].x);
+			float py = (distance[2] - distance[3]) / (2.f * planes[2].y);
+			
+			float pz0 = (distance[0] + distance[1]) / (2.f * planes[0].z);
+			float pz1 = (distance[2] + distance[3]) / (2.f * planes[2].z);
+			
+			float3 view_space_camera_position = float3(px, py, Math::Min(pz0, pz1));
+			camera_entity.position->position = view_to_world_rotation * view_space_camera_position;
 		}
 	}
 	
-	//
-	// Position the camera such that the mesh AABB corners are within the frustum.
-	// Using convex hull or k-dop vertices could result in an even a better fit.
-	//
-	if (rendering_icon_index != u32_max && mesh_asset_guid != 0) {
-		auto mesh_asset = QueryEntityByGUID<MeshAssetType>(asset_system, mesh_asset_guid);
-		
-		auto& aabb   = *mesh_asset.aabb;
-		auto& camera = *camera_entity.camera;
-		
-		// Scale FOV to have some padding around the edges.
-		float inner_fov_scale = 0.95f;
-		float4 view_to_clip_coef = Math::PerspectiveViewToClip(camera.vertical_fov_degrees * Math::degrees_to_radians * inner_fov_scale, icon_size_pixels, camera.near_depth);
-		
-		auto view_to_world_rotation = Math::QuatToRotationMatrix(camera_entity.rotation->rotation);
-		auto world_to_view_rotation = Math::Transpose(view_to_world_rotation);
-		
-		float3 planes[4];
-		planes[0] = float3(-view_to_clip_coef.x, 0.f, -1.f);
-		planes[1] = float3(+view_to_clip_coef.x, 0.f, -1.f);
-		planes[2] = float3(0.f, +view_to_clip_coef.y, -1.f);
-		planes[3] = float3(0.f, -view_to_clip_coef.y, -1.f);
-		
-		// Find distances to each frustum plane.
-		float4 distance = -FLT_MAX;
-		for (u32 i = 0; i < 8; i += 1) {
-			float3 world_space_position = Math::Lerp(aabb.min, aabb.max, float3(uint3(i, i >> 1, i >> 2) & 0x1));
-			float3 view_space_position  = world_to_view_rotation * world_space_position;
-			
-			for (u32 plane_index = 0; plane_index < 4; plane_index += 1) {
-				distance[plane_index] = Math::Max(distance[plane_index], Math::Dot(view_space_position, planes[plane_index]));
-			}
-			
-			// float radius = Math::Length(aabb.max - aabb.min) * 0.5f;
-			// draw_list_3d.AddSphere(world_space_position, radius * 0.01f, u32_max);
-		}
-		
-		float px = (distance[0] - distance[1]) / (2.f * planes[0].x);
-		float py = (distance[2] - distance[3]) / (2.f * planes[2].y);
-		
-		float pz0 = (distance[0] + distance[1]) / (2.f * planes[0].z);
-		float pz1 = (distance[2] + distance[3]) / (2.f * planes[2].z);
-		
-		float3 view_space_camera_position = float3(px, py, Math::Min(pz0, pz1));
-		camera_entity.position->position = view_to_world_rotation * view_space_camera_position;
-	}
 	
 	if (rendering_icon_index != u32_max) {
 		auto renderer_world = world_entity.renderer_world;
