@@ -123,7 +123,8 @@ void WriteSaveLoadCallbacks(StackAllocator* alloc, HashTable<String, VersionedTy
 	builder.alloc = alloc;
 	builder.Append("#include \"Basic/Basic.h\"\n"_sl);
 	builder.Append("#include \"Basic/BasicSaveLoad.h\"\n"_sl);
-	builder.Append("#include \"Engine/Entities.h\"\n\n"_sl);
+	builder.Append("#include \"Engine/Entities.h\"\n"_sl); // TODO: Output includes automatically.
+	builder.Append("#include \"Editor/EditorEntities.h\"\n\n"_sl);
 	
 	compile_const auto save_load_dummy_suffix = "_Dummy"_sl;
 	

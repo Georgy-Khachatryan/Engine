@@ -91,6 +91,12 @@ struct ToneMappingSettings {
 	}
 }
 
+struct EditorIconCacheSettingsComponent {
+	/*Version*/ 0 {
+		material_icon_mesh MeshAssetGUID 0;
+	}
+}
+
 struct TextureSourceData {
 	/*Version*/ 0 {
 		filepath String 0;

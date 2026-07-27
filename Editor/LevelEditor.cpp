@@ -9,6 +9,7 @@ compile_const auto assets_save_load_path = "./Assets/Assets.csb"_sl;
 
 static void CreateDefaultAssetSystem(AssetEntitySystem& asset_system) {
 	CreateEntity<EditorSelectionStateEntity>(asset_system);
+	CreateEntity<EditorSettingsEntityType>(asset_system);
 	
 	auto world_asset = CreateEntity<WorldAssetType>(asset_system);
 	world_asset.name->name = StringCopy(&asset_system.heap, "DefaultWorld"_sl);

@@ -5,6 +5,7 @@
 struct AssetEntitySystem;
 struct EditorIconCache;
 struct EditorSelectionStateEntity;
+struct EntitySystemBase;
 struct EntityTypeID;
 struct GraphicsContext;
 struct LevelEditor;
@@ -49,5 +50,5 @@ void ReleaseEditorIconCache(EditorIconCache* icon_cache, GraphicsContext* graphi
 
 
 void EditorIconCacheUpdate(StackAllocator* alloc, EditorIconCache* icon_cache, GraphicsContext* graphics_context, AssetEntitySystem& asset_system, Array<EditorWorldView>& editor_world_views);
-void EditorIconCacheDrawIcon(EditorIconCache* icon_cache, u64 mesh_asset_guid, EntityTypeID entity_type_id);
+void EditorIconCacheDrawIcon(EditorIconCache* icon_cache, EntitySystemBase& entity_system, u64 entity_guid, EntityTypeID entity_type_id);
 

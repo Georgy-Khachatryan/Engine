@@ -192,6 +192,12 @@ static void EntityViewGrid(StackAllocator* alloc, EntitySystemBase& entity_syste
 	ProfilerScope("EntityViewGrid");
 	TempAllocationScope(alloc);
 	
+	ImGui::PushStyleColor(ImGuiCol_ChildBg, 0u);
+	ImGui::BeginChild("EntityViewGrid");
+	ImGui::PopStyleColor();
+	
+	defer{ ImGui::EndChild(); };
+	
 	auto& selected_entities_hash_table = selection_state_entity.selection_state->selected_entities_hash_table;
 	auto entity_view_table_entries = EntityQueryToArrayView(QueryEntities<GuidNameQuery>(alloc, entity_system), alloc, search_pattern);
 	
@@ -210,12 +216,12 @@ static void EntityViewGrid(StackAllocator* alloc, EntitySystemBase& entity_syste
 	u32 size_cards_x = (u32)Math::Max((s32)floorf((width + style.ItemSpacing.x) / (card_size_pixels.x + style.ItemSpacing.x)), 1);
 	u32 size_cards_y = DivideAndRoundUp((u32)entity_view_table_entries.count, size_cards_x);
 	
-	float column_extra_spacing = 0.f;
+	float extra_spacing_x = 0.f;
 	float2 card_size_with_spacing_pixels = card_size_pixels + float2(style.ItemSpacing);
 	
 	if (size_cards_x > 1) {
 		card_size_with_spacing_pixels.x = card_size_pixels.x + floorf((width - size_cards_x * card_size_pixels.x) / (size_cards_x - 1));
-		column_extra_spacing = width - card_size_with_spacing_pixels.x * (size_cards_x - 1) - card_size_pixels.x;
+		extra_spacing_x = width - card_size_with_spacing_pixels.x * (size_cards_x - 1) - card_size_pixels.x;
 	}
 	
 	auto corner_position = ImGui::GetCursorScreenPos();
@@ -245,7 +251,7 @@ static void EntityViewGrid(StackAllocator* alloc, EntitySystemBase& entity_syste
 			
 			ImGuiScopeID((void*)guid);
 			
-			auto card_position = corner_position + card_coordinates * card_size_with_spacing_pixels + float2(Math::Min(card_coordinates.x, column_extra_spacing), 0.f);
+			auto card_position = corner_position + card_coordinates * card_size_with_spacing_pixels + float2(Math::Min(card_coordinates.x, extra_spacing_x), 0.f);
 			ImGui::SetCursorScreenPos(card_position);
 			
 			ImGui::PushStyleColor(ImGuiCol_Header, 0u);
@@ -261,9 +267,10 @@ static void EntityViewGrid(StackAllocator* alloc, EntitySystemBase& entity_syste
 			ImGui::PopStyleColor(3);
 			
 			bool held = ImGui::IsItemActive();
+			bool highlighted = is_selected || ImGui::IsItemHovered();
 			
 			// Custom Selectable frame with border and rounding.
-			u32 color = ImGui::GetColorU32((held && is_selected) ? ImGuiCol_HeaderActive : is_selected ? ImGuiCol_HeaderHovered : ImGuiCol_Header);
+			u32 color = ImGui::GetColorU32((held && highlighted) ? ImGuiCol_HeaderActive : highlighted ? ImGuiCol_HeaderHovered : ImGuiCol_Header);
 			ImGui::RenderFrame(card_position, card_position + card_size_pixels, color, true, style.FrameRounding + style.WindowPadding.x);
 			
 			EntitySelectableActions(level_editor_io, entity_type_id, guid);
@@ -272,7 +279,7 @@ static void EntityViewGrid(StackAllocator* alloc, EntitySystemBase& entity_syste
 			ImGui::SetCursorScreenPos(card_position + float2(style.WindowPadding));
 			ImGui::BeginGroup();
 			
-			EditorIconCacheDrawIcon(level_editor_io.icon_cache, guid, entity_type_id);
+			EditorIconCacheDrawIcon(level_editor_io.icon_cache, entity_system, guid, entity_type_id);
 			ImGui::TableLabelText(name.count ? name.data : entity_type_name.data, content_size_pixels.x);
 			
 			ImGui::EndGroup();

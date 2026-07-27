@@ -362,6 +362,10 @@ static bool AssetComponentEntityView(StackAllocator* alloc, AssetEntitySystem& a
 		ImGui::TableInputText("World Source Data", source_data_filename, nullptr);
 	}
 	
+	if (entity.editor_icon_cache_settings) {
+		ImGui::TableEntityComboBox(alloc, "Material Icon Mesh", &asset_system, &entity.editor_icon_cache_settings->material_icon_mesh.guid, ECS::GetEntityTypeID<MeshAssetType>::id);
+	}
+	
 	return should_recreate_asset;
 }
 
@@ -438,9 +442,13 @@ static bool MultiEntityView(String label, StackAllocator* alloc, WorldEntitySyst
 }
 
 bool EditorPropertiesWindow(StackAllocator* alloc, UndoRedoSystem& undo_redo_system, WorldEntitySystem& world_system, AssetEntitySystem& asset_system, EditorSelectionStateEntity world_selection_state_entity, EditorSelectionStateEntity asset_selection_state_entity, u64 world_entity_guid) {
+	auto editor_settings_entity = QueryFirstEntityByType<EditorSettingsEntityType>(asset_system);
+	u64 editor_settings_entity_guid = editor_settings_entity.guid->guid;
+	
 	bool result = false;
 	result |= MultiEntityView("Asset Editor"_sl, alloc, nullptr, asset_system, undo_redo_system, asset_selection_state_entity);
 	result |= MultiEntityView("Entity Editor"_sl, alloc, &world_system, asset_system, undo_redo_system, world_selection_state_entity);
-	result |= SingleEntityView("World Entity"_sl, alloc, &world_system, asset_system, undo_redo_system, world_entity_guid);
+	result |= SingleEntityView("World System"_sl, alloc, &world_system, asset_system, undo_redo_system, world_entity_guid);
+	result |= SingleEntityView("Asset System"_sl, alloc, nullptr, asset_system, undo_redo_system, editor_settings_entity_guid);
 	return result;
 }

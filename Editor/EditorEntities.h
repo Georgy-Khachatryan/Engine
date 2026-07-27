@@ -17,6 +17,18 @@ struct EditorSelectionStateEntity {
 };
 
 
+NOTES()
+struct EditorIconCacheSettingsComponent {
+	MeshAssetGUID material_icon_mesh;
+};
+
+NOTES(Meta::EntityType{ 1 }, Meta::ComponentQuery{})
+struct EditorSettingsEntityType {
+	ECS::Component<GuidComponent> guid;
+	ECS::Component<EditorIconCacheSettingsComponent> icon_cache_settings;
+};
+
+
 NOTES(Meta::ComponentQuery{})
 struct SharedEntityEditorQuery {
 	GuidComponent* guid = nullptr;
@@ -61,6 +73,8 @@ struct AssetEntityEditorQuery {
 	MaterialTextureData* material_texture_data = nullptr;
 	
 	WorldSourceData* world_source_data = nullptr;
+	
+	EditorIconCacheSettingsComponent* editor_icon_cache_settings = nullptr;
 };
 
 void UpdateEditorAssetComponents(StackAllocator* alloc, AssetEntitySystem& asset_system);

@@ -3,6 +3,7 @@
 #include "Engine/ImGuiCustomWidgets.h"
 #include "GraphicsApi/GraphicsApi.h"
 #include "LevelEditor.h"
+#include "EditorEntities.h"
 #include "Renderer/Renderer.h"
 
 enum struct EditorIconState : u32 {
@@ -35,6 +36,7 @@ struct EditorIconCache {
 	
 	u64 world_entity_guid = 0;
 	u64 mesh_entity_guid  = 0;
+	u64 material_icon_mesh_guid = 0;
 	
 	
 	HashTable<u64, u32> icon_guid_to_index;
@@ -101,22 +103,50 @@ void ReleaseEditorIconCache(EditorIconCache* icon_cache, GraphicsContext* graphi
 	ReleaseResourceTable(graphics_context, icon_cache->resource_table);
 }
 
+static void InvalidateIconsWithMask(EditorIconCache* icon_cache, GuidQuery streams, ArrayView<u64> dirty_mask) {
+	for (u64 i : BitArrayIt(dirty_mask)) {
+		auto* element = HashTableFind(icon_cache->icon_guid_to_index, streams.guid[i].guid);
+		if (element == nullptr) continue;
+		
+		icon_cache->icons[element->value].state = EditorIconState::Wait;
+		
+		if (icon_cache->currently_rendering_icon_index == element->value) {
+			icon_cache->currently_rendering_icon_index = u32_max;
+			icon_cache->currently_rendering_frame_index = 0;
+		}
+	}
+}
 
-void EditorIconCacheDrawIcon(EditorIconCache* icon_cache, u64 mesh_asset_guid, EntityTypeID entity_type_id) {
-	// TODO: Material and texture entity type icons.
+static void DrawDefaultEntityTypeIcon(EntityTypeID entity_type_id) {
+	float4 color = float4(Math::DecodeR10G10B10((u32)ComputeHash64(entity_type_id.index)), 1.f);
+	ImGui::ColorButton("AssetIcon", color, ImGuiColorEditFlags_None, ImVec2(icon_size_pixels, icon_size_pixels));
+}
+
+void EditorIconCacheDrawIcon(EditorIconCache* icon_cache, EntitySystemBase& entity_system, u64 entity_guid, EntityTypeID entity_type_id) {
+	if (entity_type_id.index == ECS::GetEntityTypeID<TextureAssetType>::id.index) {
+		auto texture = QueryEntityByGUID<TextureAssetType>(entity_system, entity_guid);
+		if (texture.descriptor_allocation->mip_level_mask != 0) {
+			ImGui::ImageButtonEx("AssetIcon", texture.descriptor_allocation->index, ImVec2(icon_size_pixels, icon_size_pixels));
+		} else {
+			DrawDefaultEntityTypeIcon(entity_type_id);
+		}
+		return;
+	}
+	
 	bool is_supported_entity_type =
-		entity_type_id.index == ECS::GetEntityTypeID<MeshAssetType>::id.index;
+		(entity_type_id.index == ECS::GetEntityTypeID<MeshAssetType>::id.index) ||
+		(entity_type_id.index == ECS::GetEntityTypeID<MaterialAssetType>::id.index);
 	
 	u32 icon_index = u32_max;
 	if (is_supported_entity_type) {
-		auto* element = HashTableFind(icon_cache->icon_guid_to_index, mesh_asset_guid);
+		auto* element = HashTableFind(icon_cache->icon_guid_to_index, entity_guid);
 		if (element == nullptr && icon_cache->icon_guid_to_index.count < icon_cache_area_icons) {
-			auto [new_element, is_inserted] = HashTableAddOrFind(icon_cache->icon_guid_to_index, mesh_asset_guid, ArrayPopLast(icon_cache->free_icon_indices));
+			auto [new_element, is_inserted] = HashTableAddOrFind(icon_cache->icon_guid_to_index, entity_guid, ArrayPopLast(icon_cache->free_icon_indices));
 			DebugAssert(is_inserted, "Failed to add icon entry.");
 			element = new_element;
 			
 			auto& icon = icon_cache->icons[element->value];
-			icon.guid           = mesh_asset_guid;
+			icon.guid           = entity_guid;
 			icon.entity_type_id = entity_type_id;
 			icon.state          = EditorIconState::Wait;
 		}
@@ -129,15 +159,14 @@ void EditorIconCacheDrawIcon(EditorIconCache* icon_cache, u64 mesh_asset_guid, E
 		}
 	}
 	
-	if (icon_index != u32_max && icon_cache->icons[icon_index].state == EditorIconState::Ready) {
+	if (icon_index != u32_max && (icon_cache->icons[icon_index].state == EditorIconState::Ready || icon_cache->icons[icon_index].state == EditorIconState::Render)) {
 		auto icon_coordinates = float2((float)(icon_index % icon_cache_size_icons), (float)(icon_index / icon_cache_size_icons));
 		auto uv_min = icon_coordinates * (1.f / icon_cache_size_icons);
 		auto uv_max = uv_min + (1.f / icon_cache_size_icons);
 		
 		ImGui::ImageButtonEx("AssetIcon", icon_cache->icon_atlas_texture_id, ImVec2(icon_size_pixels, icon_size_pixels), ImGuiButtonFlags_None, uv_min, uv_max);
 	} else {
-		float4 color = float4(Math::DecodeR10G10B10((u32)ComputeHash64(entity_type_id.index)), 1.f);
-		ImGui::ColorButton("AssetIcon", color, ImGuiColorEditFlags_None, ImVec2(icon_size_pixels, icon_size_pixels));
+		DrawDefaultEntityTypeIcon(entity_type_id);
 	}
 }
 
@@ -146,9 +175,45 @@ void EditorIconCacheUpdate(StackAllocator* alloc, EditorIconCache* icon_cache, G
 	
 	auto world_entity = QueryEntityByGUID<WorldEntityType>(world_system, icon_cache->world_entity_guid);
 	auto camera_entity = QueryEntityByGUID<CameraEntityType>(world_system, world_entity.camera_entity->guid);
+	auto editor_settings_entity = QueryFirstEntityByType<EditorSettingsEntityType>(asset_system);
 	
 	ImGuiDrawList3D draw_list_3d;
 	draw_list_3d.alloc = alloc;
+	
+	
+	//
+	// TODO: Implement something more robust for asset invalidation. For example if we update a texture,
+	// we should rerender material icons that use it, and we should rerender all meshes that use this material.
+	//
+	
+	// Invalidate dirty or recreated icons:
+	{
+		FixedCapacityArray<EntityTypeArray*, 2> entity_type_arrays;
+		ArrayAppend(entity_type_arrays, QueryEntityTypeArray<MaterialAssetType>(asset_system));
+		ArrayAppend(entity_type_arrays, QueryEntityTypeArray<MeshAssetType>(asset_system));
+		
+		for (auto* entity_array : entity_type_arrays) {
+			auto streams = ExtractComponentStreams<GuidQuery>(entity_array);
+			InvalidateIconsWithMask(icon_cache, streams, entity_array->dirty_mask);
+			InvalidateIconsWithMask(icon_cache, streams, entity_array->created_mask);
+		}
+	}
+	
+	// Invalidate material icons when material preview mesh is changed.
+	if (icon_cache->material_icon_mesh_guid != editor_settings_entity.icon_cache_settings->material_icon_mesh.guid) {
+		icon_cache->material_icon_mesh_guid = editor_settings_entity.icon_cache_settings->material_icon_mesh.guid;
+		
+		for (u32 icon_index = 0; icon_index < icon_cache_area_icons; icon_index += 1) {
+			auto& icon = icon_cache->icons[icon_index];
+			if (icon.entity_type_id.index != ECS::GetEntityTypeID<MaterialAssetType>::id.index) continue;
+			icon.state = EditorIconState::Wait;
+			
+			if (icon_cache->currently_rendering_icon_index == icon_index) {
+				icon_cache->currently_rendering_icon_index = u32_max;
+				icon_cache->currently_rendering_frame_index = 0;
+			}
+		}
+	}
 	
 	
 	if (icon_cache->deallocate_icon_count != 0) {
@@ -198,16 +263,29 @@ void EditorIconCacheUpdate(StackAllocator* alloc, EditorIconCache* icon_cache, G
 		icon_cache->currently_rendering_icon_index = rendering_icon_index;
 	}
 	
+	u64 mesh_asset_guid     = 0;
+	u64 material_asset_guid = 0;
 	
-	u64 mesh_asset_guid = rendering_icon_index != u32_max ? icon_cache->icons[rendering_icon_index].guid : 0;
+	if (rendering_icon_index != u32_max) {
+		auto& icon = icon_cache->icons[rendering_icon_index];
+		
+		if (icon.entity_type_id.index == ECS::GetEntityTypeID<MeshAssetType>::id.index) {
+			mesh_asset_guid     = icon.guid;
+			material_asset_guid = 0;
+		} else if (icon.entity_type_id.index == ECS::GetEntityTypeID<MaterialAssetType>::id.index) {
+			mesh_asset_guid     = icon_cache->material_icon_mesh_guid;
+			material_asset_guid = icon.guid;
+		}
+	}
 	
-	{
+	if (rendering_icon_index != u32_max) {
 		auto mesh_entity_id = FindEntityByGUID(world_system, icon_cache->mesh_entity_guid);
 		auto mesh_entity = ExtractComponentStreams<MeshEntityType>(&world_system.entity_type_arrays[mesh_entity_id.entity_type_id.index], mesh_entity_id.entity_id);
 		
-		if (mesh_entity.mesh_asset->guid != mesh_asset_guid) {
-			mesh_entity.mesh_asset->guid = mesh_asset_guid;
-			
+		mesh_entity.mesh_asset->guid     = mesh_asset_guid;
+		mesh_entity.material_asset->guid = material_asset_guid;
+		
+		if (icon_cache->currently_rendering_frame_index == 0) {
 			BitArraySetBit(world_system.entity_type_arrays[mesh_entity_id.entity_type_id.index].dirty_mask, mesh_entity_id.entity_id.index);
 		}
 	}
@@ -216,7 +294,7 @@ void EditorIconCacheUpdate(StackAllocator* alloc, EditorIconCache* icon_cache, G
 	// Position the camera such that the mesh AABB corners are within the frustum.
 	// Using convex hull or k-dop vertices could result in an even a better fit.
 	//
-	if (mesh_asset_guid != 0) {
+	if (rendering_icon_index != u32_max && mesh_asset_guid != 0) {
 		auto mesh_asset = QueryEntityByGUID<MeshAssetType>(asset_system, mesh_asset_guid);
 		
 		auto& aabb   = *mesh_asset.aabb;
@@ -259,7 +337,7 @@ void EditorIconCacheUpdate(StackAllocator* alloc, EditorIconCache* icon_cache, G
 		camera_entity.position->position = view_to_world_rotation * view_space_camera_position;
 	}
 	
-	if (mesh_asset_guid != 0) {
+	if (rendering_icon_index != u32_max) {
 		auto renderer_world = world_entity.renderer_world;
 		renderer_world->window_size                  = float2(icon_size_pixels, icon_size_pixels);
 		renderer_world->delta_time                   = ImGui::GetIO().DeltaTime;
