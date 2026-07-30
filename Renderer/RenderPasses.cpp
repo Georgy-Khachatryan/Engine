@@ -220,6 +220,8 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	
 	if (renderer_world.reference_path_tracer_percent != 0.f) {
 		scene.path_tracer_accumulated_frame_count += 1;
+	} else {
+		scene.path_tracer_accumulated_frame_count = 0;
 	}
 	
 	if (world_entity.global_light_entity->guid != 0) {

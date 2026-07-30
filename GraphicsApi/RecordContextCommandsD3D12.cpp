@@ -1,4 +1,5 @@
 #include "GraphicsApiD3D12.h"
+#include "Basic/BasicBitArray.h"
 #include "Basic/BasicMemory.h"
 #include "Basic/BasicMath.h"
 #include "RecordContext.h"
@@ -578,11 +579,13 @@ static void CmdDispatchXessD3D12(CmdDispatchXessPacket* packet, ID3D12GraphicsCo
 		xess_handle_resource.type = VirtualResource::Type::Opaque;
 		xess_handle_resource.opaque.user_data_0 = xess_context;
 		xess_handle_resource.opaque.user_data_1 = src_size.packed;
-		xess_handle_resource.opaque.release_user_data = [](VirtualResource* xess_handle_resource, GraphicsContext*) {
+		xess_handle_resource.opaque.release_user_data = [](VirtualResource* xess_handle_resource, GraphicsContext* context) {
 			ProfilerScope("xessDestroyContext");
 			auto xess_context = (xess_context_handle_t)xess_handle_resource->opaque.user_data_0;
 			
 			// TODO: Defer destroy.
+			WaitForInFlightSubmits(context);
+			
 			auto result = xessDestroyContext(xess_context);
 			DebugAssert(result == XESS_RESULT_SUCCESS, "xessDestroyContext failed.");
 			
@@ -678,11 +681,13 @@ static void CmdDispatchDlssD3D12(CmdDispatchDlssPacket* packet, ID3D12GraphicsCo
 		dlss_handle_resource.type = VirtualResource::Type::Opaque;
 		dlss_handle_resource.opaque.user_data_0 = dlss_parameter_handle;
 		dlss_handle_resource.opaque.user_data_1 = src_size.packed;
-		dlss_handle_resource.opaque.release_user_data = [](VirtualResource* dlss_handle_resource, GraphicsContext*) {
+		dlss_handle_resource.opaque.release_user_data = [](VirtualResource* dlss_handle_resource, GraphicsContext* context) {
 			ProfilerScope("NVSDK_NGX_D3D12_ReleaseFeature/NVSDK_NGX_D3D12_DestroyParameters");
 			auto* dlss_parameter_handle = (NVSDK_NGX_Parameter*)dlss_handle_resource->opaque.user_data_0;
 			
 			// TODO: Defer destroy.
+			WaitForInFlightSubmits(context);
+			
 			NVSDK_NGX_Handle* dlss_handle = nullptr; 
 			NVSDK_NGX_Parameter_GetVoidPointer(dlss_parameter_handle, ngx_parameter_user_dlss_handle, (void**)&dlss_handle);
 			
@@ -957,7 +962,10 @@ static bool AccessRangesAreEqual(ResourceAccessDefinition* access_0, ResourceAcc
 		access_0->array_index == access_1->array_index && access_0->array_count == access_1->array_count;
 }
 
-static void ResolveResourceAccesses(StackAllocator* alloc, ArrayView<ArrayView<ResourceAccessDefinition>> resource_accesses, ArrayView<VirtualResource> resources) {
+static ArrayView<u64> ResolveResourceAccesses(StackAllocator* alloc, ArrayView<ArrayView<ResourceAccessDefinition>> resource_accesses, ArrayView<VirtualResource> resources) {
+	Array<u64> active_resource_mask;
+	ArrayResizeMemset(active_resource_mask, alloc, DivideAndRoundUp(resources.count, 64));
+	
 	TempAllocationScope(alloc);
 	
 	Array<ResourceAccessDefinition*> first_resource_access;
@@ -1046,7 +1054,11 @@ static void ResolveResourceAccesses(StackAllocator* alloc, ArrayView<ArrayView<R
 			last_access->stages_mask = last_active_access->stages_mask;
 			last_access->access_mask = last_active_access->access_mask;
 		}
+		
+		BitArraySetBit(active_resource_mask, resource_index);
 	}
+	
+	return active_resource_mask;
 }
 
 void ReplayRecordContext(GraphicsContext* api_context, RecordContext* record_context) {
@@ -1055,36 +1067,50 @@ void ReplayRecordContext(GraphicsContext* api_context, RecordContext* record_con
 	auto* context = (GraphicsContextD3D12*)api_context;
 	auto* alloc   = record_context->alloc;
 	
+	TempAllocationScope(alloc);
+	
 	auto resources = ArrayView<VirtualResource>(record_context->resource_table->virtual_resources);
+	auto active_resource_mask = ResolveResourceAccesses(alloc, record_context->resource_accesses, resources);
 	
 	extern ArrayView<String> virtual_resource_id_names;
 	for (u32 resource_index = 0; resource_index < resources.count; resource_index += 1) {
 		auto& resource = resources[resource_index];
+		bool is_active = BitArrayTestBit(active_resource_mask, resource_index);
 		
-		if (resource.type == VirtualResource::Type::VirtualTexture && resource.texture.size != resource.texture.allocated_size) {
+		if (resource.type == VirtualResource::Type::VirtualTexture && (resource.texture.size != resource.texture.allocated_size || is_active == false)) {
 			if (resource.texture.resource.handle != nullptr) {
-				ReleaseTextureResource(context, resource.texture.resource, ResourceReleaseCondition::EndOfThisGpuFrame);
+				ReleaseTextureResource(context, resource.texture.resource, ResourceReleaseCondition::EndOfLastGpuFrame);
 			}
 			
-			resource.texture.resource = CreateTextureResource(context, resource.texture.size, resource.flags);
-			resource.texture.allocated_size = resource.texture.size;
-			
-			SetNameD3D12(alloc, resource.texture.resource.d3d12, virtual_resource_id_names[resource_index]);
-		} else if (resource.type == VirtualResource::Type::VirtualBuffer && resource.buffer.size != resource.buffer.allocated_size) {
+			if (is_active) {
+				resource.texture.resource = CreateTextureResource(context, resource.texture.size, resource.flags);
+				resource.texture.allocated_size = resource.texture.size;
+				
+				SetNameD3D12(alloc, resource.texture.resource.d3d12, virtual_resource_id_names[resource_index]);
+			} else {
+				resource.texture.resource = {};
+				resource.texture.allocated_size = {};
+			}
+		} else if (resource.type == VirtualResource::Type::VirtualBuffer && (resource.buffer.size != resource.buffer.allocated_size || is_active == false)) {
 			if (resource.buffer.resource.handle != nullptr) {
-				ReleaseBufferResource(context, resource.buffer.resource, ResourceReleaseCondition::EndOfThisGpuFrame);
+				ReleaseBufferResource(context, resource.buffer.resource, ResourceReleaseCondition::EndOfLastGpuFrame);
 			}
 			
-			resource.buffer.resource = CreateBufferResource(context, resource.buffer.size, resource.flags);
-			resource.buffer.allocated_size = resource.buffer.size;
-			
-			SetNameD3D12(alloc, resource.buffer.resource.d3d12, virtual_resource_id_names[resource_index]);
+			if (is_active) {
+				resource.buffer.resource = CreateBufferResource(context, resource.buffer.size, resource.flags);
+				resource.buffer.allocated_size = resource.buffer.size;
+				
+				SetNameD3D12(alloc, resource.buffer.resource.d3d12, virtual_resource_id_names[resource_index]);
+			} else {
+				resource.buffer.resource = {};
+				resource.buffer.allocated_size = {};
+			}
+		} else if (resource.type == VirtualResource::Type::Opaque && is_active == false) {
+			resource.opaque.release_user_data(&resource, context);
 		}
 	}
 	
-	
 	CreateDescriptorTables(context, record_context->descriptor_tables, resources);
-	ResolveResourceAccesses(alloc,  record_context->resource_accesses, resources);
 	
 	auto command_prefix_sum = ArrayView<u32>(record_context->resource_access_command_prefix_sum);
 	auto resource_accesses  = record_context->resource_accesses;

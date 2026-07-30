@@ -32,6 +32,7 @@ void LevelEditorUpdate(StackAllocator* alloc, GraphicsContext* graphics_context,
 void EditorUndoRedoHistoryWindow(UndoRedoSystem& undo_redo_system);
 
 void EditorShaderStatisticsWindow(StackAllocator* alloc, GraphicsContext* graphics_context);
+void EditorResourceStatisticsWindow(StackAllocator* alloc, VirtualResourceTable* resource_table);
 
 bool EditorPropertiesWindow(StackAllocator* alloc, UndoRedoSystem& undo_redo_system, WorldEntitySystem& world_system, AssetEntitySystem& asset_system, EditorSelectionStateEntity world_selection_state_entity, EditorSelectionStateEntity asset_selection_state_entity, u64 world_entity_guid);
 

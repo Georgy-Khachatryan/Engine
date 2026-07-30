@@ -449,12 +449,13 @@ void CmdDispatchXeSS(RecordContext* record_context, const XessDispatchContext& d
 	auto& packet = AppendPacket<CmdDispatchXessPacket>(record_context);
 	packet.context = dispatch_context;
 	
-	FixedCountArray<ResourceAccessDefinition, 5> resource_accesses;
+	FixedCountArray<ResourceAccessDefinition, 6> resource_accesses;
 	resource_accesses[0] = CreateTextureResourceAccess(dispatch_context.result_resource_id, PipelineStagesMask::ComputeShader, ResourceAccessMask::UAV);
 	resource_accesses[1] = CreateTextureResourceAccess(dispatch_context.radiance_resource_id, PipelineStagesMask::ComputeShader, ResourceAccessMask::SRV);
 	resource_accesses[2] = CreateTextureResourceAccess(dispatch_context.depth_resource_id, PipelineStagesMask::ComputeShader, ResourceAccessMask::SRV);
 	resource_accesses[3] = CreateTextureResourceAccess(dispatch_context.motion_vector_resource_id, PipelineStagesMask::ComputeShader, ResourceAccessMask::SRV);
 	resource_accesses[4] = CreateTextureResourceAccess(dispatch_context.exposure_texture, PipelineStagesMask::ComputeShader, ResourceAccessMask::SRV);
+	resource_accesses[5] = CreateTextureResourceAccess(dispatch_context.xess_handle_resource_id, PipelineStagesMask::ComputeShader, ResourceAccessMask::None);
 	
 	AppendResourceAccesses(record_context, resource_accesses);
 }
@@ -463,12 +464,13 @@ void CmdDispatchDLSS(RecordContext* record_context, const DlssDispatchContext& d
 	auto& packet = AppendPacket<CmdDispatchDlssPacket>(record_context);
 	packet.context = dispatch_context;
 	
-	FixedCountArray<ResourceAccessDefinition, 5> resource_accesses;
+	FixedCountArray<ResourceAccessDefinition, 6> resource_accesses;
 	resource_accesses[0] = CreateTextureResourceAccess(dispatch_context.result_resource_id, PipelineStagesMask::ComputeShader, ResourceAccessMask::UAV);
 	resource_accesses[1] = CreateTextureResourceAccess(dispatch_context.radiance_resource_id, PipelineStagesMask::ComputeShader, ResourceAccessMask::SRV);
 	resource_accesses[2] = CreateTextureResourceAccess(dispatch_context.depth_resource_id, PipelineStagesMask::ComputeShader, ResourceAccessMask::SRV);
 	resource_accesses[3] = CreateTextureResourceAccess(dispatch_context.motion_vector_resource_id, PipelineStagesMask::ComputeShader, ResourceAccessMask::SRV);
 	resource_accesses[4] = CreateTextureResourceAccess(dispatch_context.exposure_texture, PipelineStagesMask::ComputeShader, ResourceAccessMask::SRV);
+	resource_accesses[5] = CreateTextureResourceAccess(dispatch_context.dlss_handle_resource_id, PipelineStagesMask::ComputeShader, ResourceAccessMask::None);
 	
 	AppendResourceAccesses(record_context, resource_accesses);
 }

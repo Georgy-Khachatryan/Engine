@@ -245,6 +245,7 @@ void LevelEditorUpdate(StackAllocator* alloc, GraphicsContext* graphics_context,
 	EditorUndoRedoHistoryWindow(undo_redo_system);
 	
 	EditorShaderStatisticsWindow(alloc, graphics_context);
+	EditorResourceStatisticsWindow(alloc, level_editor_io.level_editor->resource_table);
 	
 	EditorOutlinerWindow(alloc, undo_redo_system, world_system, world_selection_state_entity, level_editor_io);
 	
