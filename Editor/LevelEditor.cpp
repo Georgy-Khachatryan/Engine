@@ -256,5 +256,5 @@ void LevelEditorUpdate(StackAllocator* alloc, GraphicsContext* graphics_context,
 	
 	EditorViewportWindow(alloc, undo_redo_system, world_system, asset_system, world_selection_state_entity, world_entity_guid, graphics_context, level_editor_io.level_editor->resource_table, editor_world_views);
 	
-	EditorIconCacheUpdate(alloc, level_editor_io.icon_cache, graphics_context, asset_system, editor_world_views);
+	EditorIconCacheUpdate(alloc, level_editor_io.icon_cache, asset_system, editor_world_views);
 }

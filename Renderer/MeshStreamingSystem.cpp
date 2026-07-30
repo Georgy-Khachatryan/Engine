@@ -53,23 +53,30 @@ MeshStreamingSystem* CreateMeshStreamingSystem(StackAllocator* alloc, u64 buffer
 	return system;
 }
 
-static ArrayView<u64> ProcessMeshStreamingFeedback(RecordContext* record_context, GpuReadbackQueue* mesh_streaming_feedback_queue) {
+static ArrayView<u64> ProcessMeshStreamingFeedback(RecordContext* record_context, GpuReadbackQueue* mesh_streaming_feedback_queue, EntityTypeArray* entity_array, ECS::Component<MeshRuntimeCpuStreamingRequest> cpu_streaming_requests) {
 	ProfilerScope("ProcessMeshStreamingFeedback");
 	
 	auto element = mesh_streaming_feedback_queue->Load(record_context->frame_index);
 	if (element.data == nullptr) return {};
 	
-	u32 read_index = 0;
 	u32* meshlet_streaming_feedback_data = (u32*)element.data;
+	u32 readback_buffer_size = meshlet_streaming_feedback_data[0];
+	u32 readback_asset_count = readback_buffer_size - 1;
 	
-	u32 size = meshlet_streaming_feedback_data[read_index++];
+	DebugAssert(readback_buffer_size != 0, "Invalid readback buffer size");
 	
 	Array<u64> requests;
-	ArrayReserve(requests, record_context->alloc, size - 1);
+	ArrayReserve(requests, record_context->alloc, Math::Min(readback_asset_count, entity_array->count));
 	
-	while (read_index < size) {
-		u32 mesh_asset_index = read_index - 1;
-		u32 distance = meshlet_streaming_feedback_data[read_index++];
+	for (u64 mesh_asset_index : BitArrayIt(entity_array->alive_mask)) {
+		if (mesh_asset_index >= readback_asset_count) break;
+		
+		u32 distance = meshlet_streaming_feedback_data[mesh_asset_index + 1];
+		
+		// Don't clear the CPU streaming requests here, meshlet streaming still needs them.
+		if (cpu_streaming_requests[mesh_asset_index].packed >> MeshRuntimeCpuStreamingRequest::max_page_count) {
+			distance = Math::Min(u32_max - 1, distance);
+		}
 		
 		if (distance != u32_max) {
 			ArrayAppend(requests, ((u64)distance << 32) | mesh_asset_index);
@@ -95,7 +102,7 @@ void UpdateMeshStreamingSystem(MeshStreamingSystem* system, AsyncTransferQueue* 
 	auto& mesh_asset_buffer = GetVirtualResource(record_context, VirtualResourceID::MeshAssetBuffer);
 	
 	auto* alloc = record_context->alloc;
-	auto requests = ProcessMeshStreamingFeedback(record_context, mesh_streaming_feedback_queue);
+	auto requests = ProcessMeshStreamingFeedback(record_context, mesh_streaming_feedback_queue, entity_array, streams.cpu_streaming_requests);
 	
 	auto& runtime_meshes = system->runtime_meshes;
 	auto& free_mesh_indices = system->free_mesh_indices;
@@ -287,7 +294,6 @@ void UpdateMeshStreamingFiles(MeshStreamingSystem* system, ThreadPool* thread_po
 		
 		for (u64 i : BitArrayIt(entity_array->created_mask)) {
 			auto& layout = streams.runtime_data_layout[i];
-			auto& allocation = streams.allocation[i];
 			auto& runtime_file = streams.runtime_file[i];
 			
 			if (layout.version != MeshRuntimeDataLayout::current_version) {

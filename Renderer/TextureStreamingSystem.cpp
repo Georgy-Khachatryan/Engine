@@ -103,7 +103,7 @@ static u64 ComputeMipLevelOffset(TextureSize size, u32 mip_index, const TextureF
 	return offset;
 }
 
-static ArrayView<u64> ProcessTextureStreamingFeedback(RecordContext* record_context, GpuReadbackQueue* texture_streaming_feedback_queue, TextureAssetType streams, ArrayView<EntityID> descriptor_index_to_texture_entity_id) {
+static ArrayView<u64> ProcessTextureStreamingFeedback(RecordContext* record_context, GpuReadbackQueue* texture_streaming_feedback_queue, EntityTypeArray* entity_array, TextureAssetType streams) {
 	ProfilerScope("ProcessTextureStreamingFeedback");
 	
 	auto element = texture_streaming_feedback_queue->Load(record_context->frame_index);
@@ -115,16 +115,25 @@ static ArrayView<u64> ProcessTextureStreamingFeedback(RecordContext* record_cont
 	ArrayReserve(requests, alloc, persistent_srv_descriptor_count);
 	
 	u32* texture_streaming_feedback_data = (u32*)element.data;
-	for (u32 descriptor_index = 0; descriptor_index < persistent_srv_descriptor_count; descriptor_index += 1) {
-		u32 packed_feedback = texture_streaming_feedback_data[descriptor_index];
-		if (packed_feedback == u32_max) continue;
+	for (u64 texture_asset_index : BitArrayIt(entity_array->alive_mask)) {
+		auto& allocation  = streams.descriptor_allocation[texture_asset_index];
+		auto& cpu_request = streams.cpu_streaming_requests[texture_asset_index];
 		
-		auto entity_id = descriptor_index_to_texture_entity_id[descriptor_index];
+		u32 packed_feedback = texture_streaming_feedback_data[allocation.index];
+		if (packed_feedback == u32_max && cpu_request.should_stream == 0) continue;
 		
-		auto& layout = streams.runtime_data_layout[entity_id.index];
-		auto sparse_layout = streams.resource_allocation[entity_id.index].sparse_layout;
+		cpu_request.should_stream = 0;
 		
-		u32 begin_mip_level = (u32)*(float*)&packed_feedback;
+		auto& layout = streams.runtime_data_layout[texture_asset_index];
+		auto sparse_layout = streams.resource_allocation[texture_asset_index].sparse_layout;
+		
+		u32 begin_mip_level = 16u;
+		if (cpu_request.should_stream) {
+			begin_mip_level = sparse_layout.regular_mip_count;
+		}
+		if (packed_feedback != u32_max) {
+			begin_mip_level = Math::Min((u32)*(float*)&packed_feedback, begin_mip_level);
+		}
 		if (sparse_layout.packed_mip_count != 0) {
 			begin_mip_level = Math::Min((u32)sparse_layout.regular_mip_count, begin_mip_level);
 		}
@@ -136,7 +145,7 @@ static ArrayView<u64> ProcessTextureStreamingFeedback(RecordContext* record_cont
 			
 			u32 tile_count = mip_index >= sparse_layout.regular_mip_count ? sparse_layout.packed_tile_count : mip_size_tiles.x * mip_size_tiles.y;
 			
-			ArrayAppend(requests, alloc, EncodeTextureSubresourceID(descriptor_index, mip_index, tile_count));
+			ArrayAppend(requests, alloc, EncodeTextureSubresourceID(allocation.index, mip_index, tile_count));
 		}
 	}
 	
@@ -152,7 +161,7 @@ void UpdateTextureStreamingSystem(TextureStreamingSystem* system, AsyncTransferQ
 	auto* entity_array = QueryEntityTypeArray<TextureAssetType>(*asset_system);
 	auto streams = ExtractComponentStreams<TextureAssetType>(entity_array);
 	
-	auto requests = ProcessTextureStreamingFeedback(record_context, texture_streaming_feedback_queue, streams, system->descriptor_index_to_texture_entity_id);
+	auto requests = ProcessTextureStreamingFeedback(record_context, texture_streaming_feedback_queue, entity_array, streams);
 	
 	u64 current_frame_index = record_context->frame_index;
 	u64 completed_file_read_index = CompletedGpuAsyncTransferIndex(async_transfer_queue);
@@ -239,7 +248,7 @@ void UpdateTextureStreamingSystem(TextureStreamingSystem* system, AsyncTransferQ
 			if (texture.LoadState(mip_index) == TextureMipLevelRuntimeState::FileRead && IsWaitComplete(texture.wait_index[mip_index], current_frame_index, completed_file_read_index)) {
 				texture.wait_index[mip_index] = 0;
 				texture.StoreState(mip_index, TextureMipLevelRuntimeState::Ready);
-				streams.descriptor_allocation[entity_id.index].mip_level_mask |= (1u << mip_index);
+				streams.cpu_streaming_requests[entity_id.index].mip_level_mask |= (1u << mip_index);
 				BitArraySetBit(entity_array->dirty_mask, entity_id.index);
 			}
 			
@@ -290,7 +299,7 @@ void UpdateTextureStreamingSystem(TextureStreamingSystem* system, AsyncTransferQ
 	
 	if (deallocate_tile_count != 0) {
 		Array<u64> deallocation_candidates;
-		ArrayReserve(deallocation_candidates, alloc, requests.count);
+		ArrayReserve(deallocation_candidates, alloc, persistent_srv_descriptor_count);
 		
 		for (u32 descriptor_index = 0; descriptor_index < persistent_srv_descriptor_count; descriptor_index += 1) {
 			auto& texture = system->runtime_textures[descriptor_index];
@@ -326,7 +335,7 @@ void UpdateTextureStreamingSystem(TextureStreamingSystem* system, AsyncTransferQ
 			auto& texture = system->runtime_textures[descriptor_index];
 			texture.StoreState(mip_index, TextureMipLevelRuntimeState::Deallocate);
 			texture.wait_index[mip_index] = EncodeGpuFrameWaitIndex(current_frame_index);
-			streams.descriptor_allocation[entity_id.index].mip_level_mask &= ~(1u << mip_index);
+			streams.cpu_streaming_requests[entity_id.index].mip_level_mask &= ~(1u << mip_index);
 			
 			deallocate_tile_count += tile_count;
 			
@@ -347,7 +356,7 @@ static void InvalidateTextureStreaming(TextureStreamingSystem* system, RecordCon
 		}
 		texture.StoreState(mip_index, TextureMipLevelRuntimeState::Deallocate);
 	}
-	descriptor_allocation.mip_level_mask = 0;
+	streams.cpu_streaming_requests[texture_asset_index].mip_level_mask = 0;
 	
 	BitArraySetBit(entity_array->dirty_mask, texture_asset_index);
 }

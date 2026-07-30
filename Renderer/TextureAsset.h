@@ -49,13 +49,23 @@ struct TextureRuntimeFile {
 NOTES(Meta::SaveLoadOptions{ SaveLoadFlags::None })
 struct TextureDescriptorAllocation {
 	u32 index = u32_max;
-	u32 mip_level_mask = 0;
 };
 
 NOTES(Meta::SaveLoadOptions{ SaveLoadFlags::None })
 struct TextureRuntimeAllocation {
 	NativeTextureResource resource;
 	SparseTextureLayout sparse_layout;
+};
+
+NOTES(Meta::SaveLoadOptions{ SaveLoadFlags::None })
+struct TextureRuntimeCpuStreamingRequest {
+	u16 mip_level_mask = 0;
+	u16 should_stream  = 0; // TODO: Store desired resolution.
+	
+	bool RequestMinimumResidency() {
+		should_stream = 1u;
+		return mip_level_mask != 0u;
+	}
 };
 
 NOTES()
@@ -68,9 +78,10 @@ struct TextureAssetType {
 	ECS::Component<GuidComponent> guid;
 	ECS::Component<NameComponent> name;
 	
-	ECS::Component<TextureSourceData>        source_data;
-	ECS::Component<TextureRuntimeDataLayout> runtime_data_layout;
-	ECS::Component<TextureRuntimeFile>       runtime_file;
-	ECS::Component<TextureDescriptorAllocation> descriptor_allocation;
-	ECS::Component<TextureRuntimeAllocation>    resource_allocation;
+	ECS::Component<TextureSourceData>                 source_data;
+	ECS::Component<TextureRuntimeDataLayout>          runtime_data_layout;
+	ECS::Component<TextureRuntimeFile>                runtime_file;
+	ECS::Component<TextureDescriptorAllocation>       descriptor_allocation;
+	ECS::Component<TextureRuntimeAllocation>          resource_allocation;
+	ECS::Component<TextureRuntimeCpuStreamingRequest> cpu_streaming_requests;
 };

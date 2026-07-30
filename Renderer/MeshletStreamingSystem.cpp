@@ -65,7 +65,7 @@ static u64 EncodeMeshletSubresourceID(u32 mesh_asset_index, u32 asset_page_index
 	return ((u64)asset_page_index << 32) | mesh_asset_index;
 }
 
-static ArrayView<u64> ProcessMeshletStreamingFeedback(RecordContext* record_context, GpuReadbackQueue* meshlet_streaming_feedback_queue, ECS::Component<MeshRuntimeAllocation> allocation_stream) {
+static ArrayView<u64> ProcessMeshletStreamingFeedback(RecordContext* record_context, GpuReadbackQueue* meshlet_streaming_feedback_queue, ECS::Component<MeshRuntimeCpuStreamingRequest> cpu_streaming_requests, ECS::Component<MeshRuntimeAllocation> allocation_stream) {
 	ProfilerScope("ProcessMeshletStreamingFeedback");
 	
 	auto element = meshlet_streaming_feedback_queue->Load(record_context->frame_index);
@@ -86,8 +86,11 @@ static ArrayView<u64> ProcessMeshletStreamingFeedback(RecordContext* record_cont
 		
 		auto& allocation = allocation_stream[mesh_asset_index];
 		if (allocation.offset != u32_max) {
+			u32 additional_mask = (cpu_streaming_requests[mesh_asset_index].packed >> MeshRuntimeCpuStreamingRequest::max_page_count);
+			cpu_streaming_requests[mesh_asset_index].packed &= MeshRuntimeCpuStreamingRequest::max_page_mask;
+			
 			for (u32 i = 0; i < feedback_buffer_size; i += 1) {
-				u32 page_mask = meshlet_streaming_feedback_data[read_index++];
+				u32 page_mask = meshlet_streaming_feedback_data[read_index++] | (i ? 0u : additional_mask);
 				
 				for (u32 bit_index : BitScanLow32(page_mask)) {
 					u32 asset_page_index = i * 32u + bit_index;
@@ -111,7 +114,7 @@ void UpdateMeshletStreamingSystem(MeshletStreamingSystem* system, AsyncTransferQ
 	auto streams = ExtractComponentStreams<MeshAssetType>(entity_array);
 	auto* alloc = record_context->alloc;
 	
-	auto requests = ProcessMeshletStreamingFeedback(record_context, meshlet_streaming_feedback_queue, streams.allocation);
+	auto requests = ProcessMeshletStreamingFeedback(record_context, meshlet_streaming_feedback_queue, streams.cpu_streaming_requests, streams.allocation);
 	
 	auto& runtime_pages = system->runtime_pages;
 	auto& free_page_indices = system->free_page_indices;
@@ -162,6 +165,10 @@ void UpdateMeshletStreamingSystem(MeshletStreamingSystem* system, AsyncTransferQ
 				system->rtas_heap.Deallocate(page.rtas_allocation);
 				system->rtas_allocation_index_to_page_index[page.rtas_allocation.index] = u32_max;
 				page.rtas_allocation = {};
+			}
+			
+			if (page.asset_page_index < MeshRuntimeCpuStreamingRequest::max_page_count) {
+				streams.cpu_streaming_requests[page.mesh_asset_index].packed &= ~(1u << page.asset_page_index);
 			}
 		}
 		
@@ -254,6 +261,10 @@ void UpdateMeshletStreamingSystem(MeshletStreamingSystem* system, AsyncTransferQ
 			
 			page.state      = MeshletRuntimePageState::Ready;
 			page.wait_index = 0;
+			
+			if (page.asset_page_index < MeshRuntimeCpuStreamingRequest::max_page_count) {
+				streams.cpu_streaming_requests[page.mesh_asset_index].packed |= (1u << page.asset_page_index);
+			}
 		}
 		
 		if (page.state == MeshletRuntimePageState::PageOut) {
@@ -385,6 +396,10 @@ void UpdateMeshletStreamingSystem(MeshletStreamingSystem* system, AsyncTransferQ
 				system->rtas_heap.Deallocate(page.rtas_allocation);
 				system->rtas_allocation_index_to_page_index[page.rtas_allocation.index] = u32_max;
 				page.rtas_allocation = {};
+			}
+			
+			if (page.asset_page_index < MeshRuntimeCpuStreamingRequest::max_page_count) {
+				streams.cpu_streaming_requests[page.mesh_asset_index].packed &= ~(1u << page.asset_page_index);
 			}
 			
 			MeshletRuntimePageUpdateCommand page_table_update_command;

@@ -179,6 +179,12 @@ struct AutomaticExposureHistogram {
 	float final_exposure = 1.f;
 };
 
+NOTES(Meta::HlslFile{ "ReferencePathTracerData.hlsl"_sl })
+enum struct ReferencePathTracerMode : u32 {
+	Accumulation = 0, // Accumulate samples over time.
+	WavePerPixel = 1, // Accumulate samples within the wave.
+};
+
 enum struct SceneOutputMode : u32 {
 	InternalRenderTarget = 0,
 	ExternalRenderTarget = 1,
@@ -208,8 +214,9 @@ struct RendererWorld {
 	float  delta_time  = 0.f;
 	s32x2 mouse_cursor_position;
 	
-	float meshlet_target_error_pixels = 1.f;
+	float meshlet_target_error_pixels   = 1.f;
 	float reference_path_tracer_percent = 0.f;
+	ReferencePathTracerMode reference_path_tracer_mode = ReferencePathTracerMode::Accumulation;
 	bool  reset_reference_path_tracer   = false;
 	bool  enable_async_compute          = true;
 	

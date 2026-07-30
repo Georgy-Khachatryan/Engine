@@ -5,11 +5,13 @@
 #include "GeometrySampling.hlsl"
 #include "SDK/NvAPI/include/nvHLSLExtns.h"
 
-[ThreadGroupSize(32, 1, 1)]
+compile_const u32 thread_group_size = 32;
+
+[ThreadGroupSize(thread_group_size, 1, 1)][WaveSize(thread_group_size)]
 void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
-	uint2 thread_id = group_id * uint2(8, 4) + MortonDecode(thread_index);
+	uint2 thread_id = constants.mode == ReferencePathTracerMode::Accumulation ? group_id * uint2(8, 4) + MortonDecode(thread_index) : group_id;
 	
-	uint hash = WyHash32(thread_id.x | (thread_id.y << 16), scene.path_tracer_accumulated_frame_count);
+	uint hash = WyHash32(thread_id.x | (thread_id.y << 16), constants.mode == ReferencePathTracerMode::Accumulation ? scene.path_tracer_accumulated_frame_count : thread_index);
 	float2 thread_uv = (thread_id + ComputeRandomUnorm16x2(hash)) * scene.inv_render_target_size;
 	
 	RayInfo view_space_ray = RayInfoFromScreenUv(thread_uv, scene.clip_to_view_coef);
@@ -120,13 +122,22 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 		}
 	}
 	
-	float3 old_accumulated_radiance = max(path_tracer_radiance[thread_id].xyz, 0.0);
-	float3 new_accumulated_radiance = (old_accumulated_radiance * (scene.path_tracer_accumulated_frame_count - 1) + light_accumulator.radiance) / (float)scene.path_tracer_accumulated_frame_count;
-	path_tracer_radiance[thread_id] = float4(new_accumulated_radiance, 1.0);
 	
 	uint reference_path_tracer_min_x = (uint)(scene.render_target_size.x * scene.reference_path_tracer_percent);
-	if (thread_id.x < reference_path_tracer_min_x) {
-		scene_radiance[thread_id] = float4(new_accumulated_radiance * scene.exposure_estimate, 1.0);
+	if (constants.mode == ReferencePathTracerMode::Accumulation) {
+		float3 old_accumulated_radiance = max(path_tracer_radiance[thread_id].xyz, 0.0);
+		float3 new_accumulated_radiance = (old_accumulated_radiance * (scene.path_tracer_accumulated_frame_count - 1) + light_accumulator.radiance) / (float)scene.path_tracer_accumulated_frame_count;
+		path_tracer_radiance[thread_id] = float4(new_accumulated_radiance, 1.0);
+		
+		if (thread_id.x < reference_path_tracer_min_x) {
+			scene_radiance[thread_id] = float4(new_accumulated_radiance * scene.exposure_estimate, 1.0);
+		}
+	} else {
+		float3 new_accumulated_radiance = WaveActiveSum(light_accumulator.radiance) / (float)WaveGetLaneCount();
+		
+		if (thread_id.x < reference_path_tracer_min_x) {
+			scene_radiance[thread_id] = float4(new_accumulated_radiance * scene.exposure_estimate, 1.0);
+		}
 	}
 }
 #endif // defined(REFERENCE_PATH_TRACER)

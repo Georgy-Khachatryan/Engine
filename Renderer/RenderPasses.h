@@ -1030,6 +1030,7 @@ struct ReferencePathTracerRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
 	GpuAddress atmosphere;
+	ReferencePathTracerMode mode = ReferencePathTracerMode::Accumulation;
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
 		HLSL::Texture2D<float2>                     ggx_single_scattering_energy_lut = VirtualResourceID::GgxSingleScatteringEnergyLUT;
@@ -1048,6 +1049,11 @@ struct ReferencePathTracerRenderPass {
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {
+		struct PushConstants {
+			ReferencePathTracerMode mode = ReferencePathTracerMode::Accumulation;
+		};
+		
+		HLSL::PushConstantBuffer<PushConstants> constants;
 		HLSL::ConstantBuffer<SceneConstants> scene;
 		HLSL::DescriptorTable<Descriptors> descriptor_table;
 		HLSL::ConstantBuffer<AtmosphereParameters> atmosphere;

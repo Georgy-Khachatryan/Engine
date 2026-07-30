@@ -49,6 +49,6 @@ EditorIconCache* CreateEditorIconCache(StackAllocator* alloc, GraphicsContext* g
 void ReleaseEditorIconCache(EditorIconCache* icon_cache, GraphicsContext* graphics_context);
 
 
-void EditorIconCacheUpdate(StackAllocator* alloc, EditorIconCache* icon_cache, GraphicsContext* graphics_context, AssetEntitySystem& asset_system, Array<EditorWorldView>& editor_world_views);
+void EditorIconCacheUpdate(StackAllocator* alloc, EditorIconCache* icon_cache, AssetEntitySystem& asset_system, Array<EditorWorldView>& editor_world_views);
 void EditorIconCacheDrawIcon(EditorIconCache* icon_cache, EntitySystemBase& entity_system, u64 entity_guid, EntityTypeID entity_type_id);
 

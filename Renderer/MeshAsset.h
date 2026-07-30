@@ -139,6 +139,20 @@ struct MeshRuntimeAllocation {
 	u32 offset = u32_max;
 };
 
+NOTES(Meta::SaveLoadOptions{ SaveLoadFlags::None })
+struct MeshRuntimeCpuStreamingRequest {
+	compile_const u32 max_page_count = 4u;
+	compile_const u32 max_page_mask  = (1u << max_page_count) - 1u;
+	
+	u8 packed = 0; // Low 4 bits are used to check if the pages are loaded or not, high 4 bits to request the low 4 meshlet pages.
+	
+	bool RequestMinimumResidency(u32 page_count = 1u) {
+		u32 page_mask = (1u << page_count) - 1u;
+		packed |= page_mask << max_page_count;
+		return (packed & page_mask) == page_mask;
+	}
+};
+
 NOTES()
 struct MeshAssetGUID {
 	u64 guid = 0;
@@ -149,12 +163,13 @@ struct MeshAssetType {
 	ECS::Component<GuidComponent> guid;
 	ECS::Component<NameComponent> name;
 	
-	ECS::Component<MeshSourceData>        source_data;
-	ECS::Component<MeshRuntimeDataLayout> runtime_data_layout;
-	ECS::Component<MeshRuntimeFile>       runtime_file;
-	ECS::Component<MeshRuntimeAllocation> allocation;
-	ECS::Component<AabbComponent>         aabb;
-	ECS::Component<MaterialAssetGUID>     material_asset;
+	ECS::Component<MeshSourceData>                 source_data;
+	ECS::Component<MeshRuntimeDataLayout>          runtime_data_layout;
+	ECS::Component<MeshRuntimeFile>                runtime_file;
+	ECS::Component<MeshRuntimeAllocation>          allocation;
+	ECS::Component<AabbComponent>                  aabb;
+	ECS::Component<MaterialAssetGUID>              material_asset;
+	ECS::Component<MeshRuntimeCpuStreamingRequest> cpu_streaming_requests;
 	
 	NOTES(VirtualResourceID::GpuMeshAssetData)
 	ECS::GpuComponent<GpuMeshAssetData> gpu_mesh_asset_data;
@@ -162,4 +177,3 @@ struct MeshAssetType {
 	NOTES(VirtualResourceID::MeshAssetAliveMask)
 	ECS::GpuMaskComponent<AliveEntityMask> alive_mask;
 };
-

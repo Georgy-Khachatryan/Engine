@@ -421,7 +421,9 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	}
 	
 	if (renderer_world.reference_path_tracer_percent != 0.f) {
-		render_passes.Add<ReferencePathTracerRenderPass>().atmosphere = atmosphere_parameters_gpu_address;
+		auto& refernece_path_tracer = render_passes.Add<ReferencePathTracerRenderPass>();
+		refernece_path_tracer.atmosphere = atmosphere_parameters_gpu_address;
+		refernece_path_tracer.mode       = renderer_world.reference_path_tracer_mode;
 	}
 	
 	

@@ -1,17 +1,16 @@
 #include "Basic/Basic.h"
+#include "EditorEntities.h"
 #include "Engine/Entities.h"
 #include "Engine/ImGuiCustomWidgets.h"
 #include "GraphicsApi/GraphicsApi.h"
 #include "LevelEditor.h"
-#include "EditorEntities.h"
 #include "Renderer/Renderer.h"
 
 enum struct EditorIconState : u32 {
 	Free        = 0,
 	Wait        = 1,
 	Invalidated = 2,
-	Render      = 3,
-	Ready       = 4,
+	Ready       = 3,
 };
 
 struct EditorIconEntry {
@@ -27,7 +26,6 @@ compile_const u32 icon_size_pixels        = 128u;
 compile_const u32 icon_cache_size_icons   = 8u;
 compile_const u32 icon_cache_area_icons   = icon_cache_size_icons * icon_cache_size_icons;
 compile_const u32 icon_cache_size_pixels  = icon_cache_size_icons * icon_size_pixels;
-compile_const u32 icon_render_frame_count = 32u; // Enough to stream in the assets.
 
 struct EditorIconCache {
 	WorldEntitySystem world_system;
@@ -46,10 +44,6 @@ struct EditorIconCache {
 	Array<u32> free_icon_indices;
 	Array<EditorIconEntry> icons;
 	u32 cache_frame_index = 0;
-	
-	
-	u32 currently_rendering_icon_index = u32_max;
-	u32 currently_rendering_frame_index = 0;
 	u32 deallocate_icon_count = 0;
 };
 
@@ -135,13 +129,38 @@ static u64 GatherMaterialAssetDependencies(AssetEntitySystem& asset_system, u64 
 static u64 GatherMeshAssetDependencies(AssetEntitySystem& asset_system, u64 guid) {
 	if (guid == 0) return 0;
 	
-	auto mesh_asset = QueryEntityByGUID<MeshAssetType>(asset_system, guid);
-	
-	u64 dependencies_mask = DependenciesFromGUID(guid);
-	dependencies_mask |= GatherMaterialAssetDependencies(asset_system, mesh_asset.material_asset->guid);
-	
-	return dependencies_mask;
+	return DependenciesFromGUID(guid);
 }
+
+
+static bool RequestTextureAssetStreaming(AssetEntitySystem& asset_system, u64 guid) {
+	if (guid == 0) return true;
+	
+	auto texture_asset = QueryEntityByGUID<TextureAssetType>(asset_system, guid);
+	return texture_asset.cpu_streaming_requests->RequestMinimumResidency();
+}
+
+static bool RequestMaterialAssetStreaming(AssetEntitySystem& asset_system, u64 guid) {
+	if (guid == 0) return true;
+	
+	auto material_asset = QueryEntityByGUID<MaterialAssetType>(asset_system, guid);
+	
+	bool is_ready = true;
+	is_ready &= RequestTextureAssetStreaming(asset_system, material_asset.texture_data->albedo.guid);
+	is_ready &= RequestTextureAssetStreaming(asset_system, material_asset.texture_data->normal.guid);
+	is_ready &= RequestTextureAssetStreaming(asset_system, material_asset.texture_data->roughness.guid);
+	is_ready &= RequestTextureAssetStreaming(asset_system, material_asset.texture_data->metalness.guid);
+	
+	return is_ready;
+}
+
+static bool RequestMeshAssetStreaming(AssetEntitySystem& asset_system, u64 guid) {
+	if (guid == 0) return true;
+	
+	auto mesh_asset = QueryEntityByGUID<MeshAssetType>(asset_system, guid);
+	return mesh_asset.cpu_streaming_requests->RequestMinimumResidency();
+}
+
 
 static void DrawDefaultEntityTypeIcon(EntityTypeID entity_type_id) {
 	float4 color = float4(Math::DecodeR10G10B10((u32)ComputeHash64(entity_type_id.index)), 1.f);
@@ -150,9 +169,9 @@ static void DrawDefaultEntityTypeIcon(EntityTypeID entity_type_id) {
 
 void EditorIconCacheDrawIcon(EditorIconCache* icon_cache, EntitySystemBase& entity_system, u64 entity_guid, EntityTypeID entity_type_id) {
 	if (entity_type_id.index == ECS::GetEntityTypeID<TextureAssetType>::id.index) {
-		auto texture = QueryEntityByGUID<TextureAssetType>(entity_system, entity_guid);
-		if (texture.descriptor_allocation->mip_level_mask != 0) {
-			ImGui::ImageButtonEx("AssetIcon", texture.descriptor_allocation->index, ImVec2(icon_size_pixels, icon_size_pixels));
+		auto texture_asset = QueryEntityByGUID<TextureAssetType>(entity_system, entity_guid);
+		if (texture_asset.cpu_streaming_requests->RequestMinimumResidency()) {
+			ImGui::ImageButtonEx("AssetIcon", texture_asset.descriptor_allocation->index, ImVec2(icon_size_pixels, icon_size_pixels));
 		} else {
 			DrawDefaultEntityTypeIcon(entity_type_id);
 		}
@@ -186,7 +205,7 @@ void EditorIconCacheDrawIcon(EditorIconCache* icon_cache, EntitySystemBase& enti
 	}
 	
 	auto icon_state = icon_index != u32_max ? icon_cache->icons[icon_index].state : EditorIconState::Free;
-	if (icon_state == EditorIconState::Ready || icon_state == EditorIconState::Render || icon_state == EditorIconState::Invalidated) {
+	if (icon_state == EditorIconState::Ready || icon_state == EditorIconState::Invalidated) {
 		auto icon_coordinates = float2((float)(icon_index % icon_cache_size_icons), (float)(icon_index / icon_cache_size_icons));
 		auto uv_min = icon_coordinates * (1.f / icon_cache_size_icons);
 		auto uv_max = uv_min + (1.f / icon_cache_size_icons);
@@ -197,7 +216,7 @@ void EditorIconCacheDrawIcon(EditorIconCache* icon_cache, EntitySystemBase& enti
 	}
 }
 
-void EditorIconCacheUpdate(StackAllocator* alloc, EditorIconCache* icon_cache, GraphicsContext* graphics_context, AssetEntitySystem& asset_system, Array<EditorWorldView>& editor_world_views) {
+void EditorIconCacheUpdate(StackAllocator* alloc, EditorIconCache* icon_cache, AssetEntitySystem& asset_system, Array<EditorWorldView>& editor_world_views) {
 	auto& world_system = icon_cache->world_system;
 	
 	auto world_entity = QueryEntityByGUID<WorldEntityType>(world_system, icon_cache->world_entity_guid);
@@ -207,50 +226,6 @@ void EditorIconCacheUpdate(StackAllocator* alloc, EditorIconCache* icon_cache, G
 	ImGuiDrawList3D draw_list_3d;
 	draw_list_3d.alloc = alloc;
 	
-	
-	{
-		FixedCapacityArray<EntityTypeArray*, 3> entity_type_arrays;
-		ArrayAppend(entity_type_arrays, QueryEntityTypeArray<MaterialAssetType>(asset_system));
-		ArrayAppend(entity_type_arrays, QueryEntityTypeArray<TextureAssetType>(asset_system));
-		ArrayAppend(entity_type_arrays, QueryEntityTypeArray<MeshAssetType>(asset_system));
-		
-		u64 dirty_dependencies_mask = 0;
-		for (auto* entity_array : entity_type_arrays) {
-			auto streams = ExtractComponentStreams<GuidQuery>(entity_array);
-			
-			for (u64 i : BitArrayIt(entity_array->dirty_mask)) {
-				dirty_dependencies_mask |= DependenciesFromGUID(streams.guid[i].guid);
-			}
-			
-			for (u64 i : BitArrayIt(entity_array->created_mask)) {
-				dirty_dependencies_mask |= DependenciesFromGUID(streams.guid[i].guid);
-			}
-		}
-		
-		// Invalidate material icons when material preview mesh is changed.
-		bool invalidate_materials = false;
-		if (icon_cache->material_icon_mesh_guid != editor_settings_entity.icon_cache_settings->material_icon_mesh.guid) {
-			icon_cache->material_icon_mesh_guid = editor_settings_entity.icon_cache_settings->material_icon_mesh.guid;
-			invalidate_materials = true;
-		}
-		
-		// Invalidate dirty or recreated icons:
-		if (dirty_dependencies_mask != 0 || invalidate_materials) {
-			for (u32 icon_index = 0; icon_index < icon_cache_area_icons; icon_index += 1) {
-				auto& icon = icon_cache->icons[icon_index];
-				if ((icon.dependencies_mask & dirty_dependencies_mask) == 0 && (invalidate_materials == false || icon.entity_type_id.index != ECS::GetEntityTypeID<MaterialAssetType>::id.index)) continue;
-				
-				icon.state = EditorIconState::Invalidated;
-				
-				if (icon_cache->currently_rendering_icon_index == icon_index) {
-					icon_cache->currently_rendering_icon_index = u32_max;
-					icon_cache->currently_rendering_frame_index = 0;
-				}
-			}
-		}
-	}
-	
-	
 	if (icon_cache->deallocate_icon_count != 0) {
 		TempAllocationScope(alloc);
 		
@@ -259,7 +234,7 @@ void EditorIconCacheUpdate(StackAllocator* alloc, EditorIconCache* icon_cache, G
 		
 		for (u32 icon_index = 0; icon_index < icon_cache_area_icons; icon_index += 1) {
 			auto& icon = icon_cache->icons[icon_index];
-			if (icon.cache_frame_index == icon_cache->cache_frame_index || icon.state == EditorIconState::Render || icon.state == EditorIconState::Free) continue;
+			if (icon.cache_frame_index == icon_cache->cache_frame_index || icon.state == EditorIconState::Free) continue;
 			
 			ArrayAppend(deallocation_candidates, icon_index | (u64)icon.cache_frame_index << 32);
 		}
@@ -278,36 +253,46 @@ void EditorIconCacheUpdate(StackAllocator* alloc, EditorIconCache* icon_cache, G
 	}
 	
 	
-	u32 rendering_icon_index = icon_cache->currently_rendering_icon_index;
-	if (rendering_icon_index != u32_max && icon_cache->currently_rendering_frame_index >= icon_render_frame_count) {
-		icon_cache->currently_rendering_frame_index = 0;
-		icon_cache->icons[rendering_icon_index].state = EditorIconState::Ready;
-		rendering_icon_index = u32_max;
-	}
-	
-	
-	if (rendering_icon_index == u32_max) {
-		for (u32 icon_index = 0; icon_index < icon_cache_area_icons; icon_index += 1) {
-			auto& icon = icon_cache->icons[icon_index];
-			if (icon.state == EditorIconState::Wait || icon.state == EditorIconState::Invalidated) {
-				icon.state = EditorIconState::Render;
+	u32 rendering_icon_index = u32_max;
+	for (u32 icon_index = 0; icon_index < icon_cache_area_icons; icon_index += 1) {
+		auto& icon = icon_cache->icons[icon_index];
+		
+		if (icon.state == EditorIconState::Wait || icon.state == EditorIconState::Invalidated) {
+			u64 mesh_asset_guid     = 0;
+			u64 material_asset_guid = 0;
+				
+			if (icon.entity_type_id.index == ECS::GetEntityTypeID<MeshAssetType>::id.index) {
+				auto mesh_asset = QueryEntityByGUID<MeshAssetType>(asset_system, icon.guid);
+				mesh_asset_guid     = icon.guid;
+				material_asset_guid = mesh_asset.material_asset->guid;
+			} else if (icon.entity_type_id.index == ECS::GetEntityTypeID<MaterialAssetType>::id.index) {
+				mesh_asset_guid     = icon_cache->material_icon_mesh_guid;
+				material_asset_guid = icon.guid;
+			}
+			
+			bool is_ready = true;
+			is_ready &= RequestMeshAssetStreaming(asset_system, mesh_asset_guid);
+			is_ready &= RequestMaterialAssetStreaming(asset_system, material_asset_guid);
+			
+			if (is_ready) {
+				icon.state = EditorIconState::Ready;
 				rendering_icon_index = icon_index;
 				break;
 			}
 		}
-		icon_cache->currently_rendering_icon_index = rendering_icon_index;
 	}
 	
 	
-	if (rendering_icon_index != u32_max && icon_cache->currently_rendering_frame_index == 0) {
+	if (rendering_icon_index != u32_max) {
 		auto& icon = icon_cache->icons[rendering_icon_index];
 		
 		u64 mesh_asset_guid     = 0;
 		u64 material_asset_guid = 0;
 		
 		if (icon.entity_type_id.index == ECS::GetEntityTypeID<MeshAssetType>::id.index) {
+			auto mesh_asset = QueryEntityByGUID<MeshAssetType>(asset_system, icon.guid);
 			mesh_asset_guid     = icon.guid;
-			material_asset_guid = 0;
+			material_asset_guid = mesh_asset.material_asset->guid;
 		} else if (icon.entity_type_id.index == ECS::GetEntityTypeID<MaterialAssetType>::id.index) {
 			mesh_asset_guid     = icon_cache->material_icon_mesh_guid;
 			material_asset_guid = icon.guid;
@@ -321,13 +306,7 @@ void EditorIconCacheUpdate(StackAllocator* alloc, EditorIconCache* icon_cache, G
 		mesh_entity.mesh_asset->guid     = mesh_asset_guid;
 		mesh_entity.material_asset->guid = material_asset_guid;
 		
-		
-		u64 dependencies_mask = GatherMeshAssetDependencies(asset_system, mesh_asset_guid) | GatherMaterialAssetDependencies(asset_system, material_asset_guid);
-		if (material_asset_guid == 0 && mesh_asset_guid != 0) {
-			auto mesh_asset = QueryEntityByGUID<MeshAssetType>(asset_system, mesh_asset_guid);
-			dependencies_mask |= GatherMaterialAssetDependencies(asset_system, mesh_asset.material_asset->guid);
-		}
-		icon.dependencies_mask = dependencies_mask;
+		icon.dependencies_mask = GatherMeshAssetDependencies(asset_system, mesh_asset_guid) | GatherMaterialAssetDependencies(asset_system, material_asset_guid);
 		
 		
 		//
@@ -384,6 +363,7 @@ void EditorIconCacheUpdate(StackAllocator* alloc, EditorIconCache* icon_cache, G
 		renderer_world->window_size                  = float2(icon_size_pixels, icon_size_pixels);
 		renderer_world->delta_time                   = ImGui::GetIO().DeltaTime;
 		renderer_world->debug_mesh_instance_arrays   = draw_list_3d.Flush();
+		renderer_world->reference_path_tracer_mode   = ReferencePathTracerMode::WavePerPixel;
 		renderer_world->reference_path_tracer_percent = 1.f;
 		
 		auto& output_settings = renderer_world->output_settings;
@@ -397,8 +377,45 @@ void EditorIconCacheUpdate(StackAllocator* alloc, EditorIconCache* icon_cache, G
 		world_view.resource_table    = icon_cache->resource_table;
 		world_view.world_system      = &world_system;
 		world_view.world_entity_guid = icon_cache->world_entity_guid;
+	}
+	
+	
+	// Invalidate icons after we select an icon to render this frame. Otherwise when recreating icons we might select and draw it before it's streamed in.
+	{
+		FixedCapacityArray<EntityTypeArray*, 3> entity_type_arrays;
+		ArrayAppend(entity_type_arrays, QueryEntityTypeArray<MaterialAssetType>(asset_system));
+		ArrayAppend(entity_type_arrays, QueryEntityTypeArray<TextureAssetType>(asset_system));
+		ArrayAppend(entity_type_arrays, QueryEntityTypeArray<MeshAssetType>(asset_system));
 		
-		icon_cache->currently_rendering_frame_index += 1;
+		u64 dirty_dependencies_mask = 0;
+		for (auto* entity_array : entity_type_arrays) {
+			auto streams = ExtractComponentStreams<GuidQuery>(entity_array);
+			
+			for (u64 i : BitArrayIt(entity_array->dirty_mask)) {
+				dirty_dependencies_mask |= DependenciesFromGUID(streams.guid[i].guid);
+			}
+			
+			for (u64 i : BitArrayIt(entity_array->created_mask)) {
+				dirty_dependencies_mask |= DependenciesFromGUID(streams.guid[i].guid);
+			}
+		}
+		
+		// Invalidate material icons when material preview mesh is changed.
+		bool invalidate_materials = false;
+		if (icon_cache->material_icon_mesh_guid != editor_settings_entity.icon_cache_settings->material_icon_mesh.guid) {
+			icon_cache->material_icon_mesh_guid = editor_settings_entity.icon_cache_settings->material_icon_mesh.guid;
+			invalidate_materials = true;
+		}
+		
+		// Invalidate dirty or recreated icons:
+		if (dirty_dependencies_mask != 0 || invalidate_materials) {
+			for (u32 icon_index = 0; icon_index < icon_cache_area_icons; icon_index += 1) {
+				auto& icon = icon_cache->icons[icon_index];
+				if ((icon.dependencies_mask & dirty_dependencies_mask) == 0 && (invalidate_materials == false || icon.entity_type_id.index != ECS::GetEntityTypeID<MaterialAssetType>::id.index)) continue;
+				
+				icon.state = EditorIconState::Invalidated;
+			}
+		}
 	}
 	
 	icon_cache->cache_frame_index += 1;
