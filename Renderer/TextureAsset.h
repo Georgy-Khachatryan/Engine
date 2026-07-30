@@ -59,11 +59,11 @@ struct TextureRuntimeAllocation {
 
 NOTES(Meta::SaveLoadOptions{ SaveLoadFlags::None })
 struct TextureRuntimeCpuStreamingRequest {
-	u16 mip_level_mask = 0;
-	u16 should_stream  = 0; // TODO: Store desired resolution.
+	u16 mip_level_mask    = 0;
+	u16 target_resolution = 0;
 	
-	bool RequestMinimumResidency() {
-		should_stream = 1u;
+	bool RequestMinimumResidency(u32 requested_resolution = 128u) {
+		target_resolution = requested_resolution;
 		return mip_level_mask != 0u;
 	}
 };

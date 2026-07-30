@@ -137,7 +137,7 @@ static bool RequestTextureAssetStreaming(AssetEntitySystem& asset_system, u64 gu
 	if (guid == 0) return true;
 	
 	auto texture_asset = QueryEntityByGUID<TextureAssetType>(asset_system, guid);
-	return texture_asset.cpu_streaming_requests->RequestMinimumResidency();
+	return texture_asset.cpu_streaming_requests->RequestMinimumResidency(icon_size_pixels);
 }
 
 static bool RequestMaterialAssetStreaming(AssetEntitySystem& asset_system, u64 guid) {
@@ -170,7 +170,7 @@ static void DrawDefaultEntityTypeIcon(EntityTypeID entity_type_id) {
 void EditorIconCacheDrawIcon(EditorIconCache* icon_cache, EntitySystemBase& entity_system, u64 entity_guid, EntityTypeID entity_type_id) {
 	if (entity_type_id.index == ECS::GetEntityTypeID<TextureAssetType>::id.index) {
 		auto texture_asset = QueryEntityByGUID<TextureAssetType>(entity_system, entity_guid);
-		if (texture_asset.cpu_streaming_requests->RequestMinimumResidency()) {
+		if (texture_asset.cpu_streaming_requests->RequestMinimumResidency(icon_size_pixels)) {
 			ImGui::ImageButtonEx("AssetIcon", texture_asset.descriptor_allocation->index, ImVec2(icon_size_pixels, icon_size_pixels));
 		} else {
 			DrawDefaultEntityTypeIcon(entity_type_id);

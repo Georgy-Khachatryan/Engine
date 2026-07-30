@@ -119,21 +119,18 @@ static ArrayView<u64> ProcessTextureStreamingFeedback(RecordContext* record_cont
 		auto& allocation  = streams.descriptor_allocation[texture_asset_index];
 		auto& cpu_request = streams.cpu_streaming_requests[texture_asset_index];
 		
-		u32 packed_feedback = texture_streaming_feedback_data[allocation.index];
-		if (packed_feedback == u32_max && cpu_request.should_stream == 0) continue;
-		
-		cpu_request.should_stream = 0;
+		u32 gpu_target_resolution = texture_streaming_feedback_data[allocation.index];
+		if (gpu_target_resolution == 0u && cpu_request.target_resolution == 0u) continue;
 		
 		auto& layout = streams.runtime_data_layout[texture_asset_index];
 		auto sparse_layout = streams.resource_allocation[texture_asset_index].sparse_layout;
 		
-		u32 begin_mip_level = 16u;
-		if (cpu_request.should_stream) {
-			begin_mip_level = sparse_layout.regular_mip_count;
-		}
-		if (packed_feedback != u32_max) {
-			begin_mip_level = Math::Min((u32)*(float*)&packed_feedback, begin_mip_level);
-		}
+		u32 target_resolution = Math::Max((u32)cpu_request.target_resolution, gpu_target_resolution);
+		auto target_mip_level = log2f((float)Math::Min(layout.size.x, layout.size.y) / (float)target_resolution);
+		
+		cpu_request.target_resolution = 0u;
+		
+		u32 begin_mip_level = (u32)Math::Clamp(floorf(target_mip_level), 0.f, (float)layout.size.mips - 1.f);
 		if (sparse_layout.packed_mip_count != 0) {
 			begin_mip_level = Math::Min((u32)sparse_layout.regular_mip_count, begin_mip_level);
 		}

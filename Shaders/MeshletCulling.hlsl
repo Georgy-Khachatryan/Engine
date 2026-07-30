@@ -74,7 +74,7 @@ void MainCS(uint thread_id : SV_DispatchThreadID) {
 	}
 	
 	if (thread_id < constants.texture_streaming_feedback_size) {
-		texture_streaming_feedback[thread_id] = u32_max;
+		texture_streaming_feedback[thread_id] = 0;
 	}
 	
 	if (thread_id < constants.mesh_instance_capacity) {
@@ -481,9 +481,9 @@ void AppendOccludedMeshlet(uint mesh_entity_index, uint meshlet_culling_data_off
 }
 
 #if defined(MAIN_PASS) || defined(DISOCCLUSION_PASS)
-void WriteTextureStreamingFeedback(u32 texture_index, float target_mip_level) {
+void WriteTextureStreamingFeedback(u32 texture_index, u32 target_resolution) {
 	if ((texture_index & MaterialTextureIndexFlags::UseDefault) == MaterialTextureIndexFlags::None) {
-		InterlockedMin(texture_streaming_feedback[texture_index], asuint(target_mip_level));
+		InterlockedMax(texture_streaming_feedback[texture_index], target_resolution);
 	}
 }
 #endif // defined(MAIN_PASS) || defined(DISOCCLUSION_PASS)
@@ -544,24 +544,21 @@ void MainCS(uint thread_id : SV_DispatchThreadID, uint thread_index : SV_GroupIn
 #if defined(MAIN_PASS) || defined(DISOCCLUSION_PASS)
 	// Write streaming feedback for textures.
 	if (mesh_entity.material_asset_index != u32_max) {
-		compile_const float texture_size_mip_0 = 4096.0;
 		GpuMaterialTextureData material = material_texture_data[mesh_entity.material_asset_index];
 		
-		float world_to_pixel_scale = scene.view_to_clip_coef.x * scene.render_target_size.x * 0.5;
-		float3 center_world_space  = TransformModelToWorldSpace(meshlet.aabb_center, model_to_world);
+		float3 center_world_space = TransformModelToWorldSpace(meshlet.aabb_center, model_to_world);
 		
-		float numerator    = length(center_world_space - scene.world_space_camera_position);
-		float denominator  = model_to_world.scale * scene.texture_world_to_pixel_scale;
-		float pixel_to_uv_scale    = meshlet.world_to_uv_scale * (numerator / denominator);
-		float pixel_to_texel_scale = pixel_to_uv_scale * texture_size_mip_0;
+		float numerator   = length(center_world_space - scene.world_space_camera_position);
+		float denominator = model_to_world.scale * scene.texture_world_to_pixel_scale;
 		
-		// pixel_to_texel_scale is approximately the same as max(length(ddx(uv)), length(ddy(uv))) * texture_size_mip_0.
-		float target_mip_level = max(log2(pixel_to_texel_scale), 0.0);
+		float screen_pixel_to_mesh_uv_scale = saturate(meshlet.world_to_uv_scale * (numerator / denominator)); // uv/pixel
+		u32 target_resolution = (u32)max(1.0 / screen_pixel_to_mesh_uv_scale, 1.0); // pixels/uv
+		// On CPU: texture_size / target_resolution -> texels/uv / pixels/uv -> texels/pixel
 		
-		WriteTextureStreamingFeedback(material.albedo, target_mip_level);
-		WriteTextureStreamingFeedback(material.normal, target_mip_level);
-		WriteTextureStreamingFeedback(material.roughness, target_mip_level);
-		WriteTextureStreamingFeedback(material.metalness, target_mip_level);
+		WriteTextureStreamingFeedback(material.albedo, target_resolution);
+		WriteTextureStreamingFeedback(material.normal, target_resolution);
+		WriteTextureStreamingFeedback(material.roughness, target_resolution);
+		WriteTextureStreamingFeedback(material.metalness, target_resolution);
 	}
 #endif // defined(MAIN_PASS) || defined(DISOCCLUSION_PASS)
 	
