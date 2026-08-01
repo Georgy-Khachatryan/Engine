@@ -117,27 +117,14 @@ static void CopyCurrentToPreviousSceneConstants(SceneConstants& scene) {
 	scene.prev_world_space_camera_position = scene.world_space_camera_position;
 }
 
-void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext* record_context, WorldEntitySystem* world_system, AssetEntitySystem* asset_system, u64 world_entity_guid, Array<GpuComponentUploadBuffer> gpu_uploads, u32 view_index, u32 view_count) {
-	ProfilerScope("BuildRenderPassesForFrame");
-	
-	auto world_entity  = QueryEntityByGUID<WorldEntityQuery>(*world_system, world_entity_guid);
-	auto camera_entity = QueryEntityByGUID<CameraEntityQuery>(*world_system, world_entity.camera_entity->guid);
-	
+static void CreateSceneConstants(RecordContext* record_context, uint2 render_target_size, WorldEntitySystem* world_system, WorldEntityQuery world_entity, CameraEntityQuery camera_entity, Array<GpuComponentUploadBuffer>& gpu_uploads) {
 	auto& renderer_world = *world_entity.renderer_world;
-	auto& camera         = *camera_entity.camera;
+	auto& scene  = renderer_world.scene_constants;
+	auto& camera = *camera_entity.camera;
 	
-	bool is_first_view = (view_index == 0);
-	bool is_last_view  = (view_index == view_count - 1);
+	bool is_temporal_reset = (scene.frame_index == 0);
 	
-	// Clamp render target size to a reasonable minimum. Aspect ratio for view to clip is still computed using unclamped values.
-	uint2 render_target_size = uint2((u32)Math::Max(renderer_world.window_size.x, 32.f), (u32)Math::Max(renderer_world.window_size.y, 32.f));
-	
-	BuildResourceTable(record_context, world_system, &renderer_world, render_target_size);
-	
-	
-	auto& scene = renderer_world.scene_constants;
-	
-	if (scene.frame_index != 0) CopyCurrentToPreviousSceneConstants(scene);
+	if (is_temporal_reset == false) CopyCurrentToPreviousSceneConstants(scene);
 	
 	scene.render_target_size     = float2(render_target_size);
 	scene.inv_render_target_size = float2(1.f) / scene.render_target_size;
@@ -177,13 +164,8 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 		renderer_world.debug_freeze_culling_camera.view_to_world_rotation = camera_entity.rotation->rotation;
 	}
 	
-	if (scene.frame_index == 0) CopyCurrentToPreviousSceneConstants(scene);
+	if (is_temporal_reset) CopyCurrentToPreviousSceneConstants(scene);
 	
-	scene.texture_world_to_pixel_scale = scene.view_to_clip_coef.x * scene.render_target_size.x * 0.5f;
-	
-	scene.visibility_hash_table_distance_to_cell_size_scale = world_entity.lighting_settings->visibility_hash_table_target_cell_size_pixels / (scene.view_to_clip_coef.x * scene.render_target_size.x * 0.5f);
-	scene.radiance_hash_table_distance_to_cell_size_scale   = world_entity.lighting_settings->radiance_hash_table_target_cell_size_pixels / (scene.view_to_clip_coef.x * scene.render_target_size.x * 0.5f);
-	scene.cdf_hash_table_distance_to_cell_size_scale        = world_entity.lighting_settings->cdf_hash_table_target_cell_size_pixels / (scene.view_to_clip_coef.x * scene.render_target_size.x * 0.5f);
 	
 	if (world_entity.anti_aliasing_settings->method != AntiAliasingMethod::None) {
 		u32 jitter_frame_index = (record_context->frame_index % 16);
@@ -194,34 +176,41 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 		scene.jitter_offset_ndc    = 0.f;
 	}
 	
-	scene.frame_index = (u32)record_context->frame_index;
-	scene.reference_path_tracer_percent = renderer_world.reference_path_tracer_percent;
-	scene.mouse_cursor_position = renderer_world.mouse_cursor_position;
-	
 	u64 blue_noise_offset_hash = ComputeHash64(record_context->frame_index / 32u);
 	scene.blue_noise_base_offset = uint2((u32)blue_noise_offset_hash, (u32)(blue_noise_offset_hash >> 32u));
+	
+	
+	scene.frame_index           = (u32)record_context->frame_index;
+	scene.mouse_cursor_position = renderer_world.mouse_cursor_position;
 	
 	scene.exposure_estimate      = renderer_world.automatic_exposure_histogram.final_exposure;
 	scene.exposure_history_ratio = scene.exposure_estimate * scene.inv_exposure_estimate;
 	scene.inv_exposure_estimate  = 1.f / scene.exposure_estimate;
 	
+	scene.texture_world_to_pixel_scale = scene.view_to_clip_coef.x * scene.render_target_size.x * 0.5f;
 	
-	bool should_reset_path_tracer =
-		renderer_world.reset_reference_path_tracer ||
-		memcmp(&scene.view_to_world, &scene.prev_view_to_world, sizeof(float3x4)) != 0 ||
-		memcmp(&scene.render_target_size, &scene.prev_render_target_size, sizeof(float2)) != 0 ||
-		gpu_uploads.count != 0;
 	
-	if (should_reset_path_tracer) {
-		renderer_world.reset_reference_path_tracer = false;
-		scene.path_tracer_accumulated_frame_count = 0;
+	{
+		bool should_reset_path_tracer =
+			renderer_world.reset_reference_path_tracer ||
+			memcmp(&scene.view_to_world, &scene.prev_view_to_world, sizeof(float3x4)) != 0 ||
+			memcmp(&scene.render_target_size, &scene.prev_render_target_size, sizeof(float2)) != 0 ||
+			gpu_uploads.count != 0;
+		
+		scene.reference_path_tracer_percent = renderer_world.reference_path_tracer_percent;
+		
+		if (should_reset_path_tracer) {
+			renderer_world.reset_reference_path_tracer = false;
+			scene.path_tracer_accumulated_frame_count = 0;
+		}
+		
+		if (renderer_world.reference_path_tracer_percent != 0.f) {
+			scene.path_tracer_accumulated_frame_count += 1;
+		} else {
+			scene.path_tracer_accumulated_frame_count = 0;
+		}
 	}
 	
-	if (renderer_world.reference_path_tracer_percent != 0.f) {
-		scene.path_tracer_accumulated_frame_count += 1;
-	} else {
-		scene.path_tracer_accumulated_frame_count = 0;
-	}
 	
 	if (world_entity.global_light_entity->guid != 0) {
 		auto typed_entity_id = FindEntityByGUID(*world_system, world_entity.global_light_entity->guid);
@@ -239,6 +228,7 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 		scene.atmosphere.sun_irradiance = 0.f;
 	}
 	
+	
 	for (u32 i = 0; i < LightCullingConstants::grid_cascade_count; i += 1) {
 		float grid_cell_size_next_level = LightCullingConstants::grid_cell_size * (1u << Math::Min(i + 1u, LightCullingConstants::grid_cascade_count - 1));
 		float grid_cell_size            = LightCullingConstants::grid_cell_size * (1u << i);
@@ -250,6 +240,11 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 		cascade_desc.z = roundf(scene.world_space_camera_position.z / grid_cell_size_next_level) * grid_cell_size_next_level - cascade_desc.w * 0.5f;
 	}
 	
+	
+	scene.visibility_hash_table_distance_to_cell_size_scale = world_entity.lighting_settings->visibility_hash_table_target_cell_size_pixels / (scene.view_to_clip_coef.x * scene.render_target_size.x * 0.5f);
+	scene.radiance_hash_table_distance_to_cell_size_scale   = world_entity.lighting_settings->radiance_hash_table_target_cell_size_pixels / (scene.view_to_clip_coef.x * scene.render_target_size.x * 0.5f);
+	scene.cdf_hash_table_distance_to_cell_size_scale        = world_entity.lighting_settings->cdf_hash_table_target_cell_size_pixels / (scene.view_to_clip_coef.x * scene.render_target_size.x * 0.5f);
+	
 	scene.visible_light_tile_list_size = DivideAndRoundUp(render_target_size, LightingConstants::visible_light_tile_size);
 	scene.wrs_min_light_weight = world_entity.lighting_settings->wrs_min_light_weight;
 	scene.indirect_diffuse_cdf_tile_list_size = DivideAndRoundUp(render_target_size, LightingConstants::cdf_tile_size);
@@ -258,6 +253,20 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	auto gpu_scene_constants = AllocateGpuComponentUploadBuffer(record_context, 1, world_entity.gpu_scene_constants);
 	AppendGpuTransferCommand(gpu_scene_constants, 0, scene);
 	ArrayAppend(gpu_uploads, record_context->alloc, gpu_scene_constants);
+}
+
+void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext* record_context, WorldEntitySystem* world_system, AssetEntitySystem* asset_system, u64 world_entity_guid, Array<GpuComponentUploadBuffer> gpu_uploads, u32 view_index, u32 view_count) {
+	ProfilerScope("BuildRenderPassesForFrame");
+	
+	auto world_entity  = QueryEntityByGUID<WorldEntityQuery>(*world_system,  world_entity_guid);
+	auto camera_entity = QueryEntityByGUID<CameraEntityQuery>(*world_system, world_entity.camera_entity->guid);
+	auto& renderer_world = *world_entity.renderer_world;
+	
+	// Clamp render target size to a reasonable minimum. Aspect ratio for view to clip is still computed using unclamped values.
+	uint2 render_target_size = uint2((u32)Math::Max(renderer_world.window_size.x, 32.f), (u32)Math::Max(renderer_world.window_size.y, 32.f));
+	
+	BuildResourceTable(record_context, world_system, &renderer_world, render_target_size);
+	CreateSceneConstants(record_context, render_target_size, world_system, world_entity, camera_entity, gpu_uploads);
 	
 	
 	RenderPassArray render_passes;
@@ -265,6 +274,9 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	render_passes.frame_index          = record_context->frame_index;
 	render_passes.view_index           = view_index;
 	render_passes.enable_async_compute = renderer_world.enable_async_compute;
+	
+	bool is_first_view = (view_index == 0);
+	bool is_last_view  = (view_index == view_count - 1);
 	
 	auto& last_frame_submit_end = renderer_context->last_frame_submit_end;
 	if (last_frame_submit_end.submit_index == 0) {
@@ -324,21 +336,19 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 		render_passes.PushQueue(CommandQueueType::Compute);
 		defer{ render_passes.PopQueue(); };
 		
-		auto& light_entity_culling = render_passes.Add<LightEntityCullingRenderPass>();
-		light_entity_culling.world_system = world_system;
-		
-		render_passes.Add<LightCullingRenderPass>();
-		render_passes.Add<LightListRenderPass>();
-	}
-	
-	{
-		render_passes.PushQueue(CommandQueueType::Compute);
-		defer{ render_passes.PopQueue(); };
+		{
+			auto& light_entity_culling = render_passes.Add<LightEntityCullingRenderPass>();
+			light_entity_culling.world_system = world_system;
+			
+			render_passes.Add<LightCullingRenderPass>();
+			render_passes.Add<LightListRenderPass>();
+		}
 		
 		{
 			auto& raytracing_mesh_entity_culling = render_passes.Add<MeshEntityCullingRenderPass>("RaytracingMeshEntityCulling"_sl);
 			raytracing_mesh_entity_culling.pass = MeshletCullingPass::Raytracing;
 			raytracing_mesh_entity_culling.world_system = world_system;
+			
 			render_passes.Add<MeshletGroupCullingRenderPass>("RaytracingMeshletGroupCulling"_sl).pass = MeshletCullingPass::Raytracing;
 			render_passes.Add<MeshletCullingRenderPass>("RaytracingMeshletCulling"_sl).pass = MeshletCullingPass::Raytracing;
 		}
@@ -427,12 +437,12 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	auto scene_radiance = VirtualResourceID::SceneRadianceResult;
 	if (world_entity.anti_aliasing_settings->method == AntiAliasingMethod::DLSS) {
 		auto& dlss = render_passes.Add<DlssRenderPass>();
-		dlss.jitter_offset_pixels = scene.jitter_offset_pixels;
-		dlss.exposure_estimate    = scene.exposure_estimate;
+		dlss.jitter_offset_pixels = renderer_world.scene_constants.jitter_offset_pixels;
+		dlss.exposure_estimate    = renderer_world.scene_constants.exposure_estimate;
 	} else if (world_entity.anti_aliasing_settings->method == AntiAliasingMethod::XeSS) { 
 		auto& xess = render_passes.Add<XessRenderPass>();
-		xess.jitter_offset_pixels = scene.jitter_offset_pixels;
-		xess.exposure_estimate    = scene.exposure_estimate;
+		xess.jitter_offset_pixels = renderer_world.scene_constants.jitter_offset_pixels;
+		xess.exposure_estimate    = renderer_world.scene_constants.exposure_estimate;
 	} else {
 		scene_radiance = VirtualResourceID::SceneRadiance;
 	}
