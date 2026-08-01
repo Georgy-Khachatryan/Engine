@@ -118,7 +118,7 @@ LightShadingInfo ComputeLightShadingInfo(float3 shading_position, u32 light_enti
 	if (light.type == LightType::Global) {
 		shading_info.light_direction   = light.light_direction;
 		shading_info.shadow_ray_length = 1024.0;
-		shading_info.light_irradiance *= SampleTransmittanceLUT(atmosphere, transmittance_lut, shading_position);
+		shading_info.light_irradiance *= SampleTransmittanceLUT(scene.atmosphere, transmittance_lut, shading_position);
 	} else {
 		float3 light_vector = light.light_position - shading_position;
 		float distance_to_light_square = dot(light_vector, light_vector);

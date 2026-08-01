@@ -1,9 +1,8 @@
 #include "Basic.hlsl"
 #include "AtmosphereSampling.hlsl"
 #include "Generated/SceneData.hlsl"
-#include "Generated/AtmosphereData.hlsl"
 
-compile_const uint thread_group_size = AtmosphereParameters::thread_group_size;
+compile_const uint thread_group_size = AtmosphereConstants::thread_group_size;
 
 //
 // Sebastien Hillaire. 2020. A Scalable and Production Ready Sky and Atmosphere Rendering Technique.
@@ -28,25 +27,25 @@ struct AtmosphereMedium {
 	float3 extinction;
 };
 
-AtmosphereMedium SampleAtmosphereMedium(AtmosphereParameters atmosphere, float3 world_space_position) {
-	float view_height = length(world_space_position) - atmosphere.bottom_radius;
+AtmosphereMedium SampleAtmosphereMedium(float3 world_space_position) {
+	float view_height = length(world_space_position) - scene.atmosphere.bottom_radius;
 	
-	float density_mie      = exp(atmosphere.mie_density_exp_scale * view_height);
-	float density_rayleigh = exp(atmosphere.rayleigh_density_exp_scale * view_height);
-	uint ozone_layer_index = view_height < atmosphere.ozone_density_layer_height ? 0 : 1;
-	float density_ozone    = saturate(atmosphere.ozone_density_scale[ozone_layer_index] * view_height + atmosphere.ozone_density_offset[ozone_layer_index]);
+	float density_mie      = exp(scene.atmosphere.mie_density_exp_scale * view_height);
+	float density_rayleigh = exp(scene.atmosphere.rayleigh_density_exp_scale * view_height);
+	uint ozone_layer_index = view_height < scene.atmosphere.ozone_density_layer_height ? 0 : 1;
+	float density_ozone    = saturate(scene.atmosphere.ozone_density_scale[ozone_layer_index] * view_height + scene.atmosphere.ozone_density_offset[ozone_layer_index]);
 	
 	AtmosphereMedium sample;
-	sample.scattering_mie = density_mie * atmosphere.mie_scattering;
-	sample.absorption_mie = density_mie * atmosphere.mie_absorption;
+	sample.scattering_mie = density_mie * scene.atmosphere.mie_scattering;
+	sample.absorption_mie = density_mie * scene.atmosphere.mie_absorption;
 	sample.extinction_mie = sample.scattering_mie + sample.absorption_mie;
 	
-	sample.scattering_rayleigh = density_rayleigh * atmosphere.rayleigh_scattering;
+	sample.scattering_rayleigh = density_rayleigh * scene.atmosphere.rayleigh_scattering;
 	sample.absorption_rayleigh = 0.0;
 	sample.extinction_rayleigh = sample.scattering_rayleigh + sample.absorption_rayleigh;
 	
 	sample.scattering_ozone = 0.0;
-	sample.absorption_ozone = density_ozone * atmosphere.ozone_absorption;
+	sample.absorption_ozone = density_ozone * scene.atmosphere.ozone_absorption;
 	sample.extinction_ozone = sample.scattering_ozone + sample.absorption_ozone;
 	
 	sample.scattering = sample.scattering_mie + sample.scattering_rayleigh + sample.scattering_ozone;
@@ -64,8 +63,8 @@ float3 ComputeScatteringIntegral(float3 slice_scattering, float3 slice_transmitt
 
 
 #if defined(TRANSMITTANCE_LUT)
-float3 IntegrateTransmittance(AtmosphereParameters atmosphere, float3 planet_space_position, float3 planet_space_direction) {
-	float t_max = RayAtmosphereIntersect(planet_space_position, planet_space_direction, atmosphere.top_radius);
+float3 IntegrateTransmittance(float3 planet_space_position, float3 planet_space_direction) {
+	float t_max = RayAtmosphereIntersect(planet_space_position, planet_space_direction, scene.atmosphere.top_radius);
 	
 	compile_const float sample_count        = 40.0;
 	compile_const float sample_index_offset = 0.3;
@@ -81,7 +80,7 @@ float3 IntegrateTransmittance(AtmosphereParameters atmosphere, float3 planet_spa
 		
 		float3 position = planet_space_position + curr_t * planet_space_direction;
 		
-		AtmosphereMedium medium = SampleAtmosphereMedium(atmosphere, position);
+		AtmosphereMedium medium = SampleAtmosphereMedium(position);
 		optical_depth += medium.extinction * delta_t;
 	}
 	
@@ -93,12 +92,12 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	uint2  thread_id = group_id * thread_group_size + MortonDecode(thread_index);
 	float2 thread_uv = (thread_id + 0.5) * inv_transmittance_lut_size;
 	
-	TransmittanceLutCoordinates coordinates = UvToTransmittanceLutCoordinates(atmosphere, thread_uv);
+	TransmittanceLutCoordinates coordinates = UvToTransmittanceLutCoordinates(scene.atmosphere, thread_uv);
 	
 	float3 planet_space_position  = float3(0.0, 0.0, coordinates.view_height);
 	float3 planet_space_direction = float3(0.0, sqrt(1.0 - Pow2(coordinates.cos_view_zenith_angle)), coordinates.cos_view_zenith_angle);
 	
-	float3 transmittance = IntegrateTransmittance(atmosphere, planet_space_position, planet_space_direction);
+	float3 transmittance = IntegrateTransmittance(planet_space_position, planet_space_direction);
 	transmittance_lut[thread_id] = float4(transmittance, 1.0);
 }
 #endif // defined(TRANSMITTANCE_LUT)
@@ -109,9 +108,9 @@ struct MultipleScatteringValues {
 	float3 scattered_radiance ;
 };
 
-MultipleScatteringValues IntegrateMultipleScattering(AtmosphereParameters atmosphere, float3 planet_space_position, float3 planet_space_direction, float3 planet_space_sun_direction) {
-	float t_bottom = RayAtmosphereIntersect(planet_space_position, planet_space_direction, atmosphere.bottom_radius);
-	float t_top = RayAtmosphereIntersect(planet_space_position, planet_space_direction, atmosphere.top_radius);
+MultipleScatteringValues IntegrateMultipleScattering(float3 planet_space_position, float3 planet_space_direction, float3 planet_space_sun_direction) {
+	float t_bottom = RayAtmosphereIntersect(planet_space_position, planet_space_direction, scene.atmosphere.bottom_radius);
+	float t_top = RayAtmosphereIntersect(planet_space_position, planet_space_direction, scene.atmosphere.top_radius);
 	float t_max = t_bottom >= 0.0 ? t_bottom : t_top;
 	
 	compile_const float sample_count        = 20.0;
@@ -132,7 +131,7 @@ MultipleScatteringValues IntegrateMultipleScattering(AtmosphereParameters atmosp
 		
 		float3 position = planet_space_position + curr_t * planet_space_direction;
 		
-		AtmosphereMedium medium = SampleAtmosphereMedium(atmosphere, position);
+		AtmosphereMedium medium = SampleAtmosphereMedium(position);
 		float3 slice_transmittance = exp(-medium.extinction * delta_t);
 		
 		TransmittanceLutCoordinates coordinates;
@@ -140,7 +139,7 @@ MultipleScatteringValues IntegrateMultipleScattering(AtmosphereParameters atmosp
 		float3 up_vector = position / coordinates.view_height;
 		coordinates.cos_view_zenith_angle = dot(planet_space_sun_direction, up_vector);
 		
-		float2 transmittance_lut_uv = TransmittanceLutCoordinatesToUv(atmosphere, coordinates);
+		float2 transmittance_lut_uv = TransmittanceLutCoordinatesToUv(scene.atmosphere, coordinates);
 		float3 transmittance_to_light = transmittance_lut.SampleLevel(sampler_linear_clamp, transmittance_lut_uv, 0);
 		
 		float3 slice_scattering = transmittance_to_light * medium.scattering * (1.0 / (4.0 * PI));
@@ -185,7 +184,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	
 	float cos_sun_zenith_angle = group_uv.x * 2.0 - 1.0;
 	float3 planet_space_sun_direction = float3(0.0, sqrt(saturate(1.0 - cos_sun_zenith_angle * cos_sun_zenith_angle)), cos_sun_zenith_angle);
-	float view_height = atmosphere.bottom_radius + saturate(group_uv.y + planet_radius_offset) * (atmosphere.top_radius - atmosphere.bottom_radius - planet_radius_offset);
+	float view_height = scene.atmosphere.bottom_radius + saturate(group_uv.y + planet_radius_offset) * (scene.atmosphere.top_radius - scene.atmosphere.bottom_radius - planet_radius_offset);
 	
 	float2 rand = (MortonDecode(thread_index) + 0.5) * rcp(sqrt_sample_count);
 	float theta = 2.0 * PI * rand.x;
@@ -199,7 +198,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	float3 planet_space_position  = float3(0.0, 0.0, view_height);
 	float3 planet_space_direction = float3(cos_theta * sin_phi, sin_theta * sin_phi, cos_phi);
 	
-	MultipleScatteringValues result = IntegrateMultipleScattering(atmosphere, planet_space_position, planet_space_direction, planet_space_sun_direction);
+	MultipleScatteringValues result = IntegrateMultipleScattering(planet_space_position, planet_space_direction, planet_space_sun_direction);
 	result.multiple_scattering = WaveActiveSum(result.multiple_scattering);
 	result.scattered_radiance  = WaveActiveSum(result.scattered_radiance);
 	
@@ -238,17 +237,17 @@ float CornetteShanksMiePhaseFunction(float g, float cos_theta) {
 	return k * (1.0 + cos_theta * cos_theta) / pow(1.0 + g * g - 2.0 * g * -cos_theta, 1.5);
 }
 
-float3 SampleMultipleScatteringLut(AtmosphereParameters atmosphere, float3 planet_space_position, float cos_view_zenith_angle) {
+float3 SampleMultipleScatteringLut(float3 planet_space_position, float cos_view_zenith_angle) {
 	float2 uv;
 	uv.x = cos_view_zenith_angle * 0.5 + 0.5;
-	uv.y = (length(planet_space_position) - atmosphere.bottom_radius) / (atmosphere.top_radius - atmosphere.bottom_radius);
+	uv.y = (length(planet_space_position) - scene.atmosphere.bottom_radius) / (scene.atmosphere.top_radius - scene.atmosphere.bottom_radius);
 	
 	return multiple_scattering_lut.SampleLevel(sampler_linear_clamp, uv, 0).xyz;
 }
 
-float3 IntegrateScattering(AtmosphereParameters atmosphere, float3 planet_space_position, float3 planet_space_direction, float3 planet_space_sun_direction) {
-	float t_bottom = RayAtmosphereIntersect(planet_space_position, planet_space_direction, atmosphere.bottom_radius);
-	float t_top = RayAtmosphereIntersect(planet_space_position, planet_space_direction, atmosphere.top_radius);
+float3 IntegrateScattering(float3 planet_space_position, float3 planet_space_direction, float3 planet_space_sun_direction) {
+	float t_bottom = RayAtmosphereIntersect(planet_space_position, planet_space_direction, scene.atmosphere.bottom_radius);
+	float t_top = RayAtmosphereIntersect(planet_space_position, planet_space_direction, scene.atmosphere.top_radius);
 	float t_max = t_bottom >= 0.0 ? t_bottom : t_top;
 	
 	compile_const float sample_count        = 30.0;
@@ -259,7 +258,7 @@ float3 IntegrateScattering(AtmosphereParameters atmosphere, float3 planet_space_
 	
 	// Negate cos_theta because due to planet_space_direction being a "in" direction.
 	float cos_theta = -dot(planet_space_sun_direction, planet_space_direction);
-	float mie_phase_value      = CornetteShanksMiePhaseFunction(atmosphere.mie_phase_g, cos_theta);
+	float mie_phase_value      = CornetteShanksMiePhaseFunction(scene.atmosphere.mie_phase_g, cos_theta);
 	float rayleigh_phase_value = RayleighPhase(cos_theta);
 	
 	float3 scattered_radiance = 0.0;
@@ -272,7 +271,7 @@ float3 IntegrateScattering(AtmosphereParameters atmosphere, float3 planet_space_
 		
 		float3 position = planet_space_position + curr_t * planet_space_direction;
 		
-		AtmosphereMedium medium = SampleAtmosphereMedium(atmosphere, position);
+		AtmosphereMedium medium = SampleAtmosphereMedium(position);
 		float3 slice_transmittance = exp(-medium.extinction * delta_t);
 		
 		TransmittanceLutCoordinates coordinates;
@@ -280,14 +279,14 @@ float3 IntegrateScattering(AtmosphereParameters atmosphere, float3 planet_space_
 		float3 up_vector = position / coordinates.view_height;
 		coordinates.cos_view_zenith_angle = dot(planet_space_sun_direction, up_vector);
 		
-		float2 transmittance_lut_uv = TransmittanceLutCoordinatesToUv(atmosphere, coordinates);
+		float2 transmittance_lut_uv = TransmittanceLutCoordinatesToUv(scene.atmosphere, coordinates);
 		float3 transmittance_to_light = transmittance_lut.SampleLevel(sampler_linear_clamp, transmittance_lut_uv, 0);
 		
 		// Planet shadow.
-		float t_planet = RayAtmosphereIntersect(position - planet_radius_offset * up_vector, planet_space_sun_direction, atmosphere.bottom_radius);
+		float t_planet = RayAtmosphereIntersect(position - planet_radius_offset * up_vector, planet_space_sun_direction, scene.atmosphere.bottom_radius);
 		float planet_shadow = t_planet >= 0.0 ? 0.0 : 1.0;
 		
-		float3 multiple_scattering = SampleMultipleScatteringLut(atmosphere, position, coordinates.cos_view_zenith_angle);
+		float3 multiple_scattering = SampleMultipleScatteringLut(position, coordinates.cos_view_zenith_angle);
 		
 		float3 phase_times_scattering = planet_shadow * (medium.scattering_mie * mie_phase_value + medium.scattering_rayleigh * rayleigh_phase_value);
 		float3 slice_scattering = transmittance_to_light * phase_times_scattering + multiple_scattering * medium.scattering;
@@ -304,13 +303,13 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	uint2  thread_id = group_id * thread_group_size + MortonDecode(thread_index);
 	float2 thread_uv = (thread_id + 0.5) * inv_sky_panorama_lut_size;
 	
-	float3 planet_space_position = TransformWorldToPlanetSpace(scene.world_space_camera_position, atmosphere.bottom_radius);
+	float3 planet_space_position = TransformWorldToPlanetSpace(scene.world_space_camera_position, scene.atmosphere.bottom_radius);
 	float  view_height = length(planet_space_position);
 	
-	SkyPanoramaLutCoordinates coordinates = UvToSkyPanoramaLutCoordinates(atmosphere, view_height, thread_uv);
+	SkyPanoramaLutCoordinates coordinates = UvToSkyPanoramaLutCoordinates(scene.atmosphere, view_height, thread_uv);
 	
 	float3 up_vector = planet_space_position / view_height;
-	float cos_sun_zenith_angle = dot(up_vector, atmosphere.world_space_sun_direction);
+	float cos_sun_zenith_angle = dot(up_vector, scene.atmosphere.world_space_sun_direction);
 	float3 planet_space_sun_direction = normalize(float3(sqrt(saturate(1.0 - cos_sun_zenith_angle * cos_sun_zenith_angle)), 0.0, cos_sun_zenith_angle));
 	
 	planet_space_position = float3(0.0, 0.0, view_height);
@@ -322,9 +321,9 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	planet_space_direction.y = sin_view_zenith_angle * sqrt(1.0 - coordinates.cos_light_view_angle * coordinates.cos_light_view_angle);
 	planet_space_direction.z = coordinates.cos_view_zenith_angle;
 	
-	float3 scattering = IntegrateScattering(atmosphere, planet_space_position, planet_space_direction, planet_space_sun_direction);
+	float3 scattering = IntegrateScattering(planet_space_position, planet_space_direction, planet_space_sun_direction);
 	
-	sky_panorama_lut[thread_id] = float4(scattering * atmosphere.sun_color * atmosphere.sun_irradiance, 1.0);
+	sky_panorama_lut[thread_id] = float4(scattering * scene.atmosphere.sun_color * scene.atmosphere.sun_irradiance, 1.0);
 }
 #endif // defined(SKY_PANORAMA_LUT)
 
@@ -341,7 +340,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	RayInfo view_space_ray = RayInfoFromScreenUv(thread_uv, scene.clip_to_view_coef);
 	float3 planet_space_direction = mul((float3x3)scene.view_to_world, view_space_ray.direction);
 	
-	float3 sky_radiance = SampleSkyPanoramaLUT(atmosphere, sky_panorama_lut, transmittance_lut, scene.world_space_camera_position, planet_space_direction);
+	float3 sky_radiance = SampleSkyPanoramaLUT(scene.atmosphere, sky_panorama_lut, transmittance_lut, scene.world_space_camera_position, planet_space_direction);
 	
 	scene_radiance[thread_id] = float4(sky_radiance * scene.exposure_estimate, 1.0);
 	

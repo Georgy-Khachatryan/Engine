@@ -11,10 +11,10 @@ void TransmittanceLutRenderPass::RecordPass(RecordContext* record_context) {
 	
 	CmdSetRootSignature(record_context, root_signature);
 	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
-	CmdSetRootArgument(record_context, root_signature.atmosphere, atmosphere);
+	CmdSetRootArgument(record_context, root_signature.scene, VirtualResourceID::SceneConstants);
 	CmdSetPipelineState(record_context, pipeline_id);
 	
-	CmdDispatch(record_context, DivideAndRoundUp(AtmosphereParameters::transmittance_lut_size, AtmosphereParameters::thread_group_size));
+	CmdDispatch(record_context, DivideAndRoundUp(AtmosphereConstants::transmittance_lut_size, AtmosphereConstants::thread_group_size));
 }
 
 void MultipleScatteringLutRenderPass::CreatePipelines(PipelineLibrary* lib) {
@@ -26,10 +26,10 @@ void MultipleScatteringLutRenderPass::RecordPass(RecordContext* record_context) 
 	
 	CmdSetRootSignature(record_context, root_signature);
 	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
-	CmdSetRootArgument(record_context, root_signature.atmosphere, atmosphere);
+	CmdSetRootArgument(record_context, root_signature.scene, VirtualResourceID::SceneConstants);
 	CmdSetPipelineState(record_context, pipeline_id);
 	
-	CmdDispatch(record_context, AtmosphereParameters::multiple_scattering_lut_size);
+	CmdDispatch(record_context, AtmosphereConstants::multiple_scattering_lut_size);
 }
 
 void SkyPanoramaLutRenderPass::CreatePipelines(PipelineLibrary* lib) {
@@ -42,10 +42,9 @@ void SkyPanoramaLutRenderPass::RecordPass(RecordContext* record_context) {
 	CmdSetRootSignature(record_context, root_signature);
 	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
 	CmdSetRootArgument(record_context, root_signature.scene, VirtualResourceID::SceneConstants);
-	CmdSetRootArgument(record_context, root_signature.atmosphere, atmosphere);
 	CmdSetPipelineState(record_context, pipeline_id);
 	
-	CmdDispatch(record_context, DivideAndRoundUp(AtmosphereParameters::sky_panorama_lut_size, AtmosphereParameters::thread_group_size));
+	CmdDispatch(record_context, DivideAndRoundUp(AtmosphereConstants::sky_panorama_lut_size, AtmosphereConstants::thread_group_size));
 }
 
 void AtmosphereCompositeRenderPass::CreatePipelines(PipelineLibrary* lib) {
@@ -58,10 +57,9 @@ void AtmosphereCompositeRenderPass::RecordPass(RecordContext* record_context) {
 	CmdSetRootSignature(record_context, root_signature);
 	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
 	CmdSetRootArgument(record_context, root_signature.scene, VirtualResourceID::SceneConstants);
-	CmdSetRootArgument(record_context, root_signature.atmosphere, atmosphere);
 	CmdSetPipelineState(record_context, pipeline_id);
 	
 	auto render_target_size = GetTextureSize(record_context, VirtualResourceID::SceneRadiance);
-	CmdDispatch(record_context, DivideAndRoundUp(uint2(render_target_size), AtmosphereParameters::thread_group_size));
+	CmdDispatch(record_context, DivideAndRoundUp(uint2(render_target_size), AtmosphereConstants::thread_group_size));
 }
 

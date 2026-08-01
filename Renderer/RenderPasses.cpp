@@ -10,9 +10,9 @@ static void BuildResourceTable(RecordContext* record_context, WorldEntitySystem*
 	using Flags = CreateResourceFlags;
 	auto& table = *record_context->resource_table;
 	
-	table.Set(ID::TransmittanceLut,      TextureSize(TextureFormat::R16G16B16A16_FLOAT, AtmosphereParameters::transmittance_lut_size));
-	table.Set(ID::MultipleScatteringLut, TextureSize(TextureFormat::R16G16B16A16_FLOAT, AtmosphereParameters::multiple_scattering_lut_size));
-	table.Set(ID::SkyPanoramaLut,        TextureSize(TextureFormat::R16G16B16A16_FLOAT, AtmosphereParameters::sky_panorama_lut_size));
+	table.Set(ID::TransmittanceLut,      TextureSize(TextureFormat::R16G16B16A16_FLOAT, AtmosphereConstants::transmittance_lut_size));
+	table.Set(ID::MultipleScatteringLut, TextureSize(TextureFormat::R16G16B16A16_FLOAT, AtmosphereConstants::multiple_scattering_lut_size));
+	table.Set(ID::SkyPanoramaLut,        TextureSize(TextureFormat::R16G16B16A16_FLOAT, AtmosphereConstants::sky_panorama_lut_size));
 	
 	auto* mesh_entities = QueryEntities<GpuMeshEntityQuery>(record_context->alloc, *world_system)[0];
 	
@@ -136,7 +136,6 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	
 	
 	auto& scene = renderer_world.scene_constants;
-	AtmosphereParameters atmosphere_parameters;
 	
 	if (scene.frame_index != 0) CopyCurrentToPreviousSceneConstants(scene);
 	
@@ -230,14 +229,14 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 		
 		auto* array = &world_system->entity_type_arrays[typed_entity_id.entity_type_id.index];
 		auto global_light_entity = ExtractComponentStreams<LightEntityQuery>(array, typed_entity_id.entity_id);
-		atmosphere_parameters.world_space_sun_direction = global_light_entity.rotation->rotation * float3(0.f, 0.f, 1.f);
-		atmosphere_parameters.sun_color                 = global_light_entity.light->color;
-		atmosphere_parameters.sun_irradiance            = global_light_entity.light->irradiance;
+		scene.atmosphere.world_space_sun_direction = global_light_entity.rotation->rotation * float3(0.f, 0.f, 1.f);
+		scene.atmosphere.sun_color                 = global_light_entity.light->color;
+		scene.atmosphere.sun_irradiance            = global_light_entity.light->irradiance;
 	} else {
 		scene.global_light_entity_index = u32_max;
 		
-		atmosphere_parameters.sun_color      = 0.f;
-		atmosphere_parameters.sun_irradiance = 0.f;
+		scene.atmosphere.sun_color      = 0.f;
+		scene.atmosphere.sun_irradiance = 0.f;
 	}
 	
 	for (u32 i = 0; i < LightCullingConstants::grid_cascade_count; i += 1) {
@@ -259,9 +258,6 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	auto gpu_scene_constants = AllocateGpuComponentUploadBuffer(record_context, 1, world_entity.gpu_scene_constants);
 	AppendGpuTransferCommand(gpu_scene_constants, 0, scene);
 	ArrayAppend(gpu_uploads, record_context->alloc, gpu_scene_constants);
-	
-	auto [atmosphere_parameters_gpu_address, atmosphere_parameters_cpu_address] = AllocateTransientUploadBuffer<AtmosphereParameters>(record_context);
-	*atmosphere_parameters_cpu_address = atmosphere_parameters;
 	
 	
 	RenderPassArray render_passes;
@@ -317,9 +313,9 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 			meshlet_allocate_streaming_feedback.asset_system = asset_system;
 		}
 		
-		render_passes.Add<TransmittanceLutRenderPass>().atmosphere = atmosphere_parameters_gpu_address;
-		render_passes.Add<MultipleScatteringLutRenderPass>().atmosphere = atmosphere_parameters_gpu_address;
-		render_passes.Add<SkyPanoramaLutRenderPass>().atmosphere = atmosphere_parameters_gpu_address;
+		render_passes.Add<TransmittanceLutRenderPass>();
+		render_passes.Add<MultipleScatteringLutRenderPass>();
+		render_passes.Add<SkyPanoramaLutRenderPass>();
 	}
 	
 	render_passes.AddWait(CommandQueueType::Graphics, render_passes.AddSignal(CommandQueueType::Compute));
@@ -388,7 +384,7 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	render_passes.AddWait(CommandQueueType::Graphics, render_passes.AddSignal(CommandQueueType::Compute)); 
 	
 	
-	render_passes.Add<AtmosphereCompositeRenderPass>().atmosphere = atmosphere_parameters_gpu_address;
+	render_passes.Add<AtmosphereCompositeRenderPass>();
 	
 	auto& copy_meshlet_culling_statistics = render_passes.Add<CopyMeshletCullingStatisticsRenderPass>();
 	copy_meshlet_culling_statistics.readback_queue = &renderer_world.meshlet_culling_statistics_readback_queue;
@@ -402,18 +398,14 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	}
 	
 	{
-		auto& indirect_diffuse = render_passes.Add<IndirectDiffuseRenderPass>();
-		indirect_diffuse.atmosphere = atmosphere_parameters_gpu_address;
-		
+		render_passes.Add<IndirectDiffuseRenderPass>();
 		render_passes.Add<UpdateRadianceHashTableRenderPass>();
 		render_passes.Add<UpdateCdfHashTableRenderPass>();
 		render_passes.Add<IndirectDiffuseTileCdfRenderPass>();
 	}
 	
 	{
-		auto& deferred_lighting = render_passes.Add<DeferredLightingRenderPass>();
-		deferred_lighting.atmosphere = atmosphere_parameters_gpu_address;
-		
+		render_passes.Add<DeferredLightingRenderPass>();
 		render_passes.Add<BuildVisibleLightTileListRenderPass>();
 	}
 	
@@ -424,8 +416,7 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	
 	if (renderer_world.reference_path_tracer_percent != 0.f) {
 		auto& refernece_path_tracer = render_passes.Add<ReferencePathTracerRenderPass>();
-		refernece_path_tracer.atmosphere = atmosphere_parameters_gpu_address;
-		refernece_path_tracer.mode       = renderer_world.reference_path_tracer_mode;
+		refernece_path_tracer.mode = renderer_world.reference_path_tracer_mode;
 	}
 	
 	

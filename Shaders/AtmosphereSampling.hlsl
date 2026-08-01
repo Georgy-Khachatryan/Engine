@@ -6,9 +6,9 @@
 // https://github.com/sebh/UnrealEngineSkyAtmosphere see license in THIRD_PARTY_LICENSES.md
 //
 
-compile_const float2 inv_transmittance_lut_size       = 1.0 / AtmosphereParameters::transmittance_lut_size;
-compile_const float2 inv_multiple_scattering_lut_size = 1.0 / AtmosphereParameters::multiple_scattering_lut_size;
-compile_const float2 inv_sky_panorama_lut_size        = 1.0 / AtmosphereParameters::sky_panorama_lut_size;
+compile_const float2 inv_transmittance_lut_size       = 1.0 / AtmosphereConstants::transmittance_lut_size;
+compile_const float2 inv_multiple_scattering_lut_size = 1.0 / AtmosphereConstants::multiple_scattering_lut_size;
+compile_const float2 inv_sky_panorama_lut_size        = 1.0 / AtmosphereConstants::sky_panorama_lut_size;
 compile_const float  planet_radius_offset             = 0.01;
 compile_const float  world_to_planet_space_scale      = 1.0 / 1000.0;
 
@@ -41,7 +41,7 @@ struct TransmittanceLutCoordinates {
 	float cos_view_zenith_angle;
 };
 
-TransmittanceLutCoordinates UvToTransmittanceLutCoordinates(AtmosphereParameters atmosphere, float2 uv) {
+TransmittanceLutCoordinates UvToTransmittanceLutCoordinates(AtmosphereConstants atmosphere, float2 uv) {
 	float x_mu = uv.x;
 	float x_r  = uv.y;
 	
@@ -60,7 +60,7 @@ TransmittanceLutCoordinates UvToTransmittanceLutCoordinates(AtmosphereParameters
 	return coordinates;
 }
 
-float2 TransmittanceLutCoordinatesToUv(AtmosphereParameters atmosphere, TransmittanceLutCoordinates coordinates) {
+float2 TransmittanceLutCoordinatesToUv(AtmosphereConstants atmosphere, TransmittanceLutCoordinates coordinates) {
 	float H   = sqrt(max(Pow2(atmosphere.top_radius)   - Pow2(atmosphere.bottom_radius), 0.0));
 	float rho = sqrt(max(Pow2(coordinates.view_height) - Pow2(atmosphere.bottom_radius), 0.0));
 	
@@ -81,7 +81,7 @@ struct SkyPanoramaLutCoordinates {
 	float cos_light_view_angle;
 };
 
-SkyPanoramaLutCoordinates UvToSkyPanoramaLutCoordinates(AtmosphereParameters atmosphere, float view_height, float2 uv) {
+SkyPanoramaLutCoordinates UvToSkyPanoramaLutCoordinates(AtmosphereConstants atmosphere, float view_height, float2 uv) {
 	float vhorizon = sqrt(Pow2(view_height) - Pow2(atmosphere.bottom_radius));
 	float cos_beta = vhorizon / view_height;
 	float beta     = acos(cos_beta);
@@ -102,7 +102,7 @@ SkyPanoramaLutCoordinates UvToSkyPanoramaLutCoordinates(AtmosphereParameters atm
 	return coordinates;
 }
 
-float2 SkyPanoramaLutCoordinatesToUv(AtmosphereParameters atmosphere, bool intersect_ground, SkyPanoramaLutCoordinates coordinates, float view_height) {
+float2 SkyPanoramaLutCoordinatesToUv(AtmosphereConstants atmosphere, bool intersect_ground, SkyPanoramaLutCoordinates coordinates, float view_height) {
 	float vhorizon = sqrt(Pow2(view_height) - Pow2(atmosphere.bottom_radius));
 	float cos_beta = vhorizon / view_height;
 	float beta     = acos(clamp(cos_beta, -1.0, 1.0));
@@ -121,7 +121,7 @@ float2 SkyPanoramaLutCoordinatesToUv(AtmosphereParameters atmosphere, bool inter
 	return uv;
 }
 
-float3 SampleSkyPanoramaLUT(AtmosphereParameters atmosphere, Texture2D<float3> sky_panorama_lut, Texture2D<float3> transmittance_lut, float3 world_space_position, float3 planet_space_direction, bool enable_sun_disk = true) {
+float3 SampleSkyPanoramaLUT(AtmosphereConstants atmosphere, Texture2D<float3> sky_panorama_lut, Texture2D<float3> transmittance_lut, float3 world_space_position, float3 planet_space_direction, bool enable_sun_disk = true) {
 	float3 planet_space_position = TransformWorldToPlanetSpace(world_space_position, atmosphere.bottom_radius);
 	float  view_height = length(planet_space_position);
 	float3 up_vector   = planet_space_position / view_height;
@@ -158,7 +158,7 @@ float3 SampleSkyPanoramaLUT(AtmosphereParameters atmosphere, Texture2D<float3> s
 	return sky_radiance;
 }
 
-float3 SampleTransmittanceLUT(AtmosphereParameters atmosphere, Texture2D<float3> transmittance_lut, float3 world_space_position) {
+float3 SampleTransmittanceLUT(AtmosphereConstants atmosphere, Texture2D<float3> transmittance_lut, float3 world_space_position) {
 	float3 planet_space_position  = TransformWorldToPlanetSpace(world_space_position, atmosphere.bottom_radius);
 	float3 planet_space_direction = atmosphere.world_space_sun_direction;
 	

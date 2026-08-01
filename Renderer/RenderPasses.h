@@ -133,43 +133,6 @@ enum struct VirtualResourceID : u32 {
 };
 
 
-NOTES(Meta::HlslFile{ "AtmosphereData.hlsl"_sl })
-struct AtmosphereParameters {
-	compile_const u32   thread_group_size            = 16;
-	compile_const uint2 transmittance_lut_size       = uint2(256, 64);
-	compile_const uint2 multiple_scattering_lut_size = uint2(32, 32);
-	compile_const uint2 sky_panorama_lut_size        = uint2(192, 128);
-	
-	float bottom_radius = 6360.f; // Radius of the planet (center to ground), km.
-	float top_radius    = 6460.f; // Maximum considered atmosphere height (center to atmosphere top), km.
-	
-	float sun_disk_cos_outer_angle = 0.9999572f; // cos(0.53dg)
-	float sun_disk_cos_inner_angle = 0.9999649f; // cos(0.48dg)
-	
-	// Rayleigh scattering exponential distribution scale in the atmosphere.
-	float  rayleigh_density_exp_scale = -1.f / 8.f;
-	float3 rayleigh_scattering        = float3(0.005802f, 0.013558f, 0.033100f); // 1/km
-	
-	// Mie scattering exponential distribution scale in the atmosphere
-	float  mie_density_exp_scale = -1.f / 1.2f;
-	float3 mie_scattering = float3(0.003996f, 0.003996f, 0.003996f); // 1/km
-	float3 mie_absorption = float3(0.000444f, 0.000444f, 0.000444f); // 1/km
-	float  mie_phase_g    = 0.8f;
-	
-	// Ozone layer (no scattering, absorption only). Two layers, the first one below layer_height, the second one is above.
-	float2 ozone_density_scale  = float2(+1.f / 15.f, -1.f / 15.f);
-	float2 ozone_density_offset = float2(-2.f /  3.f,  8.f /  3.f);
-	float3 ozone_absorption     = float3(0.000650f, 0.001881f, 0.000085f);
-	float  ozone_density_layer_height = 25.f; // km
-	
-	float3 world_space_sun_direction = float3(1.f, 0.f, 0.f);
-	float sun_irradiance = 30.f; // W/m^2
-	
-	float3 sun_color = 1.f;
-	float sun_disk_radiance = 30.f; // W/(m^2*sr)
-};
-
-
 NOTES(Meta::HlslFile{ "DebugGeometryData.hlsl"_sl })
 struct DebugGeometryIndirectArguments {
 	u32 index_count_per_instance = 0;
@@ -265,14 +228,12 @@ NOTES(Meta::RenderPass{})
 struct TransmittanceLutRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
-	GpuAddress atmosphere;
-	
 	struct Descriptors : HLSL::BaseDescriptorTable {
 		HLSL::RWTexture2D<float4> transmittance_lut = VirtualResourceID::TransmittanceLut;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {
-		HLSL::ConstantBuffer<AtmosphereParameters> atmosphere;
+		HLSL::ConstantBuffer<SceneConstants> scene;
 		HLSL::DescriptorTable<Descriptors> descriptor_table;
 	};
 	
@@ -283,15 +244,13 @@ NOTES(Meta::RenderPass{})
 struct MultipleScatteringLutRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
-	GpuAddress atmosphere;
-	
 	struct Descriptors : HLSL::BaseDescriptorTable {
 		HLSL::Texture2D<float3>   transmittance_lut       = VirtualResourceID::TransmittanceLut;
 		HLSL::RWTexture2D<float4> multiple_scattering_lut = VirtualResourceID::MultipleScatteringLut;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {
-		HLSL::ConstantBuffer<AtmosphereParameters> atmosphere;
+		HLSL::ConstantBuffer<SceneConstants> scene;
 		HLSL::DescriptorTable<Descriptors> descriptor_table;
 	};
 	
@@ -302,8 +261,6 @@ NOTES(Meta::RenderPass{})
 struct SkyPanoramaLutRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
-	GpuAddress atmosphere;
-	
 	struct Descriptors : HLSL::BaseDescriptorTable {
 		HLSL::Texture2D<float3>   transmittance_lut       = VirtualResourceID::TransmittanceLut;
 		HLSL::Texture2D<float3>   multiple_scattering_lut = VirtualResourceID::MultipleScatteringLut;
@@ -311,7 +268,6 @@ struct SkyPanoramaLutRenderPass {
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {
-		HLSL::ConstantBuffer<AtmosphereParameters> atmosphere;
 		HLSL::ConstantBuffer<SceneConstants> scene;
 		HLSL::DescriptorTable<Descriptors> descriptor_table;
 	};
@@ -323,8 +279,6 @@ NOTES(Meta::RenderPass{})
 struct AtmosphereCompositeRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
-	GpuAddress atmosphere;
-	
 	struct Descriptors : HLSL::BaseDescriptorTable {
 		HLSL::Texture2D<float3> transmittance_lut = VirtualResourceID::TransmittanceLut;
 		HLSL::Texture2D<float3> sky_panorama_lut = VirtualResourceID::SkyPanoramaLut;
@@ -334,7 +288,6 @@ struct AtmosphereCompositeRenderPass {
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {
-		HLSL::ConstantBuffer<AtmosphereParameters> atmosphere;
 		HLSL::ConstantBuffer<SceneConstants> scene;
 		HLSL::DescriptorTable<Descriptors> descriptor_table;
 	};
@@ -1029,7 +982,6 @@ NOTES(Meta::RenderPass{})
 struct ReferencePathTracerRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
-	GpuAddress atmosphere;
 	ReferencePathTracerMode mode = ReferencePathTracerMode::Accumulation;
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
@@ -1056,7 +1008,6 @@ struct ReferencePathTracerRenderPass {
 		HLSL::PushConstantBuffer<PushConstants> constants;
 		HLSL::ConstantBuffer<SceneConstants> scene;
 		HLSL::DescriptorTable<Descriptors> descriptor_table;
-		HLSL::ConstantBuffer<AtmosphereParameters> atmosphere;
 	};
 	
 	inline static PipelineID pipeline_id;
@@ -1175,8 +1126,6 @@ NOTES(Meta::RenderPass{})
 struct DeferredLightingRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
-	GpuAddress atmosphere;
-	
 	struct Descriptors : HLSL::BaseDescriptorTable {
 		HLSL::Texture2D<float2>                 ggx_single_scattering_energy_lut = VirtualResourceID::GgxSingleScatteringEnergyLUT;
 		HLSL::Texture2D<float2>                 ggx_preintegrated_brdf_lut       = VirtualResourceID::GgxPreintegratedBrdfLUT;
@@ -1204,7 +1153,6 @@ struct DeferredLightingRenderPass {
 	struct RootSignature : HLSL::BaseRootSignature {
 		HLSL::ConstantBuffer<SceneConstants> scene;
 		HLSL::DescriptorTable<Descriptors> descriptor_table;
-		HLSL::ConstantBuffer<AtmosphereParameters> atmosphere;
 	};
 	
 	inline static PipelineID pipeline_id;
@@ -1257,8 +1205,6 @@ NOTES(Meta::RenderPass{})
 struct IndirectDiffuseRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
-	GpuAddress atmosphere;
-	
 	struct Descriptors : HLSL::BaseDescriptorTable {
 		HLSL::Texture2D<float2>                     ggx_single_scattering_energy_lut = VirtualResourceID::GgxSingleScatteringEnergyLUT;
 		HLSL::Texture2D<float2>                     ggx_preintegrated_brdf_lut       = VirtualResourceID::GgxPreintegratedBrdfLUT;
@@ -1288,7 +1234,6 @@ struct IndirectDiffuseRenderPass {
 	struct RootSignature : HLSL::BaseRootSignature {
 		HLSL::ConstantBuffer<SceneConstants> scene;
 		HLSL::DescriptorTable<Descriptors> descriptor_table;
-		HLSL::ConstantBuffer<AtmosphereParameters> atmosphere;
 	};
 	
 	inline static PipelineID pipeline_id;

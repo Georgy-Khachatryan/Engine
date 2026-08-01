@@ -10,6 +10,42 @@ struct GpuComponentUploadBuffer;
 struct RecordContext;
 
 NOTES(Meta::HlslFile{ "SceneData.hlsl"_sl })
+struct AtmosphereConstants {
+	compile_const u32   thread_group_size            = 16;
+	compile_const uint2 transmittance_lut_size       = uint2(256, 64);
+	compile_const uint2 multiple_scattering_lut_size = uint2(32, 32);
+	compile_const uint2 sky_panorama_lut_size        = uint2(192, 128);
+	
+	float bottom_radius = 6360.f; // Radius of the planet (center to ground), km.
+	float top_radius    = 6460.f; // Maximum considered atmosphere height (center to atmosphere top), km.
+	
+	float sun_disk_cos_outer_angle = 0.9999572f; // cos(0.53dg)
+	float sun_disk_cos_inner_angle = 0.9999649f; // cos(0.48dg)
+	
+	// Rayleigh scattering exponential distribution scale in the atmosphere.
+	float  rayleigh_density_exp_scale = -1.f / 8.f;
+	float3 rayleigh_scattering        = float3(0.005802f, 0.013558f, 0.033100f); // 1/km
+	
+	// Mie scattering exponential distribution scale in the atmosphere
+	float  mie_density_exp_scale = -1.f / 1.2f;
+	float3 mie_scattering = float3(0.003996f, 0.003996f, 0.003996f); // 1/km
+	float3 mie_absorption = float3(0.000444f, 0.000444f, 0.000444f); // 1/km
+	float  mie_phase_g    = 0.8f;
+	
+	// Ozone layer (no scattering, absorption only). Two layers, the first one below layer_height, the second one is above.
+	float2 ozone_density_scale  = float2(+1.f / 15.f, -1.f / 15.f);
+	float2 ozone_density_offset = float2(-2.f /  3.f,  8.f /  3.f);
+	float3 ozone_absorption     = float3(0.000650f, 0.001881f, 0.000085f);
+	float  ozone_density_layer_height = 25.f; // km
+	
+	float3 world_space_sun_direction = float3(1.f, 0.f, 0.f);
+	float sun_irradiance = 30.f; // W/m^2
+	
+	float3 sun_color = 1.f;
+	float sun_disk_radiance = 30.f; // W/(m^2*sr)
+};
+
+NOTES(Meta::HlslFile{ "SceneData.hlsl"_sl })
 struct SceneConstants {
 	float2 render_target_size;
 	float2 inv_render_target_size;
@@ -74,6 +110,8 @@ struct SceneConstants {
 	
 	compile_const u32 light_grid_cascade_count = 8;
 	FixedCountArray<float4, light_grid_cascade_count> light_grid_cascade_descs;
+	
+	AtmosphereConstants atmosphere;
 };
 
 NOTES(Meta::HlslFile{ "ToneMappingData.hlsl"_sl })
