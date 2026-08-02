@@ -114,6 +114,48 @@ String StringJoin(StackAllocator* alloc, ArrayView<String> source_strings, Strin
 	return result;
 }
 
+String StringSplitByCharFromLeft(String string, char c, String* right) {
+	auto result_left  = string;
+	auto result_right = String{};
+	
+	for (u64 i = 0; i < string.count; i += 1) {
+		if (string[i] != c) continue;
+		
+		result_left.data   = string.data;
+		result_left.count  = i;
+		result_right.data  = string.data  + i + 1;
+		result_right.count = string.count - i - 1;
+		break;
+	}
+	
+	if (right != nullptr) {
+		*right = result_right;
+	}
+	
+	return result_left;
+}
+
+String StringSplitByCharFromRight(String string, char c, String* left) {
+	auto result_left  = String{};
+	auto result_right = string;
+	
+	for (s64 i = string.count - 1; i >= 0; i -= 1) {
+		if (string[i] != c) continue;
+		
+		result_left.data   = string.data;
+		result_left.count  = i;
+		result_right.data  = string.data  + i + 1;
+		result_right.count = string.count - i - 1;
+		break;
+	}
+	
+	if (left != nullptr) {
+		*left = result_left;
+	}
+	
+	return result_right;
+}
+
 bool StringStartsWith(String string, String prefix) {
 	return (string.count >= prefix.count) && (String{ string.data, prefix.count } == prefix);
 }

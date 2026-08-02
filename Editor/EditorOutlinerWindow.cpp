@@ -72,6 +72,8 @@ static void ApplyEntitySelectionRequests(ImGuiMultiSelectIO* ms_io, ArrayView<En
 }
 
 static ArrayView<EntityViewTableEntry> EntityQueryToArrayView(ArrayView<EntityTypeArray*> entity_view, StackAllocator* alloc, String search_pattern) {
+	ProfilerScope("EntityQueryToArrayView");
+	
 	u32 entity_count = 0;
 	for (auto* entity_array : entity_view) {
 		entity_count += entity_array->count;

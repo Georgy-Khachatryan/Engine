@@ -18,15 +18,7 @@ TypeInfo* ExtractTemplateParameterType(TypeInfo* type_info, u32 index) {
 }
 
 String ExtractNameWithoutNamespace(String name) {
-	u64 offset = name.count;
-	while (offset != 0 && name[offset - 1] != ':') {
-		offset -= 1;
-	}
-	
-	name.data  += offset;
-	name.count -= offset;
-	
-	return name;
+	return StringSplitByCharFromRight(name, ':');
 }
 
 
@@ -91,7 +83,19 @@ String PrintTypeName(StackAllocator* alloc, TypeInfo* type_info) {
 		}
 	} case TypeInfoType::Struct: {
 		auto* type_info_struct = (TypeInfoStruct*)type_info;
-		return type_info_struct->name;
+		
+		auto name = type_info_struct->name;
+		if (type_info_struct->fields.count && HasAnyFlags(type_info_struct->fields[0].flags, TypeInfoStructFieldFlags::TemplateParameter)) {
+			Array<String> template_parameters;
+			for (auto& field : type_info_struct->fields) {
+				if (HasAnyFlags(field.flags, TypeInfoStructFieldFlags::TemplateParameter)) {
+					ArrayAppend(template_parameters, alloc, PrintTypeValue(alloc, field.type, field.constant_value));
+				}
+			}
+			name = StringFormat(alloc, "%<%>"_sl, name, StringJoin(alloc, template_parameters, ", "_sl));
+		}
+		
+		return name;
 	} case TypeInfoType::Enum: {
 		auto* type_info_enum = (TypeInfoEnum*)type_info;
 		return type_info_enum->name;
@@ -107,11 +111,18 @@ String PrintTypeName(StackAllocator* alloc, TypeInfo* type_info) {
 		return StringFormat(alloc, "%*"_sl, pointer_to_name);
 	} case TypeInfoType::Array: {
 		auto* type_info_array = (TypeInfoArray*)type_info;
-		auto array_of_name = PrintTypeName(alloc, type_info_array->array_of);
-		if (type_info_array->array_type == TypeInfoArrayType::Array) {
-			return StringFormat(alloc, "%<%>"_sl, type_info_array_type_names[(u32)type_info_array->array_type], array_of_name);
+		if (type_info_array->array_type == TypeInfoArrayType::HashTable) {
+			auto* hash_table_element = TypeInfoCast<TypeInfoStruct>(type_info_array->array_of);
+			auto key_type_name   = PrintTypeName(alloc, (TypeInfo*)hash_table_element->fields[0].constant_value);
+			auto value_type_name = PrintTypeName(alloc, (TypeInfo*)hash_table_element->fields[1].constant_value);
+			return StringFormat(alloc, "%<%, %>"_sl, type_info_array_type_names[(u32)type_info_array->array_type], key_type_name, value_type_name);
 		} else {
-			return StringFormat(alloc, "%<%, %>"_sl, type_info_array_type_names[(u32)type_info_array->array_type], array_of_name, type_info_array->fixed_size);
+			auto array_of_name = PrintTypeName(alloc, type_info_array->array_of);
+			if (type_info_array->array_type == TypeInfoArrayType::Array) {
+				return StringFormat(alloc, "%<%>"_sl, type_info_array_type_names[(u32)type_info_array->array_type], array_of_name);
+			} else {
+				return StringFormat(alloc, "%<%, %>"_sl, type_info_array_type_names[(u32)type_info_array->array_type], array_of_name, type_info_array->fixed_size);
+			}
 		}
 	} case TypeInfoType::None: {
 		return "None"_sl;
@@ -187,6 +198,8 @@ String PrintTypeValue(StackAllocator* alloc, TypeInfo* type_info, const void* va
 		return *(String*)value;
 	} case TypeInfoType::Pointer: {
 		return StringFormat(alloc, "0x%"_sl, value);
+	} case TypeInfoType::Type: {
+		return PrintTypeName(alloc, (TypeInfo*)value);
 	} default: {
 		DebugAssertAlways("Unhandled TypeInfoType.");
 		return "Unknown Type"_sl;

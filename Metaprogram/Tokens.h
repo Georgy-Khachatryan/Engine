@@ -107,3 +107,6 @@ struct Tokenizer {
 	
 	template<typename ... Args> void ReportError(Token token, String format, Args ... args) { FORMAT_PROC_BODY(error_context.ReportErrorV, alloc, token.string, format); }
 };
+
+Token SkipTokensWithNestingTracking(Tokenizer& tokenizer, TokenType opening_token, TokenType closing_token);
+Token SkipTokens(Tokenizer& tokenizer, TokenType opening_token, TokenType closing_token);

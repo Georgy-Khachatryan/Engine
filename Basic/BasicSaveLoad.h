@@ -127,6 +127,41 @@ void SaveLoad(SaveLoadBuffer& buffer, Array<T>& array, u64 version = 0) {
 	}
 }
 
+template<typename T, u64 fixed_count>
+void SaveLoad(SaveLoadBuffer& buffer, FixedCountArray<T, fixed_count>& array, u64 version = 0) {
+	if (buffer.direction == SaveLoadDirection::Loading) {
+		array = {};
+		for (auto& value : array) {
+			SaveLoad(buffer, value, version);
+		}
+	} else if (buffer.direction == SaveLoadDirection::Saving) {
+		for (auto& value : array) {
+			SaveLoad(buffer, value, version);
+		}
+	}
+}
+
+template<typename T, u64 fixed_capacity>
+void SaveLoad(SaveLoadBuffer& buffer, FixedCapacityArray<T, fixed_capacity>& array, u64 version = 0) {
+	u64 count = array.count;
+	SaveLoad(buffer, count);
+	
+	if (buffer.direction == SaveLoadDirection::Loading) {
+		DebugAssert(count < fixed_capacity, "Loading array that overflows fixed capacity. (%/%).", count, fixed_capacity);
+		
+		array = {};
+		array.count = count;
+		
+		for (auto& value : array) {
+			SaveLoad(buffer, value, version);
+		}
+	} else if (buffer.direction == SaveLoadDirection::Saving) {
+		for (auto& value : array) {
+			SaveLoad(buffer, value, version);
+		}
+	}
+}
+
 template<typename T>
 void SaveLoad(SaveLoadBuffer& buffer, ArrayView<T>& array, u64 version = 0) {
 	u64 count = array.count;

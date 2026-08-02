@@ -12,7 +12,7 @@ struct VersionedTypeInfo;
 HashTable<String, VersionedTypeInfo> ParseSaveLoadVersionHistory(StackAllocator* alloc);
 void WriteSaveLoadVersionHistory(StackAllocator* alloc, HashTable<String, VersionedTypeInfo> version_history);
 void WriteSaveLoadCallbacks(StackAllocator* alloc, HashTable<String, VersionedTypeInfo> version_history);
-u64 AddTypeInfoToSaveLoadHistory(StackAllocator* alloc, HashTable<String, VersionedTypeInfo>& version_history, TypeInfo* type_info);
+u64 AddTypeInfoToSaveLoadHistory(StackAllocator* alloc, u64 source_location, HashTable<String, VersionedTypeInfo>& version_history, TypeInfo* type_info);
 
 void WriteEntitySystemMetadata(StackAllocator* alloc, ArrayView<TypeInfoStruct*> entity_type_infos, ArrayView<TypeInfoStruct*> entity_query_type_infos, HashTable<String, VersionedTypeInfo>& version_history);
 

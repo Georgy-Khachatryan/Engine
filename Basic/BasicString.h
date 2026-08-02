@@ -30,6 +30,8 @@ String StringAllocate(StackAllocator* alloc, u64 count);
 String StringAllocate(HeapAllocator* alloc, u64 count);
 String StringReplaceTabsWithSpaces(StackAllocator* alloc, String source, u32 tab_width);
 String StringJoin(StackAllocator* alloc, ArrayView<String> source_strings, String separator = ""_sl);
+String StringSplitByCharFromLeft(String string, char c, String* right = nullptr);
+String StringSplitByCharFromRight(String string, char c, String* left = nullptr);
 bool StringStartsWith(String string, String prefix);
 bool StringEndsWith(String string, String suffix);
 u64 StringFormatToMemory(String output, String format, ArrayView<StringFormatArgument> arguments);
@@ -72,3 +74,8 @@ inline char CharToLowerCase(char c) { return (c >= 'A' && c <= 'Z') ? c - 'A' + 
 inline char CharIsUpperCase(char c) { return (c >= 'A' && c <= 'Z'); }
 inline char CharIsLowerCase(char c) { return (c >= 'a' && c <= 'z'); }
 inline bool CharIsNumeric(char c)   { return (c >= '0' && c <= '9'); }
+
+inline bool IsLineEnding(char c) { return (c == '\n') || (c == '\r'); }
+inline bool IsWhiteSpace(char c) { return (c == ' ') || (c == '\t') || IsLineEnding(c); }
+inline bool IsAlphabetical(char c) { return ('a' <= c && c <= 'z') || ('A' <= c && c <= 'Z') || (c == '_'); }
+inline bool IsAlphaNumeric(char c) { return IsAlphabetical(c) || CharIsNumeric(c); }

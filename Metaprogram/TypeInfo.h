@@ -46,6 +46,7 @@ enum struct TypeInfoArrayType : u32 {
 	Array              = 0,
 	FixedCapacityArray = 1,
 	FixedCountArray    = 2,
+	HashTable          = 3,
 	
 	Count
 };
@@ -185,6 +186,9 @@ struct TypeInfoOfInternal { static TypeInfo* Get() { return nullptr; } };
 template<typename T>
 inline auto TypeInfoOf() { return TypeInfoOfInternal<const T>::Get(); }
 
+template<>
+inline auto TypeInfoOf<void>() { return &type_info_void; }
+
 template<typename T> struct TypeInfoOfInternal<const T* const> {
 	static TypeInfoPointer* Get() {
 		static TypeInfoPointer type_info = {
@@ -240,6 +244,66 @@ template<typename T, u64 fixed_count> struct TypeInfoOfInternal<const FixedCount
 	}
 };
 
+template<typename KeyT, typename ValueT> struct HashTableElement;
+template<typename KeyT, typename ValueT> struct HashTable;
+
+template<typename KeyT> struct TypeInfoOfInternal<const HashTableElement<KeyT, void>> {
+	static TypeInfoStruct* Get() {
+		using TypeName = HashTableElement<KeyT, void>;
+		
+		static TypeInfoStructField fields[] = {
+			{ "KeyT"_sl, 0x0, &type_info_type, 0, {}, TypeInfoOf<KeyT>(), TypeInfoStructFieldFlags::TemplateParameter },
+			{ "ValueT"_sl, 0x0, &type_info_type, 0, {}, TypeInfoOf<void>(), TypeInfoStructFieldFlags::TemplateParameter },
+			{ "key"_sl, 0x0, TypeInfoOf<KeyT>(), OffsetOf(TypeName, key), {} },
+		};
+		
+		static TypeInfoStruct type_info = {
+			TypeInfoType::Struct,
+			"HashTableElement"_sl,
+			0x0,
+			sizeof(TypeName),
+			{ fields, 3 },
+		};
+		
+		return &type_info;
+	}
+};
+
+template<typename KeyT, typename ValueT> struct TypeInfoOfInternal<const HashTableElement<KeyT, ValueT>> {
+	static TypeInfoStruct* Get() {
+		using TypeName = HashTableElement<KeyT, ValueT>;
+		
+		static TypeInfoStructField fields[] = {
+			{ "KeyT"_sl, 0x0, &type_info_type, 0, {}, TypeInfoOf<KeyT>(), TypeInfoStructFieldFlags::TemplateParameter },
+			{ "ValueT"_sl, 0x0, &type_info_type, 0, {}, TypeInfoOf<ValueT>(), TypeInfoStructFieldFlags::TemplateParameter },
+			{ "key"_sl, 0x0, TypeInfoOf<KeyT>(), OffsetOf(TypeName, key), {} },
+			{ "value"_sl, 0x0, TypeInfoOf<ValueT>(), OffsetOf(TypeName, value), {} },
+		};
+		
+		static TypeInfoStruct type_info = {
+			TypeInfoType::Struct,
+			"HashTableElement"_sl,
+			0x0,
+			sizeof(TypeName),
+			{ fields, 4 },
+		};
+		
+		return &type_info;
+	}
+};
+
+template<typename KeyT, typename ValueT> struct TypeInfoOfInternal<const HashTable<KeyT, ValueT>> {
+	static TypeInfoArray* Get() {
+		static TypeInfoArray type_info = {
+			TypeInfoType::Array,
+			TypeInfoArrayType::HashTable,
+			TypeInfoOf<HashTableElement<KeyT, ValueT>>(),
+		};
+		return &type_info;
+	}
+};
+
+
 template<> struct TypeInfoOfInternal<const s8>  { static TypeInfoInteger* Get() { return &type_info_s8;  } };
 template<> struct TypeInfoOfInternal<const s16> { static TypeInfoInteger* Get() { return &type_info_s16; } };
 template<> struct TypeInfoOfInternal<const s32> { static TypeInfoInteger* Get() { return &type_info_s32; } };
@@ -254,7 +318,6 @@ template<> struct TypeInfoOfInternal<const bool>   { static TypeInfoInteger* Get
 template<> struct TypeInfoOfInternal<const float>  { static TypeInfoFloat*   Get() { return &type_info_float32; } };
 template<> struct TypeInfoOfInternal<const double> { static TypeInfoFloat*   Get() { return &type_info_float64; } };
 template<> struct TypeInfoOfInternal<const String> { static TypeInfo*        Get() { return &type_info_string;  } };
-template<> struct TypeInfoOfInternal<const void>   { static TypeInfo*        Get() { return &type_info_void;    } };
 
 
 namespace Math { struct Vec2f; struct Vec3f; struct Vec4f; }

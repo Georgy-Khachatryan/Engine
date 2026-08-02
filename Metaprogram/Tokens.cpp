@@ -3,11 +3,6 @@
 #include "Basic/BasicMemory.h"
 #include "Basic/BasicFiles.h"
 
-static bool IsLineEnding(char c) { return (c == '\n') || (c == '\r'); }
-static bool IsWhiteSpace(char c) { return (c == ' ') || (c == '\t') || IsLineEnding(c); }
-static bool IsAlphabetical(char c) { return ('a' <= c && c <= 'z') || ('A' <= c && c <= 'Z') || (c == '_'); }
-static bool IsAlphaNumeric(char c) { return IsAlphabetical(c) || CharIsNumeric(c); }
-
 static const char* EatWhiteSpace(const char* string) {
 	while (*string && (IsWhiteSpace(*string) || *string == '\\')) string += 1;
 	return string;
@@ -195,6 +190,45 @@ Token Tokenizer::ExpectKeyword(KeywordType expected_keyword) {
 	
 	ReportError(token, "Unexpected token '%'. Expected a keyword '%'."_sl, token_type_names[(u32)token.type], keyword_type_names[(u32)expected_keyword]);
 	return {};
+}
+
+Token SkipTokensWithNestingTracking(Tokenizer& tokenizer, TokenType opening_token, TokenType closing_token) {
+	auto token_0 = tokenizer.ExpectToken(opening_token);
+	auto token = tokenizer.PeekNextToken();
+	
+	u32 nesting_depth = 1;
+	while (nesting_depth != 0) {
+		token = tokenizer.FindNextToken();
+		
+		if (token.type == opening_token) {
+			nesting_depth += 1;
+		} else if (token.type == closing_token) {
+			nesting_depth -= 1;
+		} else if (token.type == TokenType::None) {
+			nesting_depth = 0;
+		}
+	}
+	
+	if (token.type != closing_token) {
+		tokenizer.ReportError(token_0, "Unexpected end of file in a list."_sl);
+	}
+	
+	return token;
+}
+
+Token SkipTokens(Tokenizer& tokenizer, TokenType opening_token, TokenType closing_token) {
+	auto token_0 = tokenizer.ExpectToken(opening_token);
+	auto token = token_0;
+	
+	while (token.type != TokenType::None && token.type != closing_token) {
+		token = tokenizer.FindNextToken();
+	}
+	
+	if (token.type != closing_token) {
+		tokenizer.ReportError(token_0, "Unexpected end of file in a list."_sl);
+	}
+	
+	return token;
 }
 
 

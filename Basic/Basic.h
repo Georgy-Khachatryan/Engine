@@ -33,6 +33,7 @@
 
 #define compile_const constexpr static const
 #define always_inline __forceinline
+#define OffsetOf(type_name, field_name) (__builtin_offsetof(type_name, field_name))
 
 using u8  = unsigned char;
 using s8  = signed char;

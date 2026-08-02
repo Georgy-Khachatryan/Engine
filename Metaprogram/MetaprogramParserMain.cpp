@@ -14,44 +14,6 @@ static String NamespaceStackToString(Tokenizer& tokenizer) {
 
 static AstNodeDeclaration* ParseDeclaration(Tokenizer& tokenizer);
 
-static Token SkipTokensWithNestingTracking(Tokenizer& tokenizer, TokenType opening_token, TokenType closing_token) {
-	tokenizer.ExpectToken(opening_token);
-	auto token = tokenizer.PeekNextToken();
-	
-	s32 nesting_depth = 1;
-	while (nesting_depth != 0) {
-		token = tokenizer.FindNextToken();
-		
-		if (token.type == opening_token) {
-			nesting_depth += 1;
-		} else if (token.type == closing_token) {
-			nesting_depth -= 1;
-		} else if (token.type == TokenType::None) {
-			nesting_depth = 0;
-		}
-	}
-	
-	if (token.type != closing_token) {
-		tokenizer.ReportError(token, "Unexpected end of file in a list."_sl);
-	}
-	
-	return token;
-}
-
-static Token SkipTokens(Tokenizer& tokenizer, TokenType opening_token, TokenType closing_token) {
-	auto token = tokenizer.ExpectToken(opening_token);
-	
-	while (token.type != TokenType::None && token.type != closing_token) {
-		token = tokenizer.FindNextToken();
-	}
-	
-	if (token.type != closing_token) {
-		tokenizer.ReportError(token, "Unexpected end of file in a list."_sl);
-	}
-	
-	return token;
-}
-
 static Token ParseIdentifierWithNamespace(Tokenizer& tokenizer) {
 	auto token_0 = tokenizer.ExpectToken(TokenType::Identifier);
 	
@@ -75,7 +37,7 @@ static AstNoteInfo ParseNote(Tokenizer& tokenizer) {
 	auto token_1 = tokenizer.PeekNextToken();
 	
 	if (token_1.type == TokenType::OpeningBrace) {
-		token_1 = SkipTokensWithNestingTracking(tokenizer, TokenType::OpeningBrace, TokenType::ClosingBrace);
+		SkipTokensWithNestingTracking(tokenizer, TokenType::OpeningBrace, TokenType::ClosingBrace);
 		token_1 = tokenizer.PeekNextToken();
 	}
 	
@@ -579,7 +541,7 @@ static void GenerateCodeForStruct(StringBuilder& builder, AstNodeStruct* ast_nod
 	
 	builder.Indent();
 	
-	// Rename the type so it's possible to use offsetof macro with types that have comma in the name.
+	// Rename the type so it's possible to use OffsetOf macro with types that have comma in the name.
 	builder.Append("using TypeName = %;\n\n"_sl, name);
 	
 	// Array of notes.
@@ -602,7 +564,7 @@ static void GenerateCodeForStruct(StringBuilder& builder, AstNodeStruct* ast_nod
 			auto declaration_notes = declaration->notes ? StringFormat(builder.alloc, "{ notes + %, % }"_sl, declaration->notes->note_offset, declaration->notes->notes.count) : "{}"_sl;
 			
 			if (declaration->declaration_type == AstNodeDeclarationType::Variable) {
-				builder.Append("{ \"%0\"_sl, 0x%1x, TypeInfoOf<decltype(TypeName::%0)>(), offsetof(TypeName, %0), %2 },\n"_sl, declaration->name, declaration->source_location, declaration_notes);
+				builder.Append("{ \"%0\"_sl, 0x%1x, TypeInfoOf<decltype(TypeName::%0)>(), OffsetOf(TypeName, %0), %2 },\n"_sl, declaration->name, declaration->source_location, declaration_notes);
 			} else if (declaration->declaration_type == AstNodeDeclarationType::Constant) {
 				builder.Append("{ \"%0\"_sl, 0x%1x, TypeInfoOf<decltype(TypeName::%0)>(), 0, %2, &TypeName::%0 },\n"_sl, declaration->name, declaration->source_location, declaration_notes);
 			} else if (declaration->declaration_type == AstNodeDeclarationType::Typename) {
@@ -623,7 +585,7 @@ static void GenerateCodeForStruct(StringBuilder& builder, AstNodeStruct* ast_nod
 		builder.Indent();
 		
 		builder.Append("TypeInfoType::Struct,\n"_sl);
-		builder.Append("\"%0\"_sl,\n"_sl, name);
+		builder.Append("\"%0\"_sl,\n"_sl, code_block->namespace_path);
 		builder.Append("0x%x,\n"_sl, ast_node_struct->source_location);
 		builder.Append("sizeof(TypeName),\n"_sl);
 		
@@ -835,7 +797,6 @@ s32 main(s32 argument_count, const char* arguments[]) {
 			builder.Append("#include \"%\"\n"_sl, file.filepath);
 		}
 		builder.Append("#include \"Metaprogram/TypeInfo.h\"\n"_sl);
-		builder.Append("#include <stddef.h>\n\n"_sl); // Included to get offsetof().
 		
 		builder.Append("// Forward Declarations:\n"_sl);
 		for (auto& file : parsed_files) {

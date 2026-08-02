@@ -12,9 +12,12 @@ compile_const auto asset_type_suffix  = "AssetType"_sl;
 
 struct ComponentTypeInfoKey {
 	TypeInfoStruct* type_info = nullptr;
-	ComponentType component_type  = ComponentType::CPU;
+	ComponentType component_type = ComponentType::CPU;
+	
 	SaveLoadFlags save_load_flags = SaveLoadFlags::None;
-	u32 name_hash = 0;
+	
+	String name;
+	u64 name_hash = 0;
 	
 	bool operator== (const ComponentTypeInfoKey& other) const { return type_info == other.type_info && component_type == other.component_type; }
 };
@@ -108,9 +111,10 @@ void WriteEntitySystemMetadata(StackAllocator* alloc, ArrayView<TypeInfoStruct*>
 			
 			ComponentTypeInfoKey component_type_info_key;
 			component_type_info_key.type_info       = component_type_info;
+			component_type_info_key.name            = PrintTypeName(alloc, component_type_info);
+			component_type_info_key.name_hash       = ComputeHash(component_type_info_key.name);
 			component_type_info_key.component_type  = *component_type_note;
 			component_type_info_key.save_load_flags = save_load_options.flags;
-			component_type_info_key.name_hash       = (u32)ComputeHash(component_type_info->name);
 			
 			auto [element, is_added] = HashTableAddOrFind(component_types, alloc, component_type_info_key, 0u);
 			if (is_added) {
@@ -236,8 +240,8 @@ void WriteEntitySystemMetadata(StackAllocator* alloc, ArrayView<TypeInfoStruct*>
 	builder.Append("\n"_sl);
 	
 	for (u32 component_type_index = 0; component_type_index < component_type_infos.count; component_type_index += 1) {
-		auto* type_info = component_type_infos[component_type_index].type_info;
-		builder.Append("ComponentTypeID ECS::GetComponentTypeID<%>::id = { % };\n"_sl, type_info->name, component_type_index);
+		auto& component = component_type_infos[component_type_index];
+		builder.Append("ComponentTypeID ECS::GetComponentTypeID<%>::id = { % };\n"_sl, component.name, component_type_index);
 	}
 	builder.Append("\n"_sl);
 	
@@ -311,18 +315,18 @@ void WriteEntitySystemMetadata(StackAllocator* alloc, ArrayView<TypeInfoStruct*>
 	for (auto& component : component_type_infos) {
 		u64 version = 0;
 		if (component.component_type == ComponentType::CPU && HasAnyFlags(component.save_load_flags, SaveLoadFlags::SaveLoadOptionsMask) && (HasAnyFlags(component.save_load_flags, SaveLoadFlags::CustomSaveLoadCallback) == false)) {
-			version = AddTypeInfoToSaveLoadHistory(alloc, version_history, component.type_info);
+			version = AddTypeInfoToSaveLoadHistory(alloc, component.type_info->source_location, version_history, component.type_info);
 		}
 		
 		auto component_type_value = PrintTypeValue(alloc, TypeInfoOf<ComponentType>(), &component.component_type);
-		builder.Append("{ %, %, 0x%x, %, (SaveLoadFlags)0x%x },\n"_sl, component.type_info->size, version, ComputeHash(component.type_info->name), component_type_value, (u32)component.save_load_flags);
+		builder.Append("{ %, %, 0x%x, %, (SaveLoadFlags)0x%x },\n"_sl, component.type_info->size, version, component.name_hash, component_type_value, (u32)component.save_load_flags);
 	}
 	builder.Unindent();
 	builder.Append("};\n\n"_sl);
 	
 	for (auto& component : cpu_component_type_infos) {
 		if (HasAnyFlags(component.save_load_flags, SaveLoadFlags::SaveLoadOptionsMask)) {
-			builder.Append("extern void SaveLoad(SaveLoadBuffer& buffer, %& component, u64 version);\n"_sl, component.type_info->name);
+			builder.Append("extern void SaveLoad(SaveLoadBuffer& buffer, %& component, u64 version);\n"_sl, component.name);
 		}
 	}
 	builder.Append("\n"_sl);
@@ -331,7 +335,7 @@ void WriteEntitySystemMetadata(StackAllocator* alloc, ArrayView<TypeInfoStruct*>
 	builder.Indent();
 	for (auto& component : cpu_component_type_infos) {
 		if (HasAnyFlags(component.save_load_flags, SaveLoadFlags::SaveLoadOptionsMask)) {
-			builder.Append("[](SaveLoadBuffer& buffer, void* data, u64 version) { SaveLoad(buffer, *(%*)data, version); },\n"_sl, component.type_info->name);
+			builder.Append("[](SaveLoadBuffer& buffer, void* data, u64 version) { SaveLoad(buffer, *(%*)data, version); },\n"_sl, component.name);
 		} else {
 			builder.Append("nullptr,\n"_sl);
 		}
@@ -342,7 +346,7 @@ void WriteEntitySystemMetadata(StackAllocator* alloc, ArrayView<TypeInfoStruct*>
 	builder.Append("DefaultInitializeCallback component_default_initialize_callbacks_internal[] = {\n"_sl);
 	builder.Indent();
 	for (auto& component : cpu_component_type_infos) {
-		builder.Append("[](void* data, u64 begin, u64 end) { for (u64 i = begin; i < end; i += 1) ((%*)data)[i] = {}; },\n"_sl, component.type_info->name);
+		builder.Append("[](void* data, u64 begin, u64 end) { for (u64 i = begin; i < end; i += 1) ((%*)data)[i] = {}; },\n"_sl, component.name);
 	}
 	builder.Unindent();
 	builder.Append("};\n\n"_sl);

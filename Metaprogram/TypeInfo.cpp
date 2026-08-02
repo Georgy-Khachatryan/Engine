@@ -86,5 +86,6 @@ String type_info_array_type_names[] = {
 	"Array"_sl,
 	"FixedCapacityArray"_sl,
 	"FixedCountArray"_sl,
+	"HashTable"_sl,
 };
 static_assert(ArraySize(type_info_array_type_names) == (u32)TypeInfoArrayType::Count);
