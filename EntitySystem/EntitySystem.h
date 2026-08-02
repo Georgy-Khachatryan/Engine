@@ -15,6 +15,12 @@ struct ComponentTypeID   { u32 index = 0; };
 struct EntityID          { u32 index = 0; };
 struct TypedEntityID     { EntityID entity_id; EntityTypeID entity_type_id; };
 
+NOTES()
+template<typename T>
+struct EntityGUID {
+	u64 guid = 0;
+};
+
 compile_const u32 entity_system_base_allocation_count = 1024;
 
 NOTES()

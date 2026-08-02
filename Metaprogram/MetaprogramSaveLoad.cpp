@@ -407,12 +407,24 @@ HashTable<String, VersionedTypeInfo> ParseSaveLoadVersionHistory(StackAllocator*
 }
 
 void WriteSaveLoadVersionHistory(StackAllocator* alloc, HashTable<String, VersionedTypeInfo> version_history) {
+	Array<HashTableElement<String, VersionedTypeInfo>> sorted_version_history;
+	ArrayReserve(sorted_version_history, alloc, version_history.count);
+	
+	for (auto& element : version_history) {
+		ArrayAppend(sorted_version_history, element);
+	}
+	
+	HeapSort<HashTableElement<String, VersionedTypeInfo>>(sorted_version_history, [](auto& lh, auto& rh)-> bool {
+		return StringCompare(lh.key, rh.key) < 0;
+	});
+	
+	
 	StringBuilder builder;
 	builder.alloc = alloc;
 	
 	builder.Append("// Generated SaveLoad Version History:\n\n"_sl);
 	
-	for (auto& [name, type] : version_history) {
+	for (auto& [name, type] : sorted_version_history) {
 		bool is_enum = type.info_type == TypeInfoType::Enum;
 		
 		builder.Append(type.template_parameter_count ? "% % % {\n"_sl : "% % {\n"_sl, is_enum ? "enum"_sl : "struct"_sl, name, type.template_parameter_count);

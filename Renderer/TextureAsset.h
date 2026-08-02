@@ -68,10 +68,8 @@ struct TextureRuntimeCpuStreamingRequest {
 	}
 };
 
-NOTES()
-struct TextureAssetGUID {
-	u64 guid = 0;
-};
+using TextureAssetGUID = EntityGUID<struct TextureAssetType>;
+
 
 NOTES(Meta::EntityType{}, Meta::ComponentQuery{})
 struct TextureAssetType {

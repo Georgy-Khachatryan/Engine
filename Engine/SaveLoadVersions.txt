@@ -1,5 +1,121 @@
 // Generated SaveLoad Version History:
 
+struct AabbComponent {
+	/*Version*/ 0 {
+		min float3 0;
+		max float3 0;
+	}
+}
+
+enum AntiAliasingMethod {
+	/*Version*/ 0 u32 {
+		None 0;
+		DLSS 1;
+		XeSS 2;
+		Count 3;
+	}
+}
+
+struct AntiAliasingSettings {
+	/*Version*/ 0 {
+		method AntiAliasingMethod 0;
+	}
+}
+
+struct CameraComponent {
+	/*Version*/ 4 {
+		vertical_fov_degrees float32 0;
+		transform_type CameraTransformType 2;
+	}
+	/*Version*/ 5 {
+		vertical_fov_degrees float32 0;
+		near_depth float32 0;
+		transform_type CameraTransformType 2;
+	}
+}
+
+enum CameraTransformType {
+	/*Version*/ 2 u32 {
+		Perspective 0;
+		Orthographic 1;
+	}
+}
+
+struct EditorIconCacheSettingsComponent {
+	/*Version*/ 0 {
+		material_icon_mesh EntityGUID<MeshAssetType> 0;
+	}
+}
+
+struct EntityGUID<CameraEntityType> 1 {
+	/*Version*/ 0 {
+		guid u64 0;
+	}
+}
+
+struct EntityGUID<LightEntityType> 1 {
+	/*Version*/ 0 {
+		guid u64 0;
+	}
+}
+
+struct EntityGUID<MaterialAssetType> 1 {
+	/*Version*/ 0 {
+		guid u64 0;
+	}
+}
+
+struct EntityGUID<MeshAssetType> 1 {
+	/*Version*/ 0 {
+		guid u64 0;
+	}
+}
+
+struct EntityGUID<TextureAssetType> 1 {
+	/*Version*/ 0 {
+		guid u64 0;
+	}
+}
+
+struct EntityGUID<WorldEntityType> 1 {
+	/*Version*/ 0 {
+		guid u64 0;
+	}
+}
+
+enum ExposureMethod {
+	/*Version*/ 0 u32 {
+		Manual 0;
+		Automatic 1;
+		Count 2;
+	}
+}
+
+struct ExposureSettings {
+	/*Version*/ 0 {
+		exposure_offset float32 0;
+	}
+	/*Version*/ 4 {
+		manual_exposure_offset_ev float32 0;
+		automatic_exposure_offset_ev float32 0;
+		histogram_min_ev float32 0;
+		histogram_max_ev float32 0;
+		histogram_min_cutoff float32 0;
+		histogram_max_cutoff float32 0;
+		exposure_increase_half_time float32 0;
+		exposure_decrease_half_time float32 0;
+		exposure_min_ev float32 0;
+		exposure_max_ev float32 0;
+		method ExposureMethod 0;
+	}
+}
+
+struct GuidComponent {
+	/*Version*/ 0 {
+		guid u64 0;
+	}
+}
+
 struct LightComponent {
 	/*Version*/ 0 {
 		color float3 0;
@@ -27,108 +143,6 @@ struct LightComponent {
 	}
 }
 
-struct WorldSourceData {
-	/*Version*/ 0 {
-		world_entity_guid u64 0;
-	}
-}
-
-struct LightEntityGUID {
-	/*Version*/ 0 {
-		guid u64 0;
-	}
-}
-
-struct TextureRuntimeDataLayout {
-	/*Version*/ 0 {
-		file_guid u64 0;
-		version u64 0;
-	}
-	/*Version*/ 1 {
-		file_guid u64 0;
-		version u64 0;
-		size TextureSize 0;
-	}
-}
-
-struct MaterialTextureData {
-	/*Version*/ 0 {
-		albedo TextureAssetGUID 0;
-	}
-	/*Version*/ 1 {
-		albedo TextureAssetGUID 0;
-		normal TextureAssetGUID 0;
-	}
-	/*Version*/ 2 {
-		albedo TextureAssetGUID 0;
-		normal TextureAssetGUID 0;
-		roughness TextureAssetGUID 0;
-		metalness TextureAssetGUID 0;
-	}
-	/*Version*/ 3 {
-		albedo TextureAssetGUID 0;
-		normal TextureAssetGUID 0;
-		roughness TextureAssetGUID 0;
-		metalness TextureAssetGUID 0;
-		default_albedo u32 0;
-		default_roughness u16 0;
-		default_metalness u16 0;
-	}
-}
-
-struct ToneMappingSettings {
-	/*Version*/ 0 {
-		physical_target_luminance_hdr float32 0;
-		physical_target_luminance_sdr float32 0;
-		alpha float32 0;
-		mid_point float32 0;
-		linear_section float32 0;
-		toe_power float32 0;
-		blend_ratio float32 0;
-		fade_start float32 0;
-		fade_end float32 0;
-		method ToneMappingMethod 0;
-	}
-}
-
-struct EditorIconCacheSettingsComponent {
-	/*Version*/ 0 {
-		material_icon_mesh MeshAssetGUID 0;
-	}
-}
-
-struct TextureSourceData {
-	/*Version*/ 0 {
-		filepath String 0;
-	}
-	/*Version*/ 2 {
-		filepath String 0;
-		target_encoding TextureAssetTargetEncoding 1;
-	}
-	/*Version*/ 3 {
-		filepath String 0;
-		target_encoding TextureAssetTargetEncoding 2;
-	}
-}
-
-struct CameraComponent {
-	/*Version*/ 4 {
-		vertical_fov_degrees float32 0;
-		transform_type CameraTransformType 2;
-	}
-	/*Version*/ 5 {
-		vertical_fov_degrees float32 0;
-		near_depth float32 0;
-		transform_type CameraTransformType 2;
-	}
-}
-
-struct CameraEntityGUID {
-	/*Version*/ 0 {
-		guid u64 0;
-	}
-}
-
 enum LightType {
 	/*Version*/ 0 u32 {
 		Spot 0;
@@ -137,139 +151,49 @@ enum LightType {
 	}
 }
 
-struct GuidComponent {
+struct LightingSettings {
 	/*Version*/ 0 {
-		guid u64 0;
+		wrs_min_light_weight float32 0;
+	}
+	/*Version*/ 1 {
+		wrs_min_light_weight float32 0;
+		visibility_hash_table_target_cell_size_pixels float32 0;
+	}
+	/*Version*/ 2 {
+		wrs_min_light_weight float32 0;
+		visibility_hash_table_target_cell_size_pixels float32 0;
+		radiance_hash_table_target_cell_size_pixels float32 0;
+	}
+	/*Version*/ 3 {
+		wrs_min_light_weight float32 0;
+		visibility_hash_table_target_cell_size_pixels float32 0;
+		radiance_hash_table_target_cell_size_pixels float32 0;
+		cdf_hash_table_target_cell_size_pixels float32 0;
 	}
 }
 
-struct float3 {
+struct MaterialTextureData {
 	/*Version*/ 0 {
-		x float32 0;
-		y float32 0;
-		z float32 0;
+		albedo EntityGUID<TextureAssetType> 0;
 	}
-}
-
-struct quat {
-	/*Version*/ 0 {
-		x float32 0;
-		y float32 0;
-		z float32 0;
-		w float32 0;
+	/*Version*/ 1 {
+		albedo EntityGUID<TextureAssetType> 0;
+		normal EntityGUID<TextureAssetType> 0;
 	}
-}
-
-struct MeshAssetGUID {
-	/*Version*/ 0 {
-		guid u64 0;
+	/*Version*/ 2 {
+		albedo EntityGUID<TextureAssetType> 0;
+		normal EntityGUID<TextureAssetType> 0;
+		roughness EntityGUID<TextureAssetType> 0;
+		metalness EntityGUID<TextureAssetType> 0;
 	}
-}
-
-struct ScaleComponent {
-	/*Version*/ 0 {
-		scale float32 0;
-	}
-}
-
-enum ToneMappingMethod {
-	/*Version*/ 0 u32 {
-		None 0;
-		GT7_HDR 1;
-		GT7_SDR 2;
-		Reinhard_SDR 3;
-		Count 4;
-	}
-}
-
-struct MeshSourceData {
-	/*Version*/ 0 {
-		filepath String 0;
-	}
-}
-
-enum AntiAliasingMethod {
-	/*Version*/ 0 u32 {
-		None 0;
-		DLSS 1;
-		XeSS 2;
-		Count 3;
-	}
-}
-
-struct TextureSize {
-	/*Version*/ 0 {
-		packed u64 0;
-	}
-}
-
-struct AntiAliasingSettings {
-	/*Version*/ 0 {
-		method AntiAliasingMethod 0;
-	}
-}
-
-enum ExposureMethod {
-	/*Version*/ 0 u32 {
-		Manual 0;
-		Automatic 1;
-		Count 2;
-	}
-}
-
-struct AabbComponent {
-	/*Version*/ 0 {
-		min float3 0;
-		max float3 0;
-	}
-}
-
-enum TextureAssetTargetEncoding {
-	/*Version*/ 1 u32 {
-		BC1_UNORM_SRGB 0;
-		BC1_UNORM 1;
-		BC4_UNORM 2;
-		BC5_UNORM 3;
-		Count 4;
-	}
-	/*Version*/ 2 u32 {
-		BC1_UNORM_SRGB 0;
-		BC1_UNORM 1;
-		BC4_UNORM 2;
-		BC5_UNORM 3;
-		BC5_NORMAL_MAP 4;
-		Count 5;
-	}
-}
-
-struct ExposureSettings {
-	/*Version*/ 0 {
-		exposure_offset float32 0;
-	}
-	/*Version*/ 4 {
-		manual_exposure_offset_ev float32 0;
-		automatic_exposure_offset_ev float32 0;
-		histogram_min_ev float32 0;
-		histogram_max_ev float32 0;
-		histogram_min_cutoff float32 0;
-		histogram_max_cutoff float32 0;
-		exposure_increase_half_time float32 0;
-		exposure_decrease_half_time float32 0;
-		exposure_min_ev float32 0;
-		exposure_max_ev float32 0;
-		method ExposureMethod 0;
-	}
-}
-
-struct PositionComponent {
-	/*Version*/ 0 {
-		position float3 0;
-	}
-}
-
-struct TextureAssetGUID {
-	/*Version*/ 0 {
-		guid u64 0;
+	/*Version*/ 3 {
+		albedo EntityGUID<TextureAssetType> 0;
+		normal EntityGUID<TextureAssetType> 0;
+		roughness EntityGUID<TextureAssetType> 0;
+		metalness EntityGUID<TextureAssetType> 0;
+		default_albedo u32 0;
+		default_roughness u16 0;
+		default_metalness u16 0;
 	}
 }
 
@@ -311,16 +235,21 @@ struct MeshRuntimeDataLayout {
 	}
 }
 
-enum CameraTransformType {
-	/*Version*/ 2 u32 {
-		Perspective 0;
-		Orthographic 1;
+struct MeshSourceData {
+	/*Version*/ 0 {
+		filepath String 0;
 	}
 }
 
-struct MaterialAssetGUID {
+struct NameComponent {
 	/*Version*/ 0 {
-		guid u64 0;
+		name String 0;
+	}
+}
+
+struct PositionComponent {
+	/*Version*/ 0 {
+		position float3 0;
 	}
 }
 
@@ -330,30 +259,107 @@ struct RotationComponent {
 	}
 }
 
-struct LightingSettings {
+struct ScaleComponent {
 	/*Version*/ 0 {
-		wrs_min_light_weight float32 0;
-	}
-	/*Version*/ 1 {
-		wrs_min_light_weight float32 0;
-		visibility_hash_table_target_cell_size_pixels float32 0;
-	}
-	/*Version*/ 2 {
-		wrs_min_light_weight float32 0;
-		visibility_hash_table_target_cell_size_pixels float32 0;
-		radiance_hash_table_target_cell_size_pixels float32 0;
-	}
-	/*Version*/ 3 {
-		wrs_min_light_weight float32 0;
-		visibility_hash_table_target_cell_size_pixels float32 0;
-		radiance_hash_table_target_cell_size_pixels float32 0;
-		cdf_hash_table_target_cell_size_pixels float32 0;
+		scale float32 0;
 	}
 }
 
-struct NameComponent {
+enum TextureAssetTargetEncoding {
+	/*Version*/ 1 u32 {
+		BC1_UNORM_SRGB 0;
+		BC1_UNORM 1;
+		BC4_UNORM 2;
+		BC5_UNORM 3;
+		Count 4;
+	}
+	/*Version*/ 2 u32 {
+		BC1_UNORM_SRGB 0;
+		BC1_UNORM 1;
+		BC4_UNORM 2;
+		BC5_UNORM 3;
+		BC5_NORMAL_MAP 4;
+		Count 5;
+	}
+}
+
+struct TextureRuntimeDataLayout {
 	/*Version*/ 0 {
-		name String 0;
+		file_guid u64 0;
+		version u64 0;
+	}
+	/*Version*/ 1 {
+		file_guid u64 0;
+		version u64 0;
+		size TextureSize 0;
+	}
+}
+
+struct TextureSize {
+	/*Version*/ 0 {
+		packed u64 0;
+	}
+}
+
+struct TextureSourceData {
+	/*Version*/ 0 {
+		filepath String 0;
+	}
+	/*Version*/ 2 {
+		filepath String 0;
+		target_encoding TextureAssetTargetEncoding 1;
+	}
+	/*Version*/ 3 {
+		filepath String 0;
+		target_encoding TextureAssetTargetEncoding 2;
+	}
+}
+
+enum ToneMappingMethod {
+	/*Version*/ 0 u32 {
+		None 0;
+		GT7_HDR 1;
+		GT7_SDR 2;
+		Reinhard_SDR 3;
+		Count 4;
+	}
+}
+
+struct ToneMappingSettings {
+	/*Version*/ 0 {
+		physical_target_luminance_hdr float32 0;
+		physical_target_luminance_sdr float32 0;
+		alpha float32 0;
+		mid_point float32 0;
+		linear_section float32 0;
+		toe_power float32 0;
+		blend_ratio float32 0;
+		fade_start float32 0;
+		fade_end float32 0;
+		method ToneMappingMethod 0;
+	}
+}
+
+struct WorldSourceData {
+	/*Version*/ 0 {
+		world_entity EntityGUID<WorldEntityType> 0;
+	}
+}
+
+struct float3 {
+	/*Version*/ 0 {
+		x float32 0;
+		y float32 0;
+		z float32 0;
+	}
+}
+
+struct quat {
+	/*Version*/ 0 {
+		x float32 0;
+		y float32 0;
+		z float32 0;
+		w float32 0;
 	}
 }
 

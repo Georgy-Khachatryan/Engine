@@ -76,15 +76,15 @@ void EditorResourceStatisticsWindow(StackAllocator* alloc, VirtualResourceTable*
 	
 	if (auto* sort_specs = ImGui::TableGetSortSpecs()) {
 		HeapSort<GraphicsResourceStatisics>(resources, [&](const GraphicsResourceStatisics& lh, const GraphicsResourceStatisics& rh)-> bool {
-			s32 delta = 0;
+			s64 delta = 0;
 			for (s32 i = 0; i < sort_specs->SpecsCount && delta == 0; i += 1) {
 				auto& spec = sort_specs->Specs[i];
 				
 				switch ((ResourceStatisticsColumnID)spec.ColumnUserID) {
-				case ResourceStatisticsColumnID::Name: delta = strcmp(lh.name.data, rh.name.data); break;
-				case ResourceStatisticsColumnID::Type: delta = (s32)lh.type - (s32)rh.type;        break;
-				case ResourceStatisticsColumnID::Size: delta = (s32)lh.size - (s32)rh.size;        break;
-				default: DebugAssertAlways("Unexpected ColumnUserID '%'.", spec.ColumnUserID);     break;
+				case ResourceStatisticsColumnID::Name: delta = StringCompare(lh.name, rh.name); break;
+				case ResourceStatisticsColumnID::Type: delta = (s64)lh.type - (s64)rh.type;     break;
+				case ResourceStatisticsColumnID::Size: delta = (s64)lh.size - (s64)rh.size;     break;
+				default: DebugAssertAlways("Unexpected ColumnUserID '%'.", spec.ColumnUserID);  break;
 				}
 				
 				delta *= (spec.SortDirection == ImGuiSortDirection_Ascending ? +1 : -1);

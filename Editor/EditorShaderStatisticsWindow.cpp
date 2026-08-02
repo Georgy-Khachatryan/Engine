@@ -40,13 +40,13 @@ void EditorShaderStatisticsWindow(StackAllocator* alloc, GraphicsContext* graphi
 	
 	if (auto* sort_specs = ImGui::TableGetSortSpecs()) {
 		HeapSort(statistics.pipeline_statistics, [&](const PipelineStateStatistics& lh, const PipelineStateStatistics& rh)-> bool {
-			s32 delta = 0;
+			s64 delta = 0;
 			for (s32 i = 0; i < sort_specs->SpecsCount && delta == 0; i += 1) {
 				auto& spec = sort_specs->Specs[i];
 				
 				switch ((ShaderStatisticsColumnID)spec.ColumnUserID) {
-				case ShaderStatisticsColumnID::Name:   delta = strcmp(lh.name.data, rh.name.data);  break;
-				case ShaderStatisticsColumnID::Status: delta = (s32)lh.is_dirty - (s32)rh.is_dirty; break;
+				case ShaderStatisticsColumnID::Name:   delta = StringCompare(lh.name, rh.name);     break;
+				case ShaderStatisticsColumnID::Status: delta = (s64)lh.is_dirty - (s64)rh.is_dirty; break;
 				default: DebugAssertAlways("Unexpected ColumnUserID '%'.", spec.ColumnUserID);      break;
 				}
 				

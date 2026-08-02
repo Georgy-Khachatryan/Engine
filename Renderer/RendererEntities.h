@@ -297,10 +297,8 @@ struct CameraComponent {
 	CameraTransformType transform_type = CameraTransformType::Perspective;
 };
 
-NOTES()
-struct CameraEntityGUID {
-	u64 guid = 0;
-};
+using CameraEntityGUID = EntityGUID<struct CameraEntityType>;
+
 
 NOTES(Meta::HlslFile{ "LightData.hlsl"_sl })
 enum struct LightType : u32 {
@@ -345,10 +343,7 @@ struct GpuLightEntityData {
 	float  cos_attenuation_angle = 0.f;
 };
 
-NOTES()
-struct LightEntityGUID {
-	u64 guid = 0;
-};
+using LightEntityGUID = EntityGUID<struct LightEntityType>;
 
 
 compile_const String debug_geometry_data_filename = "DebugGeometryData.hlsl"_sl;

@@ -20,8 +20,8 @@ void UpdateEditorAssetComponents(StackAllocator* alloc, AssetEntitySystem& asset
 		for (u64 i : BitArrayIt(entity_array->created_mask)) {
 			auto& source_data = streams.source_data[i];
 			
-			if (source_data.world_entity_guid == 0) {
-				source_data.world_entity_guid = GenerateRandomNumber64(asset_system.guid_random_seed);
+			if (source_data.world_entity.guid == 0) {
+				source_data.world_entity.guid = GenerateRandomNumber64(asset_system.guid_random_seed);
 			}
 		}
 	}

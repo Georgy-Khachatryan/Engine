@@ -25,6 +25,11 @@ String StringFromCString(const char* data) {
 	return data ? String{ (char*)data, strlen(data) } : String{};
 }
 
+s64 StringCompare(String lh, String rh) {
+	s64 result = memcmp(lh.data, rh.data, Math::Min(lh.count, rh.count));
+	return result == 0 ? (s64)lh.count - (s64)rh.count : result;
+}
+
 String StringCopy(StackAllocator* alloc, String source) {
 	if (source.count == 0) return {};
 	

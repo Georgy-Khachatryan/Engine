@@ -13,7 +13,7 @@ static void CreateDefaultAssetSystem(AssetEntitySystem& asset_system) {
 	
 	auto world_asset = CreateEntity<WorldAssetType>(asset_system);
 	world_asset.name->name = StringCopy(&asset_system.heap, "DefaultWorld"_sl);
-	world_asset.source_data->world_entity_guid = GenerateRandomNumber64(asset_system.guid_random_seed);
+	world_asset.source_data->world_entity.guid = GenerateRandomNumber64(asset_system.guid_random_seed);
 }
 
 static void CreateDefaultWorldSystem(WorldEntitySystem& world_system, u64 world_entity_guid) {
@@ -44,7 +44,7 @@ static u64 LoadOrCreateDefaultEntitySystems(StackAllocator* alloc, WorldEntitySy
 	}
 	
 	auto world_asset = QueryFirstEntityByType<WorldAssetType>(asset_system);
-	u64 world_entity_guid = world_asset.source_data->world_entity_guid;
+	u64 world_entity_guid = world_asset.source_data->world_entity.guid;
 	
 	auto entities_save_load_path = StringFormat(alloc, "./Assets/%x..csb"_sl, world_entity_guid);
 	if (SaveLoadEntitySystemToFile(alloc, world_system, entities_save_load_path, SaveLoadDirection::Loading) == false) {
@@ -166,7 +166,7 @@ static void LevelEditorSaveLoadShortcuts(StackAllocator* alloc, UndoRedoSystem& 
 			
 			auto selected_world_asset = QueryEntityByGUID<WorldAssetType>(asset_system, selected_asset_guid);
 			if (selected_world_asset.source_data.data) {
-				world_entity_guid_to_load = selected_world_asset.source_data->world_entity_guid;
+				world_entity_guid_to_load = selected_world_asset.source_data->world_entity.guid;
 			}
 			
 			level_editor_io.world_asset_guid_to_load = 0;

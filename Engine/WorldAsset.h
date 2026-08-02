@@ -3,9 +3,11 @@
 #include "EntitySystem/EntitySystem.h"
 #include "EntitySystem/Components.h"
 
+using WorldEntityGUID = EntityGUID<struct WorldEntityType>;
+
 NOTES(Meta::SaveLoadOptions{ SaveLoadFlags::SaveLoadToDisk })
 struct WorldSourceData {
-	u64 world_entity_guid = 0;
+	WorldEntityGUID world_entity;
 };
 
 NOTES(Meta::EntityType{ 32 }, Meta::ComponentQuery{})

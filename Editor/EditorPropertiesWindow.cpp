@@ -358,7 +358,7 @@ static bool AssetComponentEntityView(StackAllocator* alloc, AssetEntitySystem& a
 	
 	
 	if (entity.world_source_data) {
-		auto source_data_filename = StringFormat(alloc, "./Assets/%x..csb"_sl, entity.world_source_data->world_entity_guid);
+		auto source_data_filename = StringFormat(alloc, "./Assets/%x..csb"_sl, entity.world_source_data->world_entity.guid);
 		ImGui::TableInputText("World Source Data", source_data_filename, nullptr);
 	}
 	

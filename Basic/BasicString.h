@@ -24,6 +24,7 @@ inline constexpr StringUtf8 operator""_sl(const char* data, u64 count) { return 
 StringUtf8  StringUtf16ToUtf8(StackAllocator* alloc, StringUtf16 string);
 StringUtf16 StringUtf8ToUtf16(StackAllocator* alloc, StringUtf8  string);
 String StringFromCString(const char* data);
+s64 StringCompare(String lh, String rh);
 String StringCopy(StackAllocator* alloc, String source);
 String StringCopy(HeapAllocator* alloc, String source);
 String StringAllocate(StackAllocator* alloc, u64 count);

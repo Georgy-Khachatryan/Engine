@@ -153,10 +153,8 @@ struct MeshRuntimeCpuStreamingRequest {
 	}
 };
 
-NOTES()
-struct MeshAssetGUID {
-	u64 guid = 0;
-};
+using MeshAssetGUID = EntityGUID<struct MeshAssetType>;
+
 
 NOTES(Meta::EntityType{}, Meta::ComponentQuery{})
 struct MeshAssetType {

@@ -34,10 +34,8 @@ enum struct MaterialTextureIndexFlags : u32 {
 	UseDefault = 1u << 31,
 };
 
-NOTES()
-struct MaterialAssetGUID {
-	u64 guid = 0;
-};
+using MaterialAssetGUID = EntityGUID<struct MaterialAssetType>;
+
 
 NOTES(Meta::EntityType{}, Meta::ComponentQuery{})
 struct MaterialAssetType {
