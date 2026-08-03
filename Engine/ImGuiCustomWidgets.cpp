@@ -240,7 +240,7 @@ bool ImGui::EntityComboBox(StackAllocator* alloc, const char* label, EntitySyste
 	auto* element = HashTableFind(entity_system->entity_guid_to_entity_id, current_guid);
 	if (element) {
 		auto typed_entity_id = element->value;
-		auto* array = &entity_system->entity_type_arrays[typed_entity_id.entity_type_id.index];
+		auto* array = QueryEntityTypeArray(*entity_system, typed_entity_id.entity_type_id);
 		
 		auto entity = ExtractComponentStreams<GuidNameQuery>(array, typed_entity_id.entity_id);
 		if (entity.name->name.data) current_name = entity.name->name.data;
@@ -256,7 +256,7 @@ bool ImGui::EntityComboBox(StackAllocator* alloc, const char* label, EntitySyste
 	if (ImGui::BeginCombo(label, current_name)) {
 		TempAllocationScope(alloc);
 		
-		auto* array = &entity_system->entity_type_arrays[entity_type_id.index];
+		auto* array = QueryEntityTypeArray(*entity_system, entity_type_id);
 		auto streams = ExtractComponentStreams<GuidNameQuery>(array);
 		auto entity_type_name = entity_type_name_table[entity_type_id.index];
 		

@@ -183,7 +183,7 @@ void MeshletBlasBuildIndirectArgumentsRenderPass::RecordPass(RecordContext* reco
 	CmdSetRootArgument(record_context, root_signature.constants, constants);
 	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
 	
-	auto* mesh_entities = QueryEntities<GpuMeshEntityQuery>(record_context->alloc, *world_system)[0];
+	auto* mesh_entities = QueryEntityTypeArray<MeshEntityType>(*world_system);
 	if (mesh_entities->capacity != 0) { // TODO: Minimize the dispatch size.
 		CmdDispatch(record_context, DivideAndRoundUp(mesh_entities->capacity, 256u));
 	}
@@ -235,7 +235,7 @@ void BuildTlasRenderPass::RecordPass(RecordContext* record_context) {
 	
 	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
 	
-	auto* mesh_entities = QueryEntities<GpuMeshEntityQuery>(record_context->alloc, *world_system)[0];
+	auto* mesh_entities = QueryEntityTypeArray<MeshEntityType>(*world_system);
 	if (mesh_entities->capacity != 0) { // TODO: Minimize the dispatch size.
 		CmdDispatch(record_context, DivideAndRoundUp(mesh_entities->capacity, 256u));
 	}

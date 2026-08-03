@@ -14,7 +14,7 @@ void LightEntityCullingRenderPass::RecordPass(RecordContext* record_context) {
 	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
 	CmdSetRootArgument(record_context, root_signature.scene, VirtualResourceID::SceneConstants);
 	
-	auto* light_entities = QueryEntities<GpuLightEntityQuery>(record_context->alloc, *world_system)[0];
+	auto* light_entities = QueryEntityTypeArray<LightEntityType>(*world_system);
 	if (light_entities->capacity != 0) { // TODO: Minimize the dispatch size.
 		CmdDispatch(record_context, DivideAndRoundUp(light_entities->capacity, LightCullingConstants::thread_group_size));
 	}

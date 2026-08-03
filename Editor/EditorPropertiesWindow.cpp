@@ -374,14 +374,14 @@ static bool ComponentEntityView(StackAllocator* alloc, String undo_label, WorldE
 	auto& entity_system = world_system != nullptr ? (EntitySystemBase&)*world_system : (EntitySystemBase&)asset_system;
 	
 	auto typed_entity_id = FindEntityByGUID(entity_system, entity_guid);
-	auto* array = &entity_system.entity_type_arrays[typed_entity_id.entity_type_id.index];
-	bool should_recreate_asset = false;
+	auto* array = QueryEntityTypeArray(entity_system, typed_entity_id.entity_type_id);
 	
 	BeginUndoRedoCommand(undo_label, undo_redo_system, entity_system, entity_guid);
 	
 	auto shared_entity_components = ExtractComponentStreams<SharedEntityEditorQuery>(array, typed_entity_id.entity_id);
 	SharedComponentEntityView(alloc, entity_system, shared_entity_components);
 	
+	bool should_recreate_asset = false;
 	if (world_system != nullptr) {
 		auto world_entity_components = ExtractComponentStreams<WorldEntityEditorQuery>(array, typed_entity_id.entity_id);
 		WorldComponentEntityView(alloc, *world_system, asset_system, world_entity_components);

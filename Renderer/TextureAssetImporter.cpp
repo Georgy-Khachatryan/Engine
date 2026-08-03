@@ -330,7 +330,7 @@ TextureImportResult ImportTextureFile(StackAllocator* alloc, ThreadPool* thread_
 	}
 	
 	
-	auto runtime_filepath = StringFormat(alloc, "./Assets/Runtime/%x..trd"_sl, runtime_data_guid);
+	auto runtime_filepath = StringFormat(alloc, "./Assets/Runtime/%x..bin"_sl, runtime_data_guid);
 	
 	auto runtime_file = SystemOpenFile(alloc, runtime_filepath, OpenFileFlags::Write);
 	if (runtime_file.handle == nullptr) return {};

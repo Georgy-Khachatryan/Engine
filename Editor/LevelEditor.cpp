@@ -89,7 +89,7 @@ static void DuplicateSelectedEntities(StackAllocator* alloc, WorldEntitySystem& 
 	auto& selected_entities_hash_table = selection_state_entity.selection_state->selected_entities_hash_table;
 	for (auto [guid] : selected_entities_hash_table) {
 		auto typed_entity_id = FindEntityByGUID(world_system, guid);
-		auto* entity_array = &world_system.entity_type_arrays[typed_entity_id.entity_type_id.index];
+		auto* entity_array = QueryEntityTypeArray(world_system, typed_entity_id.entity_type_id);
 		SaveLoadEntityForTooling(buffer, entity_array, typed_entity_id.entity_id);
 	}
 	
@@ -102,7 +102,7 @@ static void DuplicateSelectedEntities(StackAllocator* alloc, WorldEntitySystem& 
 	BeginUndoRedoGroup(undo_redo_system);
 	for (auto [guid] : selected_entities_hash_table) {
 		auto src_typed_entity_id = FindEntityByGUID(world_system, guid);
-		auto* entity_array = &world_system.entity_type_arrays[src_typed_entity_id.entity_type_id.index];
+		auto* entity_array = QueryEntityTypeArray(world_system, src_typed_entity_id.entity_type_id);
 		
 		auto entity_id = CreateEntity(world_system, src_typed_entity_id.entity_type_id);
 		SaveLoadEntityForTooling(buffer, entity_array, entity_id);

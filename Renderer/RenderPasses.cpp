@@ -10,11 +10,11 @@ static void BuildResourceTable(RecordContext* record_context, WorldEntitySystem*
 	using Flags = CreateResourceFlags;
 	auto& table = *record_context->resource_table;
 	
+	auto* mesh_entities = QueryEntityTypeArray<MeshEntityType>(*world_system);
+	
 	table.Set(ID::TransmittanceLut,      TextureSize(TextureFormat::R16G16B16A16_FLOAT, AtmosphereConstants::transmittance_lut_size));
 	table.Set(ID::MultipleScatteringLut, TextureSize(TextureFormat::R16G16B16A16_FLOAT, AtmosphereConstants::multiple_scattering_lut_size));
 	table.Set(ID::SkyPanoramaLut,        TextureSize(TextureFormat::R16G16B16A16_FLOAT, AtmosphereConstants::sky_panorama_lut_size));
-	
-	auto* mesh_entities = QueryEntities<GpuMeshEntityQuery>(record_context->alloc, *world_system)[0];
 	
 	table.Set(ID::VisibleMeshlets,             MeshletConstants::visible_meshlet_buffer_size         * sizeof(uint2));
 	table.Set(ID::MeshEntityCullingCommands,   MeshletConstants::mesh_entity_culling_command_count   * sizeof(u32));
@@ -213,11 +213,9 @@ static void CreateSceneConstants(RecordContext* record_context, uint2 render_tar
 	
 	
 	if (world_entity.global_light_entity->guid != 0) {
-		auto typed_entity_id = FindEntityByGUID(*world_system, world_entity.global_light_entity->guid);
-		scene.global_light_entity_index = typed_entity_id.entity_id.index;
+		auto global_light_entity = QueryEntityByGUID<LightEntityQuery>(*world_system, world_entity.global_light_entity->guid);
+		scene.global_light_entity_index = global_light_entity.entity_id.index;
 		
-		auto* array = &world_system->entity_type_arrays[typed_entity_id.entity_type_id.index];
-		auto global_light_entity = ExtractComponentStreams<LightEntityQuery>(array, typed_entity_id.entity_id);
 		scene.atmosphere.world_space_sun_direction = global_light_entity.rotation->rotation * float3(0.f, 0.f, 1.f);
 		scene.atmosphere.sun_color                 = global_light_entity.light->color;
 		scene.atmosphere.sun_irradiance            = global_light_entity.light->irradiance;

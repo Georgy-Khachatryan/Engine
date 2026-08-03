@@ -19,7 +19,7 @@ void MeshletClearBuffersRenderPass::RecordPass(RecordContext* record_context) {
 	u32 mesh_streaming_feedback_size    = clear_streaming_feedback ? GetBufferSize(record_context, VirtualResourceID::MeshStreamingFeedback)    : 0;
 	u32 texture_streaming_feedback_size = clear_streaming_feedback ? GetBufferSize(record_context, VirtualResourceID::TextureStreamingFeedback) : 0;
 	
-	auto* mesh_entities = QueryEntities<GpuMeshEntityQuery>(record_context->alloc, *world_system)[0];
+	auto* mesh_entities = QueryEntityTypeArray<MeshEntityType>(*world_system);
 	
 	RootSignature::PushConstants constants;
 	constants.meshlet_streaming_feedback_size = meshlet_streaming_feedback_size / sizeof(u32);
@@ -50,7 +50,7 @@ void MeshletAllocateStreamingFeedbackRenderPass::RecordPass(RecordContext* recor
 	
 	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
 	
-	auto* mesh_assets = QueryEntities<MeshAssetType>(record_context->alloc, *asset_system)[0];
+	auto* mesh_assets = QueryEntityTypeArray<MeshAssetType>(*asset_system);
 	if (mesh_assets->capacity != 0) { // TODO: Minimize the dispatch size.
 		CmdDispatch(record_context, DivideAndRoundUp(mesh_assets->capacity, MeshletConstants::meshlet_culling_thread_group_size));
 	}
@@ -78,7 +78,7 @@ void MeshEntityCullingRenderPass::RecordPass(RecordContext* record_context) {
 	CmdSetRootArgument(record_context, root_signature.scene, VirtualResourceID::SceneConstants);
 	
 	if (pass == MeshletCullingPass::Main || pass == MeshletCullingPass::Raytracing) {
-		auto* mesh_entities = QueryEntities<GpuMeshEntityQuery>(record_context->alloc, *world_system)[0];
+		auto* mesh_entities = QueryEntityTypeArray<MeshEntityType>(*world_system);
 		if (mesh_entities->capacity != 0) { // TODO: Minimize the dispatch size.
 			CmdDispatch(record_context, DivideAndRoundUp(mesh_entities->capacity, MeshletConstants::meshlet_culling_thread_group_size));
 		}

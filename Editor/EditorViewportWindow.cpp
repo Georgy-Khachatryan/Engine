@@ -81,9 +81,7 @@ static bool GizmoControls(CameraEntityType camera_entity, WorldEntitySystem& wor
 	u64 entity_guid = (*selected_entities_hash_table.begin()).key;
 	if (entity_guid == camera_entity.guid->guid) return false;
 	
-	auto typed_entity_id = FindEntityByGUID(world_system, entity_guid);
-	auto* array = &world_system.entity_type_arrays[typed_entity_id.entity_type_id.index];
-	auto entity = ExtractComponentStreams<TransformComponentQuery>(array, typed_entity_id.entity_id);
+	auto entity = QueryEntityByGUID<TransformComponentQuery>(world_system, entity_guid);
 	if (entity.position == nullptr || entity.rotation == nullptr) return false;
 	
 	auto view_to_clip_coef = CameraEntityViewToClip(camera_entity, window_size);
@@ -155,7 +153,7 @@ static bool GizmoControls(CameraEntityType camera_entity, WorldEntitySystem& wor
 	bool is_dirty = EndUndoRedoCommand(undo_redo_system, is_dragging);
 	
 	if (is_dirty) {
-		BitArraySetBit(array->dirty_mask, typed_entity_id.entity_id.index);
+		BitArraySetBit(entity.array->dirty_mask, entity.entity_id.index);
 	}
 	
 	return is_dirty;

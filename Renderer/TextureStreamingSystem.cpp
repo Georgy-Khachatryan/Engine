@@ -365,48 +365,48 @@ void UpdateTextureStreamingFiles(TextureStreamingSystem* system, ThreadPool* thr
 	
 	auto* alloc = record_context->alloc;
 	auto* graphics_context = record_context->context;
-	for (auto* entity_array : QueryEntities<TextureAssetType>(alloc, *asset_system)) {
-		auto streams = ExtractComponentStreams<TextureAssetType>(entity_array);
+	
+	auto* entity_array = QueryEntityTypeArray<TextureAssetType>(*asset_system);
+	auto streams = ExtractComponentStreams<TextureAssetType>(entity_array);
+	
+	for (u64 i : BitArrayIt(entity_array->created_mask)) {
+		auto& layout                = streams.runtime_data_layout[i];
+		auto& runtime_file          = streams.runtime_file[i];
+		auto& resource_allocation   = streams.resource_allocation[i];
+		auto& descriptor_allocation = streams.descriptor_allocation[i];
 		
-		for (u64 i : BitArrayIt(entity_array->created_mask)) {
-			auto& layout                = streams.runtime_data_layout[i];
-			auto& runtime_file          = streams.runtime_file[i];
-			auto& resource_allocation   = streams.resource_allocation[i];
-			auto& descriptor_allocation = streams.descriptor_allocation[i];
-			
-			if (layout.version != TextureRuntimeDataLayout::current_version) {
-				if (layout.file_guid == 0) {
-					layout.file_guid = GenerateRandomNumber64(asset_system->guid_random_seed);
-				}
-				
-				if (runtime_file.file.handle != nullptr) {
-					InvalidateTextureStreaming(system, record_context, entity_array, streams, (u32)i);
-					SystemCloseFile(runtime_file.file);
-					runtime_file = {};
-				}
-				
-				if (resource_allocation.resource.handle != nullptr) {
-					ReleaseTextureResource(graphics_context, resource_allocation.resource, ResourceReleaseCondition::EndOfThisGpuFrame);
-					resource_allocation = {};
-				}
-				
-				auto result = ImportTextureFile(alloc, thread_pool, streams.source_data[i], layout.file_guid);
-				if (result.success) layout = result.layout;
-			}
-			
-			// TODO: Add support for unaligned async reads.
-			runtime_file.file = SystemOpenFile(alloc, StringFormat(alloc, "./Assets/Runtime/%x..trd"_sl, layout.file_guid), OpenFileFlags::Read /*| OpenFileFlags::Async*/);
-			
-			if (descriptor_allocation.index == u32_max) {
-				descriptor_allocation.index = AllocatePersistentSrvDescriptor(graphics_context);
+		if (layout.version != TextureRuntimeDataLayout::current_version) {
+			if (layout.file_guid == 0) {
+				layout.file_guid = GenerateRandomNumber64(asset_system->guid_random_seed);
 			}
 			
 			if (runtime_file.file.handle != nullptr) {
-				resource_allocation.resource = CreateTextureResource(graphics_context, layout.size, CreateResourceFlags::Sparse);
-				resource_allocation.sparse_layout = GetSparseTextureLayout(graphics_context, resource_allocation.resource);
+				InvalidateTextureStreaming(system, record_context, entity_array, streams, (u32)i);
+				SystemCloseFile(runtime_file.file);
+				runtime_file = {};
 			}
 			
-			system->descriptor_index_to_texture_entity_id[descriptor_allocation.index] = EntityID{ (u32)i };
+			if (resource_allocation.resource.handle != nullptr) {
+				ReleaseTextureResource(graphics_context, resource_allocation.resource, ResourceReleaseCondition::EndOfThisGpuFrame);
+				resource_allocation = {};
+			}
+			
+			auto result = ImportTextureFile(alloc, thread_pool, streams.source_data[i], layout.file_guid);
+			if (result.success) layout = result.layout;
 		}
+		
+		// TODO: Add support for unaligned async reads.
+		runtime_file.file = SystemOpenFile(alloc, StringFormat(alloc, "./Assets/Runtime/%x..bin"_sl, layout.file_guid), OpenFileFlags::Read /*| OpenFileFlags::Async*/);
+		
+		if (descriptor_allocation.index == u32_max) {
+			descriptor_allocation.index = AllocatePersistentSrvDescriptor(graphics_context);
+		}
+		
+		if (runtime_file.file.handle != nullptr) {
+			resource_allocation.resource = CreateTextureResource(graphics_context, layout.size, CreateResourceFlags::Sparse);
+			resource_allocation.sparse_layout = GetSparseTextureLayout(graphics_context, resource_allocation.resource);
+		}
+		
+		system->descriptor_index_to_texture_entity_id[descriptor_allocation.index] = EntityID{ (u32)i };
 	}
 }

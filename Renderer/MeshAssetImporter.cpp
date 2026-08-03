@@ -495,7 +495,7 @@ MeshImportResult ImportMeshFile(StackAllocator* alloc, ThreadPool* thread_pool, 
 	
 	MdtFreeContinuousLodBuildResult(&result, &callbacks);
 	
-	auto runtime_filepath = StringFormat(alloc, "./Assets/Runtime/%x..mrd"_sl, runtime_data_guid);
+	auto runtime_filepath = StringFormat(alloc, "./Assets/Runtime/%x..bin"_sl, runtime_data_guid);
 	
 	auto runtime_file = SystemOpenFile(alloc, runtime_filepath, OpenFileFlags::Write);
 	if (runtime_file.handle == nullptr) return {};

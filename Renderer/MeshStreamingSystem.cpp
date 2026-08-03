@@ -289,36 +289,35 @@ void UpdateMeshStreamingFiles(MeshStreamingSystem* system, ThreadPool* thread_po
 	extern MeshImportResult ImportMeshFile(StackAllocator* alloc, ThreadPool* thread_pool, const MeshSourceData& source_data, u64 runtime_data_guid);
 	
 	auto* alloc = record_context->alloc;
-	for (auto* entity_array : QueryEntities<MeshAssetType>(alloc, *asset_system)) {
-		auto streams = ExtractComponentStreams<MeshAssetType>(entity_array);
+	
+	auto* entity_array = QueryEntityTypeArray<MeshAssetType>(*asset_system);
+	auto streams = ExtractComponentStreams<MeshAssetType>(entity_array);
+	
+	for (u64 i : BitArrayIt(entity_array->created_mask)) {
+		auto& layout = streams.runtime_data_layout[i];
+		auto& runtime_file = streams.runtime_file[i];
 		
-		for (u64 i : BitArrayIt(entity_array->created_mask)) {
-			auto& layout = streams.runtime_data_layout[i];
-			auto& runtime_file = streams.runtime_file[i];
-			
-			if (layout.version != MeshRuntimeDataLayout::current_version) {
-				if (layout.file_guid == 0) {
-					layout.file_guid = GenerateRandomNumber64(asset_system->guid_random_seed);
-				}
-				
-				if (runtime_file.file.handle != nullptr) {
-					InvalidateMeshStreaming(system, record_context, entity_array, streams, (u32)i);
-					SystemCloseFile(runtime_file.file);
-					runtime_file = {};
-				}
-				
-				auto result = ImportMeshFile(alloc, thread_pool, streams.source_data[i], layout.file_guid);
-				if (result.success) {
-					layout = result.layout;
-					
-					auto& aabb = streams.aabb[i];
-					aabb.min = result.aabb_min;
-					aabb.max = result.aabb_max;
-				}
+		if (layout.version != MeshRuntimeDataLayout::current_version) {
+			if (layout.file_guid == 0) {
+				layout.file_guid = GenerateRandomNumber64(asset_system->guid_random_seed);
 			}
 			
-			runtime_file.file = SystemOpenFile(alloc, StringFormat(alloc, "./Assets/Runtime/%x..mrd"_sl, layout.file_guid), OpenFileFlags::Read | OpenFileFlags::Async);
+			if (runtime_file.file.handle != nullptr) {
+				InvalidateMeshStreaming(system, record_context, entity_array, streams, (u32)i);
+				SystemCloseFile(runtime_file.file);
+				runtime_file = {};
+			}
+			
+			auto result = ImportMeshFile(alloc, thread_pool, streams.source_data[i], layout.file_guid);
+			if (result.success) {
+				layout = result.layout;
+				
+				auto& aabb = streams.aabb[i];
+				aabb.min = result.aabb_min;
+				aabb.max = result.aabb_max;
+			}
 		}
+		
+		runtime_file.file = SystemOpenFile(alloc, StringFormat(alloc, "./Assets/Runtime/%x..bin"_sl, layout.file_guid), OpenFileFlags::Read | OpenFileFlags::Async);
 	}
 }
-

@@ -173,6 +173,10 @@ QueryTypeT ExtractComponentStreams(EntityTypeArray* array, EntityID base_entity_
 	return result;
 }
 
+inline EntityTypeArray* QueryEntityTypeArray(EntitySystemBase& system, EntityTypeID entity_type_id) {
+	return &system.entity_type_arrays[entity_type_id.index];
+}
+
 template<typename EntityTypeT>
 EntityTypeArray* QueryEntityTypeArray(EntitySystemBase& system) {
 	return &system.entity_type_arrays[ECS::GetEntityTypeID<EntityTypeT>::id.index];
@@ -197,10 +201,26 @@ inline TypedEntityID FindEntityByGUID(EntitySystemBase& system, u64 guid) {
 }
 
 template<typename QueryTypeT>
-QueryTypeT QueryEntityByGUID(EntitySystemBase& system, u64 guid) {
+struct EntityQueryResult : QueryTypeT {
+	EntityTypeArray* array = nullptr;
+	EntityID entity_id;
+};
+
+template<typename QueryTypeT>
+EntityQueryResult<QueryTypeT> QueryEntityByGUID(EntitySystemBase& system, u64 guid) {
 	auto typed_entity_id = FindEntityByGUID(system, guid);
 	auto& array = system.entity_type_arrays[typed_entity_id.entity_type_id.index];
-	return ExtractComponentStreams<QueryTypeT>(&array, typed_entity_id.entity_id);
+	
+	FixedCountArray<ComponentStream, sizeof(QueryTypeT) / sizeof(ComponentStream)> component_streams;
+	static_assert(sizeof(component_streams) == sizeof(QueryTypeT));
+	ExtractComponentStreams(&array, ECS::GetEntityQueryTypeID<QueryTypeT>::id, component_streams, typed_entity_id.entity_id);
+	
+	EntityQueryResult<QueryTypeT> result;
+	memcpy(&result, component_streams.data, sizeof(QueryTypeT));
+	result.array     = &array;
+	result.entity_id = typed_entity_id.entity_id;
+	
+	return result;
 }
 
 inline TypedEntityID FindFirstEntityByType(EntitySystemBase& system, EntityTypeID entity_type_id) {

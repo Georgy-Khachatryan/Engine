@@ -12,15 +12,15 @@ static void AllocateGpuComponentStreams(RecordContext* record_context, EntitySys
 	
 	auto* resource_table = record_context->resource_table;
 	for (auto& allocation : entity_system->gpu_component_stream_allocations) {
-		auto& array = entity_system->entity_type_arrays[allocation.entity_type_id.index];
-		if (array.capacity == 0) continue;
+		auto* array = QueryEntityTypeArray(*entity_system, allocation.entity_type_id);
+		if (array->capacity == 0) continue;
 		
 		auto type_info = component_type_info_table[allocation.component_type_id.index];
 		
 		// TODO: Fill buffer with zeroes instead of recreating it.
 		bool clear_component_stream = clear_gpu_mask_component_streams && (type_info.component_type == ComponentType::GpuMask);
 		
-		u32 capacity = type_info.component_type == ComponentType::GpuMask ? DivideAndRoundUp(array.capacity, 64u) : array.capacity;
+		u32 capacity = type_info.component_type == ComponentType::GpuMask ? DivideAndRoundUp(array->capacity, 64u) : array->capacity;
 		u32 new_size = (u32)(capacity * type_info.size_bytes);
 		u32 old_size = allocation.size;
 		

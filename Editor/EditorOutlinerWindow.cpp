@@ -15,7 +15,9 @@ static void EntityCreationComboBox(const char* label, const char* hint, EntitySy
 		ImGuiScopeID(entity_type_id.index);
 		if (ImGui::Selectable(name.data, false)) {
 			auto entity_id = CreateEntity(entity_system, entity_type_id);
-			auto entity = ExtractComponentStreams<GuidNameQuery>(&entity_system.entity_type_arrays[entity_type_id.index], entity_id);
+			auto* entity_array = QueryEntityTypeArray(entity_system, entity_type_id);
+			
+			auto entity = ExtractComponentStreams<GuidNameQuery>(entity_array, entity_id);
 			entity.name->name = StringCopy(&entity_system.heap, name);
 			
 			BeginUndoRedoGroup(undo_redo_system);
@@ -35,9 +37,10 @@ static void EntityCreationComboBox(const char* label, const char* hint, EntitySy
 }
 
 struct EntityViewTableEntry {
-	EntityID entity_id;
 	EntityTypeID entity_type_id;
 	s32 score = 0;
+	u64 guid  = 0;
+	const char* name = nullptr;
 };
 
 static void ApplyEntitySelectionRequests(ImGuiMultiSelectIO* ms_io, ArrayView<EntityViewTableEntry> entity_view_table_entries, EntitySystemBase& entity_system, UndoRedoSystem& undo_redo_system, EditorSelectionStateEntity selection_state_entity) {
@@ -47,21 +50,20 @@ static void ApplyEntitySelectionRequests(ImGuiMultiSelectIO* ms_io, ArrayView<En
 	for (auto& request : ms_io->Requests) {
 		if (request.Type == ImGuiSelectionRequestType_SetAll) {
 			if (request.Selected) {
-				for (auto [entity_id, entity_type_id, score] : entity_view_table_entries) {
-					auto streams = ExtractComponentStreams<GuidQuery>(&entity_system.entity_type_arrays[entity_type_id.index], entity_id);
-					HashTableAddOrFind(selected_entities_hash_table, &entity_system.heap, streams.guid->guid);
+				for (auto& entry : entity_view_table_entries) {
+					HashTableAddOrFind(selected_entities_hash_table, &entity_system.heap, entry.guid);
 				}
 			} else {
 				HashTableClear(selected_entities_hash_table);
 			}
 		} else if (request.Type == ImGuiSelectionRequestType_SetRange) {
-			for (s64 index = request.RangeFirstItem; index <= request.RangeLastItem; index += 1) {
-				auto [entity_id, entity_type_id, score] = entity_view_table_entries[index];
-				auto streams = ExtractComponentStreams<GuidQuery>(&entity_system.entity_type_arrays[entity_type_id.index], entity_id);
-				if (request.Selected) {
-					HashTableAddOrFind(selected_entities_hash_table, &entity_system.heap, streams.guid->guid);
-				} else {
-					HashTableRemove(selected_entities_hash_table, streams.guid->guid);
+			if (request.Selected) {
+				for (auto& entry : ArrayViewCreate(entity_view_table_entries, request.RangeFirstItem, request.RangeLastItem + 1)) {
+					HashTableAddOrFind(selected_entities_hash_table, &entity_system.heap, entry.guid);
+				}
+			} else {
+				for (auto& entry : ArrayViewCreate(entity_view_table_entries, request.RangeFirstItem, request.RangeLastItem + 1)) {
+					HashTableRemove(selected_entities_hash_table, entry.guid);
 				}
 			}
 		}
@@ -90,14 +92,16 @@ static ArrayView<EntityViewTableEntry> EntityQueryToArrayView(ArrayView<EntityTy
 		
 		s32 type_name_score = search_pattern.count == 0 ? 0 : StringFuzzyMatch(search_pattern.data, entity_type_name.data);
 		for (u64 i : BitArrayIt(entity_array->alive_mask)) {
+			auto [guid] = streams.guid[i];
 			auto [name] = streams.name[i];
 			
 			s32 score = search_pattern.count == 0 || name.count == 0 ? type_name_score : Math::Max(StringFuzzyMatch(search_pattern.data, name.data), (type_name_score - 1) / 2);
 			if (score >= 0) {
 				auto& entry = ArrayEmplace(entity_view_table_entries);
-				entry.entity_id      = EntityID{ (u32)i };
 				entry.entity_type_id = entity_type_id;
-				entry.score          = score;
+				entry.score = score;
+				entry.guid  = guid;
+				entry.name  = name.count ? name.data : nullptr;
 			}
 		}
 	}
@@ -154,29 +158,25 @@ static void EntityViewTable(StackAllocator* alloc, EntitySystemBase& entity_syst
 	ImGui::PushStyleColor(ImGuiCol_NavCursor, 0u);
 	while (clipper.Step()) {
 		for (s32 index = clipper.DisplayStart; index < clipper.DisplayEnd; index += 1) {
-			auto [entity_id, entity_type_id, score] = entity_view_table_entries[index];
-			auto entity_type_name = entity_type_name_table[entity_type_id.index];
-			
-			auto streams = ExtractComponentStreams<GuidNameQuery>(&entity_system.entity_type_arrays[entity_type_id.index], entity_id);
-			auto& [guid] = *streams.guid;
-			auto& [name] = *streams.name;
+			auto& entry = entity_view_table_entries[index];
+			auto entity_type_name = entity_type_name_table[entry.entity_type_id.index];
 			
 			ImGui::TableNextRow();
-			ImGuiScopeID((void*)guid);
+			ImGuiScopeID((void*)entry.guid);
 			
 			if (ImGui::TableSetColumnIndex(0)) {
 				ImGui::Bullet();
 				ImGui::SameLine();
 				
-				bool is_selected = HashTableFind(selected_entities_hash_table, guid) != nullptr;
+				bool is_selected = HashTableFind(selected_entities_hash_table, entry.guid) != nullptr;
 				ImGui::SetNextItemSelectionUserData(index);
-				ImGui::Selectable(name.count ? name.data : entity_type_name.data, is_selected, ImGuiSelectableFlags_SpanAllColumns);
+				ImGui::Selectable(entry.name ? entry.name : entity_type_name.data, is_selected, ImGuiSelectableFlags_SpanAllColumns);
 				
-				EntitySelectableActions(level_editor_io, entity_type_id, guid);
+				EntitySelectableActions(level_editor_io, entry.entity_type_id, entry.guid);
 			}
 			
 			if (ImGui::TableSetColumnIndex(1)) {
-				ImGui::Text("0x%016llX", guid);
+				ImGui::Text("0x%016llX", entry.guid);
 			}
 			
 			if (ImGui::TableSetColumnIndex(2)) {
@@ -244,14 +244,10 @@ static void EntityViewGrid(StackAllocator* alloc, EntitySystemBase& entity_syste
 		for (u32 index = display_start; index < display_end; index += 1) {
 			float2 card_coordinates = float2((float)(index % size_cards_x), (float)(index / size_cards_x));
 			
-			auto [entity_id, entity_type_id, score] = entity_view_table_entries[index];
-			auto entity_type_name = entity_type_name_table[entity_type_id.index];
+			auto& entry = entity_view_table_entries[index];
+			auto entity_type_name = entity_type_name_table[entry.entity_type_id.index];
 			
-			auto streams = ExtractComponentStreams<GuidNameQuery>(&entity_system.entity_type_arrays[entity_type_id.index], entity_id);
-			auto& [guid] = *streams.guid;
-			auto& [name] = *streams.name;
-			
-			ImGuiScopeID((void*)guid);
+			ImGuiScopeID((void*)entry.guid);
 			
 			auto card_position = corner_position + card_coordinates * card_size_with_spacing_pixels + float2(Math::Min(card_coordinates.x, extra_spacing_x), 0.f);
 			ImGui::SetCursorScreenPos(card_position);
@@ -261,7 +257,7 @@ static void EntityViewGrid(StackAllocator* alloc, EntitySystemBase& entity_syste
 			ImGui::PushStyleColor(ImGuiCol_HeaderActive, 0u);
 			ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.f, 0.f));
 			
-			bool is_selected = HashTableFind(selected_entities_hash_table, guid) != nullptr;
+			bool is_selected = HashTableFind(selected_entities_hash_table, entry.guid) != nullptr;
 			ImGui::SetNextItemSelectionUserData(index);
 			ImGui::Selectable("##Card", is_selected, ImGuiSelectableFlags_None, card_size_pixels);
 			
@@ -275,14 +271,14 @@ static void EntityViewGrid(StackAllocator* alloc, EntitySystemBase& entity_syste
 			u32 color = ImGui::GetColorU32((held && highlighted) ? ImGuiCol_HeaderActive : highlighted ? ImGuiCol_HeaderHovered : ImGuiCol_Header);
 			ImGui::RenderFrame(card_position, card_position + card_size_pixels, color, true, style.FrameRounding + style.WindowPadding.x);
 			
-			EntitySelectableActions(level_editor_io, entity_type_id, guid);
+			EntitySelectableActions(level_editor_io, entry.entity_type_id, entry.guid);
 			
 			
 			ImGui::SetCursorScreenPos(card_position + float2(style.WindowPadding));
 			ImGui::BeginGroup();
 			
-			EditorIconCacheDrawIcon(level_editor_io.icon_cache, entity_system, guid, entity_type_id);
-			ImGui::TableLabelText(name.count ? name.data : entity_type_name.data, content_size_pixels.x);
+			EditorIconCacheDrawIcon(level_editor_io.icon_cache, entity_system, entry.guid, entry.entity_type_id);
+			ImGui::TableLabelText(entry.name ? entry.name : entity_type_name.data, content_size_pixels.x);
 			
 			ImGui::EndGroup();
 		}

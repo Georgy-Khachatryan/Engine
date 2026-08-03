@@ -7,6 +7,8 @@
 
 struct DebugMeshInstanceArray;
 struct GpuComponentUploadBuffer;
+struct LightEntityType;
+struct MeshEntityType;
 struct RecordContext;
 
 NOTES(Meta::HlslFile{ "SceneData.hlsl"_sl })

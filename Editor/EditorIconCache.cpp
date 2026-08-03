@@ -260,7 +260,7 @@ void EditorIconCacheUpdate(StackAllocator* alloc, EditorIconCache* icon_cache, A
 		if (icon.state == EditorIconState::Wait || icon.state == EditorIconState::Invalidated) {
 			u64 mesh_asset_guid     = 0;
 			u64 material_asset_guid = 0;
-				
+			
 			if (icon.entity_type_id.index == ECS::GetEntityTypeID<MeshAssetType>::id.index) {
 				auto mesh_asset = QueryEntityByGUID<MeshAssetType>(asset_system, icon.guid);
 				mesh_asset_guid     = icon.guid;
@@ -299,9 +299,8 @@ void EditorIconCacheUpdate(StackAllocator* alloc, EditorIconCache* icon_cache, A
 		}
 		
 		
-		auto mesh_entity_id = FindEntityByGUID(world_system, icon_cache->mesh_entity_guid);
-		auto mesh_entity = ExtractComponentStreams<MeshEntityType>(&world_system.entity_type_arrays[mesh_entity_id.entity_type_id.index], mesh_entity_id.entity_id);
-		BitArraySetBit(world_system.entity_type_arrays[mesh_entity_id.entity_type_id.index].dirty_mask, mesh_entity_id.entity_id.index);
+		auto mesh_entity = QueryEntityByGUID<MeshEntityType>(world_system, icon_cache->mesh_entity_guid);
+		BitArraySetBit(mesh_entity.array->dirty_mask, mesh_entity.entity_id.index);
 		
 		mesh_entity.mesh_asset->guid     = mesh_asset_guid;
 		mesh_entity.material_asset->guid = material_asset_guid;

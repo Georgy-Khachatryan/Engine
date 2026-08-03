@@ -51,7 +51,7 @@ static UndoRedoCommand CreateUndoRedoCommand(UndoRedoBuffer& undo_redo_buffer, E
 	
 	if (command_type == UndoRedoCommandType::SaveLoad || command_type == UndoRedoCommandType::CreateEntity) {
 		auto typed_entity_id = FindEntityByGUID(entity_system, entity_guid);
-		auto* entity_array = &entity_system.entity_type_arrays[typed_entity_id.entity_type_id.index];
+		auto* entity_array = QueryEntityTypeArray(entity_system, typed_entity_id.entity_type_id);
 		
 		undo_redo_buffer.save_load_buffer.direction = SaveLoadDirection::Saving;
 		
@@ -75,7 +75,7 @@ static void ExecuteUndoRedoCommand(UndoRedoBuffer& undo_redo_buffer, UndoRedoCom
 	
 	if (command.command_type == UndoRedoCommandType::SaveLoad || command.command_type == UndoRedoCommandType::CreateEntity) {
 		auto typed_entity_id = FindEntityByGUID(entity_system, command.entity_guid);
-		auto* entity_array = &entity_system.entity_type_arrays[typed_entity_id.entity_type_id.index];
+		auto* entity_array = QueryEntityTypeArray(entity_system, typed_entity_id.entity_type_id);
 		
 		undo_redo_buffer.save_load_buffer.heap       = &entity_system.heap;
 		undo_redo_buffer.save_load_buffer.data.count = command.offset;
