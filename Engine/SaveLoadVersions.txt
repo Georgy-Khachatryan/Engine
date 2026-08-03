@@ -197,6 +197,18 @@ struct MaterialTextureData {
 	}
 }
 
+struct MeshAssetMaterialTable {
+	/*Version*/ 0 {
+		materials FixedCapacityArray<EntityGUID<MaterialAssetType>, 8> 0;
+	}
+}
+
+struct MeshEntityMaterialTable {
+	/*Version*/ 0 {
+		materials FixedCountArray<EntityGUID<MaterialAssetType>, 8> 0;
+	}
+}
+
 struct MeshRuntimeDataLayout {
 	/*Version*/ 0 {
 		file_guid u64 0;

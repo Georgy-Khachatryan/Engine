@@ -51,9 +51,9 @@ static void UpdateMeshAssetTypeGpuComponents(StackAllocator* alloc, RecordContex
 	
 	auto gpu_mesh_asset_data = AllocateGpuComponentUploadBuffer(record_context, dirty_entity_count, streams.gpu_mesh_asset_data);
 	for (u64 i : BitArrayIt(entity_array->dirty_mask)) {
-		auto& layout = streams.runtime_data_layout[i];
+		auto& layout     = streams.runtime_data_layout[i];
 		auto& allocation = streams.allocation[i];
-		auto& aabb = streams.aabb[i];
+		auto& aabb       = streams.aabb[i];
 		
 		GpuMeshAssetData mesh_asset;
 		mesh_asset.meshlet_group_buffer_offset = allocation.offset;

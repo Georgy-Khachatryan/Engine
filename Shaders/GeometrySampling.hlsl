@@ -35,7 +35,7 @@ MaterialProperties SampleMaterialFromHitResult(
 	texcoord_stream.texcoord_ddx = texcoord_grad;
 	texcoord_stream.texcoord_ddy = texcoord_grad;
 	
-	MaterialProperties properties = SampleMaterial(mesh_entity.material_asset_index, texcoord_stream);
+	MaterialProperties properties = SampleMaterial(mesh_entity.material_table[meshlet.geometry_index], texcoord_stream);
 	
 	float3x3 tangent_to_model = ComputeTangentToOtherSpace(model_space_tangent, model_space_normal);
 	float3x3 tangent_to_world = mul(QuatToRotationMatrix(model_to_world.rotation), tangent_to_model);

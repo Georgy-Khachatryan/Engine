@@ -29,6 +29,11 @@ struct WorldEntityType {
 	ECS::GpuComponent<SceneConstants> gpu_scene_constants;
 };
 
+NOTES()
+struct MeshEntityMaterialTable {
+	FixedCountArray<MaterialAssetGUID, MeshAssetMaterialTable::max_materials> materials;
+};
+
 NOTES(Meta::EntityType{}, Meta::ComponentQuery{})
 struct MeshEntityType {
 	ECS::Component<GuidComponent> guid;
@@ -39,7 +44,7 @@ struct MeshEntityType {
 	ECS::Component<ScaleComponent>    scale;
 	
 	ECS::Component<MeshAssetGUID> mesh_asset;
-	ECS::Component<MaterialAssetGUID> material_asset;
+	ECS::Component<MeshEntityMaterialTable> material_table;
 	
 	NOTES(VirtualResourceID::MeshEntityGpuTransform)
 	ECS::GpuComponent<GpuTransform> gpu_transform;

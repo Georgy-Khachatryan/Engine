@@ -543,8 +543,9 @@ void MainCS(uint thread_id : SV_DispatchThreadID, uint thread_index : SV_GroupIn
 	
 #if defined(MAIN_PASS) || defined(DISOCCLUSION_PASS)
 	// Write streaming feedback for textures.
-	if (mesh_entity.material_asset_index != u32_max) {
-		GpuMaterialTextureData material = material_texture_data[mesh_entity.material_asset_index];
+	u32 material_asset_index = mesh_entity.material_table[meshlet.geometry_index];
+	if (material_asset_index != u32_max) {
+		GpuMaterialTextureData material = material_texture_data[material_asset_index];
 		
 		float3 center_world_space = TransformModelToWorldSpace(meshlet.aabb_center, model_to_world);
 		

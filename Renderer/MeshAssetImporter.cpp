@@ -1,9 +1,10 @@
 #include "Basic/Basic.h"
-#include "Basic/BasicString.h"
-#include "Basic/BasicMemory.h"
 #include "Basic/BasicFiles.h"
 #include "Basic/BasicMath.h"
+#include "Basic/BasicMemory.h"
+#include "Basic/BasicString.h"
 #include "Basic/BasicThreads.h"
+#include "GraphicsApi/GraphicsApiTypes.h"
 #include "MeshAsset.h"
 
 #include <SDK/ufbx/ufbx.h>
@@ -48,6 +49,11 @@ struct SourceMeshVertex {
 	float3 normal;
 	float3 tangent;
 	float2 texcoord;
+};
+
+struct SourceGeometryDesc {
+	Array<SourceMeshVertex> vertices;
+	Array<u32> indices;
 };
 
 MeshImportResult ImportMeshFile(StackAllocator* alloc, ThreadPool* thread_pool, const MeshSourceData& source_data, u64 runtime_data_guid) {
@@ -100,6 +106,9 @@ MeshImportResult ImportMeshFile(StackAllocator* alloc, ThreadPool* thread_pool, 
 	auto* scene = ufbx_load_memory(file_data.data, file_data.count, &options, &error);
 	if (error.type != UFBX_ERROR_NONE) return {};
 	
+	Array<u32> geometry_triangle_counts;
+	ArrayResizeMemset(geometry_triangle_counts, alloc, Math::Max(scene->materials.count, 1ull));
+	
 	u32 max_face_triangles = 0;
 	u32 max_mesh_triangles = 0;
 	u32 max_result_triangles = 0;
@@ -107,12 +116,27 @@ MeshImportResult ImportMeshFile(StackAllocator* alloc, ThreadPool* thread_pool, 
 		max_face_triangles = Math::Max(max_face_triangles, (u32)mesh->max_face_triangles);
 		max_mesh_triangles = Math::Max(max_mesh_triangles, (u32)mesh->num_triangles);
 		max_result_triangles += (u32)(mesh->num_triangles * mesh->instances.count);
+		
+		u64 material_count = mesh->material_parts.count;
+		for (auto* instance : mesh->instances) {
+			for (u64 i = 0; i < material_count; i += 1) {
+				auto& part = mesh->material_parts[i];
+				u32 material_index = i < instance->materials.count ? instance->materials[i]->typed_id : 0;
+				geometry_triangle_counts[material_index] += (u32)part.num_triangles;
+			}
+		}
 	}
 	
-	Array<SourceMeshVertex> source_vertices;
-	Array<u32> source_indices;
-	ArrayReserve(source_vertices, alloc, max_result_triangles * 3);
-	ArrayReserve(source_indices,  alloc, max_result_triangles * 3);
+	Array<SourceGeometryDesc> geometry_descs;
+	ArrayResizeMemset(geometry_descs, alloc, Math::Max(scene->materials.count, 1ull));
+	
+	for (u32 i = 0; i < geometry_descs.count; i += 1) {
+		u32 triangle_count = geometry_triangle_counts[i];
+		
+		auto& desc = geometry_descs[i];
+		ArrayReserve(desc.indices,  alloc, triangle_count * 3);
+		ArrayReserve(desc.vertices, alloc, triangle_count * 3);
+	}
 	
 	Array<u32> face_indices;
 	ArrayReserve(face_indices, alloc, max_face_triangles * 3);
@@ -124,44 +148,50 @@ MeshImportResult ImportMeshFile(StackAllocator* alloc, ThreadPool* thread_pool, 
 	ArrayResize(mesh_indices, alloc, max_mesh_triangles * 3);
 	
 	for (auto* mesh : scene->meshes) {
-		mesh_vertices.count = 0;
-		
-		for (auto face : mesh->faces) {
-			face_indices.count = ufbx_triangulate_face(face_indices.data, face_indices.capacity, mesh, face) * 3;
+		for (auto& part : mesh->material_parts) {
+			mesh_vertices.count = 0;
 			
-			for (u32 index : face_indices) {
-				SourceMeshVertex vertex;
-				vertex.position = float3(mesh->vertex_position[index]);
-				vertex.normal   = float3(mesh->vertex_normal[index]);
-				vertex.tangent  = mesh->vertex_tangent.exists ? float3(mesh->vertex_tangent[index]) : vertex.normal; // Fallback to normal so we have at least some sort of a valid vector.
-				vertex.texcoord = mesh->vertex_uv.exists ? float2(mesh->vertex_uv[index].x, 1.f - mesh->vertex_uv[index].y) : float2(0.f, 0.f);
-				ArrayAppend(mesh_vertices, vertex);
-			}
-		}
-		
-		ufbx_vertex_stream stream;
-		stream.data         = mesh_vertices.data;
-		stream.vertex_count = mesh_vertices.count;
-		stream.vertex_size  = sizeof(SourceMeshVertex);
-		
-		mesh_indices.count  = mesh_vertices.count;
-		mesh_vertices.count = ufbx_generate_indices(&stream, 1, mesh_indices.data, mesh_indices.count, &options.temp_allocator, nullptr);
-		
-		for (auto* instance : mesh->instances) {
-			auto geometry_to_world          = LoadUfbxMatrix3x4(instance->geometry_to_world);
-			auto geometry_to_world_rotation = LoadUfbxMatrix3x3(ufbx_matrix_for_normals(&instance->geometry_to_world));
-			
-			u32 index_offset = (u32)source_vertices.count;
-			for (auto& vertex : mesh_vertices) {
-				auto instance_vertex = vertex;
-				instance_vertex.position = geometry_to_world * float4(instance_vertex.position, 1.f);
-				instance_vertex.normal   = Math::Normalize(geometry_to_world_rotation * instance_vertex.normal);
-				instance_vertex.tangent  = Math::Normalize(geometry_to_world_rotation * instance_vertex.tangent);
-				ArrayAppend(source_vertices, instance_vertex);
+			for (u32 face_index : part.face_indices) {
+				face_indices.count = ufbx_triangulate_face(face_indices.data, face_indices.capacity, mesh, mesh->faces[face_index]) * 3;
+				
+				for (u32 index : face_indices) {
+					SourceMeshVertex vertex;
+					vertex.position = float3(mesh->vertex_position[index]);
+					vertex.normal   = float3(mesh->vertex_normal[index]);
+					vertex.tangent  = mesh->vertex_tangent.exists ? float3(mesh->vertex_tangent[index]) : vertex.normal; // Fallback to normal so we have at least some sort of a valid vector.
+					vertex.texcoord = mesh->vertex_uv.exists ? float2(mesh->vertex_uv[index].x, 1.f - mesh->vertex_uv[index].y) : float2(0.f, 0.f);
+					ArrayAppend(mesh_vertices, vertex);
+				}
 			}
 			
-			for (u32 index : mesh_indices) {
-				ArrayAppend(source_indices, index + index_offset);
+			ufbx_vertex_stream stream;
+			stream.data         = mesh_vertices.data;
+			stream.vertex_count = mesh_vertices.count;
+			stream.vertex_size  = sizeof(SourceMeshVertex);
+			
+			mesh_indices.count  = mesh_vertices.count;
+			mesh_vertices.count = ufbx_generate_indices(&stream, 1, mesh_indices.data, mesh_indices.count, &options.temp_allocator, nullptr);
+			
+			for (auto* instance : mesh->instances) {
+				u32 material_index = part.index < instance->materials.count ? instance->materials[part.index]->typed_id : 0;
+				auto& geometry = geometry_descs[material_index];
+				
+				auto geometry_to_world          = LoadUfbxMatrix3x4(instance->geometry_to_world);
+				auto geometry_to_world_rotation = LoadUfbxMatrix3x3(ufbx_matrix_for_normals(&instance->geometry_to_world));
+				
+				u32 index_offset = (u32)geometry.vertices.count;
+				for (auto& vertex : mesh_vertices) {
+					SourceMeshVertex instance_vertex;
+					instance_vertex.position = geometry_to_world * float4(vertex.position, 1.f);
+					instance_vertex.normal   = Math::Normalize(geometry_to_world_rotation * vertex.normal);
+					instance_vertex.tangent  = Math::Normalize(geometry_to_world_rotation * vertex.tangent);
+					instance_vertex.texcoord = vertex.texcoord;
+					ArrayAppend(geometry.vertices, instance_vertex);
+				}
+				
+				for (u32 index : mesh_indices) {
+					ArrayAppend(geometry.indices, index + index_offset);
+				}
 			}
 		}
 	}
@@ -187,11 +217,19 @@ MeshImportResult ImportMeshFile(StackAllocator* alloc, ThreadPool* thread_pool, 
 	callbacks.parallel_for.thread_count = 32;
 	
 	
-	MdtTriangleGeometryDesc geometry_descs[1] = {};
-	geometry_descs[0].indices      = source_indices.data;
-	geometry_descs[0].vertices     = (float*)source_vertices.data;
-	geometry_descs[0].index_count  = (u32)source_indices.count;
-	geometry_descs[0].vertex_count = (u32)source_vertices.count;
+	Array<MdtTriangleGeometryDesc> mdt_geometry_descs;
+	ArrayReserve(mdt_geometry_descs, alloc, Math::Min(geometry_descs.count, (u64)MeshAssetMaterialTable::max_materials));
+	
+	for (u32 geometry_index = 0; geometry_index < geometry_descs.count && mdt_geometry_descs.count < mdt_geometry_descs.capacity; geometry_index += 1) {
+		auto& geometry = geometry_descs[geometry_index];
+		if (geometry.indices.count == 0) continue;
+		
+		auto& mdt_geometry = ArrayEmplace(mdt_geometry_descs);
+		mdt_geometry.indices      = geometry.indices.data;
+		mdt_geometry.vertices     = (float*)geometry.vertices.data;
+		mdt_geometry.index_count  = (u32)geometry.indices.count;
+		mdt_geometry.vertex_count = (u32)geometry.vertices.count;
+	}
 	
 	float attribute_weights[MDT_MAX_ATTRIBUTE_STRIDE_DWORDS] = {};
 	attribute_weights[0] = attribute_weights[1] = attribute_weights[2] = 0.25f; // Normal
@@ -199,8 +237,8 @@ MeshImportResult ImportMeshFile(StackAllocator* alloc, ThreadPool* thread_pool, 
 	attribute_weights[6] = attribute_weights[7] = 0.25f;                        // Texcoord
 	
 	MdtContinuousLodBuildInputs inputs = {};
-	inputs.mesh.geometry_descs      = geometry_descs;
-	inputs.mesh.geometry_desc_count = 1;
+	inputs.mesh.geometry_descs      = mdt_geometry_descs.data;
+	inputs.mesh.geometry_desc_count = (u32)mdt_geometry_descs.count;
 	inputs.mesh.vertex_stride_bytes = sizeof(SourceMeshVertex);
 	inputs.mesh.geometric_weight    = 0.f;
 	inputs.mesh.attribute_weights   = attribute_weights;
@@ -416,6 +454,7 @@ MeshImportResult ImportMeshFile(StackAllocator* alloc, ThreadPool* thread_pool, 
 				culling_data.meshlet_header_offset      = (u32)(page_meshlet_data_offset - page_culling_data_offset);
 				culling_data.aabb_center                = (float3(src_meshlet.aabb_max) + float3(src_meshlet.aabb_min)) * 0.5f;
 				culling_data.aabb_radius                = (float3(src_meshlet.aabb_max) - float3(src_meshlet.aabb_min)) * 0.5f;
+				culling_data.geometry_index             = src_meshlet.geometry_index;
 				culling_data.level_of_detail_index      = level_of_detail_index;
 				culling_data.world_to_uv_scale          = meshlet_world_to_uv_scale[meshlet_index];
 				
@@ -434,6 +473,7 @@ MeshImportResult ImportMeshFile(StackAllocator* alloc, ThreadPool* thread_pool, 
 				meshlet_header.vertex_count    = vertex_count;
 				meshlet_header.position_offset = position_offset * rcp_quantization_scale;
 				meshlet_header.rtas_offset     = u32_max;
+				meshlet_header.geometry_index  = src_meshlet.geometry_index;
 				meshlet_header.level_of_detail_index = level_of_detail_index;
 				
 				memcpy(page.data + page_meshlet_data_offset, &meshlet_header, sizeof(meshlet_header));
@@ -530,5 +570,5 @@ MeshImportResult ImportMeshFile(StackAllocator* alloc, ThreadPool* thread_pool, 
 	
 	write_file_success &= SystemCloseFile(runtime_file);
 	
-	return { runtime_data_layout, mesh_aabb_min, mesh_aabb_max, write_file_success };
+	return { runtime_data_layout, mesh_aabb_min, mesh_aabb_max, (u32)mdt_geometry_descs.count, write_file_success };
 }

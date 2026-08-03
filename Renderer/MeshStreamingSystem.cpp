@@ -315,6 +315,9 @@ void UpdateMeshStreamingFiles(MeshStreamingSystem* system, ThreadPool* thread_po
 				auto& aabb = streams.aabb[i];
 				aabb.min = result.aabb_min;
 				aabb.max = result.aabb_max;
+				
+				auto& material_table = streams.material_table[i];
+				material_table.materials.count = result.material_count;
 			}
 		}
 		

@@ -57,7 +57,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	texcoord_stream.texcoord_ddx = BarycentricInterpolation<float2>(b.barycentrics_ddx, v0.texcoord, v1.texcoord, v2.texcoord);
 	texcoord_stream.texcoord_ddy = BarycentricInterpolation<float2>(b.barycentrics_ddy, v0.texcoord, v1.texcoord, v2.texcoord);
 	
-	MaterialProperties properties = SampleMaterial(mesh_entity.material_asset_index, texcoord_stream);
+	MaterialProperties properties = SampleMaterial(mesh_entity.material_table[meshlet.geometry_index], texcoord_stream);
 	gb_albedo_metalness[thread_id] = EncodeSRGB(float4(properties.albedo, properties.metalness));
 	
 	float3x3 tangent_to_model = ComputeTangentToOtherSpace(model_space_tangent, model_space_normal);

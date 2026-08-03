@@ -281,8 +281,10 @@ struct GpuTransform {
 
 NOTES(Meta::HlslFile{ "MeshData.hlsl"_sl })
 struct GpuMeshEntityData {
-	u32 mesh_asset_index     = 0;
-	u32 material_asset_index = 0;
+	compile_const u32 max_materials = 8;
+	
+	u32 mesh_asset_index = 0;
+	FixedCountArray<u32, max_materials> material_table;
 };
 
 

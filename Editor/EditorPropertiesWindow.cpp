@@ -41,8 +41,18 @@ static void WorldComponentEntityView(StackAllocator* alloc, WorldEntitySystem& w
 		ImGui::TableEntityComboBox(alloc, "Mesh Asset", &asset_system, &entity.mesh_asset->guid, ECS::GetEntityTypeID<MeshAssetType>::id);
 	}
 	
-	if (entity.material_asset) {
-		ImGui::TableEntityComboBox(alloc, "Material Asset", &asset_system, &entity.material_asset->guid, ECS::GetEntityTypeID<MaterialAssetType>::id);
+	if (entity.mesh_entity_material_table && entity.mesh_asset && entity.mesh_asset->guid != 0) {
+		auto mesh_asset = QueryEntityByGUID<MeshAssetType>(asset_system, entity.mesh_asset->guid);
+		auto& mesh_asset_material_table  = *mesh_asset.material_table;
+		auto& mesh_entity_material_table = *entity.mesh_entity_material_table;
+		
+		u64 material_count = mesh_asset_material_table.materials.count;
+		for (u64 i = 0; i < material_count; i += 1) {
+			auto& material_asset_guid = mesh_entity_material_table.materials[i];
+			
+			auto label = StringFormat(alloc, "Material Asset %"_sl, i);
+			ImGui::TableEntityComboBox(alloc, label.data, &asset_system, &material_asset_guid.guid, ECS::GetEntityTypeID<MaterialAssetType>::id);
+		}
 	}
 	
 	if (entity.camera) {
@@ -352,8 +362,16 @@ static bool AssetComponentEntityView(StackAllocator* alloc, AssetEntitySystem& a
 		}
 	}
 	
-	if (entity.material_asset) {
-		ImGui::TableEntityComboBox(alloc, "Material Asset", &asset_system, &entity.material_asset->guid, ECS::GetEntityTypeID<MaterialAssetType>::id);
+	if (entity.mesh_asset_material_table) {
+		auto& mesh_asset_material_table = *entity.mesh_asset_material_table;
+		
+		u64 material_count = mesh_asset_material_table.materials.count;
+		for (u64 i = 0; i < material_count; i += 1) {
+			auto& material_asset_guid = mesh_asset_material_table.materials[i];
+			
+			auto label = StringFormat(alloc, "Material Asset %"_sl, i);
+			ImGui::TableEntityComboBox(alloc, label.data, &asset_system, &material_asset_guid.guid, ECS::GetEntityTypeID<MaterialAssetType>::id);
+		}
 	}
 	
 	

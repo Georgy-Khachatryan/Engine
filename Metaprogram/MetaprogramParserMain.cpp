@@ -796,7 +796,7 @@ s32 main(s32 argument_count, const char* arguments[]) {
 		for (auto& file : parsed_files) {
 			builder.Append("#include \"%\"\n"_sl, file.filepath);
 		}
-		builder.Append("#include \"Metaprogram/TypeInfo.h\"\n"_sl);
+		builder.Append("#include \"Metaprogram/TypeInfo.h\"\n\n"_sl);
 		
 		builder.Append("// Forward Declarations:\n"_sl);
 		for (auto& file : parsed_files) {

@@ -41,8 +41,8 @@ struct WorldEntityEditorQuery {
 	RotationComponent* rotation = nullptr;
 	ScaleComponent*    scale    = nullptr;
 	
-	MeshAssetGUID*     mesh_asset     = nullptr;
-	MaterialAssetGUID* material_asset = nullptr;
+	MeshAssetGUID* mesh_asset = nullptr;
+	MeshEntityMaterialTable* mesh_entity_material_table = nullptr;
 	
 	LightEntityGUID* light_entity = nullptr;
 	
@@ -60,7 +60,7 @@ struct WorldEntityEditorQuery {
 
 NOTES(Meta::ComponentQuery{})
 struct AssetEntityEditorQuery {
-	MaterialAssetGUID* material_asset = nullptr;
+	MeshAssetMaterialTable* mesh_asset_material_table = nullptr;
 	
 	MeshSourceData* mesh_source_data = nullptr;
 	MeshRuntimeDataLayout* mesh_runtime_data_layout = nullptr;
@@ -75,6 +75,12 @@ struct AssetEntityEditorQuery {
 	WorldSourceData* world_source_data = nullptr;
 	
 	EditorIconCacheSettingsComponent* editor_icon_cache_settings = nullptr;
+};
+
+NOTES(Meta::ComponentQuery{})
+struct AssetCpuStreamingRequestQuery {
+	MeshRuntimeCpuStreamingRequest*    mesh_cpu_streaming_requests    = nullptr;
+	TextureRuntimeCpuStreamingRequest* texture_cpu_streaming_requests = nullptr;
 };
 
 void UpdateEditorAssetComponents(StackAllocator* alloc, AssetEntitySystem& asset_system);

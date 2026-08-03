@@ -2,9 +2,8 @@
 #include "Basic/Basic.h"
 #include "Basic/BasicFiles.h"
 #include "Basic/BasicString.h"
-#include "EntitySystem/EntitySystem.h"
 #include "EntitySystem/Components.h"
-#include "MaterialAsset.h"
+#include "EntitySystem/EntitySystem.h"
 
 #define MESH_ASSET_OPTION_USE_FLOAT3_VERTEX_POSITION 0
 #if MESH_ASSET_OPTION_USE_FLOAT3_VERTEX_POSITION
@@ -37,7 +36,8 @@ struct MeshletCullingData {
 	
 	u32 meshlet_header_offset = 0;
 	u32 current_level_meshlet_group_index = u32_max;
-	u32 level_of_detail_index = 0;
+	u16 level_of_detail_index = 0;
+	u16 geometry_index        = 0;
 	float world_to_uv_scale = 0.f;
 };
 
@@ -46,7 +46,8 @@ struct MeshletHeader {
 	float3 position_offset;
 	u16 triangle_count = 0;
 	u16 vertex_count   = 0;
-	u32 level_of_detail_index = 0;
+	u16 level_of_detail_index = 0;
+	u16 geometry_index = 0;
 	u32 rtas_offset    = 0;
 };
 
@@ -107,7 +108,7 @@ struct MeshSourceData {
 // No SaveLoad for tooling, MeshRuntimeDataLayout is part of the mesh file and should be kept in sync with it (and not go through Undo/Redo).
 NOTES(Meta::SaveLoadOptions{ SaveLoadFlags::SaveLoadToDisk })
 struct MeshRuntimeDataLayout {
-	compile_const u64 sequential_version = 46;
+	compile_const u64 sequential_version = 47;
 	
 	compile_const u64 options_version = MESH_ASSET_OPTION_USE_FLOAT3_VERTEX_POSITION;
 	compile_const u64 current_version = (sequential_version << 1u) | options_version;
@@ -126,6 +127,7 @@ struct MeshImportResult {
 	MeshRuntimeDataLayout layout;
 	float3 aabb_min;
 	float3 aabb_max;
+	u32 material_count = 0;
 	bool success = false;
 };
 
@@ -153,6 +155,15 @@ struct MeshRuntimeCpuStreamingRequest {
 	}
 };
 
+using MaterialAssetGUID = EntityGUID<struct MaterialAssetType>;
+
+NOTES()
+struct MeshAssetMaterialTable {
+	compile_const u32 max_materials = 8;
+	
+	FixedCapacityArray<MaterialAssetGUID, max_materials> materials;
+};
+
 using MeshAssetGUID = EntityGUID<struct MeshAssetType>;
 
 
@@ -166,7 +177,7 @@ struct MeshAssetType {
 	ECS::Component<MeshRuntimeFile>                runtime_file;
 	ECS::Component<MeshRuntimeAllocation>          allocation;
 	ECS::Component<AabbComponent>                  aabb;
-	ECS::Component<MaterialAssetGUID>              material_asset;
+	ECS::Component<MeshAssetMaterialTable>         material_table;
 	ECS::Component<MeshRuntimeCpuStreamingRequest> cpu_streaming_requests;
 	
 	NOTES(VirtualResourceID::GpuMeshAssetData)

@@ -46,6 +46,11 @@ static void UpdateMeshEntityGpuComponents(StackAllocator* alloc, RecordContext* 
 	}
 	
 	if (dirty_count != 0) {
+		auto find_material_index = [&](MaterialAssetGUID material_asset_guid)-> u32 {
+			auto* material_asset = HashTableFind(asset_system.entity_guid_to_entity_id, material_asset_guid.guid);
+			return material_asset ? material_asset->value.entity_id.index : u32_max;
+		};
+		
 		auto gpu_mesh_entity_data = AllocateGpuComponentUploadBuffer(record_context, dirty_count, streams.gpu_mesh_entity_data);
 		for (u64 i : BitArrayIt(dirty_mask)) {
 			auto* mesh_asset = HashTableFind(asset_system.entity_guid_to_entity_id, streams.mesh_asset[i].guid);
@@ -53,13 +58,25 @@ static void UpdateMeshEntityGpuComponents(StackAllocator* alloc, RecordContext* 
 			GpuMeshEntityData mesh_entity;
 			mesh_entity.mesh_asset_index = mesh_asset ? mesh_asset->value.entity_id.index : u32_max;
 			
-			u64 material_asset_guid = streams.material_asset[i].guid;
-			if (mesh_entity.mesh_asset_index != u32_max && material_asset_guid == 0) {
-				material_asset_guid = mesh_asset_streams.material_asset[mesh_entity.mesh_asset_index].guid;
+			if (mesh_entity.mesh_asset_index != u32_max) {
+				auto& mesh_asset_material_table  = mesh_asset_streams.material_table[mesh_entity.mesh_asset_index];
+				auto& mesh_entity_material_table = streams.material_table[i];
+				
+				u64 material_count = mesh_asset_material_table.materials.count;
+				for (u64 i = 0; i < material_count; i += 1) {
+					auto material_asset_guid = mesh_entity_material_table.materials[i];
+					if (material_asset_guid.guid == 0) {
+						material_asset_guid = mesh_asset_material_table.materials[i];
+					}
+					
+					mesh_entity.material_table[i] = find_material_index(material_asset_guid);
+				}
+				
+				for (u64 i = material_count; i < MeshAssetMaterialTable::max_materials; i += 1) {
+					mesh_entity.material_table[i] = u32_max;
+				}
+				static_assert(MeshAssetMaterialTable::max_materials == GpuMeshEntityData::max_materials);
 			}
-			
-			auto* material_asset = HashTableFind(asset_system.entity_guid_to_entity_id, material_asset_guid);
-			mesh_entity.material_asset_index = material_asset ? material_asset->value.entity_id.index : u32_max;
 			
 			AppendGpuTransferCommand(gpu_mesh_entity_data, i, mesh_entity);
 		}
