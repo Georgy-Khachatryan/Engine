@@ -129,4 +129,45 @@ BrdfSampleResult SampleBRDF(
 	return result;
 }
 
+BrdfSampleResult SampleSpecularBRDF(
+	float3 wo,
+	float abs_cos_theta_o,
+	float metalness,
+	float alpha,
+	float alpha_square,
+	float3 conductor_f0,
+	float2 single_scattering_energy,
+	float2 specular_blue_noise
+) {
+	float3 wh = SampleTrowbridgeReitzVNDF(specular_blue_noise, wo, alpha);
+	float3 wi = reflect(-wo, wh);
+	float i_dot_h = saturate(dot(wi, wh));
+	
+	BrdfSampleResult result;
+	result.is_valid = (wi.z * abs_cos_theta_o) > 0.0;
+	
+	if (result.is_valid) {
+		result.wi = wi;
+		result.throughput = 0.0;
+		
+		float specular_brdf = (SmithVisibilityG(abs_cos_theta_o, wi.z, alpha_square) / SmithVisibilityG1(abs_cos_theta_o, alpha_square));
+		
+		if (metalness != 0.0) {
+			float3 specular_fresnel    = FresnelConductor(conductor_f0, i_dot_h);
+			float3 energy_compensation = ComputeConductorBrdfEnergyCompensation(single_scattering_energy, specular_fresnel) * metalness;
+			
+			result.throughput += specular_fresnel * energy_compensation * specular_brdf;
+		}
+		
+		if (metalness != 1.0) {
+			float specular_fresnel    = FresnelDielectric(dielectric_f0, i_dot_h);
+			float energy_compensation = ComputeDielectricBrdfEnergyCompensation(single_scattering_energy) * (1.0 - metalness);
+			
+			result.throughput += specular_fresnel * energy_compensation * specular_brdf;
+		}
+	}
+	
+	return result;
+}
+
 #endif // LIGHTEVALUATION_HLSL

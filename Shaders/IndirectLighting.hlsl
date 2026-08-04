@@ -9,7 +9,7 @@ enum struct CdfTileFlags : u32 {
 	NeedsUpdate = 1u << 31,
 };
 
-#if defined(INDIRECT_DIFFUSE)
+#if defined(INDIRECT_DIFFUSE) || defined(INDIRECT_SPECULAR)
 #include "BrdfSampling.hlsl"
 #include "LightSampling.hlsl"
 #include "LightEvaluation.hlsl"
@@ -17,15 +17,16 @@ enum struct CdfTileFlags : u32 {
 #include "TextureSampling.hlsl"
 #include "SDK/NvAPI/include/nvHLSLExtns.h"
 
+#if defined(INDIRECT_DIFFUSE)
 uint SampleInverseCDF1x2(float p, inout float random) {
 	bool commit_sample = (random < p);
 	random = commit_sample ? (random / p) : ((random - p) / (1.0 - p));
 	return commit_sample ? 0 : 1;
 }
 
-float SampleInverseCDF2x2(uint2 src_tile_id, uint mip_level, inout float2 random, inout uint2 octahedral_coordinates) {
+float SampleInverseCDF2x2(uint2 tile_coordinates, uint mip_level, inout float2 random, inout uint2 octahedral_coordinates) {
 	octahedral_coordinates *= 2u;
-	uint2 quad_coordinates = ((src_tile_id * LightingConstants::cdf_tile_size) >> mip_level) + octahedral_coordinates;
+	uint2 quad_coordinates = (tile_coordinates >> mip_level) + octahedral_coordinates;
 	
 	float4 samples = 0.0; // TODO: Use gather4.
 	samples[0] = indirect_diffuse_tile_cdf.Load(uint3(quad_coordinates + uint2(0, 0), mip_level));
@@ -41,28 +42,58 @@ float SampleInverseCDF2x2(uint2 src_tile_id, uint mip_level, inout float2 random
 	return samples[sample_index];
 }
 
-float4 SampleDirectionInverseCDF(uint2 src_tile_id, float3 world_space_normal, float2 diffuse_blue_noise) {
+struct DiffuseBrdfSampleResult {
+	float3 direction;
+	float inv_pdf;
+};
+
+DiffuseBrdfSampleResult SampleDirectionInverseCDF(uint hash_index, float3 world_space_normal, float2 diffuse_blue_noise) {
+	uint2 tile_coordinates = MortonDecode(hash_index) * LightingConstants::cdf_tile_size;
+	
 	float weight = 0.0;
 	uint2 octahedral_coordinates = 0;
 	
 	[unroll]
 	for (s32 i = LightingConstants::cdf_mip_count - 1; i >= 0; i -= 1) {
-		weight = SampleInverseCDF2x2(src_tile_id, i, diffuse_blue_noise, octahedral_coordinates);
+		weight = SampleInverseCDF2x2(tile_coordinates, i, diffuse_blue_noise, octahedral_coordinates);
 	}
 	
 	float2 octahedral_direction = (octahedral_coordinates + diffuse_blue_noise) * (1.0 / LightingConstants::cdf_tile_size);
-	float3 direction = DecodeOctahedralMap01(octahedral_direction);
 	
-	float inv_pdf = 0.0;
+	DiffuseBrdfSampleResult result_sample;
+	result_sample.direction = DecodeOctahedralMap01(octahedral_direction);
+	result_sample.inv_pdf = 0.0;
+	
 	if (weight > 0.0) {
 		// tile_cdf_solid_angle is scaled by cdf_tile_area * (1.0 / PI)
 		float octahedral_texel_solid_angle = tile_cdf_solid_angle[octahedral_coordinates] * LightingConstants::inv_cdf_tile_area;
-		inv_pdf = octahedral_texel_solid_angle * rcp(weight * inv_cdf_encoding_scale) * saturate(dot(world_space_normal, direction));
+		result_sample.inv_pdf = octahedral_texel_solid_angle * rcp(weight * inv_cdf_encoding_scale) * saturate(dot(world_space_normal, result_sample.direction));
 	}
 	
-	return float4(direction, inv_pdf);
+	return result_sample;
 }
 
+// TODO: Account for energy compensation and specular fresnel.
+DiffuseBrdfSampleResult SampleDiffuseBRDF(
+	float3 cdf_hash_table_key_origin,
+	float3 world_space_normal,
+	float3x3 tangent_to_world,
+	float2 diffuse_blue_noise
+) {
+	CdfHashTableKey key = BuildCdfHashTableKey(cdf_hash_table_key_origin, scene.prev_world_space_camera_position, world_space_normal);
+	HashTableFindResult result = HashTableFind(cdf_hash_table_keys, key, LightingConstants::cdf_hash_table_size);
+	
+	DiffuseBrdfSampleResult result_sample;
+	if (result.is_found) {
+		result_sample = SampleDirectionInverseCDF(result.hash_index, world_space_normal, diffuse_blue_noise);
+	} else {
+		result_sample.direction = mul(tangent_to_world, CosineWeightedHemisphereMapping(diffuse_blue_noise));
+		result_sample.inv_pdf = 1.0;
+	}
+	
+	return result_sample;
+}
+#endif // defined(INDIRECT_DIFFUSE)
 
 compile_const u32 thread_group_size = 16;
 compile_const u32 thread_group_area = thread_group_size * thread_group_size;
@@ -74,7 +105,13 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	
 	float depth = depth_stencil[thread_id];
 	if (depth == 0.0) {
+#if defined(INDIRECT_DIFFUSE)
 		indirect_diffuse[thread_id] = 0;
+#endif // defined(INDIRECT_DIFFUSE)
+		
+#if defined(INDIRECT_SPECULAR)
+		indirect_specular[thread_id] = 0;
+#endif // defined(INDIRECT_SPECULAR)
 		return;
 	}
 	
@@ -89,31 +126,63 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	float3x3 tangent_to_world = transpose(world_to_tangent);
 	
 	RayDesc ray_desc;
-	ray_desc.Origin = mul(scene.view_to_world, float4(view_space_position, 1.0));
-	ray_desc.TMin   = 0.0;
-	ray_desc.TMax   = 1024.0;
+	ray_desc.Origin    = mul(scene.view_to_world, float4(view_space_position, 1.0));
+	ray_desc.Direction = mul((float3x3)scene.view_to_world, normalize(view_space_position));
+	ray_desc.TMin      = 0.0;
+	ray_desc.TMax      = 1024.0;
 	
 	ray_desc.Origin += world_space_normal * (1.0 / 1024.0);
-	float3 cdf_hash_table_key_origin = ray_desc.Origin;
 	
-	float inv_pdf = 0.0;
-	{
-		float2 diffuse_blue_noise = blue_noise_2d[uint3(thread_id % 128, scene.frame_index % 32)];
-		
-		CdfHashTableKey key = BuildCdfHashTableKey(cdf_hash_table_key_origin, scene.prev_world_space_camera_position, world_space_normal);
-		HashTableFindResult result = HashTableFind(cdf_hash_table_keys, key, LightingConstants::cdf_hash_table_size);
-		if (result.is_found) {
-			uint2 src_tile_id = MortonDecode(result.hash_index);
-			
-			float4 direction_and_inv_pdf = SampleDirectionInverseCDF(src_tile_id, world_space_normal, diffuse_blue_noise);
-			ray_desc.Direction = direction_and_inv_pdf.xyz;
-			inv_pdf = direction_and_inv_pdf.w;
-		} else {
-			ray_desc.Direction = mul(tangent_to_world, CosineWeightedHemisphereMapping(diffuse_blue_noise));
-			inv_pdf = 1.0;
-		}
+#if defined(INDIRECT_DIFFUSE)
+	float3 cdf_hash_table_key_origin = ray_desc.Origin;
+	DiffuseBrdfSampleResult brdf_sample = SampleDiffuseBRDF(
+		cdf_hash_table_key_origin,
+		world_space_normal,
+		tangent_to_world,
+		blue_noise_2d[uint3(thread_id % 128, scene.frame_index % 32)]
+	);
+	ray_desc.Direction = brdf_sample.direction;
+#endif // defined(INDIRECT_DIFFUSE)
+	
+#if defined(INDIRECT_SPECULAR)
+	float4 albedo_metalness = gb_albedo_metalness[thread_id];
+	
+	float3 wo = mul(world_to_tangent, -ray_desc.Direction);
+	float abs_cos_theta_o = abs(wo.z);
+	
+	float  metalness    = albedo_metalness.w;
+	float  roughness    = normal_roughness.z;
+	float3 conductor_f0 = albedo_metalness.xyz;
+	float  alpha        = Pow2(roughness);
+	float  alpha_square = Pow2(alpha);
+	float3 diffuse_albedo = albedo_metalness.xyz;
+	
+	float2 single_scattering_energy = SampleGgxSingleScatteringEnergyLUT(ggx_single_scattering_energy_lut, abs_cos_theta_o, roughness);
+	
+	BrdfSampleResult brdf_sample = SampleSpecularBRDF(
+		wo,
+		abs_cos_theta_o,
+		metalness,
+		alpha,
+		alpha_square,
+		conductor_f0,
+		single_scattering_energy,
+		blue_noise_2d[uint3(thread_id % 128, scene.frame_index % 32)]
+	);
+	
+	if (brdf_sample.is_valid == false) {
+		indirect_specular[thread_id] = 0;
+		return;
 	}
 	
+	ray_desc.Direction = mul(tangent_to_world, brdf_sample.wi);
+	
+	{
+		float2 preintegrated_brdf = SampleGgxSingleScatteringEnergyLUT(ggx_preintegrated_brdf_lut, abs_cos_theta_o, roughness);
+		float3 specular_demodulation = lerp(dielectric_f0, conductor_f0, metalness) * preintegrated_brdf.x + preintegrated_brdf.y;
+		brdf_sample.throughput /= max(specular_demodulation, 1.0 / 128.0);
+	}
+#endif // defined(INDIRECT_SPECULAR)
 	
 	RayQuery<
 		RAY_FLAG_CULL_NON_OPAQUE |
@@ -204,17 +273,37 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 					u32 src_index  = result.hash_index;
 					u32 src_offset = src_index * sizeof(float16x4);
 					
-					light_accumulator.radiance = radiance_hash_table_values.Load<float16x3>(src_offset);
+					float3 cache_radiance = radiance_hash_table_values.Load<float16x3>(src_offset);
+					
+#if defined(INDIRECT_DIFFUSE)
+					light_accumulator.radiance = cache_radiance;
+#endif // defined(INDIRECT_DIFFUSE)
+					
+#if defined(INDIRECT_SPECULAR)
+					light_accumulator.radiance = lerp(light_accumulator.radiance, cache_radiance, roughness);
+#endif // defined(INDIRECT_SPECULAR)
 				}
 			}
 		}
 	} else {
 		light_accumulator.radiance = SampleSkyPanoramaLUT(scene.atmosphere, sky_panorama_lut, transmittance_lut, scene.world_space_camera_position, ray_desc.Direction, false);
 	}
-	light_accumulator.radiance *= inv_pdf;
+	
+	
+#if defined(INDIRECT_DIFFUSE)
+	light_accumulator.radiance *= brdf_sample.inv_pdf;
 	
 	indirect_diffuse[thread_id] = EncodeR9G9B9E5(light_accumulator.radiance * scene.exposure_estimate);
+#endif // defined(INDIRECT_DIFFUSE)
 	
+#if defined(INDIRECT_SPECULAR)
+	light_accumulator.radiance *= brdf_sample.throughput;
+	
+	indirect_specular[thread_id] = EncodeR9G9B9E5(light_accumulator.radiance * scene.exposure_estimate);
+#endif // defined(INDIRECT_SPECULAR)
+	
+	
+#if defined(INDIRECT_DIFFUSE)
 	{
 		CdfHashTableKey key = BuildCdfHashTableKey(cdf_hash_table_key_origin, scene.world_space_camera_position, world_space_normal);
 		HashTableFindResult result = HashTableAddOrFind(cdf_hash_table_keys, key, LightingConstants::cdf_hash_table_size, LightingConstants::cdf_hash_table_size);
@@ -241,211 +330,10 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 			}
 		}
 	}
+#endif // defined(INDIRECT_DIFFUSE)
 	
 }
 #endif // defined(INDIRECT_DIFFUSE)
-
-#if defined(INDIRECT_SPECULAR)
-#include "BrdfSampling.hlsl"
-#include "LightSampling.hlsl"
-#include "LightEvaluation.hlsl"
-#include "GeometrySampling.hlsl"
-#include "TextureSampling.hlsl"
-#include "SDK/NvAPI/include/nvHLSLExtns.h"
-
-compile_const u32 thread_group_size = 16;
-compile_const u32 thread_group_area = thread_group_size * thread_group_size;
-
-[ThreadGroupSize(thread_group_size * thread_group_size, 1, 1)]
-void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
-	uint2  thread_id = group_id * thread_group_size + MortonDecode(thread_index);
-	float2 thread_uv = (thread_id + 0.5 - scene.jitter_offset_pixels) * scene.inv_render_target_size;
-	
-	float depth = depth_stencil[thread_id];
-	if (depth == 0.0) {
-		indirect_specular[thread_id] = 0;
-		return;
-	}
-	
-	uint hash = WyHash32(thread_id.x | (thread_id.y << 16), scene.frame_index);
-	
-	float3 view_space_position = TransformScreenUvToViewSpace(thread_uv, depth, scene.clip_to_view_coef);
-	
-	float4 albedo_metalness   = gb_albedo_metalness[thread_id];
-	float4 normal_roughness   = gb_normal_roughness[thread_id];
-	float3 world_space_normal = DecodeHemiOctahedralMap01(normal_roughness.xy) * float3(1.0, 1.0, normal_roughness.w * 2.0 - 1.0);
-	
-	float3x3 world_to_tangent = BuildOrthonormalBasis(world_space_normal);
-	float3x3 tangent_to_world = transpose(world_to_tangent);
-	
-	RayDesc ray_desc;
-	ray_desc.Origin    = mul(scene.view_to_world, float4(view_space_position, 1.0));
-	ray_desc.Direction = mul((float3x3)scene.view_to_world, normalize(view_space_position));
-	ray_desc.TMin      = 0.0;
-	ray_desc.TMax      = 1024.0;
-	
-	ray_desc.Origin += world_space_normal * (1.0 / 1024.0);
-	
-	float3 throughput = 0.0;
-	{
-		float2 specular_blue_noise = blue_noise_2d[uint3(thread_id % 128, scene.frame_index % 32)];
-		
-		float3 wo = mul(world_to_tangent, -ray_desc.Direction);
-		float abs_cos_theta_o = abs(wo.z);
-		
-		float  metalness    = albedo_metalness.w;
-		float  roughness    = normal_roughness.z;
-		float3 conductor_f0 = albedo_metalness.xyz;
-		float  alpha        = Pow2(roughness);
-		float  alpha_square = Pow2(alpha);
-		float3 diffuse_albedo = albedo_metalness.xyz;
-		
-		float2 single_scattering_energy = SampleGgxSingleScatteringEnergyLUT(ggx_single_scattering_energy_lut, abs_cos_theta_o, roughness);
-		
-		float3 wh = SampleTrowbridgeReitzVNDF(specular_blue_noise, wo, alpha);
-		float3 wi = reflect(-wo, wh);
-		float i_dot_h = saturate(dot(wi, wh));
-		
-		bool is_valid = (wi.z * abs_cos_theta_o) > 0.0;
-		
-		if (is_valid == false) {
-			indirect_specular[thread_id] = 0;
-			return;
-		}
-		
-		if (is_valid) {
-			ray_desc.Direction = mul(tangent_to_world, wi);
-			
-			if (metalness != 0.0) {
-				float3 specular_fresnel    = FresnelConductor(conductor_f0, i_dot_h);
-				float3 energy_compensation = ComputeConductorBrdfEnergyCompensation(single_scattering_energy, specular_fresnel) * metalness;
-				
-				throughput += specular_fresnel * energy_compensation * (SmithVisibilityG(abs_cos_theta_o, wi.z, alpha_square) / SmithVisibilityG1(abs_cos_theta_o, alpha_square));
-			}
-			
-			if (metalness != 1.0) {
-				float specular_fresnel    = FresnelDielectric(dielectric_f0, i_dot_h);
-				float energy_compensation = ComputeDielectricBrdfEnergyCompensation(single_scattering_energy) * (1.0 - metalness);
-				
-				float mis_specular_weight = specular_fresnel;
-				float mis_diffuse_weight  = dot(diffuse_albedo, rec709_luminance_coefficients) * (1.0 - mis_specular_weight);
-				float normalized_mis_specular_weight = mis_specular_weight / (mis_specular_weight + mis_diffuse_weight);
-				float normalized_mis_diffuse_weight  = 1.0 - normalized_mis_specular_weight;
-				
-				throughput += specular_fresnel * (energy_compensation * (SmithVisibilityG(abs_cos_theta_o, wi.z, alpha_square) / SmithVisibilityG1(abs_cos_theta_o, alpha_square)));
-			}
-		}
-		
-		{
-			float2 preintegrated_brdf = SampleGgxSingleScatteringEnergyLUT(ggx_preintegrated_brdf_lut, abs_cos_theta_o, roughness);
-			float3 specular_demodulation = lerp(dielectric_f0, conductor_f0, metalness) * preintegrated_brdf.x + preintegrated_brdf.y;
-			throughput /= max(specular_demodulation, 1.0 / 128.0);
-		}
-	}
-	
-	
-	RayQuery<
-		RAY_FLAG_CULL_NON_OPAQUE |
-		RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES |
-		// RAY_FLAG_CULL_BACK_FACING_TRIANGLES |
-		RAY_FLAG_NONE
-	> ray_query;
-	
-	ray_query.TraceRayInline(scene_tlas, 0, 0xFF, ray_desc);
-	
-	while (ray_query.Proceed()) {
-		
-	}
-	
-	LightAccumulator light_accumulator;
-	light_accumulator.radiance = 0.0;
-	
-	if (ray_query.CommittedStatus() == COMMITTED_TRIANGLE_HIT) {
-		MaterialProperties properties = SampleMaterialFromHitResult(
-			NvRtGetCommittedClusterID(ray_query),
-			ray_query.CommittedInstanceID(),
-			ray_query.CommittedPrimitiveIndex(),
-			ray_query.CommittedTriangleBarycentrics(),
-			ray_query.CommittedTriangleFrontFace(),
-			/*texcoord_grad=*/(1.0 / 4096.0)
-		);
-		
-		float3 world_space_normal = properties.normal;
-		
-		ray_desc.Origin += ray_desc.Direction * ray_query.CommittedRayT() + world_space_normal * (1.0 / 1024.0);
-		
-		float  metalness    = properties.metalness;
-		float  roughness    = properties.roughness;
-		float3 conductor_f0 = properties.albedo;
-		float  alpha        = Pow2(roughness);
-		float  alpha_square = Pow2(alpha);
-		float3 diffuse_albedo = properties.albedo;
-		
-		LightSample light_sample = SampleLightWRS(ray_desc.Origin, world_space_normal, ComputeRandomUnorm16x2(hash).x);
-		
-		if (light_sample.light_entity_index != u32_max) {
-			float3x3 world_to_tangent = BuildOrthonormalBasis(world_space_normal);
-			float3x3 tangent_to_world = transpose(world_to_tangent);
-			
-			float3 wo = mul(world_to_tangent, -ray_desc.Direction);
-			float abs_cos_theta_o = abs(wo.z);
-			
-			float2 single_scattering_energy = SampleGgxSingleScatteringEnergyLUT(ggx_single_scattering_energy_lut, abs_cos_theta_o, roughness);
-			
-			ShadowSampler shadow_sampler;
-			shadow_sampler.penumbra_noise = ConcentricMapping(ComputeRandomUnorm16x2(hash));
-			
-			EvaluateBRDF(
-				light_accumulator,
-				shadow_sampler,
-				ray_desc.Origin,
-				world_to_tangent,
-				wo,
-				abs_cos_theta_o,
-				metalness,
-				roughness,
-				alpha_square,
-				conductor_f0,
-				diffuse_albedo,
-				/*throughput=*/1.0,
-				single_scattering_energy,
-				light_sample
-			);
-			
-			// Insert:
-			{
-				RadianceHashTableKey key = BuildRadianceHashTableKey(ray_desc.Origin, scene.world_space_camera_position, world_space_normal);
-				HashTableFindResult result = HashTableAddOrFind(radiance_hash_table_keys, key, LightingConstants::radiance_hash_table_size, LightingConstants::radiance_hash_table_size);
-				if (result.is_found) {
-					u32 dst_index  = result.hash_index + LightingConstants::radiance_hash_table_size;
-					u32 dst_offset = dst_index * sizeof(float16x4);
-					
-					NvInterlockedAddFp16x2(radiance_hash_table_values, dst_offset + 0, light_accumulator.radiance.xy);
-					NvInterlockedAddFp16x2(radiance_hash_table_values, dst_offset + 4, float2(light_accumulator.radiance.z, 1.0));
-				}
-			}
-			
-			// Lookup:
-			{
-				RadianceHashTableKey key = BuildRadianceHashTableKey(ray_desc.Origin, scene.prev_world_space_camera_position, world_space_normal);
-				HashTableFindResult result = HashTableFind(radiance_hash_table_keys, key, LightingConstants::radiance_hash_table_size);
-				if (result.is_found) {
-					u32 src_index  = result.hash_index;
-					u32 src_offset = src_index * sizeof(float16x4);
-					
-					light_accumulator.radiance = lerp(light_accumulator.radiance, radiance_hash_table_values.Load<float16x3>(src_offset), normal_roughness.z);
-					// light_accumulator.radiance = radiance_hash_table_values.Load<float16x3>(src_offset);
-				}
-			}
-		}
-	} else {
-		light_accumulator.radiance = SampleSkyPanoramaLUT(scene.atmosphere, sky_panorama_lut, transmittance_lut, scene.world_space_camera_position, ray_desc.Direction, false);
-	}
-	light_accumulator.radiance *= throughput;
-	
-	indirect_specular[thread_id] = EncodeR9G9B9E5(light_accumulator.radiance * scene.exposure_estimate);
-}
-#endif // defined(INDIRECT_SPECULAR)
 
 
 #if defined(UPDATE_RADIANCE_HASH_TABLE)
