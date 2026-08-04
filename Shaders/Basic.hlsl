@@ -361,6 +361,11 @@ float TriangleSolidAngle(float3 p0, float3 p1, float3 p2) {
 	return atan2(dot(p0, cross(p1, p2)), dot(p0, p1) + dot(p1, p2) + dot(p2, p0) + 1.0) * 2.0;
 }
 
+template<typename T>
+T LoadBlueNoise(Texture2DArray<T> blue_noise, uint2 thread_id, uint frame_index) {
+	return blue_noise[uint3(thread_id & 0x7Fu, frame_index & 0x1Fu)];
+}
+
 
 bool IsPerspectiveMatrix(float4 coefficients)  { return coefficients.w == 0.0; }
 bool IsOrthographicMatrix(float4 coefficients) { return coefficients.w != 0.0; }

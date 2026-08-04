@@ -73,10 +73,10 @@ DiffuseBrdfSampleResult SampleDirectionInverseCDF(uint hash_index, float3 world_
 	return result_sample;
 }
 
-// TODO: Account for energy compensation and specular fresnel.
 DiffuseBrdfSampleResult SampleDiffuseBRDF(
 	float3 cdf_hash_table_key_origin,
 	float3 world_space_normal,
+	float3 single_scattering_energy,
 	float3x3 tangent_to_world,
 	float2 diffuse_blue_noise
 ) {
@@ -90,6 +90,10 @@ DiffuseBrdfSampleResult SampleDiffuseBRDF(
 		result_sample.direction = mul(tangent_to_world, CosineWeightedHemisphereMapping(diffuse_blue_noise));
 		result_sample.inv_pdf = 1.0;
 	}
+	
+	// This term compensates for (1.0 - specular_fresnel) * energy_compensation from SampleBRDF/EvaluateBRDF dielectric diffuse path.
+	// (1.0 - metalness) is applied during compositing, but we could skip indirect diffuse on metals complexity if we apply it here.
+	result_sample.inv_pdf *= ComputeDielectricDiffuseBrdfEnergyCompensation(single_scattering_energy);
 	
 	return result_sample;
 }
@@ -133,13 +137,19 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	
 	ray_desc.Origin += world_space_normal * (1.0 / 1024.0);
 	
+	float3 wo = mul(world_to_tangent, -ray_desc.Direction);
+	float abs_cos_theta_o = abs(wo.z);
+	
+	float3 single_scattering_energy = SamplePreintegratedBrdfTable(ggx_single_scattering_energy_lut, abs_cos_theta_o, normal_roughness.z);
+	
 #if defined(INDIRECT_DIFFUSE)
 	float3 cdf_hash_table_key_origin = ray_desc.Origin;
 	DiffuseBrdfSampleResult brdf_sample = SampleDiffuseBRDF(
 		cdf_hash_table_key_origin,
 		world_space_normal,
+		single_scattering_energy,
 		tangent_to_world,
-		blue_noise_2d[uint3(thread_id % 128, scene.frame_index % 32)]
+		LoadBlueNoise(blue_noise_2d, thread_id, scene.frame_index)
 	);
 	ray_desc.Direction = brdf_sample.direction;
 #endif // defined(INDIRECT_DIFFUSE)
@@ -147,17 +157,11 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 #if defined(INDIRECT_SPECULAR)
 	float4 albedo_metalness = gb_albedo_metalness[thread_id];
 	
-	float3 wo = mul(world_to_tangent, -ray_desc.Direction);
-	float abs_cos_theta_o = abs(wo.z);
-	
 	float  metalness    = albedo_metalness.w;
 	float  roughness    = normal_roughness.z;
 	float3 conductor_f0 = albedo_metalness.xyz;
 	float  alpha        = Pow2(roughness);
 	float  alpha_square = Pow2(alpha);
-	float3 diffuse_albedo = albedo_metalness.xyz;
-	
-	float2 single_scattering_energy = SampleGgxSingleScatteringEnergyLUT(ggx_single_scattering_energy_lut, abs_cos_theta_o, roughness);
 	
 	BrdfSampleResult brdf_sample = SampleSpecularBRDF(
 		wo,
@@ -167,7 +171,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 		alpha_square,
 		conductor_f0,
 		single_scattering_energy,
-		blue_noise_2d[uint3(thread_id % 128, scene.frame_index % 32)]
+		LoadBlueNoise(blue_noise_2d, thread_id, scene.frame_index)
 	);
 	
 	if (brdf_sample.is_valid == false) {
@@ -178,7 +182,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	ray_desc.Direction = mul(tangent_to_world, brdf_sample.wi);
 	
 	{
-		float2 preintegrated_brdf = SampleGgxSingleScatteringEnergyLUT(ggx_preintegrated_brdf_lut, abs_cos_theta_o, roughness);
+		float2 preintegrated_brdf = SamplePreintegratedBrdfTable(ggx_preintegrated_brdf_lut, abs_cos_theta_o, roughness);
 		float3 specular_demodulation = lerp(dielectric_f0, conductor_f0, metalness) * preintegrated_brdf.x + preintegrated_brdf.y;
 		brdf_sample.throughput /= max(specular_demodulation, 1.0 / 128.0);
 	}
@@ -230,7 +234,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 			float3 wo = mul(world_to_tangent, -ray_desc.Direction);
 			float abs_cos_theta_o = abs(wo.z);
 			
-			float2 single_scattering_energy = SampleGgxSingleScatteringEnergyLUT(ggx_single_scattering_energy_lut, abs_cos_theta_o, roughness);
+			float3 single_scattering_energy = SamplePreintegratedBrdfTable(ggx_single_scattering_energy_lut, abs_cos_theta_o, roughness);
 			
 			ShadowSampler shadow_sampler;
 			shadow_sampler.penumbra_noise = ConcentricMapping(ComputeRandomUnorm16x2(hash));

@@ -70,20 +70,25 @@ float SmithVisibilityG(float cos_theta_o, float cos_theta_i, float alpha_square)
 }
 
 
-// Based on "Practical multiple scattering compensation for microfacet models" by Emmanuel Turquin.
-float2 SampleGgxSingleScatteringEnergyLUT(Texture2D<float2> ggx_single_scattering_energy_lut, float cos_theta, float roughness) {
-	float2 energy_compensation_lut_parameters = saturate(float2(cos_theta + energy_compensation_lut_cos_theta_bias, roughness));
-	float2 energy_compensation_lut_uv = LutParametersToUv(energy_compensation_lut_parameters, energy_compensation_lut_size);
+template<typename T>
+T SamplePreintegratedBrdfTable(Texture2D<T> preintegrated_lut, float cos_theta, float roughness) {
+	float2 lut_parameters = saturate(float2(cos_theta + energy_compensation_lut_cos_theta_bias, roughness));
+	float2 lut_uv = LutParametersToUv(lut_parameters, energy_compensation_lut_size);
 	
-	return ggx_single_scattering_energy_lut.SampleLevel(sampler_linear_clamp, energy_compensation_lut_uv, 0);
+	return preintegrated_lut.SampleLevel(sampler_linear_clamp, lut_uv, 0);
 }
 
-float3 ComputeConductorBrdfEnergyCompensation(float2 single_scattering_energy, float3 specular_fresnel) {
+// Based on "Practical multiple scattering compensation for microfacet models" by Emmanuel Turquin.
+float3 ComputeConductorBrdfEnergyCompensation(float3 single_scattering_energy, float3 specular_fresnel) {
 	return (1.0 + specular_fresnel * (1.0 - single_scattering_energy.x) / single_scattering_energy.x);
 }
 
-float ComputeDielectricBrdfEnergyCompensation(float2 single_scattering_energy) {
+float ComputeDielectricBrdfEnergyCompensation(float3 single_scattering_energy) {
 	return (1.0 / single_scattering_energy.y);
+}
+
+float ComputeDielectricDiffuseBrdfEnergyCompensation(float3 single_scattering_energy) {
+	return (single_scattering_energy.z / single_scattering_energy.y);
 }
 
 #endif // BRDFSAMPLING_HLSL

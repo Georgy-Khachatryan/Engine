@@ -72,7 +72,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 			float3 wo = mul(world_to_tangent, -ray_desc.Direction);
 			float abs_cos_theta_o = abs(wo.z);
 			
-			float2 single_scattering_energy = SampleGgxSingleScatteringEnergyLUT(ggx_single_scattering_energy_lut, abs_cos_theta_o, roughness);
+			float3 single_scattering_energy = SamplePreintegratedBrdfTable(ggx_single_scattering_energy_lut, abs_cos_theta_o, roughness);
 			
 			if (light_sample.light_entity_index != u32_max) {
 				ShadowSampler shadow_sampler;
@@ -154,7 +154,8 @@ compile_const u32 sample_count        = sample_grid_size_xy * sample_grid_size_x
 compile_const u32 samples_per_thread  = sample_count / thread_group_area;
 compile_const u32 min_wave_size       = 16;
 
-groupshared float4 gs_single_scattering_energy[thread_group_area / min_wave_size];
+groupshared float3 gs_single_scattering_energy[thread_group_area / min_wave_size];
+groupshared float2 gs_preintegrated_brdf[thread_group_area / min_wave_size];
 
 [ThreadGroupSize(thread_group_area, 1, 1)][WaveSize(min_wave_size, 128)]
 void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
@@ -167,7 +168,8 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	
 	float3 wo = float3(sqrt(1.0 - Pow2(cos_theta)), 0.0, cos_theta);
 	
-	float4 single_scattering_energy = 0.0;
+	float3 single_scattering_energy = 0.0;
+	float2 preintegrated_brdf = 0.0;
 	for (u32 i = 0; i < samples_per_thread; i += 1) {
 		u32 sample_index = thread_index * samples_per_thread + i;
 		
@@ -184,29 +186,36 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 			float fresnel = FresnelDielectric(dielectric_f0, dot(wo, wh));
 			single_scattering_energy.y += fresnel * specular_sample + (1.0 - fresnel); // Dielectric
 			
+			single_scattering_energy.z += (1.0 - fresnel); // Indirect diffuse
+			
+			
 			float fresnel_zero_reflectance = FresnelSchlick(0.0, dot(wo, wh));
-			single_scattering_energy.z += specular_sample * (1.0 - fresnel_zero_reflectance);
-			single_scattering_energy.w += specular_sample * fresnel_zero_reflectance;
+			preintegrated_brdf.x += specular_sample * (1.0 - fresnel_zero_reflectance);
+			preintegrated_brdf.y += specular_sample * fresnel_zero_reflectance;
 		}
 	}
 	
-	float4 wave_single_scattering_energy = WaveActiveSum(single_scattering_energy);
+	float3 wave_single_scattering_energy = WaveActiveSum(single_scattering_energy);
+	float2 wave_preintegrated_brdf = WaveActiveSum(preintegrated_brdf);
 	if (WaveIsFirstLane()) {
 		gs_single_scattering_energy[thread_index / WaveGetLaneCount()] = wave_single_scattering_energy;
+		gs_preintegrated_brdf[thread_index / WaveGetLaneCount()] = wave_preintegrated_brdf;
 	}
 	
 	GroupMemoryBarrierWithGroupSync();
 	
 	if (thread_index == 0) {
-		float4 group_single_scattering_energy = wave_single_scattering_energy;
+		float3 group_single_scattering_energy = wave_single_scattering_energy;
+		float2 group_preintegrated_brdf = wave_preintegrated_brdf;
 		
 		u32 wave_count = thread_group_area / WaveGetLaneCount();
 		for (u32 i = 1; i < wave_count; i += 1) {
 			group_single_scattering_energy += gs_single_scattering_energy[i];
+			group_preintegrated_brdf += gs_preintegrated_brdf[i];
 		}
 		
-		ggx_single_scattering_energy_lut[group_id] = group_single_scattering_energy.xy / sample_count;
-		ggx_preintegrated_brdf_lut[group_id]       = group_single_scattering_energy.zw / sample_count;
+		ggx_single_scattering_energy_lut[group_id] = float4(group_single_scattering_energy / sample_count, 0.0);
+		ggx_preintegrated_brdf_lut[group_id]       = group_preintegrated_brdf / sample_count;
 	}
 	
 	uint2 thread_id = group_id  * thread_group_size + MortonDecode(thread_index);

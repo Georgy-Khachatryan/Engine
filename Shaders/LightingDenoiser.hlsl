@@ -321,7 +321,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 		
 		float abs_cos_theta_o = abs(dot(view_space_normal, normalize(view_space_position))); // View vector not negated because of abs.
 		
-		float2 preintegrated_brdf = SampleGgxSingleScatteringEnergyLUT(ggx_preintegrated_brdf_lut, abs_cos_theta_o, roughness);
+		float2 preintegrated_brdf = SamplePreintegratedBrdfTable(ggx_preintegrated_brdf_lut, abs_cos_theta_o, roughness);
 		float3 specular_demodulation = lerp(dielectric_f0, conductor_f0, metalness) * preintegrated_brdf.x + preintegrated_brdf.y;
 		
 		result_radiance_s *= max(specular_demodulation, 1.0 / 128.0);

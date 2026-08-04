@@ -986,7 +986,7 @@ struct ReferencePathTracerRenderPass {
 	ReferencePathTracerMode mode = ReferencePathTracerMode::Accumulation;
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
-		HLSL::Texture2D<float2>                     ggx_single_scattering_energy_lut = VirtualResourceID::GgxSingleScatteringEnergyLUT;
+		HLSL::Texture2D<float3>                     ggx_single_scattering_energy_lut = VirtualResourceID::GgxSingleScatteringEnergyLUT;
 		HLSL::Texture2D<float3>                     sky_panorama_lut      = VirtualResourceID::SkyPanoramaLut;
 		HLSL::Texture2D<float3>                     transmittance_lut     = VirtualResourceID::TransmittanceLut;
 		HLSL::RegularBuffer<GpuLightEntityData>     light_entity_data     = VirtualResourceID::GpuLightEntityData;
@@ -1019,7 +1019,7 @@ struct EnergyCompensationLutRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
-		HLSL::RWTexture2D<float2> ggx_single_scattering_energy_lut = VirtualResourceID::GgxSingleScatteringEnergyLUT;
+		HLSL::RWTexture2D<float4> ggx_single_scattering_energy_lut = VirtualResourceID::GgxSingleScatteringEnergyLUT;
 		HLSL::RWTexture2D<float2> ggx_preintegrated_brdf_lut       = VirtualResourceID::GgxPreintegratedBrdfLUT;
 		HLSL::RWTexture2D<float>  tile_cdf_solid_angle             = VirtualResourceID::TileCdfSolidAngle;
 	};
@@ -1128,7 +1128,7 @@ struct DeferredLightingRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
-		HLSL::Texture2D<float2>                 ggx_single_scattering_energy_lut = VirtualResourceID::GgxSingleScatteringEnergyLUT;
+		HLSL::Texture2D<float3>                 ggx_single_scattering_energy_lut = VirtualResourceID::GgxSingleScatteringEnergyLUT;
 		HLSL::Texture2D<float2>                 ggx_preintegrated_brdf_lut       = VirtualResourceID::GgxPreintegratedBrdfLUT;
 		HLSL::Texture2D<u32>                    denoiser_disocclusion_mask       = VirtualResourceID::DenoiserDisocclusionMask;
 		HLSL::Texture2DArray<float>             blue_noise_1d                    = VirtualResourceID::BlueNoise1D;
@@ -1209,7 +1209,7 @@ struct IndirectDiffuseRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
-		HLSL::Texture2D<float2>                     ggx_single_scattering_energy_lut = VirtualResourceID::GgxSingleScatteringEnergyLUT;
+		HLSL::Texture2D<float3>                     ggx_single_scattering_energy_lut = VirtualResourceID::GgxSingleScatteringEnergyLUT;
 		HLSL::Texture2D<float2>                     ggx_preintegrated_brdf_lut       = VirtualResourceID::GgxPreintegratedBrdfLUT;
 		HLSL::Texture2D<float>                      tile_cdf_solid_angle             = VirtualResourceID::TileCdfSolidAngle;
 		HLSL::Texture2D<float3>                     sky_panorama_lut                 = VirtualResourceID::SkyPanoramaLut;
@@ -1247,7 +1247,7 @@ struct IndirectSpecularRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
-		HLSL::Texture2D<float2>                     ggx_single_scattering_energy_lut = VirtualResourceID::GgxSingleScatteringEnergyLUT;
+		HLSL::Texture2D<float3>                     ggx_single_scattering_energy_lut = VirtualResourceID::GgxSingleScatteringEnergyLUT;
 		HLSL::Texture2D<float2>                     ggx_preintegrated_brdf_lut       = VirtualResourceID::GgxPreintegratedBrdfLUT;
 		HLSL::Texture2D<float3>                     sky_panorama_lut                 = VirtualResourceID::SkyPanoramaLut;
 		HLSL::Texture2D<float3>                     transmittance_lut                = VirtualResourceID::TransmittanceLut;

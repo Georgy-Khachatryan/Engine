@@ -33,7 +33,7 @@ void EvaluateBRDF(
 	float3 conductor_f0,
 	float3 diffuse_albedo,
 	float3 throughput,
-	float2 single_scattering_energy,
+	float3 single_scattering_energy,
 	LightSample light_sample,
 	float hashed_visibility = 0.0,
 	float hashed_visibility_weight = 0.0
@@ -88,7 +88,7 @@ BrdfSampleResult SampleBRDF(
 	float alpha_square,
 	float3 conductor_f0,
 	float3 diffuse_albedo,
-	float2 single_scattering_energy,
+	float3 single_scattering_energy,
 	inout uint hash
 ) {
 	float3 wh = SampleTrowbridgeReitzVNDF(ComputeRandomUnorm16x2(hash), wo, alpha);
@@ -136,7 +136,7 @@ BrdfSampleResult SampleSpecularBRDF(
 	float alpha,
 	float alpha_square,
 	float3 conductor_f0,
-	float2 single_scattering_energy,
+	float3 single_scattering_energy,
 	float2 specular_blue_noise
 ) {
 	float3 wh = SampleTrowbridgeReitzVNDF(specular_blue_noise, wo, alpha);

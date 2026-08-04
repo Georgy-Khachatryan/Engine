@@ -57,7 +57,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	uint disocclusion_mask = denoiser_disocclusion_mask[thread_id];
 	
 	float2 motion_uv_offset = motion_vectors[thread_id];
-	float2 src_tile_blue_noise = blue_noise_2d[uint3(thread_id % 128, scene.frame_index % 32)];
+	float2 src_tile_blue_noise = LoadBlueNoise(blue_noise_2d, thread_id, scene.frame_index);
 	
 	s32x2 src_tile_id = ComputeStochasticBilinearSamplePosition(thread_uv, tile_list_size, motion_uv_offset, src_tile_blue_noise);
 	uint2 dst_tile_id = (thread_id / LightingConstants::visible_light_tile_size);
@@ -89,7 +89,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	float3 world_space_normal = DecodeHemiOctahedralMap01(normal_roughness.xy) * float3(1.0, 1.0, normal_roughness.w * 2.0 - 1.0);
 	ray_desc.Origin += world_space_normal * (1.0 / 1024.0);
 	
-	float light_sampling_blue_noise = blue_noise_1d[uint3((thread_id + scene.blue_noise_base_offset) % 128, scene.frame_index % 32)];
+	float light_sampling_blue_noise = LoadBlueNoise(blue_noise_1d, thread_id + scene.blue_noise_base_offset, scene.frame_index);
 	float min_light_weight = src_tile_valid ? scene.wrs_min_light_weight : 0.0;
 	
 	LightSample light_sample = SampleLightWRS(
@@ -113,7 +113,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	if (light_sample.light_entity_index != u32_max) {
 		float3x3 world_to_tangent = BuildOrthonormalBasis(world_space_normal);
 		
-		float2 hash_table_blue_noise = ConcentricMapping(blue_noise_2d[uint3((thread_id + uint2(63, 17) + scene.blue_noise_base_offset) % 128, scene.frame_index % 32)]);
+		float2 hash_table_blue_noise = ConcentricMapping(LoadBlueNoise(blue_noise_2d, thread_id + uint2(63, 17) + scene.blue_noise_base_offset, scene.frame_index));
 		
 		VisibilityHashTableKey key = BuildVisibilityHashTableKey(ray_desc.Origin, light_sample.light_entity_index, scene.prev_world_space_camera_position, world_space_normal, hash_table_blue_noise);
 		HashTableFindResult find_result = HashTableFind(visibility_hash_table_keys, key, LightingConstants::visibility_hash_table_size);
@@ -124,10 +124,10 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 		
 		float penumbra_size_meters = max(denoiser_penumbra_mask_0.SampleLevel(sampler_linear_clamp, thread_uv + motion_uv_offset, 0), 0.0);
 		
-		float2 single_scattering_energy = SampleGgxSingleScatteringEnergyLUT(ggx_single_scattering_energy_lut, abs_cos_theta_o, roughness);
+		float3 single_scattering_energy = SamplePreintegratedBrdfTable(ggx_single_scattering_energy_lut, abs_cos_theta_o, roughness);
 		
 		HashTableShadowSampler shadow_sampler;
-		shadow_sampler.penumbra_noise = ConcentricMapping(blue_noise_2d[uint3((thread_id + uint2(61, 67) + scene.blue_noise_base_offset) % 128, scene.frame_index % 32)]);
+		shadow_sampler.penumbra_noise = ConcentricMapping(LoadBlueNoise(blue_noise_2d, thread_id + uint2(61, 67) + scene.blue_noise_base_offset, scene.frame_index));
 		shadow_sampler.hashed_visibility        = find_result.is_found ? saturate(f16tof32(visibility_hash_table_values[dst_index])) : 0.0;
 		shadow_sampler.hashed_visibility_weight = find_result.is_found ? smoothstep(0.6, 1.0, penumbra_size_meters / key.cell_size) : 0.0;
 		shadow_sampler.penumbra_mask            = 0.0;
@@ -151,7 +151,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 		);
 		
 		if (demodulate_radiance) {
-			float2 preintegrated_brdf = SampleGgxSingleScatteringEnergyLUT(ggx_preintegrated_brdf_lut, abs_cos_theta_o, roughness);
+			float2 preintegrated_brdf = SamplePreintegratedBrdfTable(ggx_preintegrated_brdf_lut, abs_cos_theta_o, roughness);
 			float3 specular_demodulation = lerp(dielectric_f0, conductor_f0, metalness) * preintegrated_brdf.x + preintegrated_brdf.y;
 			light_accumulator.specular_radiance /= max(specular_demodulation, 1.0 / 128.0);
 		}
