@@ -171,9 +171,10 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 		}
 	}
 	
-	// TODO: Denoise indirect diffuse separately.
+	// TODO: Denoise indirect diffuse and specular separately.
 	// TODO: Don't compute indirect diffuse on metals?
 	light_accumulator.AddDiffuse(indirect_diffuse[thread_id] * scene.inv_exposure_estimate * (1.0 - metalness));
+	light_accumulator.AddSpecular(indirect_specular[thread_id] * scene.inv_exposure_estimate);
 	
 	uint thread_index_in_tile = (thread_index % LightingConstants::visible_light_tile_area);
 	visible_light_tile_list[dst_tile_index * LightingConstants::visible_light_tile_area + thread_index_in_tile] = is_shadow_trace_visible ? light_sample.light_entity_index : u32_max;

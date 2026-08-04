@@ -73,6 +73,7 @@ static void BuildResourceTable(RecordContext* record_context, WorldEntitySystem*
 	table.Set(ID::TileCdfSolidAngle,         TextureSize(TextureFormat::R16_FLOAT, LightingConstants::cdf_tile_size), Flags::UAV);
 	
 	table.Set(ID::IndirectDiffuse, TextureSize(TextureFormat::R9G9B9E5_FLOAT, render_target_size), Flags::UAV);
+	table.Set(ID::IndirectSpecular, TextureSize(TextureFormat::R9G9B9E5_FLOAT, render_target_size), Flags::UAV);
 	
 	table.Set(ID::RadianceHashTableKeys,   LightingConstants::radiance_hash_table_size * sizeof(u64) * 2u);
 	table.Set(ID::RadianceHashTableValues, LightingConstants::radiance_hash_table_size * sizeof(u64) * 2u);
@@ -407,6 +408,8 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	
 	{
 		render_passes.Add<IndirectDiffuseRenderPass>();
+		render_passes.Add<IndirectSpecularRenderPass>();
+		
 		render_passes.Add<UpdateRadianceHashTableRenderPass>();
 		render_passes.Add<UpdateCdfHashTableRenderPass>();
 		render_passes.Add<IndirectDiffuseTileCdfRenderPass>();
