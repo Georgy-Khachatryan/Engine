@@ -317,3 +317,23 @@ void DebugGeometryClearBuffersRenderPass::RecordPass(RecordContext* record_conte
 	
 	CmdCopyBufferToBuffer(record_context, gpu_address, VirtualResourceID::DebugGeometryIndirectArguments, (u32)DebugMeshInstanceType::Count * sizeof(DebugGeometryIndirectArguments));
 }
+
+
+void DebugVisualizationRenderPass::CreatePipelines(PipelineLibrary* lib) {
+	pipeline_id = CreateComputePipeline(lib, DebugVisualizationShadersID);
+}
+
+void DebugVisualizationRenderPass::RecordPass(RecordContext* record_context) {
+	auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
+	descriptor_table.scene_radiance = scene_radiance;
+	
+	CmdSetRootSignature(record_context, root_signature);
+	CmdSetPipelineState(record_context, pipeline_id);
+	
+	CmdSetRootArgument(record_context, root_signature.constants, { mode });
+	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
+	CmdSetRootArgument(record_context, root_signature.scene, VirtualResourceID::SceneConstants);
+	
+	auto render_target_size = GetTextureSize(record_context, VirtualResourceID::SceneRadiance);
+	CmdDispatch(record_context, DivideAndRoundUp(uint2(render_target_size), 16u));
+}

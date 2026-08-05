@@ -321,9 +321,9 @@ float3 ConvertHSVtoRGB(float3 hsv) {
 	return lerp(1.0, saturate(hue), hsv.y) * hsv.z;
 }
 
-float3 RandomColor(uint seed_a, uint seed_b = 0) {
+float3 RandomColor(uint seed_a, uint seed_b = 0x869DBC70) {
 	u32 hash = WyHash32(seed_a, seed_b);
-	return ConvertHSVtoRGB(float3((hash & 0xFF) * rcp(0xFF), 0.6, 0.7));
+	return ConvertHSVtoRGB(float3((hash & 0xFF) * rcp(0xFF), 0.8, 0.7));
 }
 
 compile_const float3 rec709_luminance_coefficients = float3(0.2126, 0.7152, 0.0722);

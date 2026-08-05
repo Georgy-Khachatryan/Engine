@@ -10,7 +10,8 @@ enum struct EditorIconState : u32 {
 	Free        = 0,
 	Wait        = 1,
 	Invalidated = 2,
-	Ready       = 3,
+	Rendering   = 3,
+	Ready       = 4,
 };
 
 struct EditorIconEntry {
@@ -19,7 +20,9 @@ struct EditorIconEntry {
 	
 	EntityTypeID entity_type_id;
 	EditorIconState state = EditorIconState::Free;
-	u32 cache_frame_index = 0;
+	
+	u32 cache_frame_index    = 0;
+	u32 rendered_frame_count = 0;
 };
 
 compile_const u32 icon_size_pixels        = 128u;
@@ -209,7 +212,7 @@ void EditorIconCacheDrawIcon(EditorIconCache* icon_cache, EntitySystemBase& enti
 	}
 	
 	auto icon_state = icon_index != u32_max ? icon_cache->icons[icon_index].state : EditorIconState::Free;
-	if (icon_state == EditorIconState::Ready || icon_state == EditorIconState::Invalidated) {
+	if (icon_state == EditorIconState::Ready || icon_state == EditorIconState::Rendering || icon_state == EditorIconState::Invalidated) {
 		auto icon_coordinates = float2((float)(icon_index % icon_cache_size_icons), (float)(icon_index / icon_cache_size_icons));
 		auto uv_min = icon_coordinates * (1.f / icon_cache_size_icons);
 		auto uv_max = uv_min + (1.f / icon_cache_size_icons);
@@ -260,21 +263,28 @@ void EditorIconCacheUpdate(StackAllocator* alloc, EditorIconCache* icon_cache, A
 	u32 rendering_icon_index = u32_max;
 	for (u32 icon_index = 0; icon_index < icon_cache_area_icons; icon_index += 1) {
 		auto& icon = icon_cache->icons[icon_index];
+		if (icon.state == EditorIconState::Free || icon.state == EditorIconState::Ready) continue;
 		
-		if (icon.state == EditorIconState::Wait || icon.state == EditorIconState::Invalidated) {
-			auto assets = GatherIconRenderingAssets(asset_system, icon_cache, icon);
+		auto assets = GatherIconRenderingAssets(asset_system, icon_cache, icon);
+		
+		bool is_ready = true;
+		is_ready &= RequestAssetStreaming(asset_system, assets.mesh_asset_guid.guid);
+		for (auto texture_asset_guid : assets.textures) {
+			is_ready &= RequestAssetStreaming(asset_system, texture_asset_guid.guid);
+		}
+		
+		if (icon.state == EditorIconState::Rendering) {
+			icon.rendered_frame_count += 1;
 			
-			bool is_ready = true;
-			is_ready &= RequestAssetStreaming(asset_system, assets.mesh_asset_guid.guid);
-			for (auto texture_asset_guid : assets.textures) {
-				is_ready &= RequestAssetStreaming(asset_system, texture_asset_guid.guid);
-			}
-			
-			if (is_ready) {
+			if (icon.rendered_frame_count >= number_of_frames_in_flight) {
 				icon.state = EditorIconState::Ready;
-				rendering_icon_index = icon_index;
-				break;
 			}
+		}
+		
+		if ((icon.state == EditorIconState::Wait || icon.state == EditorIconState::Invalidated) && is_ready && rendering_icon_index == u32_max) {
+			icon.state = EditorIconState::Rendering;
+			icon.rendered_frame_count = 0;
+			rendering_icon_index = icon_index;
 		}
 	}
 	
@@ -406,7 +416,9 @@ void EditorIconCacheUpdate(StackAllocator* alloc, EditorIconCache* icon_cache, A
 				auto& icon = icon_cache->icons[icon_index];
 				if ((icon.dependency_mask & dependency_mask) == 0 && (invalidate_materials == false || icon.entity_type_id.index != ECS::GetEntityTypeID<MaterialAssetType>::id.index)) continue;
 				
-				icon.state = EditorIconState::Invalidated;
+				if (icon.state == EditorIconState::Rendering || icon.state == EditorIconState::Ready) {
+					icon.state = EditorIconState::Invalidated;
+				}
 			}
 		}
 	}

@@ -457,6 +457,12 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	tone_mapping.tone_mapping_settings = *world_entity.tone_mapping_settings;
 	tone_mapping.scene_radiance        = scene_radiance;
 	
+	if (renderer_world.debug_visualization_mode != DebugVisualizationMode::None) {
+		auto& debug_visualization = render_passes.Add<DebugVisualizationRenderPass>();
+		debug_visualization.scene_radiance = scene_radiance;
+		debug_visualization.mode = renderer_world.debug_visualization_mode;
+	}
+	
 	auto& output_settings = renderer_world.output_settings;
 	
 	auto scene_output = scene_radiance;

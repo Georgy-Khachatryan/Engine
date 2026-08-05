@@ -219,6 +219,25 @@ struct AutomaticExposureHistogram {
 	float final_exposure = 1.f;
 };
 
+NOTES(Meta::HlslFile{ "DebugVisualizationData.hlsl"_sl })
+enum struct DebugVisualizationMode : u32 {
+	None          = 0,
+	Albedo        = 1,
+	Normal        = 2,
+	Roughness     = 3,
+	Metalness     = 4,
+	Depth         = 5,
+	TriangleID    = 6,
+	MeshletID     = 7,
+	MeshEntityID  = 8,
+	GeometryID    = 9,
+	MaterialID    = 10,
+	LevelOfDetail = 11,
+	
+	Count
+};
+
+
 NOTES(Meta::HlslFile{ "ReferencePathTracerData.hlsl"_sl })
 enum struct ReferencePathTracerMode : u32 {
 	Accumulation = 0, // Accumulate samples over time.
@@ -262,6 +281,7 @@ struct RendererWorld {
 	
 	SceneOutputSettings output_settings;
 	
+	DebugVisualizationMode debug_visualization_mode = DebugVisualizationMode::None;
 	DebugFreezeCullingCamera debug_freeze_culling_camera;
 	MeshletCullingStatistics meshlet_culling_statistics;
 	AutomaticExposureHistogram automatic_exposure_histogram;

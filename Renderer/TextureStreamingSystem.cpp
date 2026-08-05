@@ -130,13 +130,13 @@ static ArrayView<u64> ProcessTextureStreamingFeedback(RecordContext* record_cont
 		
 		cpu_request.target_resolution = 0u;
 		
-		u32 begin_mip_level = (u32)Math::Clamp(floorf(target_mip_level), 0.f, (float)layout.size.mips - 1.f);
+		u32 begin_mip_index = (u32)Math::Clamp(floorf(target_mip_level), 0.f, (float)layout.size.mips - 1.f);
 		if (sparse_layout.packed_mip_count != 0) {
-			begin_mip_level = Math::Min((u32)sparse_layout.regular_mip_count, begin_mip_level);
+			begin_mip_index = Math::Min((u32)sparse_layout.regular_mip_count, begin_mip_index);
 		}
 		u32 end_mip_index = sparse_layout.regular_mip_count + (sparse_layout.packed_mip_count != 0 ? 1 : 0);
 		
-		for (u32 mip_index = begin_mip_level; mip_index < end_mip_index; mip_index += 1) {
+		for (u32 mip_index = begin_mip_index; mip_index < end_mip_index; mip_index += 1) {
 			auto mip_size_texels = Math::Max(uint2(layout.size) >> mip_index, 1u);
 			auto mip_size_tiles  = DivideAndRoundUp(mip_size_texels, uint2(sparse_layout.tile_shape));
 			

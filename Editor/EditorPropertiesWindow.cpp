@@ -105,6 +105,24 @@ static void WorldComponentEntityView(StackAllocator* alloc, WorldEntitySystem& w
 			
 			ImGui::TableSliderFloat("Meshlet Target Error Pixels", &renderer_world.meshlet_target_error_pixels, 1.f, 128.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
 			
+			compile_const char* debug_visualization_mode_names[] = {
+				"None",
+				"Albedo",
+				"Normal",
+				"Roughness",
+				"Metalness",
+				"Depth",
+				"TriangleID",
+				"MeshletID",
+				"MeshEntityID",
+				"GeometryID",
+				"MaterialID",
+				"LevelOfDetail",
+			};
+			static_assert(ArraySize(debug_visualization_mode_names) == (u32)DebugVisualizationMode::Count);
+			
+			ImGui::TableCombo("Debug Visualization", (s32*)&renderer_world.debug_visualization_mode, debug_visualization_mode_names, (s32)DebugVisualizationMode::Count);
+			
 			if (ImGui::BeginTableItem("Freeze Culling State")) {
 				ImGui::Checkbox("", &renderer_world.debug_freeze_culling_camera.enabled);
 				ImGui::EndTableItem();

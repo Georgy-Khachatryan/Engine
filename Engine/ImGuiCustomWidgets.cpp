@@ -510,6 +510,15 @@ bool ImGui::TableCombo(const char* label, s32* current_item, const char* items_s
 	return result;
 }
 
+bool ImGui::TableCombo(const char* label, s32* current_item, const char* const items[], s32 items_count, s32 popup_max_height_in_items) {
+	bool result = false;
+	if (ImGui::BeginTableItem(label)) {
+		result = ImGui::Combo("", current_item, items, items_count, popup_max_height_in_items);
+		ImGui::EndTableItem();
+	}
+	return result;
+}
+
 bool ImGui::TableEntityComboBox(StackAllocator* alloc, const char* label, EntitySystemBase* entity_system, u64* guid, EntityTypeID entity_type_id) {
 	bool result = false;
 	if (ImGui::BeginTableItem(label)) {

@@ -1587,6 +1587,43 @@ struct DebugGeometryRenderPass {
 	static DebugGeometryBuffer CreateDebugGeometryBuffer(StackAllocator* alloc, GraphicsContext* graphics_context, AsyncTransferQueue* async_transfer_queue);
 };
 
+NOTES(Meta::ShaderName{ "DebugVisualization.hlsl"_sl })
+enum struct DebugVisualizationShaders : u32 {};
+SHADER_DEFINITION_GENERATED_CODE(DebugVisualizationShaders);
+
+NOTES(Meta::RenderPass{})
+struct DebugVisualizationRenderPass {
+	RENDER_PASS_GENERATED_CODE();
+	
+	VirtualResourceID scene_radiance = VirtualResourceID::None;
+	DebugVisualizationMode mode = DebugVisualizationMode::None;
+	
+	struct Descriptors : HLSL::BaseDescriptorTable {
+		HLSL::Texture2D<float>                      depth_stencil         = VirtualResourceID::DepthStencil;
+		HLSL::Texture2D<u32>                        visibility_buffer     = VirtualResourceID::VisibilityBuffer;
+		HLSL::Texture2D<float4>                     gb_albedo_metalness   = VirtualResourceID::GBufferAlbedoMetalness;
+		HLSL::Texture2D<float4>                     gb_normal_roughness   = VirtualResourceID::GBufferNormalRoughness;
+		HLSL::RegularBuffer<GpuMeshAssetData>       mesh_asset_data       = VirtualResourceID::GpuMeshAssetData;
+		HLSL::RegularBuffer<GpuMeshEntityData>      mesh_entity_data      = VirtualResourceID::GpuMeshEntityData;
+		HLSL::RegularBuffer<GpuMaterialTextureData> material_texture_data = VirtualResourceID::MaterialAssetTextureData;
+		HLSL::ByteBuffer                            mesh_asset_buffer     = VirtualResourceID::MeshAssetBuffer;
+		HLSL::RegularBuffer<uint2>                  visible_meshlets      = VirtualResourceID::VisibleMeshlets;
+		HLSL::RWTexture2D<float4>                   scene_radiance        = VirtualResourceID::None;
+	};
+	
+	struct RootSignature : HLSL::BaseRootSignature {
+		struct PushConstants {
+			DebugVisualizationMode mode = DebugVisualizationMode::None;
+		};
+		
+		HLSL::PushConstantBuffer<PushConstants> constants;
+		HLSL::ConstantBuffer<SceneConstants> scene;
+		HLSL::DescriptorTable<Descriptors> descriptor_table;
+	};
+	
+	inline static PipelineID pipeline_id;
+};
+
 
 NOTES(Meta::ShaderName{ "ImGui.hlsl"_sl })
 enum struct ImGuiShaders : u32 {};
