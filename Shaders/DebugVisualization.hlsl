@@ -1,5 +1,8 @@
 #include "Basic.hlsl"
 
+#if defined(DEBUG_VISUALIZATION)
+#include "Generated/MeshData.hlsl"
+
 compile_const u32 thread_group_size = 16;
 
 [ThreadGroupSize(thread_group_size * thread_group_size, 1, 1)]
@@ -82,3 +85,44 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	
 	scene_radiance[thread_id] = float4(depth == 0.0 ? 0.0 : result, 1.0);
 }
+#endif // defined(DEBUG_VISUALIZATION)
+
+
+#if defined(DEBUG_READBACK)
+#include "Generated/MeshData.hlsl"
+#include "Generated/DebugVisualizationData.hlsl"
+
+[ThreadGroupSize(1, 1, 1)]
+void MainCS() {
+	DebugCursorReadback result;
+	result.world_space_position = 0.0;
+	result.world_space_normal   = 0.0;
+	result.mesh_entity_index    = u32_max;
+	result.mesh_entity_geometry_index = u32_max;
+	
+	float depth = depth_stencil[scene.mouse_cursor_position];
+	if (depth != 0.0) {
+		float2 thread_uv = (scene.mouse_cursor_position + 0.5) * scene.inv_render_target_size;
+		float3 view_space_position = TransformScreenUvToViewSpace(thread_uv, depth, scene.clip_to_view_coef, scene.jitter_offset_ndc);
+		result.world_space_position = mul(scene.view_to_world, float4(view_space_position, 1.0));
+		
+		float4 normal_roughness = gb_normal_roughness[scene.mouse_cursor_position];
+		result.world_space_normal = DecodeHemiOctahedralMap01(normal_roughness.xy) * float3(1.0, 1.0, normal_roughness.w * 2.0 - 1.0);
+	}
+	
+	uint scene_primitive_id = visibility_buffer[scene.mouse_cursor_position];
+	if (scene_primitive_id != 0) {
+		u32 visible_meshlet_index = (scene_primitive_id >> 7) - 1;
+		uint2 meshlet_instance    = visible_meshlets[visible_meshlet_index];
+		u32 meshlet_header_offset = meshlet_instance.x;
+		u32 mesh_entity_index     = meshlet_instance.y;
+		u32 triangle_index        = (scene_primitive_id & 0x7F);
+		
+		MeshletHeader meshlet = mesh_asset_buffer.Load<MeshletHeader>(meshlet_header_offset);
+		result.mesh_entity_index = mesh_entity_index;
+		result.mesh_entity_geometry_index = meshlet.geometry_index;
+	}
+	
+	readback_buffer.Store(0, result);
+}
+#endif // defined(DEBUG_READBACK)

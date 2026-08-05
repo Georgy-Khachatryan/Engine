@@ -351,7 +351,8 @@ bool ImGui::EntityComboBoxWithColor(StackAllocator* alloc, const char* label, En
 bool ImGui::EntityDragDropSource(EntityTypeID entity_type_id, u64 guid) {
 	bool result = ImGui::BeginDragDropSource();
 	if (result) {
-		ImGui::Text("0x%llX", guid);
+		auto type_name = entity_type_name_table[entity_type_id.index];
+		ImGui::Text("Type: %s, GUID: 0x%llX", type_name.data, guid);
 		
 		char type_string[32] = {};
 		ImFormatString(type_string, IM_ARRAYSIZE(type_string), "EntityTypeID:%X", entity_type_id.index);

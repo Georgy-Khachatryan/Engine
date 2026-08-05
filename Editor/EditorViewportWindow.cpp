@@ -172,6 +172,74 @@ static void DrawDebugFrustumCullingBounds(ImGuiDrawList3D* draw_list_3d, CameraE
 	}
 }
 
+static void EditorViewportDragDropTarget(WorldEntityType world_entity, UndoRedoSystem& undo_redo_system, WorldEntitySystem& world_system, AssetEntitySystem& asset_system, EditorSelectionStateEntity world_selection_state_entity) {
+	auto& cursor_readback = world_entity.renderer_world->debug_cursor_readback;
+	if (cursor_readback.mesh_entity_index == u32_max) return;
+	
+	if (ImGui::BeginDragDropTarget() == false) return;
+	defer{ ImGui::EndDragDropTarget(); };
+	
+	auto* mesh_entities = QueryEntityTypeArray<MeshEntityType>(world_system);
+	if (BitArrayTestBit(mesh_entities->alive_mask, cursor_readback.mesh_entity_index) == false) return;
+	
+	static const EntityTypeID drag_drop_entity_type_ids[] = {
+		ECS::GetEntityTypeID<MeshAssetType>::id,
+		ECS::GetEntityTypeID<MaterialAssetType>::id,
+	};
+	
+	u64 dropped_guid = 0;
+	EntityTypeID dropped_entity_type_id;
+	
+	for (auto entity_type_id : drag_drop_entity_type_ids) {
+		char type_string[32] = {};
+		ImFormatString(type_string, IM_ARRAYSIZE(type_string), "EntityTypeID:%X", entity_type_id.index);
+		
+		if (auto* payload = ImGui::AcceptDragDropPayload(type_string)) {
+			memcpy(&dropped_guid, payload->Data, sizeof(u64));
+			dropped_entity_type_id = entity_type_id;
+		}
+	}
+	
+	if (dropped_entity_type_id.index == ECS::GetEntityTypeID<MeshAssetType>::id.index) {
+		auto entity_id = CreateEntity(world_system, ECS::GetEntityTypeID<MeshEntityType>::id);
+		auto mesh_entity = ExtractComponentStreams<MeshEntityType>(mesh_entities, entity_id);
+		
+		auto mesh_asset = QueryEntityByGUID<MeshAssetType>(asset_system, dropped_guid);
+		float3 position_offset = float3((mesh_asset.aabb->min.xy + mesh_asset.aabb->max.xy) * 0.5f, mesh_asset.aabb->min.z);
+		
+		mesh_entity.mesh_asset->guid = dropped_guid;
+		
+		if (ImGui::IsKeyDown(ImGuiMod_Ctrl)) {
+			mesh_entity.rotation->rotation = Math::Conjugate(Math::AxisAxisZToQuat(cursor_readback.world_space_normal));
+			position_offset = mesh_entity.rotation->rotation * position_offset;
+		}
+		mesh_entity.position->position = cursor_readback.world_space_position - position_offset;
+		
+		BeginUndoRedoGroup(undo_redo_system);
+		UndoRedoCreateEntity(undo_redo_system, world_system, mesh_entity.guid->guid);
+		
+		auto& selected_entities_hash_table = world_selection_state_entity.selection_state->selected_entities_hash_table;
+		BeginUndoRedoCommand("Select Dropped Entity"_sl, undo_redo_system, world_system, world_selection_state_entity.guid->guid);
+		HashTableClear(selected_entities_hash_table);
+		HashTableAddOrFind(selected_entities_hash_table, &world_system.heap, mesh_entity.guid->guid);
+		EndUndoRedoCommand(undo_redo_system);
+		
+		EndUndoRedoGroup(undo_redo_system);
+	}
+	
+	if (dropped_entity_type_id.index == ECS::GetEntityTypeID<MaterialAssetType>::id.index) {
+		auto mesh_entity = ExtractComponentStreams<MeshEntityType>(mesh_entities, { cursor_readback.mesh_entity_index });
+		
+		BeginUndoRedoCommand("Set Material Asset"_sl, undo_redo_system, world_system, mesh_entity.guid->guid);
+		mesh_entity.material_table->materials[cursor_readback.mesh_entity_geometry_index].guid = dropped_guid;
+		bool is_dirty = EndUndoRedoCommand(undo_redo_system);
+		
+		if (is_dirty) {
+			BitArraySetBit(mesh_entities->dirty_mask, cursor_readback.mesh_entity_index);
+		}
+	}
+}
+
 void EditorViewportWindow(StackAllocator* alloc, UndoRedoSystem& undo_redo_system, WorldEntitySystem& world_system, AssetEntitySystem& asset_system, EditorSelectionStateEntity world_selection_state_entity, u64 world_entity_guid, GraphicsContext* graphics_context, VirtualResourceTable* resource_table, Array<EditorWorldView>& editor_world_views) {
 	auto world_entity  = QueryEntityByGUID<WorldEntityType>(world_system,  world_entity_guid);
 	auto camera_entity = QueryEntityByGUID<CameraEntityType>(world_system, world_entity.camera_entity->guid);
@@ -190,6 +258,8 @@ void EditorViewportWindow(StackAllocator* alloc, UndoRedoSystem& undo_redo_syste
 	ImGui::ImageButtonEx("Scene", scene_descriptor_heap_offset, window_size, ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight);
 	bool scene_hovered = ImGui::IsItemHovered();
 	bool scene_focused = ImGui::IsItemFocused();
+	
+	EditorViewportDragDropTarget(world_entity, undo_redo_system, world_system, asset_system, world_selection_state_entity);
 	
 	auto mouse_lock = ImGui::BeginMouseLock(scene_hovered, window_pos, window_pos + window_size);
 	mouse_lock.Update(ImGuiMouseButton_Left);
@@ -219,6 +289,7 @@ void EditorViewportWindow(StackAllocator* alloc, UndoRedoSystem& undo_redo_syste
 	renderer_world->delta_time                   = ImGui::GetIO().DeltaTime;
 	renderer_world->mouse_cursor_position        = s32x2(window_relative_mouse_position);
 	renderer_world->debug_mesh_instance_arrays   = draw_list_3d.Flush();
+	renderer_world->enable_debug_readback        = true;
 	
 	auto& output_settings = renderer_world->output_settings;
 	output_settings.mode = SceneOutputMode::InternalRenderTarget;

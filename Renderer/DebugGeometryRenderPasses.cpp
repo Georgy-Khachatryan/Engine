@@ -320,7 +320,7 @@ void DebugGeometryClearBuffersRenderPass::RecordPass(RecordContext* record_conte
 
 
 void DebugVisualizationRenderPass::CreatePipelines(PipelineLibrary* lib) {
-	pipeline_id = CreateComputePipeline(lib, DebugVisualizationShadersID);
+	pipeline_id = CreateComputePipeline(lib, DebugVisualizationShadersID, DebugVisualizationShaders::DebugVisualization);
 }
 
 void DebugVisualizationRenderPass::RecordPass(RecordContext* record_context) {
@@ -337,3 +337,24 @@ void DebugVisualizationRenderPass::RecordPass(RecordContext* record_context) {
 	auto render_target_size = GetTextureSize(record_context, VirtualResourceID::SceneRadiance);
 	CmdDispatch(record_context, DivideAndRoundUp(uint2(render_target_size), 16u));
 }
+
+void DebugReadbackRenderPass::CreatePipelines(PipelineLibrary* lib) {
+	pipeline_id = CreateComputePipeline(lib, DebugVisualizationShadersID, DebugVisualizationShaders::DebugReadback);
+}
+
+void DebugReadbackRenderPass::RecordPass(RecordContext* record_context) {
+	auto [readback_gpu_address, readback_cpu_address] = AllocateTransientReadbackBuffer<u8, 16u>(record_context, sizeof(DebugCursorReadback));
+	readback_queue->Store(readback_cpu_address, record_context->frame_index);
+	
+	auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
+	descriptor_table.readback_buffer.Bind(readback_gpu_address, sizeof(DebugCursorReadback));
+	
+	CmdSetRootSignature(record_context, root_signature);
+	CmdSetPipelineState(record_context, pipeline_id);
+	
+	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
+	CmdSetRootArgument(record_context, root_signature.scene, VirtualResourceID::SceneConstants);
+	
+	CmdDispatch(record_context);
+}
+

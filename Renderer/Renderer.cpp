@@ -204,6 +204,11 @@ void UpdateWorldSystemReadback(RecordContext* record_context, WorldEntitySystem&
 		memcpy(&renderer_world.meshlet_culling_statistics, meshlet_culling_statistics.data, sizeof(MeshletCullingStatistics));
 	}
 	
+	auto debug_cursor_readback = renderer_world.debug_readback_queue.Load(record_context->frame_index);
+	if (debug_cursor_readback.data != nullptr) {
+		memcpy(&renderer_world.debug_cursor_readback, debug_cursor_readback.data, sizeof(DebugCursorReadback));
+	}
+	
 	auto automatic_exposure_histogram = renderer_world.automatic_exposure_readback_queue.Load(record_context->frame_index);
 	if (automatic_exposure_histogram.data != nullptr) {
 		memcpy(&renderer_world.automatic_exposure_histogram, automatic_exposure_histogram.data, sizeof(AutomaticExposureHistogram));

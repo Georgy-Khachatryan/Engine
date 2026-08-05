@@ -389,6 +389,13 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	render_passes.Add<EnergyCompensationLutRenderPass>();
 	render_passes.Add<DenoiserDisocclusionMaskRenderPass>();
 	
+	if (renderer_world.enable_debug_readback) {
+		auto& debug_redback = render_passes.Add<DebugReadbackRenderPass>();
+		debug_redback.readback_queue = &renderer_world.debug_readback_queue;
+	} else {
+		renderer_world.debug_readback_queue = {};
+	}
+	
 	
 	render_passes.AddWait(CommandQueueType::Graphics, render_passes.AddSignal(CommandQueueType::Compute)); 
 	

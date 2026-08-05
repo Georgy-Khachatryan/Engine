@@ -237,6 +237,14 @@ enum struct DebugVisualizationMode : u32 {
 	Count
 };
 
+NOTES(Meta::HlslFile{ "DebugVisualizationData.hlsl"_sl })
+struct DebugCursorReadback {
+	float3 world_space_position;
+	float3 world_space_normal;
+	u32 mesh_entity_index = u32_max;
+	u32 mesh_entity_geometry_index = u32_max;
+};
+
 
 NOTES(Meta::HlslFile{ "ReferencePathTracerData.hlsl"_sl })
 enum struct ReferencePathTracerMode : u32 {
@@ -278,6 +286,7 @@ struct RendererWorld {
 	ReferencePathTracerMode reference_path_tracer_mode = ReferencePathTracerMode::Accumulation;
 	bool  reset_reference_path_tracer   = false;
 	bool  enable_async_compute          = true;
+	bool  enable_debug_readback         = false;
 	
 	SceneOutputSettings output_settings;
 	
@@ -285,9 +294,11 @@ struct RendererWorld {
 	DebugFreezeCullingCamera debug_freeze_culling_camera;
 	MeshletCullingStatistics meshlet_culling_statistics;
 	AutomaticExposureHistogram automatic_exposure_histogram;
+	DebugCursorReadback debug_cursor_readback;
 	
 	GpuReadbackQueue meshlet_culling_statistics_readback_queue;
 	GpuReadbackQueue automatic_exposure_readback_queue;
+	GpuReadbackQueue debug_readback_queue;
 	
 	ArrayView<DebugMeshInstanceArray> debug_mesh_instance_arrays;
 };
