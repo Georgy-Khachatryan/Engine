@@ -1666,7 +1666,7 @@ NOTES(Meta::HlslFile{ imgui_data_filename })
 struct ImGuiPushConstants { float4 view_to_clip_coef; };
 
 NOTES(Meta::HlslFile{ imgui_data_filename })
-struct ImGuiTextureIdPushConstants { u32 index = 0; };
+struct ImGuiTextureIdPushConstants { u32 packed = 0; };
 
 NOTES(Meta::RenderPass{ CommandQueueType::Graphics })
 struct ImGuiRenderPass {

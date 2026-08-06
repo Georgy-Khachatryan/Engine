@@ -38,6 +38,9 @@ using s16x3 = int16_t3;
 using s16x4 = int16_t4;
 using quat = float4;
 
+// Unsupported in general, but for the sake of enums it's fine to use u32.
+using u8 = u32;
+
 compile_const u16 u16_max = (u16)0xFFFF;
 compile_const u16 u16_min = (u16)0x0000;
 compile_const s16 s16_max = (s16)0x7FFF;

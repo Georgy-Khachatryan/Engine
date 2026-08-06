@@ -377,7 +377,7 @@ bool ImGui::EntityDragDropTarget(EntityTypeID entity_type_id, u64* guid) {
 	return (current_guid != *guid);
 }
 
-bool ImGui::ImageButtonEx(const char* str_id, ImTextureRef tex_ref, const ImVec2& image_size, ImGuiButtonFlags flags, const ImVec2& uv_min, const ImVec2& uv_max) {
+bool ImGui::ImageButtonEx(const char* str_id, ImGuiTextureID texture_id, const ImVec2& image_size, ImGuiButtonFlags flags, const ImVec2& uv_min, const ImVec2& uv_max) {
 	auto* window = ImGui::GetCurrentWindow();
 	if (window->SkipItems) return false;
 	
@@ -393,7 +393,8 @@ bool ImGui::ImageButtonEx(const char* str_id, ImTextureRef tex_ref, const ImVec2
 	bool hovered, held;
 	bool pressed = ImGui::ButtonBehavior(bb, id, &hovered, &held, flags);
 	
-	window->DrawList->AddImageRounded(tex_ref, bb.Min + padding, bb.Max - padding, uv_min, uv_max, IM_COL32_WHITE, style.FrameRounding);
+	u32 packed_texture_id = texture_id.descriptor_index | ((u32)texture_id.texture_type << 30u);
+	window->DrawList->AddImageRounded(packed_texture_id, bb.Min + padding, bb.Max - padding, uv_min, uv_max, IM_COL32_WHITE, style.FrameRounding);
 	
 	return pressed;
 }

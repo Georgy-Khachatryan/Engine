@@ -77,6 +77,27 @@ static void CreateDescriptorTables(GraphicsContextD3D12* context, ArrayView<HLSL
 				
 				device->CreateUnorderedAccessView(resource.texture.resource.d3d12, nullptr, &desc, descriptor_table_handle);
 				break;
+			} case ResourceDescriptorType::Texture3D: {
+				D3D12_SHADER_RESOURCE_VIEW_DESC desc = {};
+				desc.Format                        = resource.texture.resource.d3d12 ? dxgi_texture_format_map[(u32)ToSrvFormat(resource.texture.size.format)] : DXGI_FORMAT_R8G8B8A8_UNORM;
+				desc.ViewDimension                 = D3D12_SRV_DIMENSION_TEXTURE3D;
+				desc.Shader4ComponentMapping       = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+				desc.Texture3D.MostDetailedMip     = descriptor.texture.mip_index;
+				desc.Texture3D.MipLevels           = Math::Min(descriptor.texture.mip_count, (u8)(resource.texture.size.mips - descriptor.texture.mip_index));
+				desc.Texture3D.ResourceMinLODClamp = 0.f;
+				
+				device->CreateShaderResourceView(resource.texture.resource.d3d12, &desc, descriptor_table_handle);
+				break;
+			} case ResourceDescriptorType::RWTexture3D: {
+				D3D12_UNORDERED_ACCESS_VIEW_DESC desc = {};
+				desc.Format                = resource.texture.resource.d3d12 ? dxgi_texture_format_map[(u32)ToUavFormat(resource.texture.size.format)] : DXGI_FORMAT_R8G8B8A8_UNORM;
+				desc.ViewDimension         = D3D12_UAV_DIMENSION_TEXTURE3D;
+				desc.Texture3D.MipSlice    = descriptor.texture.mip_index;
+				desc.Texture3D.FirstWSlice = 0;
+				desc.Texture3D.WSize       = resource.texture.size.DepthSliceCount();
+				
+				device->CreateUnorderedAccessView(resource.texture.resource.d3d12, nullptr, &desc, descriptor_table_handle);
+				break;
 			} case ResourceDescriptorType::RegularBuffer: {
 				D3D12_SHADER_RESOURCE_VIEW_DESC desc = {};
 				desc.Format                     = DXGI_FORMAT_UNKNOWN;
@@ -152,7 +173,7 @@ static void CreateDescriptorTables(GraphicsContextD3D12* context, ArrayView<HLSL
 }
 
 static void CreateRenderTargetView(GraphicsContextD3D12* context, VirtualResource& resource, D3D12_CPU_DESCRIPTOR_HANDLE descriptor_handle) {
-	DebugAssert(resource.texture.size.type == TextureSize::Type::Texture2D, "Only 2D texture render targets are implemented.");
+	DebugAssert(resource.texture.size.type == TextureSizeType::Texture2D, "Only 2D texture render targets are implemented.");
 	
 	D3D12_RENDER_TARGET_VIEW_DESC desc = {};
 	desc.Format               = dxgi_texture_format_map[(u32)resource.texture.size.format];
@@ -163,7 +184,7 @@ static void CreateRenderTargetView(GraphicsContextD3D12* context, VirtualResourc
 }
 
 static void CreateDepthStencilView(GraphicsContextD3D12* context, VirtualResource& resource, D3D12_CPU_DESCRIPTOR_HANDLE descriptor_handle) {
-	DebugAssert(resource.texture.size.type == TextureSize::Type::Texture2D, "Only 2D texture render targets are implemented.");
+	DebugAssert(resource.texture.size.type == TextureSizeType::Texture2D, "Only 2D texture render targets are implemented.");
 	
 	D3D12_DEPTH_STENCIL_VIEW_DESC desc = {};
 	desc.Format             = dxgi_texture_format_map[(u32)resource.texture.size.format];
@@ -994,7 +1015,7 @@ static ArrayView<u64> ResolveResourceAccesses(StackAllocator* alloc, ArrayView<A
 				access.mip_count   = Math::Min(access.mip_count,   (u8)(resource.texture.size.mips               - access.mip_index));
 				access.array_count = Math::Min(access.array_count, (u16)(resource.texture.size.ArraySliceCount() - access.array_index));
 				
-				if (access.mip_count == resource.texture.size.mips && access.array_count && resource.texture.size.ArraySliceCount()) {
+				if (access.mip_count == resource.texture.size.mips && access.array_count == resource.texture.size.ArraySliceCount()) {
 					access.flags |= ResourceAccessFlags::IsFullResourceAccess;
 				}
 				
@@ -1005,7 +1026,7 @@ static ArrayView<u64> ResolveResourceAccesses(StackAllocator* alloc, ArrayView<A
 				if (is_same_group && is_same_access_and_stages && is_next_mip) {
 					last_access->mip_count += access.mip_count;
 					
-					if (last_access->mip_count == resource.texture.size.mips && last_access->array_count && resource.texture.size.ArraySliceCount()) {
+					if (last_access->mip_count == resource.texture.size.mips && last_access->array_count == resource.texture.size.ArraySliceCount()) {
 						last_access->flags |= ResourceAccessFlags::IsFullResourceAccess;
 					}
 					

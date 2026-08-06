@@ -23,8 +23,21 @@ InputPS MainVS(uint start_vertex_location : SV_StartVertexLocation, uint vertex_
 #endif // defined(VERTEX_SHADER)
 
 #if defined(PIXEL_SHADER)
+#include "Generated/TextureData.hlsl"
+
 float4 MainPS(InputPS input) : SV_Target0  {
-	Texture2D<float4> texture = ResourceDescriptorHeap[texture_id.index];
-	return input.color * texture.Sample(sampler_linear_clamp, input.texcoord);
+	u32 texture_index = (texture_id.packed & 0x3FFFFFFF);
+	u32 texture_type  = (texture_id.packed >> 30);
+	
+	float4 texture_sample = float4(0.0, 0.0, 0.0, 1.0);
+	if (texture_type == TextureSizeType::Texture2D) {
+		Texture2D<float4> texture = ResourceDescriptorHeap[texture_index];
+		texture_sample = texture.Sample(sampler_linear_clamp, input.texcoord);
+	} else if (texture_type == TextureSizeType::Texture3D) {
+		Texture3D<float4> texture = ResourceDescriptorHeap[texture_index];
+		texture_sample = texture.Sample(sampler_linear_clamp, float3(input.texcoord, 0.5));
+	}
+	
+	return input.color * texture_sample;
 }
 #endif // defined(PIXEL_SHADER)

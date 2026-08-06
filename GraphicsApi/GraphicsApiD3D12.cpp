@@ -677,7 +677,7 @@ NativeTextureResource CreateTextureResource(GraphicsContext* api_context, Textur
 	auto* context = (GraphicsContextD3D12*)api_context;
 	
 	D3D12_RESOURCE_DESC1 resource_desc = {};
-	resource_desc.Dimension        = size.type == TextureSize::Type::Texture3D ? D3D12_RESOURCE_DIMENSION_TEXTURE3D : D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+	resource_desc.Dimension        = size.type == TextureSizeType::Texture3D ? D3D12_RESOURCE_DIMENSION_TEXTURE3D : D3D12_RESOURCE_DIMENSION_TEXTURE2D;
 	resource_desc.Alignment        = 0;
 	resource_desc.Width            = size.x;
 	resource_desc.Height           = size.y;
@@ -832,10 +832,13 @@ SparseTextureLayout GetSparseTextureLayout(GraphicsContext* api_context, NativeT
 	context->device->GetResourceTiling(resource.d3d12, &tile_count, &packed_mip_info, &tile_shape, nullptr, 0, nullptr);
 	
 	SparseTextureLayout result;
-	result.tile_shape        = u16x2(tile_shape.WidthInTexels, tile_shape.HeightInTexels);
-	result.packed_tile_count = (u16)packed_mip_info.NumTilesForPackedMips;
+	result.tile_shape_log2.x = FirstBitLow32(tile_shape.WidthInTexels);
+	result.tile_shape_log2.y = FirstBitLow32(tile_shape.HeightInTexels);
+	result.tile_shape_log2.z = FirstBitLow32(tile_shape.DepthInTexels);
 	result.packed_mip_count  = packed_mip_info.NumPackedMips;
+	result.packed_tile_count = (u16)packed_mip_info.NumTilesForPackedMips;
 	result.regular_mip_count = packed_mip_info.NumStandardMips;
+	result.padding           = 0;
 	
 	return result;
 }

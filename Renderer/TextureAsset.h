@@ -63,7 +63,7 @@ struct TextureRuntimeCpuStreamingRequest {
 	u16 target_resolution = 0;
 	
 	bool RequestMinimumResidency(u32 requested_resolution = 128u) {
-		target_resolution = requested_resolution;
+		target_resolution = Math::Max(target_resolution, (u16)requested_resolution);
 		return mip_level_mask != 0u;
 	}
 };

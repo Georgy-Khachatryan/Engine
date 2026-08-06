@@ -59,6 +59,7 @@
   
   <ItemGroup>
     <Natvis Include="Basic/Basic.natvis" />
+    <None Include="Basic/Basic.natstepfilter" />
   </ItemGroup>
   
   <Target Name="PostBuild" AfterTargets="PostBuildEvent">

@@ -320,10 +320,10 @@ static bool AssetComponentEntityView(StackAllocator* alloc, AssetEntitySystem& a
 		
 		auto size = entity.texture_runtime_data_layout->size;
 		if (ImGui::BeginTableItem("Texture Size")) {
-			if (size.type == TextureSize::Type::Texture3D) {
-				ImGui::Text("%ux%ux%u, %u, %u", size.x, size.y, size.DepthSliceCount());
+			if (size.type == TextureSizeType::Texture3D) {
+				ImGui::Text("%ux%ux%u, %u", size.x, size.y, size.DepthSliceCount(), size.mips);
 			} else {
-				ImGui::Text("%ux%u", size.x, size.y, size.DepthSliceCount());
+				ImGui::Text("%ux%u, %u, %u", size.x, size.y, size.ArraySliceCount(), size.mips);
 			}
 			ImGui::EndTableItem();
 		}
@@ -343,8 +343,19 @@ static bool AssetComponentEntityView(StackAllocator* alloc, AssetEntitySystem& a
 		auto descriptor_index_string = StringFormat(alloc, "%"_sl, entity.texture_descriptor_allocation->index);
 		ImGui::TableInputText("Descriptor Index", descriptor_index_string, nullptr);
 		
-		if (ImGui::BeginTableItem("Preview")) {
-			ImGui::ImageButtonEx("Texture", entity.texture_descriptor_allocation->index, ImVec2(128.f, 128.f));
+		if (entity.texture_runtime_data_layout && entity.texture_cpu_streaming_requests && ImGui::BeginTableItem("Preview")) {
+			entity.texture_cpu_streaming_requests->RequestMinimumResidency(128);
+			auto texture_size = entity.texture_runtime_data_layout->size;
+			
+			float2 preview_size = 128.f;
+			if (texture_size.x > texture_size.y) {
+				preview_size.y *= (float)texture_size.y / (float)texture_size.x;
+			} else {
+				preview_size.x *= (float)texture_size.x / (float)texture_size.y;
+			}
+			
+			auto texture_id = ImGuiTextureID(entity.texture_descriptor_allocation->index, texture_size.type);
+			ImGui::ImageButtonEx("Texture", texture_id, preview_size);
 			ImGui::EndTableItem();
 		}
 	}

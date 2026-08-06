@@ -20,6 +20,9 @@
 #include <SDK/stb/stb_image.h>
 #include <SDK/stb/stb_image_resize2.h>
 #include <SDK/stb/stb_dxt.h>
+#include <SDK/D3D12/include/dxgiformat.h>
+
+static constexpr u32 MakeFourCC(const char* data) { return (u32)data[0] | ((u32)data[1] << 8) | ((u32)data[2] << 16) | ((u32)data[3] << 24); }
 
 compile_const u32 stb_image_texel_size_bytes = sizeof(u32);
 
@@ -172,13 +175,57 @@ static void TextureEncodeHemiOctahedralMap(u8* mip_data, uint2 mip_size, u32 mip
 #endif // (TEXTURE_ENCODE_NORMAL_MAP_SIMD_WIDTH == 1)
 }
 
+static bool WriteTextureToRuntimeFile(StackAllocator* alloc, ArrayView<u8*> subresources, TextureSize size, u64 runtime_data_guid) {
+	auto runtime_filepath = StringFormat(alloc, "./Assets/Runtime/%x..bin"_sl, runtime_data_guid);
+	
+	auto runtime_file = SystemOpenFile(alloc, runtime_filepath, OpenFileFlags::Write);
+	if (runtime_file.handle == nullptr) return false;
+	
+	auto format = texture_format_info_map[(u32)size.format];
+	bool write_file_success = true;
+	
+	u64 write_offset = 0;
+	for (u32 array_index = 0; array_index < size.ArraySliceCount(); array_index += 1) {
+		for (u32 mip_index = 0; mip_index < size.mips; mip_index += 1) {
+			auto mip_size_texels = Math::Max(uint3(size.x, size.y, size.DepthSliceCount()) >> mip_index, 1u);
+			auto mip_size_blocks = DivideAndRoundUpLog2(mip_size_texels, uint3(format.block_size_log2, 0u));
+			auto mip_size_bytes  = AlignUp(mip_size_blocks.x * format.block_size_bytes, texture_row_pitch_alignment) * mip_size_blocks.y * mip_size_blocks.z;
+			
+			write_file_success &= SystemWriteFile(runtime_file, subresources[array_index * size.mips + mip_index], mip_size_bytes, write_offset);
+			write_offset += mip_size_bytes;
+		}
+	}
+	write_file_success &= SystemCloseFile(runtime_file);
+	
+	return write_file_success;
+}
+
+
+static TextureImportResult ImportTextureFileSTB(StackAllocator* alloc, ThreadPool* thread_pool, String file_data, const TextureSourceData& source_data, u64 runtime_data_guid);
+static TextureImportResult ImportTextureFileDDS(StackAllocator* alloc, ThreadPool* thread_pool, String file_data, const TextureSourceData& source_data, u64 runtime_data_guid);
 
 TextureImportResult ImportTextureFile(StackAllocator* alloc, ThreadPool* thread_pool, const TextureSourceData& source_data, u64 runtime_data_guid) {
 	ProfilerScope("ImportTextureFile");
 	TempAllocationScope(alloc);
 	
 	auto file_data = SystemReadFileToString(alloc, source_data.filepath);
-	if (file_data.data == nullptr) return {};
+	if (file_data.data == nullptr || file_data.count < 4) return {};
+	
+	u32 magic = 0;
+	memcpy(&magic, file_data.data, 4);
+	
+	TextureImportResult result;
+	if (magic == MakeFourCC("DDS ")) {
+		result = ImportTextureFileDDS(alloc, thread_pool, file_data, source_data, runtime_data_guid);
+	} else {
+		result = ImportTextureFileSTB(alloc, thread_pool, file_data, source_data, runtime_data_guid);
+	}
+	
+	return result;
+}
+
+static TextureImportResult ImportTextureFileSTB(StackAllocator* alloc, ThreadPool* thread_pool, String file_data, const TextureSourceData& source_data, u64 runtime_data_guid) {
+	ProfilerScope("ImportTextureFileSTB");
 	
 	s32x2 stb_image_size;
 	s32 stb_image_channel_count = 0;
@@ -265,7 +312,7 @@ TextureImportResult ImportTextureFile(StackAllocator* alloc, ThreadPool* thread_
 		ProfilerScope("PadMipToBlockSize");
 		
 		auto mip_size = Math::Max(uint2(stb_image_size) >> mip_index, uint2(1u));
-		auto mip_size_blocks = (mip_size + (uint2(1u) << format.block_size_log2) - 1) >> format.block_size_log2;
+		auto mip_size_blocks = DivideAndRoundUpLog2(mip_size, format.block_size_log2);
 		
 		u32  mip_row_pitch = AlignUp(mip_size.x * stb_image_texel_size_bytes, texture_row_pitch_alignment);
 		auto mip_full_size = mip_size_blocks << format.block_size_log2;
@@ -310,7 +357,7 @@ TextureImportResult ImportTextureFile(StackAllocator* alloc, ThreadPool* thread_
 		ProfilerScope("CompressMipBlocks");
 		
 		auto mip_size = Math::Max(uint2(stb_image_size) >> mip_index, uint2(1u));
-		auto mip_size_blocks = (mip_size + (uint2(1u) << format.block_size_log2) - 1) >> format.block_size_log2;
+		auto mip_size_blocks = DivideAndRoundUpLog2(mip_size, format.block_size_log2);
 		
 		u32 mip_row_pitch = AlignUp(mip_size.x * stb_image_texel_size_bytes, texture_row_pitch_alignment);
 		u32 mip_row_pitch_blocks = AlignUp(mip_size_blocks.x * format.block_size_bytes, texture_row_pitch_alignment);
@@ -329,29 +376,245 @@ TextureImportResult ImportTextureFile(StackAllocator* alloc, ThreadPool* thread_
 		ArrayAppend(block_compressed_mips, mip_data_blocks);
 	}
 	
-	
-	auto runtime_filepath = StringFormat(alloc, "./Assets/Runtime/%x..bin"_sl, runtime_data_guid);
-	
-	auto runtime_file = SystemOpenFile(alloc, runtime_filepath, OpenFileFlags::Write);
-	if (runtime_file.handle == nullptr) return {};
-	bool write_file_success = true;
-	
-	u64 write_offset = 0;
-	for (u32 mip_index = 0; mip_index < mip_count; mip_index += 1) {
-		auto mip_size = Math::Max(uint2(stb_image_size) >> mip_index, uint2(1u));
-		auto mip_size_blocks = (mip_size + (uint2(1u) << format.block_size_log2) - 1) >> format.block_size_log2;
-		
-		u32 mip_size_bytes = AlignUp(mip_size_blocks.x * format.block_size_bytes, texture_row_pitch_alignment) * mip_size_blocks.y;
-		write_file_success &= SystemWriteFile(runtime_file, block_compressed_mips[mip_index], mip_size_bytes, write_offset);
-		write_offset += mip_size_bytes;
-	}
-	write_file_success &= SystemCloseFile(runtime_file);
-	
-	
 	TextureRuntimeDataLayout layout;
 	layout.file_guid = runtime_data_guid;
 	layout.version   = TextureRuntimeDataLayout::current_version;
 	layout.size      = TextureSize(output_format, uint2(stb_image_size), 1, mip_count);
+	
+	bool write_file_success = WriteTextureToRuntimeFile(alloc, block_compressed_mips, layout.size, runtime_data_guid);
+	
+	return { layout, write_file_success };
+}
+
+static TextureImportResult ImportTextureFileDDS(StackAllocator* alloc, ThreadPool* thread_pool, String file_data, const TextureSourceData& source_data, u64 runtime_data_guid) {
+	ProfilerScope("ImportTextureFileDDS");
+	
+	enum DDS_PIXELFORMAT_FLAGS {
+		DDPF_ALPHAPIXELS = 0x1,
+		DDPF_ALPHA       = 0x2,
+		DDPF_FOURCC      = 0x4,
+		DDPF_RGB         = 0x40,
+		DDPF_YUV         = 0x20000,
+	};
+	
+	struct DDS_PIXELFORMAT {
+		u32 dwSize;
+		u32 dwFlags;
+		u32 dwFourCC;
+		u32 dwRGBBitCount;
+		u32 dwRBitMask;
+		u32 dwGBitMask;
+		u32 dwBBitMask;
+		u32 dwABitMask;
+	};
+	
+	enum DDS_HEADER_FLAGS {
+		DDSD_CAPS        = 0x1,
+		DDSD_HEIGHT      = 0x2,
+		DDSD_WIDTH       = 0x4,
+		DDSD_PITCH       = 0x8,
+		DDSD_PIXELFORMAT = 0x1000,
+		DDSD_MIPMAPCOUNT = 0x20000,
+		DDSD_LINEARSIZE  = 0x80000,
+		DDSD_DEPTH       = 0x800000,
+	};
+	
+	enum DDSCAPS2_FLAGS {
+		DDSCAPS2_CUBEMAP = 0x200 | 0x400 | 0x800 | 0x1000 | 0x2000 | 0x4000 | 0x8000,
+		DDSCAPS2_VOLUME  = 0x200000,
+	};
+	
+	struct DDS_HEADER {
+		u32 dwSize;
+		u32 dwFlags;
+		u32 dwHeight;
+		u32 dwWidth;
+		u32 dwPitchOrLinearSize;
+		u32 dwDepth;
+		u32 dwMipMapCount;
+		u32 dwReserved1[11];
+		DDS_PIXELFORMAT ddspf;
+		u32 dwCaps;
+		u32 dwCaps2;
+		u32 dwCaps3;
+		u32 dwCaps4;
+		u32 dwReserved2;
+	};
+	
+	enum D3D10_RESOURCE_DIMENSION {
+		D3D10_RESOURCE_DIMENSION_UNKNOWN   = 0,
+		D3D10_RESOURCE_DIMENSION_BUFFER    = 1,
+		D3D10_RESOURCE_DIMENSION_TEXTURE1D = 2,
+		D3D10_RESOURCE_DIMENSION_TEXTURE2D = 3,
+		D3D10_RESOURCE_DIMENSION_TEXTURE3D = 4,
+	};
+	
+	struct DDS_HEADER_DXT10 {
+		DXGI_FORMAT dxgiFormat;
+		D3D10_RESOURCE_DIMENSION resourceDimension;
+		u32 miscFlag;
+		u32 arraySize;
+		u32 miscFlags2;
+	};
+	
+	enum D3DFORMAT {
+		D3DFMT_G16R16        = 34,
+		D3DFMT_A16B16G16R16  = 36,
+		D3DFMT_V16U16        = 64,
+		D3DFMT_Q16W16V16U16  = 110,
+		D3DFMT_R16F          = 111,
+		D3DFMT_G16R16F       = 112,
+		D3DFMT_A16B16G16R16F = 113,
+		D3DFMT_R32F          = 114,
+		D3DFMT_G32R32F       = 115,
+		D3DFMT_A32B32G32R32F = 116,
+	}; 
+	
+	
+	if (file_data.count < sizeof(u32) + sizeof(DDS_HEADER)) return {};
+	
+	u64 cursor = 0;
+	
+	u32 dds_magic = 0;
+	memcpy(&dds_magic, file_data.data + cursor, sizeof(u32));
+	cursor += sizeof(u32);
+	
+	if (dds_magic != MakeFourCC("DDS ")) return {};
+	
+	DDS_HEADER dds_header = {};
+	memcpy(&dds_header, file_data.data + cursor, sizeof(DDS_HEADER));
+	cursor += sizeof(DDS_HEADER);
+	
+	bool has_dds_dx10_header = (dds_header.dwFlags & DDPF_FOURCC) != 0 && (dds_header.ddspf.dwFourCC == MakeFourCC("DX10"));
+	
+	DDS_HEADER_DXT10 dds_dx10_header = {};
+	if (has_dds_dx10_header) {
+		if (file_data.count - cursor < sizeof(DDS_HEADER_DXT10)) return {};
+		
+		memcpy(&dds_dx10_header, file_data.data + cursor, sizeof(DDS_HEADER_DXT10));
+		cursor += sizeof(DDS_HEADER_DXT10);
+	}
+	
+	auto dxgi_format = DXGI_FORMAT_UNKNOWN;
+	if (has_dds_dx10_header) {
+		dxgi_format = dds_dx10_header.dxgiFormat;
+	} else if ((dds_header.dwFlags & DDPF_FOURCC) != 0) {
+		switch (dds_header.ddspf.dwFourCC) {
+		case MakeFourCC("DXT1"): dxgi_format = DXGI_FORMAT_BC1_UNORM; break;
+		case MakeFourCC("DXT2"): dxgi_format = DXGI_FORMAT_BC2_UNORM; break;
+		case MakeFourCC("DXT3"): dxgi_format = DXGI_FORMAT_BC2_UNORM; break;
+		case MakeFourCC("DXT4"): dxgi_format = DXGI_FORMAT_BC3_UNORM; break;
+		case MakeFourCC("DXT5"): dxgi_format = DXGI_FORMAT_BC3_UNORM; break;
+		case MakeFourCC("BC4U"): dxgi_format = DXGI_FORMAT_BC4_UNORM; break;
+		case MakeFourCC("BC4S"): dxgi_format = DXGI_FORMAT_BC4_SNORM; break;
+		case MakeFourCC("BC5U"): dxgi_format = DXGI_FORMAT_BC5_UNORM; break;
+		case MakeFourCC("BC5S"): dxgi_format = DXGI_FORMAT_BC5_SNORM; break;
+		
+		case D3DFMT_G16R16:        dxgi_format = DXGI_FORMAT_R16G16_UNORM;       break;
+		case D3DFMT_A16B16G16R16:  dxgi_format = DXGI_FORMAT_R16G16B16A16_UNORM; break;
+		case D3DFMT_V16U16:        dxgi_format = DXGI_FORMAT_R16G16_SNORM;       break;
+		case D3DFMT_Q16W16V16U16:  dxgi_format = DXGI_FORMAT_R16G16B16A16_SNORM; break;
+		case D3DFMT_R16F:          dxgi_format = DXGI_FORMAT_R16_FLOAT;          break;
+		case D3DFMT_G16R16F:       dxgi_format = DXGI_FORMAT_R16G16_FLOAT;       break;
+		case D3DFMT_A16B16G16R16F: dxgi_format = DXGI_FORMAT_R16G16B16A16_FLOAT; break;
+		case D3DFMT_R32F:          dxgi_format = DXGI_FORMAT_R32_FLOAT;          break;
+		case D3DFMT_G32R32F:       dxgi_format = DXGI_FORMAT_R32G32_FLOAT;       break;
+		case D3DFMT_A32B32G32R32F: dxgi_format = DXGI_FORMAT_R32G32B32A32_FLOAT; break;
+		}
+	} else {
+		u32 channel_mask = 0;
+		channel_mask |= dds_header.ddspf.dwRBitMask == (0xFF << 0)  ? 0x1 : 0;
+		channel_mask |= dds_header.ddspf.dwGBitMask == (0xFF << 8)  ? 0x2 : 0;
+		channel_mask |= dds_header.ddspf.dwBBitMask == (0xFF << 16) ? 0x4 : 0;
+		channel_mask |= dds_header.ddspf.dwABitMask == (0xFF << 24) ? 0x8 : 0;
+		
+		if ((dds_header.ddspf.dwRGBBitCount == 32) && (channel_mask == 0xF)) {
+			dxgi_format = DXGI_FORMAT_R8G8B8A8_UNORM;
+		} else if ((dds_header.ddspf.dwRGBBitCount == 16) && (channel_mask == 0x3)) {
+			dxgi_format = DXGI_FORMAT_R8G8_UNORM;
+		} else if ((dds_header.ddspf.dwRGBBitCount == 8) && (channel_mask == 0x1)) {
+			dxgi_format = DXGI_FORMAT_R8_UNORM;
+		}
+	}
+	
+	auto output_format = TextureFormat::None;
+	for (u32 i = 0; i < (u32)TextureFormat::Count; i += 1) {
+		if (dxgi_texture_format_map[i] == dxgi_format) {
+			output_format = (TextureFormat)i;
+			break;
+		}
+	}
+	
+	if (output_format == TextureFormat::None) return {};
+	
+	
+	uint3 size = Math::Max(uint3(dds_header.dwWidth, dds_header.dwHeight, dds_header.dwDepth), 1u);
+	u32 array_size = has_dds_dx10_header ? Math::Max(dds_dx10_header.arraySize, 1u) : 1;
+	u32 mip_count  = Math::Max(dds_header.dwMipMapCount, 1u);
+	
+	
+	bool is_volume  = (dds_header.dwCaps2 & DDSCAPS2_VOLUME)  != 0;
+	bool is_cubemap = (dds_header.dwCaps2 & DDSCAPS2_CUBEMAP) != 0;
+	
+	if (is_cubemap) return {}; // Cubemaps are not supported.
+	
+	if (is_volume == false && size.z > 1) return {}; // 2D texture, but has depth slices?
+	
+	if (array_size > 1 && size.z > 1) return {}; // 2D texture array?
+	
+	u32 max_texture_size = (u32)Math::Max(Math::Max(size.x, size.y), size.z);
+	u32 max_mip_count = FirstBitHigh32(max_texture_size) + 1;
+	
+	if (mip_count > max_mip_count) return {};
+	
+	auto texture_type = size.z > 1 ? TextureSizeType::Texture3D : TextureSizeType::Texture2D;
+	if (texture_type == TextureSizeType::Texture2D) {
+		if (size.x > 16384 || size.y > 16384 || array_size > 2048) return {};
+	} else /*if (texture_type == TextureSizeType::Texture3D)*/ {
+		if (size.x > 2048 || size.y > 2048 || size.z > 2048) return {};
+	}
+	
+	
+	Array<u8*> block_compressed_mips;
+	ArrayResizeMemset(block_compressed_mips, alloc, array_size * mip_count);
+	
+	auto format = texture_format_info_map[(u32)output_format];
+	for (u32 array_index = 0; array_index < array_size; array_index += 1) {
+		for (u32 mip_index = 0; mip_index < mip_count; mip_index += 1) {
+			auto mip_size_texels = Math::Max(size >> mip_index, 1u);
+			auto mip_size_blocks = DivideAndRoundUpLog2(mip_size_texels, uint3(format.block_size_log2, 0u));
+			
+			u32 row_size  = mip_size_blocks.x * format.block_size_bytes;
+			u32 row_pitch = AlignUp(row_size, texture_row_pitch_alignment);
+			
+			if (row_size * mip_size_blocks.y * mip_size_blocks.z > (file_data.count - cursor)) return {};
+			
+			
+			u32 mip_size_bytes = row_pitch * mip_size_blocks.y * mip_size_blocks.z;
+			
+			u8* mip_data_blocks = nullptr;
+			if (row_size == row_pitch) {
+				mip_data_blocks = (u8*)(file_data.data + cursor);
+				cursor += mip_size_bytes;
+			} else {
+				mip_data_blocks = (u8*)alloc->Allocate(mip_size_bytes, texture_row_pitch_alignment);
+				
+				for (u32 y = 0; y < mip_size_blocks.y * mip_size_blocks.z; y += 1) {
+					memcpy(mip_data_blocks + y * row_pitch, file_data.data + cursor, row_size);
+					memset(mip_data_blocks + y * row_pitch + row_size, 0, row_pitch - row_size);
+					cursor += row_size;
+				}
+			}
+			block_compressed_mips[array_index * mip_count + mip_index] = mip_data_blocks;
+		}
+	}
+	
+	TextureRuntimeDataLayout layout;
+	layout.file_guid = runtime_data_guid;
+	layout.version   = TextureRuntimeDataLayout::current_version;
+	layout.size      = TextureSize(output_format, size.xy, Math::Max(size.z, array_size), mip_count, texture_type);
+	
+	bool write_file_success = WriteTextureToRuntimeFile(alloc, block_compressed_mips, layout.size, runtime_data_guid);
 	
 	return { layout, write_file_success };
 }

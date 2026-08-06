@@ -44,7 +44,7 @@ void EditorResourceStatisticsWindow(StackAllocator* alloc, VirtualResourceTable*
 			
 			for (u32 mip_index = 0; mip_index < texture_size.mips; mip_index += 1) {
 				uint3 mip_size_pixels = Math::Max(uint3(texture_size.x, texture_size.y, texture_size.DepthSliceCount()) >> mip_index, 1u);
-				uint3 mip_size_blocks = Math::Max(mip_size_pixels >> uint3(format.block_size_log2, 0u), 1u);
+				uint3 mip_size_blocks = Math::Max(DivideAndRoundUpLog2(mip_size_pixels, uint3(format.block_size_log2, 0u)), 1u);
 				size += mip_size_blocks.x * mip_size_blocks.y * mip_size_blocks.z * format.block_size_bytes;
 			}
 			

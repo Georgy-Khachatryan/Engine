@@ -91,17 +91,27 @@ void ReleaseTextureStreamingSystem(GraphicsContext* context, TextureStreamingSys
 
 static u64 ComputeMipLevelOffset(TextureSize size, u32 mip_index, const TextureFormatInfo& format) {
 	u64 offset = 0;
-	
 	for (u32 i = 0; i < mip_index; i += 1) {
-		auto mip_size_texels = Math::Max(uint2(size) >> i, 1u);
-		auto mip_size_blocks = (mip_size_texels + (uint2(1u) << format.block_size_log2) - 1u) >> format.block_size_log2;
-		auto mip_size_bytes  = AlignUp(mip_size_blocks.x * format.block_size_bytes, texture_row_pitch_alignment) * mip_size_blocks.y;
+		auto mip_size_texels = Math::Max(uint3(size.x, size.y, size.DepthSliceCount()) >> i, 1u);
+		auto mip_size_blocks = DivideAndRoundUpLog2(mip_size_texels, uint3(format.block_size_log2, 0u));
+		auto mip_size_bytes  = AlignUp(mip_size_blocks.x * format.block_size_bytes, texture_row_pitch_alignment) * mip_size_blocks.y * mip_size_blocks.z;
 		
 		offset += mip_size_bytes;
 	}
-	
 	return offset;
 }
+
+static u32 ComputeMipLevelTileCount(TextureSize size, u32 mip_index, SparseTextureLayout sparse_layout) {
+	u32 tile_count = sparse_layout.packed_tile_count;
+	if (mip_index < sparse_layout.regular_mip_count) {
+		auto mip_size_texels = Math::Max(uint3(size.x, size.y, size.DepthSliceCount()) >> mip_index, 1u);
+		auto mip_size_tiles  = DivideAndRoundUpLog2(mip_size_texels, uint3(sparse_layout.tile_shape_log2));
+		
+		tile_count = mip_size_tiles.x * mip_size_tiles.y * mip_size_tiles.z;
+	}
+	return tile_count;
+}
+
 
 static ArrayView<u64> ProcessTextureStreamingFeedback(RecordContext* record_context, GpuReadbackQueue* texture_streaming_feedback_queue, EntityTypeArray* entity_array, TextureAssetType streams) {
 	ProfilerScope("ProcessTextureStreamingFeedback");
@@ -137,11 +147,7 @@ static ArrayView<u64> ProcessTextureStreamingFeedback(RecordContext* record_cont
 		u32 end_mip_index = sparse_layout.regular_mip_count + (sparse_layout.packed_mip_count != 0 ? 1 : 0);
 		
 		for (u32 mip_index = begin_mip_index; mip_index < end_mip_index; mip_index += 1) {
-			auto mip_size_texels = Math::Max(uint2(layout.size) >> mip_index, 1u);
-			auto mip_size_tiles  = DivideAndRoundUp(mip_size_texels, uint2(sparse_layout.tile_shape));
-			
-			u32 tile_count = mip_index >= sparse_layout.regular_mip_count ? sparse_layout.packed_tile_count : mip_size_tiles.x * mip_size_tiles.y;
-			
+			u32 tile_count = ComputeMipLevelTileCount(layout.size, mip_index, sparse_layout);
 			ArrayAppend(requests, alloc, EncodeTextureSubresourceID(allocation.index, mip_index, tile_count));
 		}
 	}
@@ -192,16 +198,7 @@ void UpdateTextureStreamingSystem(TextureStreamingSystem* system, AsyncTransferQ
 		u32 end_mip_index = sparse_layout.regular_mip_count + (sparse_layout.packed_mip_count != 0 ? 1 : 0);
 		for (s32 mip_index = end_mip_index - 1; mip_index >= 0; mip_index -= 1) {
 			if (texture.LoadState(mip_index) == TextureMipLevelRuntimeState::Allocate) {
-				auto format = texture_format_info_map[(u32)layout.size.format];
-				
-				u32 tile_count = sparse_layout.packed_tile_count;
-				if (mip_index < sparse_layout.regular_mip_count) {
-					auto mip_size_texels = Math::Max(uint2(layout.size) >> mip_index, 1u);
-					auto mip_size_blocks = (mip_size_texels + (uint2(1u) << format.block_size_log2) - 1u) >> format.block_size_log2;
-					auto mip_size_tiles  = DivideAndRoundUp(mip_size_texels, uint2(sparse_layout.tile_shape));
-					
-					tile_count = mip_size_tiles.x * mip_size_tiles.y;
-				}
+				u32 tile_count = ComputeMipLevelTileCount(layout.size, mip_index, sparse_layout);
 				
 				if (system->free_tile_indices.count >= tile_count) {
 					texture.StoreState(mip_index, TextureMipLevelRuntimeState::FileRead);
@@ -220,18 +217,19 @@ void UpdateTextureStreamingSystem(TextureStreamingSystem* system, AsyncTransferQ
 					AsyncUpdateMemoryMappings(graphics_context, alloc, tile_indices, mip_index, resource_allocation.resource, system->memory_resource);
 					
 					u32 mip_count_to_read = mip_index >= sparse_layout.regular_mip_count ? sparse_layout.packed_mip_count : 1;
+					auto format = texture_format_info_map[(u32)layout.size.format];
 					
 					auto& runtime_file = streams.runtime_file[entity_id.index];
 					for (u32 i = 0; i < mip_count_to_read; i += 1) {
-						auto mip_size_texels = Math::Max(uint2(layout.size) >> (mip_index + i), 1u);
-						auto mip_size_blocks = (mip_size_texels + (uint2(1u) << format.block_size_log2) - 1u) >> format.block_size_log2;
-						auto mip_size_bytes  = AlignUp(mip_size_blocks.x * format.block_size_bytes, texture_row_pitch_alignment) * mip_size_blocks.y;
+						auto mip_size_texels = Math::Max(uint3(layout.size.x, layout.size.y, layout.size.DepthSliceCount()) >> (mip_index + i), 1u);
+						auto mip_size_blocks = DivideAndRoundUpLog2(mip_size_texels, uint3(format.block_size_log2, 0u));
+						auto mip_size_bytes  = AlignUp(mip_size_blocks.x * format.block_size_bytes, texture_row_pitch_alignment) * mip_size_blocks.y * mip_size_blocks.z;
 						
 						u64 file_read_index = AsyncCopyFileToTexture(
 							async_transfer_queue,
 							resource_allocation.resource,
 							mip_index + i,
-							TextureSize(layout.size.format, mip_size_texels),
+							TextureSize(layout.size.format, mip_size_texels.x, mip_size_texels.y, mip_size_texels.z, 1u, layout.size.type),
 							runtime_file.file,
 							ComputeMipLevelOffset(layout.size, mip_index + i, format),
 							mip_size_bytes
@@ -311,11 +309,7 @@ void UpdateTextureStreamingSystem(TextureStreamingSystem* system, AsyncTransferQ
 				auto state = texture.LoadState(mip_index);
 				if (state != TextureMipLevelRuntimeState::Ready || (texture.cache_frame_index == (u32)current_frame_index && mip_index >= texture.cache_mip_index)) continue;
 				
-				auto mip_size_texels = Math::Max(uint2(layout.size) >> mip_index, 1u);
-				auto mip_size_tiles  = DivideAndRoundUp(mip_size_texels, uint2(sparse_layout.tile_shape));
-				
-				u32 tile_count = mip_index >= sparse_layout.regular_mip_count ? sparse_layout.packed_tile_count : mip_size_tiles.x * mip_size_tiles.y;
-				
+				u32 tile_count = ComputeMipLevelTileCount(layout.size, mip_index, sparse_layout);
 				ArrayAppend(deallocation_candidates, alloc, EncodeTextureSubresourceID(descriptor_index, mip_index, tile_count));
 			}
 		}

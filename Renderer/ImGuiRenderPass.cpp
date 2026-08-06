@@ -117,7 +117,7 @@ void ImGuiRenderPass::RecordPass(RecordContext* record_context) {
 	CmdSetViewport(record_context, uint2(float2(draw_data->DisplaySize) * clip_scale));
 	
 	ImGuiTextureIdPushConstants texture_id;
-	texture_id.index = u32_max;
+	texture_id.packed = u32_max;
 	
 	u32 vertex_offset = 0;
 	u32 index_offset  = 0;
@@ -131,8 +131,8 @@ void ImGuiRenderPass::RecordPass(RecordContext* record_context) {
 			
 			CmdSetScissor(record_context, uint2(clip_max), uint2(clip_min));
 			
-			if (texture_id.index != (u32)command.GetTexID()) {
-				texture_id.index  = (u32)command.GetTexID();
+			if (texture_id.packed != (u32)command.GetTexID()) {
+				texture_id.packed  = (u32)command.GetTexID();
 				CmdSetRootArgument(record_context, root_signature.texture_id, texture_id);
 			}
 			

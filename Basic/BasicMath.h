@@ -157,6 +157,16 @@ inline uint2 DivideAndRoundUp(uint2 numerator, uint2 denominator) { return (nume
 inline uint3 DivideAndRoundUp(uint3 numerator, uint3 denominator) { return (numerator + (denominator - 1)) / denominator; }
 inline uint4 DivideAndRoundUp(uint4 numerator, uint4 denominator) { return (numerator + (denominator - 1)) / denominator; }
 
+// Offset is the log2(denominator)
+compile_const u32 DivideAndRoundUpLog2(u32 numerator, u32 offset) { return (numerator + ((1u   << offset) - 1)) >> offset; }
+compile_const u64 DivideAndRoundUpLog2(u64 numerator, u64 offset) { return (numerator + ((1llu << offset) - 1)) >> offset; }
+inline uint2 DivideAndRoundUpLog2(uint2 numerator, u32 offset) { return (numerator + ((1u << offset) - 1)) >> offset; }
+inline uint3 DivideAndRoundUpLog2(uint3 numerator, u32 offset) { return (numerator + ((1u << offset) - 1)) >> offset; }
+inline uint4 DivideAndRoundUpLog2(uint4 numerator, u32 offset) { return (numerator + ((1u << offset) - 1)) >> offset; }
+inline uint2 DivideAndRoundUpLog2(uint2 numerator, uint2 offset) { return (numerator + ((uint2(1u) << offset) - 1)) >> offset; }
+inline uint3 DivideAndRoundUpLog2(uint3 numerator, uint3 offset) { return (numerator + ((uint3(1u) << offset) - 1)) >> offset; }
+inline uint4 DivideAndRoundUpLog2(uint4 numerator, uint4 offset) { return (numerator + ((uint4(1u) << offset) - 1)) >> offset; }
+
 
 namespace Math {
 	compile_const float HALF_PI = 1.5707964f;

@@ -283,7 +283,7 @@ void UpdateAsyncTransferQueue(AsyncTransferQueue* queue) {
 				copy_command.size         = ComputeTransferCommandSize(command);
 				ArrayAppend(copy_buffer_to_buffer_commands, copy_command);
 			} else if (command.dst_type == AsyncTransferDstType::Texture) {
-				DebugAssert(command.dst.texture.size.type == TextureSize::Type::Texture2D, "TODO: Implement support for texture types other than Texture2D.");
+				DebugAssert(command.dst.texture.size.type != TextureSizeType::Texture3D || command.dst.texture.offset == 0, "Async copy sub commands must not span Texture3D W slices.");
 				
 				auto format = texture_format_info_map[(u32)command.dst.texture.size.format];
 				u64 size      = ComputeTransferCommandSize(command);
@@ -293,15 +293,18 @@ void UpdateAsyncTransferQueue(AsyncTransferQueue* queue) {
 				DebugAssert(size   % row_pitch == 0, "Texture transfer command size is not aligned to row pitch. (%/%).", size, row_pitch);
 				DebugAssert(offset % row_pitch == 0, "Texture transfer command offset is not aligned to row pitch. (%/%).", offset, row_pitch);
 				
+				u32 row_count  = (u32)Math::Min((size / row_pitch) << format.block_size_log2.y, (u64)command.dst.texture.size.y);
+				u32 row_offset = (u32)(offset / row_pitch) << format.block_size_log2.y;
+				
 				AsyncCopyBufferToTextureCommand copy_command;
 				copy_command.src_resource          = upload_ring_buffer.resource;
 				copy_command.dst_resource          = command.dst.texture.resource;
 				copy_command.format                = command.dst.texture.size.format;
 				copy_command.src_row_pitch         = row_pitch;
-				copy_command.src_size              = uint3(command.dst.texture.size.x, (u32)Math::Min((size / row_pitch) << format.block_size_log2.y, (u64)command.dst.texture.size.y), 1u);
+				copy_command.src_size              = uint3(command.dst.texture.size.x, row_count, command.dst.texture.size.DepthSliceCount());
 				copy_command.src_offset            = command.upload_buffer_offset;
 				copy_command.dst_subresource_index = command.dst.texture.subresource_index;
-				copy_command.dst_offset            = uint3(0, (u32)(offset / row_pitch) << format.block_size_log2.y, 0);
+				copy_command.dst_offset            = uint3(0, row_offset, 0);
 				ArrayAppend(copy_buffer_to_texture_commands, copy_command);
 			}
 			
@@ -363,8 +366,8 @@ u64 AsyncCopyFileToBuffer(AsyncTransferQueue* async_transfer_queue, NativeBuffer
 u64 AsyncCopyFileToTexture(AsyncTransferQueue* async_transfer_queue, NativeTextureResource dst_texture, u32 dst_subresource_index, TextureSize dst_texture_size, FileHandle src_file, u64 src_file_offset, u64 copy_size, u32 row_pitch) {
 	if (row_pitch == 0) {
 		auto format = texture_format_info_map[(u32)dst_texture_size.format];
-		auto texture_size_blocks = (uint2(dst_texture_size) + (uint2(1u) << format.block_size_log2) - 1) >> format.block_size_log2;
-		row_pitch = AlignUp(texture_size_blocks.x * format.block_size_bytes, texture_row_pitch_alignment);
+		auto texture_width_blocks = DivideAndRoundUpLog2(dst_texture_size.x, format.block_size_log2.x);
+		row_pitch = AlignUp(texture_width_blocks * format.block_size_bytes, texture_row_pitch_alignment);
 	}
 	
 	AsyncTransferCommand command;

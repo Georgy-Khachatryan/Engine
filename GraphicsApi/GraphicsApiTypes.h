@@ -306,16 +306,18 @@ enum struct ResourceDescriptorType : u16 {
 	AnyUAV      = 1u << 3,
 	IndexOffset = 4,
 	
-	None             = (0u << IndexOffset),
-	Texture2D        = (1u << IndexOffset) | AnyTexture | AnySRV,
-	RWTexture2D      = (2u << IndexOffset) | AnyTexture | AnyUAV,
-	Texture2DArray   = (3u << IndexOffset) | AnyTexture | AnySRV,
-	RWTexture2DArray = (4u << IndexOffset) | AnyTexture | AnyUAV,
-	RegularBuffer    = (5u << IndexOffset) | AnyBuffer  | AnySRV,
-	RWRegularBuffer  = (6u << IndexOffset) | AnyBuffer  | AnyUAV,
-	ByteBuffer       = (7u << IndexOffset) | AnyBuffer  | AnySRV,
-	RWByteBuffer     = (8u << IndexOffset) | AnyBuffer  | AnyUAV,
-	TopLevelRTAS     = (9u << IndexOffset) | AnyBuffer  | AnySRV,
+	None             = (0u  << IndexOffset),
+	Texture2D        = (1u  << IndexOffset) | AnyTexture | AnySRV,
+	RWTexture2D      = (2u  << IndexOffset) | AnyTexture | AnyUAV,
+	Texture2DArray   = (3u  << IndexOffset) | AnyTexture | AnySRV,
+	RWTexture2DArray = (4u  << IndexOffset) | AnyTexture | AnyUAV,
+	Texture3D        = (5u  << IndexOffset) | AnyTexture | AnySRV,
+	RWTexture3D      = (6u  << IndexOffset) | AnyTexture | AnyUAV,
+	RegularBuffer    = (7u  << IndexOffset) | AnyBuffer  | AnySRV,
+	RWRegularBuffer  = (8u  << IndexOffset) | AnyBuffer  | AnyUAV,
+	ByteBuffer       = (9u  << IndexOffset) | AnyBuffer  | AnySRV,
+	RWByteBuffer     = (10u << IndexOffset) | AnyBuffer  | AnyUAV,
+	TopLevelRTAS     = (11u << IndexOffset) | AnyBuffer  | AnySRV,
 };
 ENUM_FLAGS_OPERATORS(ResourceDescriptorType);
 

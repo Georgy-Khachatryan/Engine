@@ -178,7 +178,8 @@ void EditorIconCacheDrawIcon(EditorIconCache* icon_cache, EntitySystemBase& enti
 	if (entity_type_id.index == ECS::GetEntityTypeID<TextureAssetType>::id.index) {
 		auto texture_asset = QueryEntityByGUID<TextureAssetType>(entity_system, entity_guid);
 		if (texture_asset.cpu_streaming_requests->RequestMinimumResidency(icon_size_pixels)) {
-			ImGui::ImageButtonEx("AssetIcon", texture_asset.descriptor_allocation->index, ImVec2(icon_size_pixels, icon_size_pixels));
+			auto texture_id = ImGuiTextureID(texture_asset.descriptor_allocation->index, texture_asset.runtime_data_layout->size.type);
+			ImGui::ImageButtonEx("AssetIcon", texture_id, ImVec2(icon_size_pixels, icon_size_pixels));
 		} else {
 			DrawDefaultEntityTypeIcon(entity_type_id);
 		}

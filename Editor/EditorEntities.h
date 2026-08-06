@@ -69,6 +69,7 @@ struct AssetEntityEditorQuery {
 	TextureSourceData* texture_source_data = nullptr;
 	TextureRuntimeDataLayout* texture_runtime_data_layout = nullptr;
 	TextureDescriptorAllocation* texture_descriptor_allocation = nullptr;
+	TextureRuntimeCpuStreamingRequest* texture_cpu_streaming_requests = nullptr;
 	
 	MaterialTextureData* material_texture_data = nullptr;
 	

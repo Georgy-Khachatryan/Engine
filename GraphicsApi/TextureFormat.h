@@ -126,7 +126,7 @@ struct TextureFormatInfo {
 };
 
 compile_const u32 texture_row_pitch_alignment = 256u;
-compile_const u32 texture_max_mip_level_count = 16u;
+compile_const u32 texture_max_mip_level_count = 15u;
 
 TextureFormat ToNonSrgbFormat(TextureFormat format);
 TextureFormat ToSrvFormat(TextureFormat format);
@@ -136,47 +136,50 @@ enum DXGI_FORMAT;
 extern ArrayView<DXGI_FORMAT> dxgi_texture_format_map;
 extern ArrayView<TextureFormatInfo> texture_format_info_map;
 
+
+NOTES(Meta::HlslFile{ "TextureData.hlsl"_sl })
+enum struct TextureSizeType : u8 {
+	Texture2D   = 0,
+	Texture3D   = 1,
+	TextureCube = 2,
+};
+
 NOTES()
 struct TextureSize {
-	enum struct Type : u8 {
-		Texture2D   = 0,
-		Texture3D   = 1,
-		TextureCube = 2,
-	};
-	
 	union {
 		struct {
 			u16  x;
 			u16  y;
 			u16  z;
 			u8   mips : 5;
-			Type type : 3;
+			TextureSizeType type : 3;
 			TextureFormat format;
 		};
 		u64 packed;
 	};
 	
 	
-	TextureSize() : x(0), y(0), z(0), mips(0), type(Type::Texture2D), format(TextureFormat::None) {}
+	TextureSize() : x(0), y(0), z(0), mips(0), type(TextureSizeType::Texture2D), format(TextureFormat::None) {}
 	TextureSize(const TextureSize& other) = default;
-	TextureSize(TextureFormat format, u32 x, u32 y, u32 z = 1, u32 mips = 1, Type type = Type::Texture2D)
+	TextureSize(TextureFormat format, u32 x, u32 y, u32 z = 1, u32 mips = 1, TextureSizeType type = TextureSizeType::Texture2D)
 		: x((u16)x), y((u16)y), z((u16)z), mips((u8)mips), type(type), format(format) {}
-	TextureSize(TextureFormat format, uint2 xy, u32 z = 1, u32 mips = 1, Type type = Type::Texture2D)
+	TextureSize(TextureFormat format, uint2 xy, u32 z = 1, u32 mips = 1, TextureSizeType type = TextureSizeType::Texture2D)
 		: x((u16)xy.x), y((u16)xy.y), z((u16)z), mips((u8)mips), type(type), format(format) {}
 	TextureSize(u64 packed) : packed(packed) {}
 	
 	bool operator==(const TextureSize& other) const { return packed == other.packed; }
 	bool operator!=(const TextureSize& other) const { return packed != other.packed; }
 	
-	u32 ArraySliceCount() const { return type != Type::Texture3D ? z : 1; }
-	u32 DepthSliceCount() const { return type == Type::Texture3D ? z : 1; }
+	u32 ArraySliceCount() const { return type != TextureSizeType::Texture3D ? z : 1; }
+	u32 DepthSliceCount() const { return type == TextureSizeType::Texture3D ? z : 1; }
 };
 static_assert(sizeof(TextureSize) == 8, "Layout of TextureSize is not valid.");
 
 struct alignas(u64) SparseTextureLayout {
-	u16x2 tile_shape       = 0;
-	u16 packed_tile_count  = 0;
-	u8  packed_mip_count   = 0;
-	u8  regular_mip_count  = 0;
+	u8x3 tile_shape_log2  = 0;
+	u8  packed_mip_count  = 0;
+	u16 packed_tile_count = 0;
+	u8  regular_mip_count = 0;
+	u8  padding           = 0;
 };
 static_assert(sizeof(SparseTextureLayout) == 8, "Layout of SparseTextureLayout is not valid.");

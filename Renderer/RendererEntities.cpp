@@ -77,11 +77,17 @@ static void UpdateTextureAssetTypeGpuComponents(StackAllocator* alloc, RecordCon
 	for (u64 i : BitArrayIt(entity_array->dirty_mask)) {
 		auto& descriptor_allocation = streams.descriptor_allocation[i];
 		auto& cpu_streaming_request = streams.cpu_streaming_requests[i];
+		auto& runtime_data_layout   = streams.runtime_data_layout[i];
+		auto& resource_allocation   = streams.resource_allocation[i];
 		
 		auto texture_descriptor = HLSL::Texture2D<float4>((VirtualResourceID)0);
 		if (cpu_streaming_request.mip_level_mask != 0) {
-			auto texture_id = resource_table->AddTransient(streams.resource_allocation[i].resource, streams.runtime_data_layout[i].size);
+			auto texture_id = resource_table->AddTransient(resource_allocation.resource, runtime_data_layout.size);
 			texture_descriptor = HLSL::Texture2D<float4>(texture_id, FirstBitLow32(cpu_streaming_request.mip_level_mask));
+		}
+		
+		if (runtime_data_layout.size.type == TextureSizeType::Texture3D) {
+			texture_descriptor.common.type = ResourceDescriptorType::Texture3D;
 		}
 		
 		// Perfectly descriptor updates should be staged similar to the regular GPU component
