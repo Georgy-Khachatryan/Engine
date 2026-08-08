@@ -22,14 +22,7 @@ struct HashTableShadowSampler {
 			RAY_FLAG_NONE
 		> ray_query;
 		
-		float3x3 world_to_light = BuildOrthonormalBasis(ray_direction);
-		float3x3 light_to_world = transpose(world_to_light);
-		
-		RayDesc ray_desc;
-		ray_desc.Origin    = ray_origin;
-		ray_desc.Direction = normalize(ray_direction + mul(light_to_world, float3(penumbra_noise * light_penumbra_size, 0.0)));
-		ray_desc.TMin      = 0.0;
-		ray_desc.TMax      = ray_length;
+		RayDesc ray_desc = ShadowSampler::CreateShadowRay(ray_origin, ray_direction, ray_length, penumbra_noise);
 		
 		ray_query.TraceRayInline(scene_tlas, 0, 0xFF, ray_desc);
 		

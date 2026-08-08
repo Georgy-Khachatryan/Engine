@@ -75,7 +75,9 @@ struct FixedCountArray {
 
 
 compile_const float PI                  = 3.1415927;
+compile_const float TAU                 = 6.2831854;
 compile_const float SQRT_THREE_OVER_TWO = 0.8660254;
+compile_const float ONE_OVER_FOUR_PI    = 0.07957747;
 
 float  Pow1(float  value) { return value; }
 float2 Pow1(float2 value) { return value; }

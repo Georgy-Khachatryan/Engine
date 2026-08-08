@@ -5,6 +5,13 @@ compile_const u32   energy_compensation_lut_size           = 32u;
 compile_const float energy_compensation_lut_cos_theta_bias = (1.0 / 1024.0);
 compile_const float dielectric_f0 = 0.04;
 
+enum struct VolumeInteractionType : u32 {
+	None       = 0,
+	Absorption = 1,
+	Scattering = 2,
+};
+
+
 //
 // Based on "Sampling Visible GGX Normals with Spherical Caps" by Jonathan Dupuy and Anis Benyoub.
 //
@@ -67,6 +74,48 @@ float SmithVisibilityG1(float cos_theta, float alpha_square) {
 float SmithVisibilityG(float cos_theta_o, float cos_theta_i, float alpha_square) {
 	return rcp(1.0 + SmithVisibilityLambda(cos_theta_o, alpha_square) + SmithVisibilityLambda(cos_theta_i, alpha_square)); // Height correlated.
 	// return SmithVisibilityG1(cos_theta_o, alpha_square) * SmithVisibilityG1(cos_theta_i, alpha_square); // Uncorrelated.
+}
+
+
+float PhaseFunctionHG(float cos_theta, float g) {
+	float denom = 1.0 + Pow2(g) + 2.0 * g * cos_theta;
+	return (1.0 - Pow2(g)) * ONE_OVER_FOUR_PI / (denom * sqrt(denom));
+}
+
+float3 SamplePhaseFunctionHG(float3 wo, float g, float2 u) {
+	float cos_theta = 0.0;
+	if (abs(g) < (1.0 / 128.0)) {
+		cos_theta = 1.0 - 2.0 * u.x;
+	} else {
+		float numerator = (1.0 - Pow2(g)) / (1.0 + g - 2.0 * g * u.x);
+		cos_theta = -(1.0 + Pow2(g) - Pow2(numerator)) / (2.0 * g);
+	}
+	
+	float sin_theta = sqrt(max(1.0 - Pow2(cos_theta), 0.0));
+	float phi = u.y * TAU;
+	
+	float3 wi = float3(sin_theta * cos(phi), sin_theta * sin(phi), cos_theta);
+	
+	float3x3 world_to_tangent = BuildOrthonormalBasis(wo);
+	float3x3 tangent_to_world = transpose(world_to_tangent);
+	
+	return mul(tangent_to_world, wi);
+}
+
+float SampleExponentialDistribution(float u, float extinction_coefficients) {
+	return -log(1.0 - u) / extinction_coefficients;
+}
+
+bool RussianRoulette(inout float throughput, float threshold, float u) {
+	bool terminate_path = false;
+	
+	if (any(throughput < threshold)) {
+		float q = max(1.0 - throughput, 0.0);
+		terminate_path = u < q;
+		throughput = terminate_path ? 0.0 : (1.0 - q);
+	}
+	
+	return terminate_path;
 }
 
 

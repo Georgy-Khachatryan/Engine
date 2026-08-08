@@ -34,9 +34,7 @@ void EvaluateBRDF(
 	float3 diffuse_albedo,
 	float3 throughput,
 	float3 single_scattering_energy,
-	LightSample light_sample,
-	float hashed_visibility = 0.0,
-	float hashed_visibility_weight = 0.0
+	LightSample light_sample
 ) {
 	LightShadingInfo shading_info = ComputeLightShadingInfo(shading_position, light_sample.light_entity_index);
 	shading_info.light_irradiance *= light_sample.inv_pdf;
@@ -71,6 +69,34 @@ void EvaluateBRDF(
 		
 		light_accumulator.AddSpecular(shadowed_light_irradiance * (energy_compensation * specular_brdf));
 		light_accumulator.AddDiffuse(shadowed_light_irradiance * (energy_compensation * diffuse_brdf));
+	}
+}
+
+template<typename LightAccumulatorT, typename ShadowSamplerT>
+void EvaluatePhaseFunction(
+	inout LightAccumulatorT light_accumulator,
+	inout ShadowSamplerT shadow_sampler,
+	float3 shading_position,
+	float3 wo,
+	float  phase_function_g,
+	float3 throughput,
+	LightSample light_sample
+) {
+	LightShadingInfo shading_info = ComputeLightShadingInfo(shading_position, light_sample.light_entity_index);
+	shading_info.light_irradiance *= light_sample.inv_pdf;
+	
+	float3 shadowed_light_irradiance = (throughput * shading_info.light_irradiance);
+	
+	if (any(shadowed_light_irradiance > 0.0)) {
+		shadowed_light_irradiance *= shadow_sampler.EvaluateVisibility(shading_position, shading_info.light_direction, shading_info.shadow_ray_length);
+	}
+	
+	bool evaluate_phase_function = any(shadowed_light_irradiance > 0.0);
+	
+	if (evaluate_phase_function) {
+		float phase_function = PhaseFunctionHG(dot(wo, shading_info.light_direction), phase_function_g);
+		
+		light_accumulator.AddDiffuse(shadowed_light_irradiance * phase_function);
 	}
 }
 

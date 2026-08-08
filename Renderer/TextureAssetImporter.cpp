@@ -485,7 +485,7 @@ static TextureImportResult ImportTextureFileDDS(StackAllocator* alloc, ThreadPoo
 	memcpy(&dds_header, file_data.data + cursor, sizeof(DDS_HEADER));
 	cursor += sizeof(DDS_HEADER);
 	
-	bool has_dds_dx10_header = (dds_header.dwFlags & DDPF_FOURCC) != 0 && (dds_header.ddspf.dwFourCC == MakeFourCC("DX10"));
+	bool has_dds_dx10_header = (dds_header.ddspf.dwFlags & DDPF_FOURCC) != 0 && (dds_header.ddspf.dwFourCC == MakeFourCC("DX10"));
 	
 	DDS_HEADER_DXT10 dds_dx10_header = {};
 	if (has_dds_dx10_header) {
@@ -498,7 +498,7 @@ static TextureImportResult ImportTextureFileDDS(StackAllocator* alloc, ThreadPoo
 	auto dxgi_format = DXGI_FORMAT_UNKNOWN;
 	if (has_dds_dx10_header) {
 		dxgi_format = dds_dx10_header.dxgiFormat;
-	} else if ((dds_header.dwFlags & DDPF_FOURCC) != 0) {
+	} else if ((dds_header.ddspf.dwFlags & DDPF_FOURCC) != 0) {
 		switch (dds_header.ddspf.dwFourCC) {
 		case MakeFourCC("DXT1"): dxgi_format = DXGI_FORMAT_BC1_UNORM; break;
 		case MakeFourCC("DXT2"): dxgi_format = DXGI_FORMAT_BC2_UNORM; break;
