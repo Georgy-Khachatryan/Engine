@@ -16,6 +16,8 @@ static void BuildResourceTable(RecordContext* record_context, WorldEntitySystem*
 	table.Set(ID::MultipleScatteringLut, TextureSize(TextureFormat::R16G16B16A16_FLOAT, AtmosphereConstants::multiple_scattering_lut_size));
 	table.Set(ID::SkyPanoramaLut,        TextureSize(TextureFormat::R16G16B16A16_FLOAT, AtmosphereConstants::sky_panorama_lut_size));
 	
+	table.Set(ID::SdfCloudVolume, TextureSize(TextureFormat::R8_UNORM, CloudConstants::cloud_volume_size));
+	
 	table.Set(ID::VisibleMeshlets,             MeshletConstants::visible_meshlet_buffer_size         * sizeof(uint2));
 	table.Set(ID::MeshEntityCullingCommands,   MeshletConstants::mesh_entity_culling_command_count   * sizeof(u32));
 	table.Set(ID::MeshletGroupCullingCommands, MeshletConstants::meshlet_group_culling_command_count * sizeof(uint2));
@@ -70,7 +72,7 @@ static void BuildResourceTable(RecordContext* record_context, WorldEntitySystem*
 	
 	table.Set(ID::IndirectDiffuseTileCDF,    TextureSize(TextureFormat::R16_FLOAT, uint2(LightingConstants::cdf_hash_table_atlas_size, LightingConstants::cdf_hash_table_atlas_size), 1, LightingConstants::cdf_mip_count), Flags::UAV);
 	table.Set(ID::IndirectDiffuseDirections, TextureSize(TextureFormat::R32_UINT,  uint2(LightingConstants::cdf_hash_table_atlas_size, LightingConstants::cdf_hash_table_atlas_size)), Flags::UAV);
-	table.Set(ID::TileCdfSolidAngle,         TextureSize(TextureFormat::R16_FLOAT, LightingConstants::cdf_tile_size), Flags::UAV);
+	table.Set(ID::TileCdfSolidAngle,         TextureSize(TextureFormat::R16_FLOAT, uint2(LightingConstants::cdf_tile_size,             LightingConstants::cdf_tile_size)),             Flags::UAV);
 	
 	table.Set(ID::IndirectDiffuse, TextureSize(TextureFormat::R9G9B9E5_FLOAT, render_target_size), Flags::UAV);
 	table.Set(ID::IndirectSpecular, TextureSize(TextureFormat::R9G9B9E5_FLOAT, render_target_size), Flags::UAV);
@@ -118,7 +120,7 @@ static void CopyCurrentToPreviousSceneConstants(SceneConstants& scene) {
 	scene.prev_world_space_camera_position = scene.world_space_camera_position;
 }
 
-static void CreateSceneConstants(RecordContext* record_context, uint2 render_target_size, WorldEntitySystem* world_system, WorldEntityQuery world_entity, CameraEntityQuery camera_entity, Array<GpuComponentUploadBuffer>& gpu_uploads) {
+static void CreateSceneConstants(RecordContext* record_context, uint2 render_target_size, WorldEntitySystem* world_system, AssetEntitySystem* asset_system, WorldEntityQuery world_entity, CameraEntityQuery camera_entity, Array<GpuComponentUploadBuffer>& gpu_uploads) {
 	auto& renderer_world = *world_entity.renderer_world;
 	auto& scene  = renderer_world.scene_constants;
 	auto& camera = *camera_entity.camera;
@@ -227,6 +229,25 @@ static void CreateSceneConstants(RecordContext* record_context, uint2 render_tar
 		scene.atmosphere.sun_irradiance = 0.f;
 	}
 	
+	{
+		auto& cloud_settings = *world_entity.cloud_settings;
+		
+		scene.clouds.world_space_position    = cloud_settings.world_space_position;
+		scene.clouds.world_space_size        = float3(CloudConstants::cloud_volume_size) * cloud_settings.voxel_size_meters;
+		scene.clouds.inv_world_space_size    = float3(1.f) / scene.clouds.world_space_size;
+		scene.clouds.scattering_coefficients = cloud_settings.scattering_coefficients;
+		scene.clouds.absorption_coefficients = cloud_settings.absorption_coefficients;
+		scene.clouds.extinction_coefficients = cloud_settings.scattering_coefficients + cloud_settings.absorption_coefficients;
+		scene.clouds.scattering_anisotropy   = cloud_settings.scattering_anisotropy;
+		scene.clouds.density_noise_scale     = 1.f / Math::Max(cloud_settings.density_noise_tiling, 1.f);
+		
+		if (cloud_settings.density_noise.guid != 0) {
+			auto density_noise_texture = QueryEntityByGUID<TextureAssetType>(*asset_system, cloud_settings.density_noise.guid);
+			scene.clouds.density_noise = density_noise_texture.descriptor_allocation->index;
+			
+			density_noise_texture.cpu_streaming_requests->RequestMinimumResidency(128);
+		}
+	}
 	
 	for (u32 i = 0; i < LightCullingConstants::grid_cascade_count; i += 1) {
 		float grid_cell_size_next_level = LightCullingConstants::grid_cell_size * (1u << Math::Min(i + 1u, LightCullingConstants::grid_cascade_count - 1));
@@ -265,7 +286,7 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	uint2 render_target_size = uint2((u32)Math::Max(renderer_world.window_size.x, 32.f), (u32)Math::Max(renderer_world.window_size.y, 32.f));
 	
 	BuildResourceTable(record_context, world_system, &renderer_world, render_target_size);
-	CreateSceneConstants(record_context, render_target_size, world_system, world_entity, camera_entity, gpu_uploads);
+	CreateSceneConstants(record_context, render_target_size, world_system, asset_system, world_entity, camera_entity, gpu_uploads);
 	
 	
 	RenderPassArray render_passes;
@@ -362,6 +383,11 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 			
 			auto& build_tlas = render_passes.Add<BuildTlasRenderPass>();
 			build_tlas.world_system = world_system;
+		}
+		
+		{
+			auto& composite_cloud_volume = render_passes.Add<CompositeCloudVolumeRenderPass>();
+			composite_cloud_volume.world_system = world_system;
 		}
 	}
 	

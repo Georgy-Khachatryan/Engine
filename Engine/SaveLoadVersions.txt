@@ -41,6 +41,24 @@ enum CameraTransformType {
 	}
 }
 
+struct CloudSettings {
+	/*Version*/ 4 {
+		world_space_position float3 0;
+		voxel_size_meters float32 0;
+		scattering_coefficients float32 0;
+		absorption_coefficients float32 0;
+		scattering_anisotropy float32 0;
+		density_noise EntityGUID<TextureAssetType> 0;
+		density_noise_tiling float32 0;
+	}
+}
+
+struct CloudVolume {
+	/*Version*/ 0 {
+		sdf_texture EntityGUID<TextureAssetType> 0;
+	}
+}
+
 struct EditorIconCacheSettingsComponent {
 	/*Version*/ 0 {
 		material_icon_mesh EntityGUID<MeshAssetType> 0;

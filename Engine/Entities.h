@@ -20,6 +20,7 @@ struct WorldEntityType {
 	ECS::Component<LightEntityGUID>  global_light_entity;
 	ECS::Component<RendererWorld>    renderer_world;
 	
+	ECS::Component<CloudSettings>        cloud_settings;
 	ECS::Component<LightingSettings>     lighting_settings;
 	ECS::Component<ExposureSettings>     exposure_settings;
 	ECS::Component<ToneMappingSettings>  tone_mapping_settings;
@@ -83,6 +84,29 @@ struct LightEntityType {
 	
 	NOTES(VirtualResourceID::GpuLightEntityData)
 	ECS::GpuComponent<GpuLightEntityData> gpu_light_entity_data;
+};
+
+NOTES()
+struct CloudVolume {
+	TextureAssetGUID sdf_texture;
+};
+
+NOTES(Meta::EntityType{}, Meta::ComponentQuery{})
+struct CloudVolumeEntityType {
+	ECS::Component<GuidComponent> guid;
+	ECS::Component<NameComponent> name;
+	
+	ECS::Component<PositionComponent> position;
+	ECS::Component<RotationComponent> rotation;
+	ECS::Component<ScaleComponent>    scale;
+	
+	ECS::Component<CloudVolume> cloud_volume;
+	
+	NOTES(VirtualResourceID::CloudVolumeAliveMask)
+	ECS::GpuMaskComponent<AliveEntityMask> alive_mask;
+	
+	NOTES(VirtualResourceID::GpuCloudVolumeEntityData)
+	ECS::GpuComponent<GpuCloudVolumeEntityData> gpu_cloud_volume_entity_data;
 };
 
 NOTES(Meta::ComponentQuery{})

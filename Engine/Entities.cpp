@@ -121,11 +121,52 @@ static void UpdateLightEntityGpuComponents(StackAllocator* alloc, RecordContext*
 	ArrayAppend(gpu_uploads, alloc, gpu_light_entity_data);
 }
 
+static void UpdateCloudVolumeEntityGpuComponents(StackAllocator* alloc, RecordContext* record_context, WorldEntitySystem& world_system, AssetEntitySystem& asset_system, Array<GpuComponentUploadBuffer>& gpu_uploads) {
+	ProfilerScope("UpdateCloudVolumeEntityGpuComponents");
+	
+	auto* entity_array = QueryEntityTypeArray<CloudVolumeEntityType>(world_system);
+	auto streams = ExtractComponentStreams<CloudVolumeEntityType>(entity_array);
+	
+	auto texture_streams = ExtractComponentStreams<TextureAssetType>(QueryEntityTypeArray<TextureAssetType>(asset_system));
+	
+	for (u64 i : BitArrayIt(entity_array->alive_mask)) {
+		auto* texture_asset = HashTableFind(asset_system.entity_guid_to_entity_id, streams.cloud_volume[i].sdf_texture.guid);
+		if (texture_asset != nullptr) {
+			auto texture_entity_id = texture_asset->value.entity_id;
+			texture_streams.cpu_streaming_requests[texture_entity_id.index].RequestMinimumResidency(128);
+		}
+	}
+	
+	u64 dirty_entity_count = BitArrayCountSetBits(entity_array->dirty_mask);
+	if (dirty_entity_count == 0) return;
+	
+	auto gpu_cloud_volume_entity_data = AllocateGpuComponentUploadBuffer(record_context, dirty_entity_count, streams.gpu_cloud_volume_entity_data);
+	for (u64 i : BitArrayIt(entity_array->dirty_mask)) {
+		GpuCloudVolumeEntityData cloud_volume;
+		cloud_volume.world_space_position    = streams.position[i].position;
+		cloud_volume.world_to_model_rotation = Math::Conjugate(streams.rotation[i].rotation);
+		cloud_volume.model_to_world_scale    = streams.scale[i].scale;
+		
+		auto* texture_asset = HashTableFind(asset_system.entity_guid_to_entity_id, streams.cloud_volume[i].sdf_texture.guid);
+		if (texture_asset != nullptr) {
+			auto texture_entity_id = texture_asset->value.entity_id;
+			auto size = texture_streams.runtime_data_layout[texture_entity_id.index].size;
+			
+			cloud_volume.world_space_size = float3(size) * cloud_volume.model_to_world_scale;
+			cloud_volume.sdf_texture = texture_streams.descriptor_allocation[texture_entity_id.index].index;
+		}
+		
+		AppendGpuTransferCommand(gpu_cloud_volume_entity_data, i, cloud_volume);
+	}
+	ArrayAppend(gpu_uploads, alloc, gpu_cloud_volume_entity_data);
+}
+
 void UpdateEntityGpuComponents(StackAllocator* alloc, RecordContext* record_context, WorldEntitySystem& world_system, AssetEntitySystem& asset_system, Array<GpuComponentUploadBuffer>& gpu_uploads) {
 	ProfilerScope("UpdateEntityGpuComponents");
 	
 	UpdateMeshEntityGpuComponents(alloc, record_context, world_system, asset_system, gpu_uploads);
 	UpdateLightEntityGpuComponents(alloc, record_context, world_system, gpu_uploads);
+	UpdateCloudVolumeEntityGpuComponents(alloc, record_context, world_system, asset_system, gpu_uploads);
 	
 	UpdateEntityAliveMasks(alloc, record_context, world_system, gpu_uploads);
 }

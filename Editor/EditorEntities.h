@@ -49,6 +49,9 @@ struct WorldEntityEditorQuery {
 	
 	LightComponent* light = nullptr;
 	
+	CloudSettings* cloud_settings = nullptr;
+	CloudVolume*   cloud_volume   = nullptr;
+	
 	RendererWorld* renderer_world = nullptr;
 	
 	LightingSettings*     lighting_settings      = nullptr;

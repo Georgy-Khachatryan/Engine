@@ -165,6 +165,8 @@ struct TextureSize {
 		: x((u16)x), y((u16)y), z((u16)z), mips((u8)mips), type(type), format(format) {}
 	TextureSize(TextureFormat format, uint2 xy, u32 z = 1, u32 mips = 1, TextureSizeType type = TextureSizeType::Texture2D)
 		: x((u16)xy.x), y((u16)xy.y), z((u16)z), mips((u8)mips), type(type), format(format) {}
+	TextureSize(TextureFormat format, uint3 xyz, u32 mips = 1, TextureSizeType type = TextureSizeType::Texture3D)
+		: x((u16)xyz.x), y((u16)xyz.y), z((u16)xyz.z), mips((u8)mips), type(type), format(format) {}
 	TextureSize(u64 packed) : packed(packed) {}
 	
 	bool operator==(const TextureSize& other) const { return packed == other.packed; }

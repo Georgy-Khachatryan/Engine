@@ -96,6 +96,11 @@ static void WorldComponentEntityView(StackAllocator* alloc, WorldEntitySystem& w
 		ImGui::TableEntityComboBox(alloc, "Light Entity", &world_system, &entity.light_entity->guid, ECS::GetEntityTypeID<LightEntityType>::id);
 	}
 	
+	if (entity.cloud_volume) {
+		auto& cloud = *entity.cloud_volume;
+		ImGui::TableEntityComboBox(alloc, "SDF Texture", &asset_system, &cloud.sdf_texture.guid, ECS::GetEntityTypeID<TextureAssetType>::id);
+	}
+	
 	if (entity.renderer_world) {
 		auto& renderer_world = *entity.renderer_world;
 		
@@ -167,6 +172,19 @@ static void WorldComponentEntityView(StackAllocator* alloc, WorldEntitySystem& w
 				ImGui::EndTableItem();
 			}
 		}
+	}
+	
+	if (entity.cloud_settings && ImGui::TableCollapsingHeader("Cloud Settings")) {
+		auto& settings = *entity.cloud_settings;
+		ImGui::TableDragFloatWithReset("Position", &settings.world_space_position.x, 3, 0.1f);
+		ImGui::TableSliderFloat("Voxel Size Meters", &settings.voxel_size_meters, 0.f, 32.f);
+		
+		ImGui::TableSliderFloat("Scattering Coefficients", &settings.scattering_coefficients, 0.f, 4.f);
+		ImGui::TableSliderFloat("Absorption Coefficients", &settings.absorption_coefficients, 0.f, 4.f);
+		ImGui::TableSliderFloat("Scattering Anisotropy", &settings.scattering_anisotropy, -0.9f, +0.9f);
+		
+		ImGui::TableEntityComboBox(alloc, "Density Noise", &asset_system, &settings.density_noise.guid, ECS::GetEntityTypeID<TextureAssetType>::id);
+		ImGui::TableSliderFloat("Density Noise Tiling", &settings.density_noise_tiling, 1.f, 256.f, "%.2f", ImGuiSliderFlags_Logarithmic);
 	}
 	
 	if (entity.lighting_settings && ImGui::TableCollapsingHeader("Lighting Settings")) {

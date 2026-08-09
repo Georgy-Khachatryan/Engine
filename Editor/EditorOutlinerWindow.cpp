@@ -323,6 +323,7 @@ void EditorOutlinerWindow(StackAllocator* alloc, UndoRedoSystem& undo_redo_syste
 		ECS::GetEntityTypeID<MeshEntityType>::id,
 		ECS::GetEntityTypeID<LightEntityType>::id,
 		ECS::GetEntityTypeID<CameraEntityType>::id,
+		ECS::GetEntityTypeID<CloudVolumeEntityType>::id,
 	};
 	
 	ImGui::Begin("Outliner");

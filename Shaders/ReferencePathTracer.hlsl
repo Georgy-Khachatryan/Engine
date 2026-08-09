@@ -19,8 +19,6 @@ struct VolumetricSceneIntersection {
 // TODO: Skip empty space inside the box.
 // Based on https://www.shadertoy.com/view/ld23DV see license in THIRD_PARTY_LICENSES.md
 VolumetricSceneIntersection RayBoxIntersection(float3 ray_origin, float3 ray_direction, float3 half_extent) {
-	ray_origin -= half_extent;
-	
 	float3 m = 1.0 / ray_direction;
 	float3 n = m * ray_origin;
 	
@@ -37,27 +35,15 @@ VolumetricSceneIntersection RayBoxIntersection(float3 ray_origin, float3 ray_dir
 	return intersection;
 }
 
-
-// TODO: Create an entity to store this information.
-compile_const float  grid_to_world_scale = (1.0 / 4.0);
-compile_const float  grid_voxel_size = 4.0;
-compile_const float3 box_size     = float3(82.0, 117.0, 41.0) * grid_voxel_size * grid_to_world_scale;
-compile_const float3 box_position = float3(-10.0, -15.0, 25.0);
-compile_const float sdf_band_size_meters = 16.0;
-compile_const float material_scattering_coefficients = 1.0 / grid_to_world_scale;
-compile_const float material_absorption_coefficients = 0.0;
-compile_const float material_extinction_coefficients = material_absorption_coefficients + material_scattering_coefficients;
-compile_const float material_g = 0.4;
-compile_const Texture3D<float>  sdf_grid      = ResourceDescriptorHeap[26];
-compile_const Texture3D<float4> density_noise = ResourceDescriptorHeap[27];
-
-
 // Based on "Methods (and madness) to model and render immersive real-time voxel-based clouds." by Andrew Schneider.
 float ComputeVolumetricMediumDensity(float3 position) {
-	float3 sample_uvw = (position - box_position) / box_size;
-	float dimensional_profile = sdf_grid.SampleLevel(sampler_linear_clamp, sample_uvw, 0);
+	float3 sample_uvw = (position - scene.clouds.world_space_position) * scene.clouds.inv_world_space_size + 0.5;
+	float dimensional_profile = sdf_cloud_volume.SampleLevel(sampler_linear_clamp, sample_uvw, 0);
 	
-	float4 noise = density_noise.SampleLevel(sampler_linear_wrap, position * (1.0 / 64.0) / grid_to_world_scale, 0);
+	if (dimensional_profile < (0.5 / 255.0)) return 0.0;
+	
+	Texture3D<float4> density_noise = ResourceDescriptorHeap[scene.clouds.density_noise];
+	float4 noise = density_noise.SampleLevel(sampler_linear_wrap, position * scene.clouds.density_noise_scale, 0);
 	
 	float wispy_noise_scale   = 3.33;
 	float billowy_noise_scale = 0.8;
@@ -78,7 +64,7 @@ float ComputeVolumetricMediumDensity(float3 position) {
 
 // Ratio tracking estimator is based on https://pbr-book.org/4ed/Volume_Scattering/Transmittance#
 float TraceVolumetricMediumTransmittanceRay(float3 origin, float3 direction, inout uint hash) {
-	VolumetricSceneIntersection intersection = RayBoxIntersection(origin - box_position, direction, box_size * 0.5);
+	VolumetricSceneIntersection intersection = RayBoxIntersection(origin - scene.clouds.world_space_position, direction, scene.clouds.world_space_size * 0.5);
 	if (intersection.is_hit == false) return 1.0;
 	
 	float ray_t = max(intersection.t_min, 0.0);
@@ -88,7 +74,7 @@ float TraceVolumetricMediumTransmittanceRay(float3 origin, float3 direction, ino
 	for (uint i = 0; i < max_iterations; i += 1) {
 		float2 u = ComputeRandomUnorm16x2(hash);
 		
-		ray_t += SampleExponentialDistribution(u.x, material_extinction_coefficients);
+		ray_t += SampleExponentialDistribution(u.x, scene.clouds.extinction_coefficients);
 		if (ray_t > intersection.t_max) break;
 		
 		float3 position = direction * ray_t + origin;
@@ -105,7 +91,7 @@ float TraceVolumetricMediumTransmittanceRay(float3 origin, float3 direction, ino
 }
 
 VolumeInteractionType SampleVolumetricMedium(inout LightAccumulator light_accumulator, inout RayDesc ray_desc, float t_max, inout uint hash) {
-	VolumetricSceneIntersection intersection = RayBoxIntersection(ray_desc.Origin - box_position, ray_desc.Direction, box_size * 0.5);
+	VolumetricSceneIntersection intersection = RayBoxIntersection(ray_desc.Origin - scene.clouds.world_space_position, ray_desc.Direction, scene.clouds.world_space_size * 0.5);
 	intersection.t_min = max(intersection.t_min, 0.0);
 	intersection.t_max = min(intersection.t_max, t_max);
 	
@@ -117,14 +103,14 @@ VolumeInteractionType SampleVolumetricMedium(inout LightAccumulator light_accumu
 	for (uint i = 0; i < max_iterations; i += 1) {
 		float2 u = ComputeRandomUnorm16x2(hash);
 		
-		float ray_t = intersection.t_min + SampleExponentialDistribution(u.x, material_extinction_coefficients);
+		float ray_t = intersection.t_min + SampleExponentialDistribution(u.x, scene.clouds.extinction_coefficients);
 		
 		if (ray_t < intersection.t_max) {
 			float3 position = ray_desc.Direction * ray_t + ray_desc.Origin;
 			float density = ComputeVolumetricMediumDensity(position);
 			
-			float p_absorption = (material_absorption_coefficients / material_extinction_coefficients) * density;
-			float p_scattering = (material_scattering_coefficients / material_extinction_coefficients) * density;
+			float p_absorption = (scene.clouds.absorption_coefficients / scene.clouds.extinction_coefficients) * density;
+			float p_scattering = (scene.clouds.scattering_coefficients / scene.clouds.extinction_coefficients) * density;
 			
 			if (u.y < p_absorption) {
 				i = max_iterations;
@@ -228,6 +214,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 			LightSample light_sample = SampleLightUniform(ray_desc.Origin, hash);
 			
 			float3 wo = -ray_desc.Direction;
+			float phase_function_g = scene.clouds.scattering_anisotropy;
 			
 			if (light_sample.light_entity_index != u32_max) {
 				PathTracerShadowSampler shadow_sampler;
@@ -238,13 +225,13 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 					shadow_sampler,
 					ray_desc.Origin,
 					wo,
-					material_g,
+					phase_function_g,
 					throughput,
 					light_sample
 				);
 			}
 			
-			ray_desc.Direction = SamplePhaseFunctionHG(wo, material_g, ComputeRandomUnorm16x2(hash));
+			ray_desc.Direction = SamplePhaseFunctionHG(wo, phase_function_g, ComputeRandomUnorm16x2(hash));
 #endif // ENABLE_VOLUME_RENDERING
 		} else if (ray_query.CommittedStatus() == COMMITTED_TRIANGLE_HIT) {
 			MaterialProperties properties = SampleMaterialFromHitResult(

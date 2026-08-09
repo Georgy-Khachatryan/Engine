@@ -616,6 +616,28 @@ namespace HLSL {
 		}
 	};
 	
+	NOTES(ResourceDescriptorType::Texture3D)
+	template<typename T>
+	struct Texture3D : ResourceDescriptor {
+		Texture3D(VirtualResourceID resource = (VirtualResourceID)0, u32 mip_offset = 0, u32 mip_count = u32_max) { Bind(resource, mip_offset, mip_count); }
+		
+		void Bind(VirtualResourceID resource, u32 mip_offset = 0, u32 mip_count = u32_max) {
+			resource_id = resource;
+			texture = { Type::Texture3D, (u8)mip_offset, (u8)mip_count, 0, 1, 0 };
+		}
+	};
+	
+	NOTES(ResourceDescriptorType::RWTexture3D)
+	template<typename T>
+	struct RWTexture3D : ResourceDescriptor {
+		RWTexture3D(VirtualResourceID resource = (VirtualResourceID)0, u32 mip_index = 0) { Bind(resource, mip_index); }
+		
+		void Bind(VirtualResourceID resource, u32 mip_index = 0) {
+			resource_id = resource;
+			texture = { Type::RWTexture3D, (u8)mip_index, 1, 0, 1, 0 };
+		}
+	};
+	
 	NOTES(ResourceDescriptorType::RegularBuffer)
 	template<typename T>
 	struct RegularBuffer : ResourceDescriptor {

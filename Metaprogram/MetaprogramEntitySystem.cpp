@@ -116,6 +116,13 @@ void WriteEntitySystemMetadata(StackAllocator* alloc, ArrayView<TypeInfoStruct*>
 			component_type_info_key.component_type  = *component_type_note;
 			component_type_info_key.save_load_flags = save_load_options.flags;
 			
+			if (component_type_info_key.component_type == ComponentType::GpuMask) {
+				u64 type_size = ComputeTypeSize(component_type_info_key.type_info);
+				if (type_size != sizeof(u64)) {
+					ReportError(alloc, field.source_location, "Template type '%' of GpuMaskComponent '%' in entity type '%' is '%' bytes. It must be '8' bytes and be aliasable as 'u64'."_sl, component_type_info->name, field.name, type_info->name, type_size);
+				}
+			}
+			
 			auto [element, is_added] = HashTableAddOrFind(component_types, alloc, component_type_info_key, 0u);
 			if (is_added) {
 				ArrayAppend(component_type_infos, alloc, component_type_info_key);

@@ -75,6 +75,7 @@
     <ClCompile Include="Renderer/AntiAliasingRenderPasses.cpp" />
     <ClCompile Include="Renderer/AtmosphereRenderPasses.cpp" />
     <ClCompile Include="Renderer/BuildHzbRenderPass.cpp" />
+    <ClCompile Include="Renderer/CloudRenderPasses.cpp" />
     <ClCompile Include="Renderer/DebugGeometryRenderPasses.cpp" />
     <ClCompile Include="Renderer/EntitySystemUpdateRenderPasses.cpp" />
     <ClCompile Include="Renderer/ImGuiRenderPass.cpp" />

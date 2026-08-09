@@ -5,11 +5,13 @@
 #include "EntitySystem/Components.h"
 #include "GraphicsApi/GraphicsApiTypes.h"
 
+struct CloudVolumeEntityType;
 struct DebugMeshInstanceArray;
 struct GpuComponentUploadBuffer;
 struct LightEntityType;
 struct MeshEntityType;
 struct RecordContext;
+struct TextureAssetType;
 
 NOTES(Meta::HlslFile{ "SceneData.hlsl"_sl })
 struct AtmosphereConstants {
@@ -45,6 +47,24 @@ struct AtmosphereConstants {
 	
 	float3 sun_color = 1.f;
 	float sun_disk_radiance = 30.f; // W/(m^2*sr)
+};
+
+NOTES(Meta::HlslFile{ "CloudData.hlsl"_sl })
+struct CloudConstants {
+	compile_const uint3 cloud_volume_size = uint3(512, 512, 64);
+	
+	float3 world_space_position;
+	float scattering_coefficients = 0.f;
+	
+	float3 world_space_size       = 0.f;
+	float absorption_coefficients = 0.f;
+	
+	float3 inv_world_space_size   = 0.f;
+	float extinction_coefficients = 0.f;
+	
+	float scattering_anisotropy = 0.f;
+	u32   density_noise         = u32_max;
+	float density_noise_scale   = 0.f;
 };
 
 NOTES(Meta::HlslFile{ "SceneData.hlsl"_sl })
@@ -114,6 +134,22 @@ struct SceneConstants {
 	FixedCountArray<float4, light_grid_cascade_count> light_grid_cascade_descs;
 	
 	AtmosphereConstants atmosphere;
+	CloudConstants clouds;
+};
+
+using TextureAssetGUID = EntityGUID<TextureAssetType>;
+
+NOTES()
+struct CloudSettings {
+	float3 world_space_position = float3(0.f, 0.f, 256.f);
+	float  voxel_size_meters    = 4.f;
+	
+	float scattering_coefficients = 1.f;
+	float absorption_coefficients = 0.f;
+	float scattering_anisotropy   = 0.4f;
+	
+	TextureAssetGUID density_noise;
+	float density_noise_tiling = 16.f;
 };
 
 NOTES(Meta::HlslFile{ "ToneMappingData.hlsl"_sl })
@@ -380,10 +416,17 @@ struct GpuLightEntityData {
 
 using LightEntityGUID = EntityGUID<struct LightEntityType>;
 
+NOTES(Meta::HlslFile{ "CloudData.hlsl"_sl })
+struct GpuCloudVolumeEntityData {
+	quat   world_to_model_rotation;
+	float3 world_space_position;
+	float  model_to_world_scale;
+	float3 world_space_size;
+	u32 sdf_texture = u32_max;
+};
 
-compile_const String debug_geometry_data_filename = "DebugGeometryData.hlsl"_sl;
 
-NOTES(Meta::HlslFile{ debug_geometry_data_filename })
+NOTES(Meta::HlslFile{ "DebugGeometryData.hlsl"_sl })
 enum struct DebugMeshInstanceType : u32 {
 	Sphere   = 0,
 	Cube     = 1,
@@ -393,7 +436,7 @@ enum struct DebugMeshInstanceType : u32 {
 	Count
 };
 
-NOTES(Meta::HlslFile{ debug_geometry_data_filename })
+NOTES(Meta::HlslFile{ "DebugGeometryData.hlsl"_sl })
 struct DebugMeshInstance {
 	float3 position;
 	u32   color = u32_max;
@@ -412,6 +455,7 @@ struct WorldEntityQuery {
 	ECS::Component<LightEntityGUID>      global_light_entity;
 	ECS::Component<CameraEntityGUID>     camera_entity;
 	ECS::Component<RendererWorld>        renderer_world;
+	ECS::Component<CloudSettings>        cloud_settings;
 	ECS::Component<LightingSettings>     lighting_settings;
 	ECS::Component<ExposureSettings>     exposure_settings;
 	ECS::Component<ToneMappingSettings>  tone_mapping_settings;
