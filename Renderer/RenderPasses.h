@@ -117,6 +117,8 @@ enum struct VirtualResourceID : u32 {
 	MultipleScatteringLut,
 	SkyPanoramaLut,
 	SdfCloudVolume,
+	SdfCloudVolumeTransientMask,
+	SdfCloudVolumeMask,
 	
 	// Reference Path Tracer:
 	ReferencePathTracerRadiance,
@@ -997,8 +999,8 @@ struct ReferencePathTracerRenderPass {
 		HLSL::RegularBuffer<GpuMeshAssetData>       mesh_asset_data       = VirtualResourceID::GpuMeshAssetData;
 		HLSL::RegularBuffer<GpuMeshEntityData>      mesh_entity_data      = VirtualResourceID::GpuMeshEntityData;
 		HLSL::RegularBuffer<GpuMaterialTextureData> material_texture_data = VirtualResourceID::MaterialAssetTextureData;
-		HLSL::RegularBuffer<GpuCloudVolumeEntityData> cloud_volume_data   = VirtualResourceID::GpuCloudVolumeEntityData;
 		HLSL::Texture3D<float>                      sdf_cloud_volume      = VirtualResourceID::SdfCloudVolume;
+		HLSL::Texture3D<u64>                        sdf_cloud_volume_mask = VirtualResourceID::SdfCloudVolumeMask;
 		HLSL::ByteBuffer                            mesh_asset_buffer     = VirtualResourceID::MeshAssetBuffer;
 		HLSL::RegularBuffer<u32>                    light_culling_grid    = VirtualResourceID::LightCullingGrid;
 		HLSL::TopLevelRTAS                          scene_tlas            = VirtualResourceID::SceneTLAS;
@@ -1431,6 +1433,7 @@ struct LightingSpatialDenoiserRenderPass {
 NOTES(Meta::ShaderName{ "CloudVolume.hlsl"_sl })
 enum struct CloudVolumeShaders : u32 {
 	CompositeCloudVolume = 1u << 0,
+	BuildCloudVolumeMask = 1u << 1,
 };
 SHADER_DEFINITION_GENERATED_CODE(CloudVolumeShaders);
 
@@ -1444,6 +1447,7 @@ struct CompositeCloudVolumeRenderPass {
 		HLSL::RegularBuffer<GpuCloudVolumeEntityData> cloud_volume_data       = VirtualResourceID::GpuCloudVolumeEntityData;
 		HLSL::RegularBuffer<u32>                      cloud_volume_alive_mask = VirtualResourceID::CloudVolumeAliveMask;
 		HLSL::RWTexture3D<float>                      sdf_cloud_volume        = VirtualResourceID::SdfCloudVolume;
+		HLSL::RWTexture3D<u32>                        sdf_cloud_volume_transient_mask = VirtualResourceID::SdfCloudVolumeTransientMask;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {
@@ -1452,6 +1456,23 @@ struct CompositeCloudVolumeRenderPass {
 		};
 		
 		HLSL::PushConstantBuffer<PushConstants> constants;
+		HLSL::ConstantBuffer<SceneConstants> scene;
+		HLSL::DescriptorTable<Descriptors> descriptor_table;
+	};
+	
+	inline static PipelineID pipeline_id;
+};
+
+NOTES(Meta::RenderPass{})
+struct BuildCloudVolumeMaskRenderPass {
+	RENDER_PASS_GENERATED_CODE();
+	
+	struct Descriptors : HLSL::BaseDescriptorTable {
+		HLSL::Texture3D<u32>   sdf_cloud_volume_transient_mask = VirtualResourceID::SdfCloudVolumeTransientMask;
+		HLSL::RWTexture3D<u64> sdf_cloud_volume_mask           = VirtualResourceID::SdfCloudVolumeMask;
+	};
+	
+	struct RootSignature : HLSL::BaseRootSignature {
 		HLSL::ConstantBuffer<SceneConstants> scene;
 		HLSL::DescriptorTable<Descriptors> descriptor_table;
 	};

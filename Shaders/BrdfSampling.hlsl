@@ -112,7 +112,7 @@ bool RussianRoulette(inout float throughput, float threshold, float u) {
 	if (any(throughput < threshold)) {
 		float q = max(1.0 - throughput, 0.0);
 		terminate_path = u < q;
-		throughput = terminate_path ? 0.0 : (1.0 - q);
+		throughput = terminate_path ? 0.0 : throughput / (1.0 - q);
 	}
 	
 	return terminate_path;

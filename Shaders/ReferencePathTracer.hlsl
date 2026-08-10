@@ -62,25 +62,90 @@ float ComputeVolumetricMediumDensity(float3 position) {
 }
 
 
+// Based on the ideas from https://dubiousconst282.github.io/2024/10/03/voxel-ray-tracing/
+struct VoxelTraversalState {
+	float3 inv_direction;
+	float3 origin;
+	float ray_t_max;
+};
+
+VoxelTraversalState BeginVoxelTraversal(float3 origin, float3 direction, float ray_t_min, float ray_t_max) {
+	VoxelTraversalState state;
+	state.inv_direction = select(abs(direction) < 0.0001, /*nan*/asfloat(0x7FC00000), 1.0 / direction); // See @inv_direction for reference.
+	state.origin        = (origin - scene.clouds.world_space_position + scene.clouds.world_space_size * 0.5) * scene.clouds.inv_world_space_size.x + 1.0;
+	state.ray_t_max     = ray_t_max * scene.clouds.inv_world_space_size.x - 0.001;
+	
+	return state;
+}
+
+float VoxelGridSkipEmptySpace(VoxelTraversalState state, float3 direction, float ray_t_min) {
+	float ray_t = ray_t_min * scene.clouds.inv_world_space_size.x;
+	float3 position = clamp(state.origin + direction * ray_t, 1.0, asfloat(0x3FFFFFFF));
+	
+	uint max_iterations = 128 + 128 + 32 - 1;
+	for (uint i = 0; i < max_iterations && ray_t < state.ray_t_max; i += 1) {
+		uint3 position_u32 = asuint(position);
+		
+		uint3 volume_coordinates = (position_u32 >> 18) & 0x1F;
+		uint  voxel_index = ((position_u32.x >> 16) & 0x3) | ((position_u32.y >> 14) & (0x3 << 2)) | ((position_u32.z >> 12) & (0x3 << 4));
+		
+		u64 voxel = sdf_cloud_volume_mask[volume_coordinates];
+		
+		if (((voxel >> voxel_index) & 0x1) == 0) {
+			bool skip_voxel  = (voxel == 0);
+			bool skip_octant = ((voxel >> (voxel_index & 0b101010)) & 0x00330033) == 0;
+			
+			uint scale_exp = skip_voxel ? 18 : (skip_octant ? 17 : 16);
+			float scale = asfloat((scale_exp - 23u + 127u) << 23u);
+			
+			float3 voxel_min = asfloat(asuint(position) & (u32_max << scale_exp));
+			float3 voxel_far = voxel_min + select(direction >= 0.0, scale, 0.0);
+			
+			// @inv_direction might contain NANs, they would get rejected by min, which always returns non NAN argument.
+			float3 far_intersection = (voxel_far - state.origin) * state.inv_direction;
+			ray_t = min(min(far_intersection.x, far_intersection.y), far_intersection.z);
+			
+			float3 next_voxel_min = select(ray_t == far_intersection, voxel_min + select(direction >= 0.0, +scale, -scale), voxel_min);
+			float3 next_voxel_max = asfloat(asint(next_voxel_min) + ((1u << scale_exp) - 1));
+			
+			position = clamp(state.origin + direction * ray_t, next_voxel_min, next_voxel_max);
+		} else {
+			i = max_iterations;
+		}
+	}
+	
+	return ray_t * scene.clouds.world_space_size.x;
+}
+
+
 // Ratio tracking estimator is based on https://pbr-book.org/4ed/Volume_Scattering/Transmittance#
-float TraceVolumetricMediumTransmittanceRay(float3 origin, float3 direction, inout uint hash) {
+float TraceVolumetricMediumTransmittanceRay(float3 origin, float3 direction, float t_max, inout uint hash) {
 	VolumetricSceneIntersection intersection = RayBoxIntersection(origin - scene.clouds.world_space_position, direction, scene.clouds.world_space_size * 0.5);
 	if (intersection.is_hit == false) return 1.0;
 	
 	float ray_t = max(intersection.t_min, 0.0);
+	intersection.t_max = min(intersection.t_max, t_max);
+	
+	if (ray_t >= intersection.t_max) return 1.0;
+	
 	float transmittance = 1.0;
+	VoxelTraversalState traversal_state = BeginVoxelTraversal(origin, direction, ray_t, intersection.t_max);
 	
 	uint max_iterations = 1024;
 	for (uint i = 0; i < max_iterations; i += 1) {
 		float2 u = ComputeRandomUnorm16x2(hash);
 		
+		ray_t = VoxelGridSkipEmptySpace(traversal_state, direction, ray_t);
 		ray_t += SampleExponentialDistribution(u.x, scene.clouds.extinction_coefficients);
-		if (ray_t > intersection.t_max) break;
 		
-		float3 position = direction * ray_t + origin;
-		float density = ComputeVolumetricMediumDensity(position);
-		
-		transmittance *= (1.0 - density);
+		if (ray_t < intersection.t_max) {
+			float3 position = direction * ray_t + origin;
+			float density = ComputeVolumetricMediumDensity(position);
+			
+			transmittance *= (1.0 - density);
+		} else {
+			i = max_iterations;
+		}
 		
 		if (RussianRoulette(transmittance, 0.1, u.y)) {
 			i = max_iterations;
@@ -92,18 +157,22 @@ float TraceVolumetricMediumTransmittanceRay(float3 origin, float3 direction, ino
 
 VolumeInteractionType SampleVolumetricMedium(inout LightAccumulator light_accumulator, inout RayDesc ray_desc, float t_max, inout uint hash) {
 	VolumetricSceneIntersection intersection = RayBoxIntersection(ray_desc.Origin - scene.clouds.world_space_position, ray_desc.Direction, scene.clouds.world_space_size * 0.5);
-	intersection.t_min = max(intersection.t_min, 0.0);
-	intersection.t_max = min(intersection.t_max, t_max);
-	
 	if (intersection.is_hit == false) return VolumeInteractionType::None;
 	
+	float ray_t = max(intersection.t_min, 0.0);
+	intersection.t_max = min(intersection.t_max, t_max);
+	
+	if (ray_t >= intersection.t_max) return VolumeInteractionType::None;
+	
 	VolumeInteractionType interaction_type = VolumeInteractionType::None;
+	VoxelTraversalState traversal_state = BeginVoxelTraversal(ray_desc.Origin, ray_desc.Direction, intersection.t_min, intersection.t_max);
 	
 	uint max_iterations = 1024;
 	for (uint i = 0; i < max_iterations; i += 1) {
 		float2 u = ComputeRandomUnorm16x2(hash);
 		
-		float ray_t = intersection.t_min + SampleExponentialDistribution(u.x, scene.clouds.extinction_coefficients);
+		ray_t = VoxelGridSkipEmptySpace(traversal_state, ray_desc.Direction, ray_t);
+		ray_t += SampleExponentialDistribution(u.x, scene.clouds.extinction_coefficients);
 		
 		if (ray_t < intersection.t_max) {
 			float3 position = ray_desc.Direction * ray_t + ray_desc.Origin;
@@ -120,8 +189,6 @@ VolumeInteractionType SampleVolumetricMedium(inout LightAccumulator light_accumu
 				interaction_type = VolumeInteractionType::Scattering;
 				
 				ray_desc.Origin = position;
-			} else {
-				intersection.t_min = ray_t;
 			}
 		} else {
 			i = max_iterations;
@@ -157,7 +224,7 @@ struct PathTracerShadowSampler {
 		
 #if ENABLE_VOLUME_RENDERING
 		if (transmittance == 1.0) {
-			transmittance = TraceVolumetricMediumTransmittanceRay(ray_desc.Origin, ray_desc.Direction, hash);
+			transmittance = TraceVolumetricMediumTransmittanceRay(ray_desc.Origin, ray_desc.Direction, ray_length, hash);
 		}
 #endif // ENABLE_VOLUME_RENDERING
 		

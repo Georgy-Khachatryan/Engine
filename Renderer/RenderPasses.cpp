@@ -16,7 +16,9 @@ static void BuildResourceTable(RecordContext* record_context, WorldEntitySystem*
 	table.Set(ID::MultipleScatteringLut, TextureSize(TextureFormat::R16G16B16A16_FLOAT, AtmosphereConstants::multiple_scattering_lut_size));
 	table.Set(ID::SkyPanoramaLut,        TextureSize(TextureFormat::R16G16B16A16_FLOAT, AtmosphereConstants::sky_panorama_lut_size));
 	
-	table.Set(ID::SdfCloudVolume, TextureSize(TextureFormat::R8_UNORM, CloudConstants::cloud_volume_size));
+	table.Set(ID::SdfCloudVolume,              TextureSize(TextureFormat::R8_UNORM,    CloudConstants::cloud_volume_size));
+	table.Set(ID::SdfCloudVolumeTransientMask, TextureSize(TextureFormat::R8_UINT,     CloudConstants::cloud_volume_size / 4u));
+	table.Set(ID::SdfCloudVolumeMask,          TextureSize(TextureFormat::R32G32_UINT, CloudConstants::cloud_volume_size / 16u));
 	
 	table.Set(ID::VisibleMeshlets,             MeshletConstants::visible_meshlet_buffer_size         * sizeof(uint2));
 	table.Set(ID::MeshEntityCullingCommands,   MeshletConstants::mesh_entity_culling_command_count   * sizeof(u32));
@@ -197,6 +199,7 @@ static void CreateSceneConstants(RecordContext* record_context, uint2 render_tar
 		bool should_reset_path_tracer =
 			renderer_world.reset_reference_path_tracer ||
 			memcmp(&scene.view_to_world, &scene.prev_view_to_world, sizeof(float3x4)) != 0 ||
+			memcmp(&scene.view_to_clip_coef, &scene.prev_view_to_clip_coef, sizeof(float4)) != 0 ||
 			memcmp(&scene.render_target_size, &scene.prev_render_target_size, sizeof(float2)) != 0 ||
 			gpu_uploads.count != 0;
 		
@@ -388,6 +391,8 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 		{
 			auto& composite_cloud_volume = render_passes.Add<CompositeCloudVolumeRenderPass>();
 			composite_cloud_volume.world_system = world_system;
+			
+			render_passes.Add<BuildCloudVolumeMaskRenderPass>();
 		}
 	}
 	
