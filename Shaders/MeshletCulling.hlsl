@@ -46,8 +46,9 @@ compile_const MeshletGroupResidencyMask target_residency_mask = MeshletGroupResi
 
 
 #if defined(CLEAR_BUFFERS)
-#include "Generated/MeshletRtasData.hlsl"
+#include "Generated/CloudData.hlsl"
 #include "Generated/LightData.hlsl"
+#include "Generated/MeshletRtasData.hlsl"
 
 [ThreadGroupSize(thread_group_size, 1, 1)]
 void MainCS(uint thread_id : SV_DispatchThreadID) {
@@ -87,6 +88,14 @@ void MainCS(uint thread_id : SV_DispatchThreadID) {
 	
 	if (thread_id < LightCullingConstants::grid_element_count) {
 		light_culling_grid[thread_id] = 0;
+	}
+	
+	if (thread_id < CloudCullingConstants::indirect_arguments_count) {
+		cloud_culling_indirect_arguments[thread_id] = uint4(0, 1, 1, 0);
+	}
+	
+	if (thread_id < CloudCullingConstants::grid_element_count) {
+		cloud_culling_grid[thread_id] = 0;
 	}
 }
 #endif // defined(CLEAR_BUFFERS)

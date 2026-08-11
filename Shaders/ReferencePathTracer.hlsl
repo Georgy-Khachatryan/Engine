@@ -14,16 +14,15 @@ struct VolumetricSceneIntersection {
 	bool is_hit;
 };
 
-// TODO: Skip empty space inside the box.
-// Based on https://www.shadertoy.com/view/ld23DV see license in THIRD_PARTY_LICENSES.md
-VolumetricSceneIntersection RayBoxIntersection(float3 ray_origin, float3 ray_direction, float3 half_extent) {
-	float3 m = 1.0 / ray_direction;
-	float3 n = m * ray_origin;
+// Box is assumed to be in [0, extent] range.
+VolumetricSceneIntersection RayBoxIntersection(float3 ray_origin, float3 ray_direction, float3 extent) {
+	float3 inv_direction = 1.0 / ray_direction;
 	
-	float3 k = abs(m) * half_extent;
+	float3 t_min = -ray_origin * inv_direction;
+	float3 t_max = extent * inv_direction + t_min;
 	
-	float3 t0 = -n - k;
-	float3 t1 = -n + k;
+	float3 t0 = min(t_min, t_max);
+	float3 t1 = max(t_min, t_max);
 	
 	VolumetricSceneIntersection intersection;
 	intersection.t_min = max(max(t0.x, t0.y), t0.z);
@@ -35,7 +34,7 @@ VolumetricSceneIntersection RayBoxIntersection(float3 ray_origin, float3 ray_dir
 
 // Based on "Methods (and madness) to model and render immersive real-time voxel-based clouds." by Andrew Schneider.
 float ComputeVolumetricMediumDensity(float3 position) {
-	float3 sample_uvw = (position - scene.clouds.world_space_position) * scene.clouds.inv_world_space_size + 0.5;
+	float3 sample_uvw = (position - scene.clouds.world_space_position) * scene.clouds.inv_world_space_size;
 	float dimensional_profile = sdf_cloud_volume.SampleLevel(sampler_linear_clamp, sample_uvw, 0);
 	
 	if (dimensional_profile < (0.5 / 255.0)) return 0.0;
@@ -70,7 +69,7 @@ struct VoxelTraversalState {
 VoxelTraversalState BeginVoxelTraversal(float3 origin, float3 direction, float ray_t_min, float ray_t_max) {
 	VoxelTraversalState state;
 	state.inv_direction = select(abs(direction) < 0.0001, /*nan*/asfloat(0x7FC00000), 1.0 / direction); // See @inv_direction for reference.
-	state.origin        = (origin - scene.clouds.world_space_position + scene.clouds.world_space_size * 0.5) * scene.clouds.inv_world_space_size.x + 1.0;
+	state.origin        = (origin - scene.clouds.world_space_position) * scene.clouds.inv_world_space_size.x + 1.0;
 	state.ray_t_max     = ray_t_max * scene.clouds.inv_world_space_size.x - 0.001;
 	
 	return state;
@@ -118,7 +117,7 @@ float VoxelGridSkipEmptySpace(VoxelTraversalState state, float3 direction, float
 
 // Ratio tracking estimator is based on https://pbr-book.org/4ed/Volume_Scattering/Transmittance#
 float TraceVolumetricMediumTransmittanceRay(float3 origin, float3 direction, float t_max, inout uint hash) {
-	VolumetricSceneIntersection intersection = RayBoxIntersection(origin - scene.clouds.world_space_position, direction, scene.clouds.world_space_size * 0.5);
+	VolumetricSceneIntersection intersection = RayBoxIntersection(origin - scene.clouds.world_space_position, direction, scene.clouds.world_space_size);
 	if (intersection.is_hit == false) return 1.0;
 	
 	float ray_t = max(intersection.t_min, 0.0);
@@ -154,7 +153,7 @@ float TraceVolumetricMediumTransmittanceRay(float3 origin, float3 direction, flo
 }
 
 VolumeInteractionType SampleVolumetricMedium(inout LightAccumulator light_accumulator, inout RayDesc ray_desc, float t_max, inout uint hash) {
-	VolumetricSceneIntersection intersection = RayBoxIntersection(ray_desc.Origin - scene.clouds.world_space_position, ray_desc.Direction, scene.clouds.world_space_size * 0.5);
+	VolumetricSceneIntersection intersection = RayBoxIntersection(ray_desc.Origin - scene.clouds.world_space_position, ray_desc.Direction, scene.clouds.world_space_size);
 	if (intersection.is_hit == false) return VolumeInteractionType::None;
 	
 	float ray_t = max(intersection.t_min, 0.0);

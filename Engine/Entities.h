@@ -91,7 +91,7 @@ struct CloudVolume {
 	TextureAssetGUID sdf_texture;
 };
 
-NOTES(Meta::EntityType{}, Meta::ComponentQuery{})
+NOTES(Meta::EntityType{ 256 }, Meta::ComponentQuery{})
 struct CloudVolumeEntityType {
 	ECS::Component<GuidComponent> guid;
 	ECS::Component<NameComponent> name;

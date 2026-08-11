@@ -103,6 +103,11 @@ enum struct VirtualResourceID : u32 {
 	CdfHashTableKeys,
 	CdfHashTableValues,
 	
+	// Clouds:
+	CloudCullingIndirectArguments,
+	CloudCullingCommands,
+	CloudCullingGrid,
+	
 	// Radiance cache:
 	RadianceHashTableKeys,
 	RadianceHashTableValues,
@@ -688,6 +693,8 @@ struct MeshletClearBuffersRenderPass {
 		HLSL::RWRegularBuffer<u32>   instance_meshlet_counts          = VirtualResourceID::InstanceMeshletCounts;
 		HLSL::RWRegularBuffer<uint4> light_culling_indirect_arguments = VirtualResourceID::LightCullingIndirectArguments;
 		HLSL::RWRegularBuffer<u32>   light_culling_grid               = VirtualResourceID::LightCullingGrid;
+		HLSL::RWRegularBuffer<uint4> cloud_culling_indirect_arguments = VirtualResourceID::CloudCullingIndirectArguments;
+		HLSL::RWRegularBuffer<u32>   cloud_culling_grid               = VirtualResourceID::CloudCullingGrid;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {
@@ -901,12 +908,13 @@ struct LightCullingConstants {
 	compile_const float inv_grid_cell_size = 1.f / grid_cell_size;
 	
 	compile_const u32 max_elements_per_cell    = 64;
+	compile_const u32 max_input_light_count    = max_elements_per_cell * 32;
 	compile_const u32 max_lights_per_cell      = max_elements_per_cell - 1; // 1 Counter
 	compile_const u32 max_elements_per_cascade = max_elements_per_cell * grid_cell_count;
 	compile_const u32 grid_element_count       = max_elements_per_cascade * grid_cascade_count;
 	
 	compile_const u32 culling_command_bin_count = 13;
-	compile_const u32 culling_command_bin_size  = 16 * 1024;
+	compile_const u32 culling_command_bin_size  = max_input_light_count * grid_cascade_count;
 	compile_const u32 culling_command_count     = culling_command_bin_size * culling_command_bin_count;
 	
 	static_assert((1u << (culling_command_bin_count - 1)) == (grid_size_cells * grid_size_cells * grid_size_cells));
@@ -919,11 +927,10 @@ struct LightEntityCullingRenderPass {
 	WorldEntitySystem* world_system = nullptr;
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
-		HLSL::RegularBuffer<u32>                light_alive_mask  = VirtualResourceID::LightEntityAliveMask;
-		HLSL::RegularBuffer<GpuLightEntityData> light_entity_data = VirtualResourceID::GpuLightEntityData;
-		
-		HLSL::RWRegularBuffer<uint2> light_culling_commands = VirtualResourceID::LightCullingCommands;
-		HLSL::RWRegularBuffer<uint4> indirect_arguments     = VirtualResourceID::LightCullingIndirectArguments;
+		HLSL::RegularBuffer<u32>                light_alive_mask       = VirtualResourceID::LightEntityAliveMask;
+		HLSL::RegularBuffer<GpuLightEntityData> light_entity_data      = VirtualResourceID::GpuLightEntityData;
+		HLSL::RWRegularBuffer<uint2>            light_culling_commands = VirtualResourceID::LightCullingCommands;
+		HLSL::RWRegularBuffer<uint4>            indirect_arguments     = VirtualResourceID::LightCullingIndirectArguments;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {
@@ -941,9 +948,8 @@ struct LightCullingRenderPass {
 	struct Descriptors : HLSL::BaseDescriptorTable {
 		HLSL::RegularBuffer<GpuLightEntityData> light_entity_data      = VirtualResourceID::GpuLightEntityData;
 		HLSL::RegularBuffer<uint2>              light_culling_commands = VirtualResourceID::LightCullingCommands;
-		
-		HLSL::RWRegularBuffer<uint4> indirect_arguments = VirtualResourceID::LightCullingIndirectArguments;
-		HLSL::RWRegularBuffer<u32>   light_culling_grid = VirtualResourceID::LightCullingGrid;
+		HLSL::RWRegularBuffer<uint4>            indirect_arguments     = VirtualResourceID::LightCullingIndirectArguments;
+		HLSL::RWRegularBuffer<u32>              light_culling_grid     = VirtualResourceID::LightCullingGrid;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {
@@ -1425,10 +1431,98 @@ struct LightingSpatialDenoiserRenderPass {
 
 NOTES(Meta::ShaderName{ "CloudVolume.hlsl"_sl })
 enum struct CloudVolumeShaders : u32 {
-	CompositeCloudVolume = 1u << 0,
-	BuildCloudVolumeMask = 1u << 1,
+	CloudEntityCulling   = 1u << 0,
+	CloudCulling         = 1u << 1,
+	BuildCloudUpdateList = 1u << 2,
+	CompositeCloudVolume = 1u << 3,
+	BuildCloudVolumeMask = 1u << 4,
 };
 SHADER_DEFINITION_GENERATED_CODE(CloudVolumeShaders);
+
+
+NOTES(Meta::HlslFile{ "CloudData.hlsl"_sl })
+struct CloudCullingConstants {
+	compile_const u32 thread_group_size = 256u;
+	
+	compile_const uint3 grid_size_cells = uint3(64, 64, 8);
+	compile_const u32   grid_cell_count = grid_size_cells.x * grid_size_cells.y * grid_size_cells.z;
+	
+	compile_const u32 max_elements_per_cell = 8;
+	compile_const u32 max_input_cloud_count = max_elements_per_cell * 32;
+	compile_const u32 grid_element_count    = max_elements_per_cell * grid_cell_count;
+	
+	compile_const u32 culling_command_bin_count = 16;
+	compile_const u32 culling_command_bin_size  = max_input_cloud_count;
+	compile_const u32 culling_command_count     = Math::Max(culling_command_bin_size * culling_command_bin_count, grid_cell_count / 2);
+	
+	compile_const u32 indirect_arguments_count = culling_command_bin_count + 1;
+	
+	static_assert((1u << (culling_command_bin_count - 1)) == grid_cell_count);
+};
+
+NOTES(Meta::RenderPass{})
+struct CloudEntityCullingRenderPass {
+	RENDER_PASS_GENERATED_CODE();
+	
+	WorldEntitySystem* world_system = nullptr;
+	
+	struct Descriptors : HLSL::BaseDescriptorTable {
+		HLSL::RegularBuffer<u32>                      cloud_volume_alive_mask = VirtualResourceID::CloudVolumeAliveMask;
+		HLSL::RegularBuffer<GpuCloudVolumeEntityData> cloud_volume_data       = VirtualResourceID::GpuCloudVolumeEntityData;
+		HLSL::RWRegularBuffer<uint2>                  cloud_culling_commands  = VirtualResourceID::CloudCullingCommands;
+		HLSL::RWRegularBuffer<uint4>                  indirect_arguments      = VirtualResourceID::CloudCullingIndirectArguments;
+	};
+	
+	struct RootSignature : HLSL::BaseRootSignature {
+		HLSL::ConstantBuffer<SceneConstants> scene;
+		HLSL::DescriptorTable<Descriptors> descriptor_table;
+	};
+	
+	inline static PipelineID pipeline_id;
+};
+
+NOTES(Meta::RenderPass{})
+struct CloudCullingRenderPass {
+	RENDER_PASS_GENERATED_CODE();
+	
+	struct Descriptors : HLSL::BaseDescriptorTable {
+		HLSL::RegularBuffer<GpuCloudVolumeEntityData> cloud_volume_data      = VirtualResourceID::GpuCloudVolumeEntityData;
+		HLSL::RegularBuffer<uint2>                    cloud_culling_commands = VirtualResourceID::CloudCullingCommands;
+		HLSL::RWRegularBuffer<uint4>                  indirect_arguments     = VirtualResourceID::CloudCullingIndirectArguments;
+		HLSL::RWRegularBuffer<u32>                    cloud_culling_grid     = VirtualResourceID::CloudCullingGrid;
+	};
+	
+	struct RootSignature : HLSL::BaseRootSignature {
+		struct PushConstants {
+			u32 bin_index = 0;
+		};
+		
+		HLSL::PushConstantBuffer<PushConstants> constants;
+		HLSL::ConstantBuffer<SceneConstants> scene;
+		HLSL::DescriptorTable<Descriptors> descriptor_table;
+	};
+	
+	inline static PipelineID pipeline_id;
+};
+
+NOTES(Meta::RenderPass{})
+struct BuildCloudUpdateListRenderPass {
+	RENDER_PASS_GENERATED_CODE();
+	
+	struct Descriptors : HLSL::BaseDescriptorTable {
+		HLSL::Texture3D<u64>         sdf_cloud_volume_mask = VirtualResourceID::SdfCloudVolumeMask;
+		HLSL::RegularBuffer<u32>     cloud_culling_grid    = VirtualResourceID::CloudCullingGrid;
+		HLSL::RWRegularBuffer<uint4> indirect_arguments    = VirtualResourceID::CloudCullingIndirectArguments;
+		HLSL::RWRegularBuffer<u32>   cloud_update_list     = VirtualResourceID::CloudCullingCommands;
+	};
+	
+	struct RootSignature : HLSL::BaseRootSignature {
+		HLSL::ConstantBuffer<SceneConstants> scene;
+		HLSL::DescriptorTable<Descriptors> descriptor_table;
+	};
+	
+	inline static PipelineID pipeline_id;
+};
 
 NOTES(Meta::RenderPass{})
 struct CompositeCloudVolumeRenderPass {
@@ -1437,18 +1531,14 @@ struct CompositeCloudVolumeRenderPass {
 	WorldEntitySystem* world_system = nullptr;
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
-		HLSL::RegularBuffer<GpuCloudVolumeEntityData> cloud_volume_data       = VirtualResourceID::GpuCloudVolumeEntityData;
-		HLSL::RegularBuffer<u32>                      cloud_volume_alive_mask = VirtualResourceID::CloudVolumeAliveMask;
-		HLSL::RWTexture3D<float>                      sdf_cloud_volume        = VirtualResourceID::SdfCloudVolume;
+		HLSL::RegularBuffer<GpuCloudVolumeEntityData> cloud_volume_data  = VirtualResourceID::GpuCloudVolumeEntityData;
+		HLSL::RegularBuffer<u32>                      cloud_update_list  = VirtualResourceID::CloudCullingCommands;
+		HLSL::RegularBuffer<u32>                      cloud_culling_grid = VirtualResourceID::CloudCullingGrid;
+		HLSL::RWTexture3D<float>                      sdf_cloud_volume   = VirtualResourceID::SdfCloudVolume;
 		HLSL::RWTexture3D<u32>                        sdf_cloud_volume_transient_mask = VirtualResourceID::SdfCloudVolumeTransientMask;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {
-		struct PushConstants {
-			u32 cloud_volume_count;
-		};
-		
-		HLSL::PushConstantBuffer<PushConstants> constants;
 		HLSL::ConstantBuffer<SceneConstants> scene;
 		HLSL::DescriptorTable<Descriptors> descriptor_table;
 	};

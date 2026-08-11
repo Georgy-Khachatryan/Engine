@@ -20,6 +20,10 @@ static void BuildResourceTable(RecordContext* record_context, WorldEntitySystem*
 	table.Set(ID::SdfCloudVolumeTransientMask, TextureSize(TextureFormat::R8_UINT,     CloudConstants::cloud_volume_size / 4u));
 	table.Set(ID::SdfCloudVolumeMask,          TextureSize(TextureFormat::R32G32_UINT, CloudConstants::cloud_volume_size / 16u));
 	
+	table.Set(ID::CloudCullingCommands,          CloudCullingConstants::culling_command_count    * sizeof(uint2));
+	table.Set(ID::CloudCullingIndirectArguments, CloudCullingConstants::indirect_arguments_count * sizeof(uint4));
+	table.Set(ID::CloudCullingGrid,              CloudCullingConstants::grid_element_count       * sizeof(u32));
+	
 	table.Set(ID::VisibleMeshlets,             MeshletConstants::visible_meshlet_buffer_size         * sizeof(uint2));
 	table.Set(ID::MeshEntityCullingCommands,   MeshletConstants::mesh_entity_culling_command_count   * sizeof(u32));
 	table.Set(ID::MeshletGroupCullingCommands, MeshletConstants::meshlet_group_culling_command_count * sizeof(uint2));
@@ -235,8 +239,8 @@ static void CreateSceneConstants(RecordContext* record_context, uint2 render_tar
 	{
 		auto& cloud_settings = *world_entity.cloud_settings;
 		
-		scene.clouds.world_space_position    = cloud_settings.world_space_position;
 		scene.clouds.world_space_size        = float3(CloudConstants::cloud_volume_size) * cloud_settings.voxel_size_meters;
+		scene.clouds.world_space_position    = cloud_settings.world_space_position - scene.clouds.world_space_size * 0.5f;
 		scene.clouds.inv_world_space_size    = float3(1.f) / scene.clouds.world_space_size;
 		scene.clouds.scattering_coefficients = cloud_settings.scattering_coefficients;
 		scene.clouds.absorption_coefficients = cloud_settings.absorption_coefficients;
@@ -389,6 +393,12 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 		}
 		
 		{
+			auto& cloud_entity_culling = render_passes.Add<CloudEntityCullingRenderPass>();
+			cloud_entity_culling.world_system = world_system;
+			
+			render_passes.Add<CloudCullingRenderPass>();
+			render_passes.Add<BuildCloudUpdateListRenderPass>();
+			
 			auto& composite_cloud_volume = render_passes.Add<CompositeCloudVolumeRenderPass>();
 			composite_cloud_volume.world_system = world_system;
 			

@@ -52,7 +52,7 @@ void MainCS(uint thread_id : SV_DispatchThreadID) {
 	for (uint cascade_index = 0; cascade_index < LightCullingConstants::grid_cascade_count; cascade_index += 1, grid_cell_size *= 2.0) {
 		float4 cascade_desc = scene.light_grid_cascade_descs[cascade_index];
 		uint3 aabb_min_cells = (uint3)clamp(floor((aabb_min - cascade_desc.xyz) / grid_cell_size), 0.0, grid_size_cells);
-		uint3 aabb_max_cells = (uint3)clamp(ceil((aabb_max - cascade_desc.xyz) / grid_cell_size), 0.0, grid_size_cells);
+		uint3 aabb_max_cells = (uint3)clamp(ceil((aabb_max  - cascade_desc.xyz) / grid_cell_size), 0.0, grid_size_cells);
 		uint3 aabb_size_cells = aabb_max_cells - aabb_min_cells;
 		uint aabb_volume_cells = aabb_size_cells.x * aabb_size_cells.y * aabb_size_cells.z;
 		
