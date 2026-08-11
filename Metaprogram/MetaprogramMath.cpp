@@ -255,28 +255,28 @@ static void GenerateVectorFunctions(StringBuilder& builder, u32 count, String ty
 }
 
 static void GenerateScalarFunctions(StringBuilder& builder) {
-	builder.Append("inline u64 Min(u64 lh, u64 rh) { return lh < rh ? lh : rh; }\n"_sl);
-	builder.Append("inline u64 Max(u64 lh, u64 rh) { return lh > rh ? lh : rh; }\n"_sl);
-	builder.Append("inline u32 Min(u32 lh, u32 rh) { return lh < rh ? lh : rh; }\n"_sl);
-	builder.Append("inline u32 Max(u32 lh, u32 rh) { return lh > rh ? lh : rh; }\n"_sl);
-	builder.Append("inline u16 Min(u16 lh, u16 rh) { return lh < rh ? lh : rh; }\n"_sl);
-	builder.Append("inline u16 Max(u16 lh, u16 rh) { return lh > rh ? lh : rh; }\n"_sl);
-	builder.Append("inline u8  Min(u8  lh, u8  rh) { return lh < rh ? lh : rh; }\n"_sl);
-	builder.Append("inline u8  Max(u8  lh, u8  rh) { return lh > rh ? lh : rh; }\n\n"_sl);
+	builder.Append("compile_const u64 Min(u64 lh, u64 rh) { return lh < rh ? lh : rh; }\n"_sl);
+	builder.Append("compile_const u64 Max(u64 lh, u64 rh) { return lh > rh ? lh : rh; }\n"_sl);
+	builder.Append("compile_const u32 Min(u32 lh, u32 rh) { return lh < rh ? lh : rh; }\n"_sl);
+	builder.Append("compile_const u32 Max(u32 lh, u32 rh) { return lh > rh ? lh : rh; }\n"_sl);
+	builder.Append("compile_const u16 Min(u16 lh, u16 rh) { return lh < rh ? lh : rh; }\n"_sl);
+	builder.Append("compile_const u16 Max(u16 lh, u16 rh) { return lh > rh ? lh : rh; }\n"_sl);
+	builder.Append("compile_const u8  Min(u8  lh, u8  rh) { return lh < rh ? lh : rh; }\n"_sl);
+	builder.Append("compile_const u8  Max(u8  lh, u8  rh) { return lh > rh ? lh : rh; }\n\n"_sl);
 	
-	builder.Append("inline s64 Min(s64 lh, s64 rh) { return lh < rh ? lh : rh; }\n"_sl);
-	builder.Append("inline s64 Max(s64 lh, s64 rh) { return lh > rh ? lh : rh; }\n"_sl);
-	builder.Append("inline s32 Min(s32 lh, s32 rh) { return lh < rh ? lh : rh; }\n"_sl);
-	builder.Append("inline s32 Max(s32 lh, s32 rh) { return lh > rh ? lh : rh; }\n"_sl);
-	builder.Append("inline s16 Min(s16 lh, s16 rh) { return lh < rh ? lh : rh; }\n"_sl);
-	builder.Append("inline s16 Max(s16 lh, s16 rh) { return lh > rh ? lh : rh; }\n"_sl);
-	builder.Append("inline s8  Min(s8  lh, s8  rh) { return lh < rh ? lh : rh; }\n"_sl);
-	builder.Append("inline s8  Max(s8  lh, s8  rh) { return lh > rh ? lh : rh; }\n\n"_sl);
+	builder.Append("compile_const s64 Min(s64 lh, s64 rh) { return lh < rh ? lh : rh; }\n"_sl);
+	builder.Append("compile_const s64 Max(s64 lh, s64 rh) { return lh > rh ? lh : rh; }\n"_sl);
+	builder.Append("compile_const s32 Min(s32 lh, s32 rh) { return lh < rh ? lh : rh; }\n"_sl);
+	builder.Append("compile_const s32 Max(s32 lh, s32 rh) { return lh > rh ? lh : rh; }\n"_sl);
+	builder.Append("compile_const s16 Min(s16 lh, s16 rh) { return lh < rh ? lh : rh; }\n"_sl);
+	builder.Append("compile_const s16 Max(s16 lh, s16 rh) { return lh > rh ? lh : rh; }\n"_sl);
+	builder.Append("compile_const s8  Min(s8  lh, s8  rh) { return lh < rh ? lh : rh; }\n"_sl);
+	builder.Append("compile_const s8  Max(s8  lh, s8  rh) { return lh > rh ? lh : rh; }\n\n"_sl);
 	
-	builder.Append("inline float Min(float lh, float rh) { return lh < rh ? lh : rh; }\n"_sl);
-	builder.Append("inline float Max(float lh, float rh) { return lh > rh ? lh : rh; }\n\n"_sl);
+	builder.Append("compile_const float Min(float lh, float rh) { return lh < rh ? lh : rh; }\n"_sl);
+	builder.Append("compile_const float Max(float lh, float rh) { return lh > rh ? lh : rh; }\n\n"_sl);
 	
-	builder.Append("inline float Lerp(float lh, float rh, float t) { return lh * (1.f - t) + rh * t; }\n\n"_sl);
+	builder.Append("compile_const float Lerp(float lh, float rh, float t) { return lh * (1.f - t) + rh * t; }\n\n"_sl);
 }
 
 void WriteCodeForMathLibrary(StackAllocator* alloc) {

@@ -8,7 +8,7 @@
 #include <SDK/DLSS/include/nvsdk_ngx.h>
 #include <SDK/NvAPI/include/nvapi.h>
 
-extern "C" __declspec(dllexport) extern const UINT  D3D12SDKVersion = 618;
+extern "C" __declspec(dllexport) extern const UINT  D3D12SDKVersion = 619;
 extern "C" __declspec(dllexport) extern const char* D3D12SDKPath    = u8".\\D3D12\\";
 
 
@@ -174,6 +174,11 @@ GraphicsContext* CreateGraphicsContext(StackAllocator* alloc) {
 		
 		context->shader_compiler = CreateShaderCompiler(alloc, root_signature_filenames, shader_definition_table, context->pipeline_definitions);
 		SaveLoadShaderCache(context->shader_compiler, alloc, SaveLoadDirection::Loading);
+		
+		u8* shader_identifier_cpu_address = nullptr;
+		context->shader_identifier_buffer      = CreateBufferResource(context, (u32)context->pipeline_definitions.count * shader_identifier_stride, CreateResourceFlags::Upload, &shader_identifier_cpu_address);
+		context->shader_identifier_cpu_address = shader_identifier_cpu_address;
+		context->shader_identifier_gpu_address = context->shader_identifier_buffer.d3d12->GetGPUVirtualAddress();
 		
 		BuildRootSignatures(context, alloc, root_signature_streams, root_signature_filenames);
 		BuildPipelineStates(context, alloc, false);
@@ -457,6 +462,58 @@ static void CreateGraphicsPipelineState(GraphicsContextD3D12* context, const Pip
 	context->pipeline_state_table[pipeline_state_index] = new_pipeline_state;
 }
 
+static void CreateRaytracingPipelineState(GraphicsContextD3D12* context, const ShaderBytecode& bytecode, u32 root_signature_index, u32 pipeline_state_index) {
+	ProfilerScope("CreateRaytracingPipelineState");
+	
+	D3D12_EXPORT_DESC dxil_export = {};
+	dxil_export.Name           = L"MainRG";
+	dxil_export.ExportToRename = nullptr;
+	dxil_export.Flags          = D3D12_EXPORT_FLAG_NONE;
+	
+	D3D12_DXIL_LIBRARY_DESC dxil_library = {};
+	dxil_library.DXILLibrary.pShaderBytecode = bytecode[(u32)ShaderType::RayGenShader].data;
+	dxil_library.DXILLibrary.BytecodeLength  = bytecode[(u32)ShaderType::RayGenShader].count;
+	dxil_library.NumExports = 1;
+	dxil_library.pExports   = &dxil_export;
+	
+	D3D12_GLOBAL_ROOT_SIGNATURE global_root_signature = {};
+	global_root_signature.pGlobalRootSignature = context->root_signature_table[root_signature_index];
+	
+	D3D12_RAYTRACING_SHADER_CONFIG shader_config = {};
+	shader_config.MaxPayloadSizeInBytes   = 0;
+	shader_config.MaxAttributeSizeInBytes = 0;
+	
+	D3D12_RAYTRACING_PIPELINE_CONFIG1 pipeline_config = {};
+	pipeline_config.MaxTraceRecursionDepth = 0;
+	pipeline_config.Flags                  = D3D12_RAYTRACING_PIPELINE_FLAG_NONE;
+	
+	FixedCapacityArray<D3D12_STATE_SUBOBJECT, 4> subobjects = {};
+	ArrayAppend(subobjects, { D3D12_STATE_SUBOBJECT_TYPE_DXIL_LIBRARY,                &dxil_library          });
+	ArrayAppend(subobjects, { D3D12_STATE_SUBOBJECT_TYPE_GLOBAL_ROOT_SIGNATURE,       &global_root_signature });
+	ArrayAppend(subobjects, { D3D12_STATE_SUBOBJECT_TYPE_RAYTRACING_SHADER_CONFIG,    &shader_config         });
+	ArrayAppend(subobjects, { D3D12_STATE_SUBOBJECT_TYPE_RAYTRACING_PIPELINE_CONFIG1, &pipeline_config       });
+	
+	D3D12_STATE_OBJECT_DESC desc = {};
+	desc.Type          = D3D12_STATE_OBJECT_TYPE_RAYTRACING_PIPELINE;
+	desc.NumSubobjects = (u32)subobjects.count;
+	desc.pSubobjects   = subobjects.data;
+	
+	ID3D12StateObject* new_pipeline_state = nullptr;
+	if (FAILED(context->device->CreateStateObject(&desc, IID_PPV_ARGS(&new_pipeline_state)))) {
+		DebugAssertAlways("Failed to create raytracing pipeline state.");
+		return;
+	}
+	
+	ID3D12StateObjectProperties* properties = nullptr;
+	new_pipeline_state->QueryInterface(IID_PPV_ARGS(&properties));
+	
+	memcpy(context->shader_identifier_cpu_address + pipeline_state_index * shader_identifier_stride, properties->GetShaderIdentifier(dxil_export.Name), D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES);
+	SafeRelease(properties);
+	
+	SafeRelease(context->pipeline_state_table[pipeline_state_index]);
+	context->pipeline_state_table[pipeline_state_index] = new_pipeline_state;
+}
+
 static void BuildPipelineStates(GraphicsContextD3D12* context, StackAllocator* alloc, bool build_only_dirty_pipelines) {
 	ProfilerScope("BuildPipelineStates");
 	
@@ -470,6 +527,8 @@ static void BuildPipelineStates(GraphicsContextD3D12* context, StackAllocator* a
 		auto& definition = context->pipeline_definitions[i];
 		if (HasAnyFlags(definition.shader_type_mask, ShaderTypeMask::ComputeShader)) {
 			CreateComputePipelineState(context, bytecode, definition.root_signature_id.index, i);
+		} else if (HasAnyFlags(definition.shader_type_mask, ShaderTypeMask::RayGenShader)) {
+			CreateRaytracingPipelineState(context, bytecode, definition.root_signature_id.index, i);
 		} else {
 			auto pipeline_state_description = CreatePipelineStateDescription(definition.pipeline_state_stream);
 			CreateGraphicsPipelineState(context, pipeline_state_description, bytecode, definition.root_signature_id.index, i);
@@ -626,6 +685,7 @@ void ReleaseGraphicsContext(GraphicsContext* api_context, StackAllocator* alloc)
 	SaveLoadShaderCache(context->shader_compiler, alloc, SaveLoadDirection::Saving);
 	ReleaseShaderCompiler(context->shader_compiler);
 	
+	SafeRelease(context->shader_identifier_buffer.d3d12);
 	for (auto& root_signature : context->root_signature_table) SafeRelease(root_signature);
 	for (auto& pipeline_state : context->pipeline_state_table) SafeRelease(pipeline_state);
 	

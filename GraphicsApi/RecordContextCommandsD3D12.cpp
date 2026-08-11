@@ -262,6 +262,16 @@ static void CmdDispatchMeshD3D12(CmdDispatchMeshPacket* packet, ID3D12GraphicsCo
 	command_list->DispatchMesh(packet->group_count.x, packet->group_count.y, packet->group_count.z);
 }
 
+static void CmdDispatchRaysD3D12(CmdDispatchRaysPacket* packet, ID3D12GraphicsCommandList7* command_list, GraphicsContextD3D12* context) {
+	D3D12_DISPATCH_RAYS_DESC desc = {};
+	desc.RayGenerationShaderRecord.StartAddress = context->shader_identifier_gpu_address + packet->pipeline_index * shader_identifier_stride;
+	desc.RayGenerationShaderRecord.SizeInBytes  = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES;
+	desc.Width  = packet->group_count.x;
+	desc.Height = packet->group_count.y;
+	desc.Depth  = packet->group_count.z;
+	command_list->DispatchRays(&desc);
+}
+
 static void CmdDrawInstancedD3D12(CmdDrawInstancedPacket* packet, ID3D12GraphicsCommandList7* command_list) {
 	command_list->DrawInstanced(packet->vertex_count_per_instance, packet->instance_count, packet->start_vertex_location, packet->start_instance_location);
 }
@@ -530,7 +540,11 @@ static void CmdSetRootSignatureD3D12(CmdSetRootSignaturePacket* packet, ID3D12Gr
 }
 
 static void CmdSetPipelineStateD3D12(CmdSetPipelineStatePacket* packet, ID3D12GraphicsCommandList7* command_list, GraphicsContextD3D12* context) {
-	command_list->SetPipelineState(context->pipeline_state_table[packet->pipeline_id.index]);
+	if (HasAnyFlags(packet->pipeline_id.stages_mask, PipelineStagesMask::RayGenShader)) {
+		command_list->SetPipelineState1((ID3D12StateObject*)context->pipeline_state_table[packet->pipeline_id.index]);
+	} else {
+		command_list->SetPipelineState((ID3D12PipelineState*)context->pipeline_state_table[packet->pipeline_id.index]);
+	}
 }
 
 static void CmdSetDescriptorTableD3D12(CmdSetDescriptorTablePacket* packet, ID3D12GraphicsCommandList7* command_list, GraphicsContextD3D12* context) {
@@ -762,6 +776,7 @@ static void ResolveTextureAccess(D3D12_BARRIER_SYNC& sync, D3D12_BARRIER_ACCESS&
 	if (stages_mask & (u32)PipelineStagesMask::ComputeShader) sync |= D3D12_BARRIER_SYNC_COMPUTE_SHADING;
 	if (stages_mask & (u32)PipelineStagesMask::PixelShader)   sync |= D3D12_BARRIER_SYNC_PIXEL_SHADING;
 	if (stages_mask & (u32)PipelineStagesMask::VertexShader)  sync |= D3D12_BARRIER_SYNC_VERTEX_SHADING;
+	if (stages_mask & (u32)PipelineStagesMask::RayGenShader)  sync |= D3D12_BARRIER_SYNC_RAYTRACING;
 	if (stages_mask & (u32)PipelineStagesMask::Copy)          sync |= D3D12_BARRIER_SYNC_COPY;
 	if (stages_mask & (u32)PipelineStagesMask::RenderTarget)  sync |= D3D12_BARRIER_SYNC_RENDER_TARGET;
 	if (stages_mask & (u32)PipelineStagesMask::DepthStencil)  sync |= D3D12_BARRIER_SYNC_DEPTH_STENCIL;
@@ -897,6 +912,7 @@ static void ResolveBufferAccess(D3D12_BARRIER_SYNC& sync, D3D12_BARRIER_ACCESS& 
 	if (stages_mask & (u32)PipelineStagesMask::ComputeShader) sync |= D3D12_BARRIER_SYNC_COMPUTE_SHADING;
 	if (stages_mask & (u32)PipelineStagesMask::PixelShader)   sync |= D3D12_BARRIER_SYNC_PIXEL_SHADING;
 	if (stages_mask & (u32)PipelineStagesMask::VertexShader)  sync |= D3D12_BARRIER_SYNC_VERTEX_SHADING;
+	if (stages_mask & (u32)PipelineStagesMask::RayGenShader)  sync |= D3D12_BARRIER_SYNC_RAYTRACING;
 	if (stages_mask & (u32)PipelineStagesMask::Copy)          sync |= D3D12_BARRIER_SYNC_COPY;
 	if (stages_mask & (u32)PipelineStagesMask::IndirectArguments) sync |= D3D12_BARRIER_SYNC_EXECUTE_INDIRECT;
 	if (stages_mask & (u32)PipelineStagesMask::RtasBuild)     sync |= D3D12_BARRIER_SYNC_BUILD_RAYTRACING_ACCELERATION_STRUCTURE;
@@ -1173,6 +1189,7 @@ void ReplayRecordContext(GraphicsContext* api_context, RecordContext* record_con
 				case CommandType::Jump: command_memory = ((CmdJumpPacket*)packet)->command_memory; break;
 				case CommandType::Dispatch:             CmdDispatchD3D12((CmdDispatchPacket*)packet, command_list); break;
 				case CommandType::DispatchMesh:         CmdDispatchMeshD3D12((CmdDispatchMeshPacket*)packet, command_list); break;
+				case CommandType::DispatchRays:         CmdDispatchRaysD3D12((CmdDispatchRaysPacket*)packet, command_list, context); break;
 				case CommandType::DrawInstanced:        CmdDrawInstancedD3D12((CmdDrawInstancedPacket*)packet, command_list); break;
 				case CommandType::DrawIndexedInstanced: CmdDrawIndexedInstancedD3D12((CmdDrawIndexedInstancedPacket*)packet, command_list); break;
 				case CommandType::ExecuteIndirect:      CmdExecuteIndirectD3D12((CmdExecuteIndirectPacket*)packet, command_list, context, resources); break;

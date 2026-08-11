@@ -159,7 +159,7 @@ MultipleScatteringValues IntegrateMultipleScattering(float3 planet_space_positio
 		float3 up_vector = position / coordinates.view_height;
 		coordinates.cos_view_zenith_angle = dot(planet_space_sun_direction, up_vector);
 		
-		float2 transmittance_lut_uv = TransmittanceLutCoordinatesToUv(atmosphere, coordinates);
+		float2 transmittance_lut_uv = TransmittanceLutCoordinatesToUv(scene.atmosphere, coordinates);
 		float3 transmittance_to_light = transmittance_lut.SampleLevel(sampler_linear_clamp, transmittance_lut_uv, 0);
 		
 		float n_dot_l = saturate(dot(normalize(up_vector), normalize(planet_space_sun_direction)));

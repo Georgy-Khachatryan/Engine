@@ -192,6 +192,21 @@ void CmdDispatchMesh(RecordContext* record_context, const uint3& group_count_xyz
 	CmdDispatchMesh(record_context, group_count_xyz.x, group_count_xyz.y, group_count_xyz.z);
 }
 
+void CmdDispatchRays(RecordContext* record_context, u32 group_count_x, u32 group_count_y, u32 group_count_z) {
+	auto& packet = AppendPacket<CmdDispatchRaysPacket>(record_context);
+	packet.group_count = uint3(group_count_x, group_count_y, group_count_z);
+	packet.pipeline_index = record_context->state_cache.pipeline_index;
+	AppendResourceBindings(record_context);
+}
+
+void CmdDispatchRays(RecordContext* record_context, uint2 group_count_xy, u32 group_count_z) {
+	CmdDispatchRays(record_context, group_count_xy.x, group_count_xy.y, group_count_z);
+}
+
+void CmdDispatchRays(RecordContext* record_context, const uint3& group_count_xyz) {
+	CmdDispatchRays(record_context, group_count_xyz.x, group_count_xyz.y, group_count_xyz.z);
+}
+
 void CmdDrawInstanced(RecordContext* record_context, u32 vertex_count_per_instance, u32 instance_count, u32 start_vertex_location, u32 start_instance_location) {
 	auto& packet = AppendPacket<CmdDrawInstancedPacket>(record_context);
 	packet.vertex_count_per_instance = vertex_count_per_instance;
@@ -409,6 +424,8 @@ void CmdSetPipelineState(RecordContext* record_context, PipelineID pipeline_id) 
 		state_cache.stages_mask  = pipeline_id.stages_mask;
 		state_cache.is_dirty = true;
 	}
+	
+	state_cache.pipeline_index = pipeline_id.index;
 }
 
 void CmdSetDescriptorTable(RecordContext* record_context, u32 offset, HLSL::BaseDescriptorTable& descriptor_table) {

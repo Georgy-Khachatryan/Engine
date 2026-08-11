@@ -464,8 +464,7 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	}
 	
 	if (renderer_world.reference_path_tracer_percent != 0.f) {
-		auto& refernece_path_tracer = render_passes.Add<ReferencePathTracerRenderPass>();
-		refernece_path_tracer.mode = renderer_world.reference_path_tracer_mode;
+		render_passes.Add<ReferencePathTracerRenderPass>();
 	}
 	
 	

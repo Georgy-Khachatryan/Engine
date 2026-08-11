@@ -7,30 +7,31 @@ enum struct CommandType : u16 {
 	Jump                  = 1,
 	Dispatch              = 2,
 	DispatchMesh          = 3,
-	DrawInstanced         = 4,
-	DrawIndexedInstanced  = 5,
-	ExecuteIndirect       = 6,
-	BuildMeshletRTAS      = 7,
-	MoveMeshletRTAS       = 8,
-	BuildMeshletBLAS      = 9,
-	BuildTLAS             = 10,
-	CopyBufferToTexture   = 11,
-	CopyBufferToBuffer    = 12,
-	ClearRenderTarget     = 13,
-	ClearDepthStencil     = 14,
-	SetRenderTargets      = 15,
-	SetViewport           = 16,
-	SetScissor            = 17,
-	SetIndexBufferView    = 18,
-	SetRootSignature      = 19,
-	SetPipelineState      = 20,
-	SetDescriptorTable    = 21,
-	SetPushConstants      = 22,
-	SetConstantBuffer     = 23,
-	BeginProfilerScope    = 24,
-	EndProfilerScope      = 25,
-	DispatchXeSS          = 26,
-	DispatchDLSS          = 27,
+	DispatchRays          = 4,
+	DrawInstanced         = 5,
+	DrawIndexedInstanced  = 6,
+	ExecuteIndirect       = 7,
+	BuildMeshletRTAS      = 8,
+	MoveMeshletRTAS       = 9,
+	BuildMeshletBLAS      = 10,
+	BuildTLAS             = 11,
+	CopyBufferToTexture   = 12,
+	CopyBufferToBuffer    = 13,
+	ClearRenderTarget     = 14,
+	ClearDepthStencil     = 15,
+	SetRenderTargets      = 16,
+	SetViewport           = 17,
+	SetScissor            = 18,
+	SetIndexBufferView    = 19,
+	SetRootSignature      = 20,
+	SetPipelineState      = 21,
+	SetDescriptorTable    = 22,
+	SetPushConstants      = 23,
+	SetConstantBuffer     = 24,
+	BeginProfilerScope    = 25,
+	EndProfilerScope      = 26,
+	DispatchXeSS          = 27,
+	DispatchDLSS          = 28,
 	
 	Count
 };
@@ -56,6 +57,13 @@ struct CmdDispatchMeshPacket : RecordContextCommandPacket {
 	compile_const CommandType my_type = CommandType::DispatchMesh;
 	
 	uint3 group_count;
+};
+
+struct CmdDispatchRaysPacket : RecordContextCommandPacket {
+	compile_const CommandType my_type = CommandType::DispatchRays;
+	
+	uint3 group_count;
+	u32 pipeline_index = 0;
 };
 
 struct CmdDrawInstancedPacket : RecordContextCommandPacket {

@@ -70,6 +70,7 @@ compile_const wchar_t* target_profiles[(u32)ShaderType::Count] = {
 	L"vs_6_8",
 	L"ps_6_8",
 	L"ms_6_8",
+	L"lib_6_9",
 };
 
 compile_const wchar_t* entry_point_names[(u32)ShaderType::Count] = {
@@ -77,6 +78,7 @@ compile_const wchar_t* entry_point_names[(u32)ShaderType::Count] = {
 	L"MainVS",
 	L"MainPS",
 	L"MainMS",
+	L"MainRG",
 };
 
 compile_const wchar_t* shader_type_defines[(u32)ShaderType::Count] = {
@@ -84,6 +86,7 @@ compile_const wchar_t* shader_type_defines[(u32)ShaderType::Count] = {
 	L"VERTEX_SHADER",
 	L"PIXEL_SHADER",
 	L"MESH_SHADER",
+	L"RAYGEN_SHADER",
 };
 
 compile_const String shader_type_names[(u32)ShaderType::Count] = {
@@ -91,6 +94,7 @@ compile_const String shader_type_names[(u32)ShaderType::Count] = {
 	"VS"_sl,
 	"PS"_sl,
 	"MS"_sl,
+	"RG"_sl,
 };
 
 compile_const String shader_directory_path = "./Shaders"_sl;

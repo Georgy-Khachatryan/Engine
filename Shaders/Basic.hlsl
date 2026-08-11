@@ -14,6 +14,7 @@ SamplerState sampler_max_clamp     : register(s6);
 
 #define compile_const static const
 #define ThreadGroupSize(x, y, z) numthreads(x, y, z)
+#define RayGenShader() shader("raygeneration")
 
 using u16 = uint16_t;
 using s16 = int16_t;

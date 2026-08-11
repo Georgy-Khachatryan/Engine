@@ -68,6 +68,7 @@ Array<PipelineDefinition> GatherPipelineDefinitions(StackAllocator* alloc);
 
 PipelineID CreateComputePipeline(PipelineLibrary* lib, ShaderID shader_id, u64 permutation = 0);
 PipelineID CreateGraphicsPipeline(PipelineLibrary* lib, ArrayView<u8> pipeline_state_stream, ShaderID shader_id, u64 permutation = 0, ShaderTypeMask shader_type_mask = ShaderTypeMask::VertexShader | ShaderTypeMask::PixelShader);
+PipelineID CreateRaytracingPipeline(PipelineLibrary* lib, ShaderID shader_id, u64 permutation = 0);
 PipelineStateDescription CreatePipelineStateDescription(ArrayView<u8> stream);
 
 template<typename ShadersEnumT>
@@ -83,6 +84,11 @@ PipelineID CreateGraphicsPipeline(PipelineLibrary* lib, PipelineStateDescription
 template<typename PipelineStateDescriptionT>
 PipelineID CreateGraphicsPipeline(PipelineLibrary* lib, PipelineStateDescriptionT& pipeline_state_description, ShaderID shader_id) {
 	return CreateGraphicsPipeline(lib, { (u8*)&pipeline_state_description, sizeof(pipeline_state_description) }, shader_id);
+}
+
+template<typename ShadersEnumT>
+PipelineID CreateRaytracingPipeline(PipelineLibrary* lib, ShaderID shader_id, ShadersEnumT permutation) {
+	return CreateRaytracingPipeline(lib, shader_id, (u64)permutation);
 }
 
 struct VirtualResourceTable {

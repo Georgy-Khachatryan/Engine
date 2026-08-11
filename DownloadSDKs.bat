@@ -1,8 +1,8 @@
 
 mkdir Intermediate
 mkdir Intermediate\Downloads
-curl -o Intermediate/Downloads/dxc.zip -L https://github.com/microsoft/DirectXShaderCompiler/releases/download/v1.8.2505.1/dxc_2025_07_14.zip
-curl -o Intermediate/Downloads/D3D12.zip -L https://www.nuget.org/api/v2/package/Microsoft.Direct3D.D3D12/1.618.1
+curl -o Intermediate/Downloads/dxc.zip -L https://github.com/microsoft/DirectXShaderCompiler/releases/download/v1.9.2602.24/dxc_2026_05_27.zip
+curl -o Intermediate/Downloads/D3D12.zip -L https://www.nuget.org/api/v2/package/Microsoft.Direct3D.D3D12/1.619.5
 curl -o Intermediate/Downloads/WinPixEventRuntime.zip -L https://www.nuget.org/api/v2/package/WinPixEventRuntime/1.0.240308001
 curl -o Intermediate/Downloads/DLSS.zip -L https://github.com/NVIDIA/DLSS/archive/refs/tags/v310.5.0.zip
 curl -o Intermediate/Downloads/XeSS.zip -L https://github.com/intel/xess/releases/download/v2.1.1/XeSS_SDK_2.1.1.zip

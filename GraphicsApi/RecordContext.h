@@ -23,6 +23,7 @@ struct RecordContextStateCache {
 	VirtualResourceID depth_stencil = (VirtualResourceID)0;
 	
 	CommandQueueType current_render_pass_type = CommandQueueType::Graphics;
+	u32 pipeline_index = 0;
 	PipelineStagesMask stages_mask = PipelineStagesMask::None;
 	DepthStencilAccess depth_stencil_access = DepthStencilAccess::None;
 	u8 command_list_index = 0;
@@ -66,6 +67,9 @@ void CmdDispatch(RecordContext* record_context, const uint3& group_count_xyz);
 void CmdDispatchMesh(RecordContext* record_context, u32 group_count_x = 1, u32 group_count_y = 1, u32 group_count_z = 1);
 void CmdDispatchMesh(RecordContext* record_context, uint2 group_count_xy, u32 group_count_z = 1);
 void CmdDispatchMesh(RecordContext* record_context, const uint3& group_count_xyz);
+void CmdDispatchRays(RecordContext* record_context, u32 group_count_x = 1, u32 group_count_y = 1, u32 group_count_z = 1);
+void CmdDispatchRays(RecordContext* record_context, uint2 group_count_xy, u32 group_count_z = 1);
+void CmdDispatchRays(RecordContext* record_context, const uint3& group_count_xyz);
 void CmdDrawInstanced(RecordContext* record_context, u32 vertex_count_per_instance, u32 instance_count = 1, u32 start_vertex_location = 0, u32 start_instance_location = 0);
 void CmdDrawIndexedInstanced(RecordContext* record_context, u32 index_count_per_instance, u32 instance_count = 1, u32 start_index_location = 0, u32 base_vertex_location = 0, u32 start_instance_location = 0);
 void CmdDispatchIndirect(RecordContext* record_context, GpuAddress indirect_arguments);

@@ -10,6 +10,7 @@
 
 compile_const u32 rtv_descriptor_count = 256;
 compile_const u32 dsv_descriptor_count = 256;
+compile_const u32 shader_identifier_stride = Math::Max(D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES, D3D12_RAYTRACING_SHADER_TABLE_BYTE_ALIGNMENT);
 
 enum struct DescriptorHeapType : u32 { 
 	SRV = 0,
@@ -59,12 +60,16 @@ struct GraphicsContextD3D12 : GraphicsContext {
 	u32 srv_heap_offset = 0;
 	
 	Array<ID3D12RootSignature*> root_signature_table;
-	Array<ID3D12PipelineState*> pipeline_state_table;
+	Array<ID3D12Pageable*>      pipeline_state_table;
 	ArrayView<PipelineDefinition> pipeline_definitions;
 	
 	Array<ID3D12Pageable*> release_queue_last_frame;
 	Array<ID3D12Pageable*> release_queue_this_frame;
 	Array<ID3D12Pageable*> release_queue_next_frame;
+	
+	u8* shader_identifier_cpu_address = nullptr;
+	u64 shader_identifier_gpu_address = 0;
+	NativeBufferResource shader_identifier_buffer;
 };
 
 extern void ProfilerBeginScope(const char* label, ID3D12GraphicsCommandList* command_list);

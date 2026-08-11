@@ -48,6 +48,7 @@ enum struct ShaderType : u32 {
 	VertexShader  = 1,
 	PixelShader   = 2,
 	MeshShader    = 3,
+	RayGenShader  = 4,
 	
 	Count
 };
@@ -58,6 +59,7 @@ enum struct ShaderTypeMask : u32 {
 	VertexShader  = 1u << (u32)ShaderType::VertexShader,
 	PixelShader   = 1u << (u32)ShaderType::PixelShader,
 	MeshShader    = 1u << (u32)ShaderType::MeshShader,
+	RayGenShader  = 1u << (u32)ShaderType::RayGenShader,
 };
 ENUM_FLAGS_OPERATORS(ShaderTypeMask);
 
@@ -163,14 +165,15 @@ enum struct PipelineStagesMask : u16 {
 	ComputeShader     = 1u << 0,
 	VertexShader      = 1u << 1,
 	PixelShader       = 1u << 2,
-	AnyShader         = ComputeShader | VertexShader | PixelShader,
-	Copy              = 1u << 3,
-	RenderTarget      = 1u << 4,
-	DepthStencilRO    = 1u << 5,
-	DepthStencilRW    = 1u << 6,
+	RayGenShader      = 1u << 3,
+	AnyShader         = ComputeShader | VertexShader | PixelShader | RayGenShader,
+	Copy              = 1u << 4,
+	RenderTarget      = 1u << 5,
+	DepthStencilRO    = 1u << 6,
+	DepthStencilRW    = 1u << 7,
 	DepthStencil      = DepthStencilRO | DepthStencilRW,
-	IndirectArguments = 1u << 7,
-	RtasBuild         = 1u << 8,
+	IndirectArguments = 1u << 8,
+	RtasBuild         = 1u << 9,
 };
 ENUM_FLAGS_OPERATORS(PipelineStagesMask);
 

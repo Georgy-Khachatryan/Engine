@@ -988,8 +988,6 @@ NOTES(Meta::RenderPass{})
 struct ReferencePathTracerRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
-	ReferencePathTracerMode mode = ReferencePathTracerMode::Accumulation;
-	
 	struct Descriptors : HLSL::BaseDescriptorTable {
 		HLSL::Texture2D<float3>                     ggx_single_scattering_energy_lut = VirtualResourceID::GgxSingleScatteringEnergyLUT;
 		HLSL::Texture2D<float3>                     sky_panorama_lut      = VirtualResourceID::SkyPanoramaLut;
@@ -1009,11 +1007,6 @@ struct ReferencePathTracerRenderPass {
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {
-		struct PushConstants {
-			ReferencePathTracerMode mode = ReferencePathTracerMode::Accumulation;
-		};
-		
-		HLSL::PushConstantBuffer<PushConstants> constants;
 		HLSL::ConstantBuffer<SceneConstants> scene;
 		HLSL::DescriptorTable<Descriptors> descriptor_table;
 	};

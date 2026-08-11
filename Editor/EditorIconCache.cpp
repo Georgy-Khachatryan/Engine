@@ -364,10 +364,9 @@ void EditorIconCacheUpdate(StackAllocator* alloc, EditorIconCache* icon_cache, A
 	
 	if (rendering_icon_index != u32_max) {
 		auto renderer_world = world_entity.renderer_world;
-		renderer_world->window_size                  = float2(icon_size_pixels, icon_size_pixels);
+		renderer_world->window_size                  = float2(icon_size_pixels, icon_size_pixels) * 4.f;
 		renderer_world->delta_time                   = ImGui::GetIO().DeltaTime;
 		renderer_world->debug_mesh_instance_arrays   = draw_list_3d.Flush();
-		renderer_world->reference_path_tracer_mode   = ReferencePathTracerMode::WavePerPixel;
 		renderer_world->reference_path_tracer_percent = 1.f;
 		
 		auto& output_settings = renderer_world->output_settings;
