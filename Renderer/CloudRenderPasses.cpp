@@ -66,7 +66,8 @@ void CompositeCloudVolumeRenderPass::RecordPass(RecordContext* record_context) {
 	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
 	CmdSetRootArgument(record_context, root_signature.scene, VirtualResourceID::SceneConstants);
 	
-	CmdDispatchIndirect(record_context, GpuAddress(VirtualResourceID::CloudCullingIndirectArguments, CloudCullingConstants::culling_command_bin_count * sizeof(uint4)));
+	u32 indirect_arguments_offset = (u32)CloudCullingIndirectArgumentsLayout::CoarseCloudUpdateList;
+	CmdDispatchIndirect(record_context, GpuAddress(VirtualResourceID::CloudCullingIndirectArguments, indirect_arguments_offset * sizeof(uint4)));
 }
 
 void BuildCloudVolumeMaskRenderPass::CreatePipelines(PipelineLibrary* lib) {
@@ -83,3 +84,53 @@ void BuildCloudVolumeMaskRenderPass::RecordPass(RecordContext* record_context) {
 	
 	CmdDispatch(record_context, DivideAndRoundUp(CloudConstants::cloud_volume_size / 4u, 4u));
 }
+
+
+void CloudRaymarchRenderPass::CreatePipelines(PipelineLibrary* lib) {
+	pipeline_id = CreateComputePipeline(lib, CloudRaymarchShadersID, CloudRaymarchShaders::CloudRaymarch);
+}
+
+void CloudRaymarchRenderPass::RecordPass(RecordContext* record_context) {
+	auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
+	CmdSetRootSignature(record_context, root_signature);
+	CmdSetPipelineState(record_context, pipeline_id);
+	
+	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
+	CmdSetRootArgument(record_context, root_signature.scene, VirtualResourceID::SceneConstants);
+	
+	auto render_target_size = GetTextureSize(record_context, VirtualResourceID::SceneRadiance);
+	CmdDispatch(record_context, DivideAndRoundUp(uint2(render_target_size), 16u));
+}
+
+void CloudOpticalDepthVolumeRenderPass::CreatePipelines(PipelineLibrary* lib) {
+	pipeline_id = CreateComputePipeline(lib, CloudRaymarchShadersID, CloudRaymarchShaders::OpticalDepthVolume);
+}
+
+void CloudOpticalDepthVolumeRenderPass::RecordPass(RecordContext* record_context) {
+	auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
+	CmdSetRootSignature(record_context, root_signature);
+	CmdSetPipelineState(record_context, pipeline_id);
+	
+	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
+	CmdSetRootArgument(record_context, root_signature.scene, VirtualResourceID::SceneConstants);
+	
+	u32 indirect_arguments_offset = (u32)CloudCullingIndirectArgumentsLayout::FineCloudUpdateList;
+	CmdDispatchIndirect(record_context, GpuAddress(VirtualResourceID::CloudCullingIndirectArguments, indirect_arguments_offset * sizeof(uint4)));
+}
+
+void CloudRadianceTransferVolumeRenderPass::CreatePipelines(PipelineLibrary* lib) {
+	pipeline_id = CreateComputePipeline(lib, CloudRaymarchShadersID, CloudRaymarchShaders::RadianceTransferVolume);
+}
+
+void CloudRadianceTransferVolumeRenderPass::RecordPass(RecordContext* record_context) {
+	auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
+	CmdSetRootSignature(record_context, root_signature);
+	CmdSetPipelineState(record_context, pipeline_id);
+	
+	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
+	CmdSetRootArgument(record_context, root_signature.scene, VirtualResourceID::SceneConstants);
+	
+	u32 indirect_arguments_offset = (u32)CloudCullingIndirectArgumentsLayout::FineCloudUpdateList;
+	CmdDispatchIndirect(record_context, GpuAddress(VirtualResourceID::CloudCullingIndirectArguments, indirect_arguments_offset * sizeof(uint4)));
+}
+

@@ -363,6 +363,14 @@ float3 CosineWeightedHemisphereMapping(float2 uv) {
 	return float3(disk_sample, sqrt(max(1.0 - Pow2(disk_sample.x) - Pow2(disk_sample.y), 0.0)));
 }
 
+float3 SphereMapping(float2 u) {
+	float cos_theta = u.x * 2.0 - 1.0;
+	float sin_theta = sqrt(max(1.0 - Pow2(cos_theta), 0.0));
+	float phi = u.y * TAU;
+	
+	return float3(sin_theta * cos(phi), sin_theta * sin(phi), cos_theta);
+}
+
 float TriangleSolidAngle(float3 p0, float3 p1, float3 p2) {
 	return atan2(dot(p0, cross(p1, p2)), dot(p0, p1) + dot(p1, p2) + dot(p2, p0) + 1.0) * 2.0;
 }

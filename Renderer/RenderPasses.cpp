@@ -20,8 +20,14 @@ static void BuildResourceTable(RecordContext* record_context, WorldEntitySystem*
 	table.Set(ID::SdfCloudVolumeTransientMask, TextureSize(TextureFormat::R8_UINT,     CloudConstants::cloud_volume_size / 4u));
 	table.Set(ID::SdfCloudVolumeMask,          TextureSize(TextureFormat::R32G32_UINT, CloudConstants::cloud_volume_size / 16u));
 	
+	table.Set(ID::CloudOpticalDepthVolume,      TextureSize(TextureFormat::R16_FLOAT,   CloudConstants::cloud_volume_size / 2u));
+	table.Set(ID::CloudRadianceTransferVolume0, TextureSize(TextureFormat::R16G16_FLOAT, CloudConstants::cloud_volume_size / 2u));
+	table.Set(ID::CloudRadianceTransferVolume1, TextureSize(TextureFormat::R16G16_FLOAT, CloudConstants::cloud_volume_size / 2u));
+	
+	table.SwapHistory(ID::CloudRadianceTransferVolume0, ID::CloudRadianceTransferVolume1);
+	
 	table.Set(ID::CloudCullingCommands,          CloudCullingConstants::culling_command_count    * sizeof(uint2));
-	table.Set(ID::CloudCullingIndirectArguments, CloudCullingConstants::indirect_arguments_count * sizeof(uint4));
+	table.Set(ID::CloudCullingIndirectArguments, (u32)CloudCullingIndirectArgumentsLayout::Count * sizeof(uint4));
 	table.Set(ID::CloudCullingGrid,              CloudCullingConstants::grid_element_count       * sizeof(u32));
 	
 	table.Set(ID::VisibleMeshlets,             MeshletConstants::visible_meshlet_buffer_size         * sizeof(uint2));
@@ -442,6 +448,9 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	
 	
 	render_passes.Add<AtmosphereCompositeRenderPass>();
+	render_passes.Add<CloudOpticalDepthVolumeRenderPass>();
+	render_passes.Add<CloudRadianceTransferVolumeRenderPass>();
+	
 	
 	auto& copy_meshlet_culling_statistics = render_passes.Add<CopyMeshletCullingStatisticsRenderPass>();
 	copy_meshlet_culling_statistics.readback_queue = &renderer_world.meshlet_culling_statistics_readback_queue;
@@ -472,6 +481,8 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 		render_passes.Add<LightingTemporalDenoiserRenderPass>();
 		render_passes.Add<LightingSpatialDenoiserRenderPass>();
 	}
+	
+	render_passes.Add<CloudRaymarchRenderPass>();
 	
 	if (renderer_world.reference_path_tracer_percent != 0.f) {
 		render_passes.Add<ReferencePathTracerRenderPass>();

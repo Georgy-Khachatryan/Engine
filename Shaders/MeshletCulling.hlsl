@@ -90,7 +90,7 @@ void MainCS(uint thread_id : SV_DispatchThreadID) {
 		light_culling_grid[thread_id] = 0;
 	}
 	
-	if (thread_id < CloudCullingConstants::indirect_arguments_count) {
+	if (thread_id < CloudCullingIndirectArgumentsLayout::Count) {
 		cloud_culling_indirect_arguments[thread_id] = uint4(0, 1, 1, 0);
 	}
 	

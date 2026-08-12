@@ -1,5 +1,7 @@
 #include "Basic.hlsl"
 
+using IndirectArgumentsLayout = CloudCullingIndirectArgumentsLayout;
+
 #if defined(CLOUD_ENTITY_CULLING)
 compile_const uint thread_group_size = CloudCullingConstants::thread_group_size;
 
@@ -13,7 +15,7 @@ void AppendCloudCullingCommand(uint cloud_entity_index, uint aabb_volume_offset,
 		uint bin_base_offset = bin_index * CloudCullingConstants::culling_command_bin_size;
 		cloud_culling_commands[bin_base_offset + command_index] = culling_command;
 		
-		InterlockedMax(indirect_arguments[bin_index].x, DivideAndRoundUp((command_index + 1) << bin_index, thread_group_size));
+		InterlockedMax(indirect_arguments[bin_index + IndirectArgumentsLayout::CloudCullingCommands].x, DivideAndRoundUp((command_index + 1) << bin_index, thread_group_size));
 	}
 }
 
@@ -126,7 +128,7 @@ void MainCS(uint3 thread_id : SV_DispatchThreadID, uint thread_index : SV_GroupI
 	
 	if (is_occupied) {
 		uint command_index = 0;
-		InterlockedAdd(indirect_arguments[CloudCullingConstants::culling_command_bin_count].x, 8u, command_index);
+		InterlockedAdd(indirect_arguments[IndirectArgumentsLayout::CoarseCloudUpdateList].x, 8u, command_index);
 		
 		cloud_update_list[command_index / 8u] = cell_index;
 	}
@@ -210,6 +212,16 @@ void MainCS(uint3 thread_id : SV_DispatchThreadID, uint thread_index : SV_GroupI
 	
 	if (thread_index == 0) {
 		sdf_cloud_volume_mask[thread_id / 4u] = gs_occupancy_mask;
+	}
+	
+	// Fine cloud update passes run at half volume resolution, so they need 1 4x4x4 thread group for each 8x8x8 full resolution block.
+	bool is_octant_occupied = (thread_index & 0b101010) == thread_index && ((gs_occupancy_mask >> thread_index) & 0x00330033) != 0;
+	if (is_octant_occupied) {
+		uint command_index = 0;
+		InterlockedAdd(indirect_arguments[IndirectArgumentsLayout::FineCloudUpdateList].x, 1u, command_index);
+		
+		thread_id /= 2;
+		cloud_update_list[command_index] = thread_id.x | (thread_id.y << 8) | (thread_id.z << 16);
 	}
 }
 #endif // defined(BUILD_CLOUD_VOLUME_MASK)
