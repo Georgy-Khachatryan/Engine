@@ -153,6 +153,13 @@ struct VirtualResourceTable {
 		return resource_id;
 	}
 	
+	void Reset(VirtualResourceID resource_id) {
+		auto& resource = virtual_resources[(u32)resource_id];
+		DebugAssert(resource.type != VirtualResource::Type::VirtualTexture, "Cannot reset resource of type VirtualTexture at id '%'.", (u32)resource_id);
+		DebugAssert(resource.type != VirtualResource::Type::VirtualBuffer,  "Cannot reset resource of type VirtualBuffer at id '%'.", (u32)resource_id);
+		resource = {};
+	}
+	
 	void SwapHistory(VirtualResourceID primary_resource_id, VirtualResourceID history_resource_id) {
 		Swap(virtual_resources[(u32)primary_resource_id], virtual_resources[(u32)history_resource_id]);
 	}

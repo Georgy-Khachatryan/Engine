@@ -11,7 +11,6 @@ struct VolumetricSceneIntersection {
 // Box is assumed to be in [0, extent] range.
 VolumetricSceneIntersection RayBoxIntersection(float3 ray_origin, float3 ray_direction, float3 extent) {
 	float3 inv_direction = select(abs(ray_direction) < 0.0001, /*nan*/asfloat(0x7FC00000), 1.0 / ray_direction); // See @inv_direction for reference.
-	// float3 inv_direction = 1.0 / ray_direction;
 	
 	float3 t_min = -ray_origin * inv_direction;
 	float3 t_max = extent * inv_direction + t_min;
@@ -39,8 +38,7 @@ float ComputeVolumetricMediumDensity(float3 position) {
 	
 	if (dimensional_profile < (0.5 / 255.0)) return 0.0;
 	
-	Texture3D<float4> density_noise = ResourceDescriptorHeap[scene.clouds.density_noise];
-	float4 noise = density_noise.SampleLevel(sampler_linear_wrap, position * scene.clouds.density_noise_scale, 0);
+	float4 noise = cloud_density_noise.SampleLevel(sampler_linear_wrap, position * scene.clouds.density_noise_scale, 0);
 	
 	float wispy_noise_scale   = 3.33;
 	float billowy_noise_scale = 0.8;
@@ -113,5 +111,29 @@ float VoxelGridSkipEmptySpace(VoxelTraversalState state, float3 direction, float
 	
 	return ray_t * scene.clouds.world_space_size.x;
 }
+
+struct CloudDensitySamplerBase {
+	VoxelTraversalState traversal_state;
+	
+	void BeginTraversal(float3 origin, float3 direction, float ray_t_min, float ray_t_max) {
+		traversal_state = BeginVoxelTraversal(origin, direction, ray_t_min, ray_t_max);
+	}
+	
+	float SkipEmptySpace(float3 direction, float ray_t) {
+		return VoxelGridSkipEmptySpace(traversal_state, direction, ray_t);
+	}
+};
+
+struct CloudDensitySampler : CloudDensitySamplerBase {
+	float SampleDensity(float3 position) {
+		return ComputeVolumetricMediumDensity(position);
+	}
+};
+
+struct SimpleCloudDensitySampler : CloudDensitySamplerBase {
+	float SampleDensity(float3 position) {
+		return ComputeVolumetricMediumDensitySimple(position);
+	}
+};
 
 #endif // CLOUDSAMPLING_HLSL

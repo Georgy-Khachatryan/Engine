@@ -67,11 +67,9 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	float transmittance = 1.0;
 	float cloud_depth = intersection.t_max;
 	
-	uint hash = WyHash32(thread_id.x | (thread_id.y << 16), scene.frame_index);
-	
 	float delta_t = 8.0;
 	ray_t += delta_t * LoadBlueNoise(blue_noise_1d, thread_id, scene.frame_index);
-	for (; ray_t < intersection.t_max; ray_t += delta_t) {
+	for (; (ray_t < intersection.t_max) && (transmittance > (1.0 / 256.0)); ray_t += delta_t) {
 		float3 position = ray_desc.Direction * ray_t + ray_desc.Origin;
 		
 		float density = ComputeVolumetricMediumDensity(position);
@@ -160,6 +158,13 @@ void MainCS(uint group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 #define USE_SIMPLE_DENSITY_SAMPLER
 #include "VolumeSampling.hlsl"
 
+#if defined(USE_SIMPLE_DENSITY_SAMPLER)
+using PassCloudDensitySampler = SimpleCloudDensitySampler;
+#else // !defined(USE_SIMPLE_DENSITY_SAMPLER)
+using PassCloudDensitySampler = CloudDensitySampler;
+#endif // !defined(USE_SIMPLE_DENSITY_SAMPLER)
+
+
 [ThreadGroupSize(64, 1, 1)]
 void MainCS(uint group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	uint update_command = cloud_update_list[group_id];
@@ -183,7 +188,7 @@ void MainCS(uint group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	
 	[loop]
 	for (uint i = 0; i < max_path_length; i += 1) {
-		VolumeInteractionType volume_interaction_type = SampleVolumetricMedium(ray_desc, 1024.0, hash);
+		VolumeInteractionType volume_interaction_type = SampleVolumetricMedium<PassCloudDensitySampler>(ray_desc, 1024.0, hash);
 		
 		if (volume_interaction_type == VolumeInteractionType::Absorption) {
 			i = max_path_length;
@@ -197,7 +202,7 @@ void MainCS(uint group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 			// Might as well use cheap shadows if we're using approximate density sampler.
 			float transmittance = exp(-RaymarchHybridOpticalDepthRay(ray_desc.Origin, scene.atmosphere.world_space_sun_direction));
 #else // !defined(USE_SIMPLE_DENSITY_SAMPLER)
-			float transmittance = TraceVolumetricMediumTransmittanceRay(ray_desc.Origin, scene.atmosphere.world_space_sun_direction, 1024.0, hash);
+			float transmittance = TraceVolumetricMediumTransmittanceRay<PassCloudDensitySampler>(ray_desc.Origin, scene.atmosphere.world_space_sun_direction, 1024.0, hash);
 #endif // !defined(USE_SIMPLE_DENSITY_SAMPLER)
 			
 			radiance_transfer.x += transmittance * phase_function;

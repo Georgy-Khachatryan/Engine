@@ -63,7 +63,6 @@ struct CloudConstants {
 	float extinction_coefficients = 0.f;
 	
 	float scattering_anisotropy = 0.f;
-	u32   density_noise         = u32_max;
 	float density_noise_scale   = 0.f;
 };
 

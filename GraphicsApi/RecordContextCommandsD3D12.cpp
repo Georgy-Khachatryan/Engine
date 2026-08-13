@@ -828,6 +828,8 @@ static void ResolveTextureAccess(D3D12_BARRIER_SYNC& sync, D3D12_BARRIER_ACCESS&
 }
 
 static void CreateTextureBarrier(Array<D3D12_TEXTURE_BARRIER>& barriers, StackAllocator* alloc, VirtualResource& resource, ResourceAccessDefinition* last_access, ResourceAccessDefinition* next_access) {
+	if (resource.texture.resource.d3d12 == nullptr) return;
+	
 	bool is_full_resource_access = true;
 	
 	if (next_access) is_full_resource_access &= HasAnyFlags(next_access->flags, ResourceAccessFlags::IsFullResourceAccess);
@@ -928,7 +930,7 @@ static void ResolveBufferAccess(D3D12_BARRIER_SYNC& sync, D3D12_BARRIER_ACCESS& 
 }
 
 static void CreateBufferBarrier(Array<D3D12_BUFFER_BARRIER>& barriers, VirtualResource& resource, ResourceAccessDefinition* last_access, ResourceAccessDefinition* next_access) {
-	if (last_access == nullptr || next_access == nullptr) return;
+	if (last_access == nullptr || next_access == nullptr || resource.buffer.resource.d3d12 == nullptr) return;
 	if (last_access->command_list_index != next_access->command_list_index) return;
 	
 	D3D12_BUFFER_BARRIER barrier = {};
@@ -936,7 +938,7 @@ static void CreateBufferBarrier(Array<D3D12_BUFFER_BARRIER>& barriers, VirtualRe
 	ResolveBufferAccess(barrier.SyncAfter,  barrier.AccessAfter,  next_access);
 	
 	if (IsAccessTransitionRequiresBarrier(barrier.AccessBefore, barrier.AccessAfter)) {
-		barrier.pResource = resource.texture.resource.d3d12;
+		barrier.pResource = resource.buffer.resource.d3d12;
 		barrier.Offset    = 0;
 		barrier.Size      = u64_max;
 		ArrayAppend(barriers, barrier);

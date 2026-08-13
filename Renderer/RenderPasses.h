@@ -124,6 +124,7 @@ enum struct VirtualResourceID : u32 {
 	SdfCloudVolume,
 	SdfCloudVolumeTransientMask,
 	SdfCloudVolumeMask,
+	CloudDensityNoise,
 	CloudOpticalDepthVolume,
 	CloudRadianceTransferVolume0,
 	CloudRadianceTransferVolume1,
@@ -1006,6 +1007,7 @@ struct ReferencePathTracerRenderPass {
 		HLSL::RegularBuffer<GpuMeshAssetData>       mesh_asset_data       = VirtualResourceID::GpuMeshAssetData;
 		HLSL::RegularBuffer<GpuMeshEntityData>      mesh_entity_data      = VirtualResourceID::GpuMeshEntityData;
 		HLSL::RegularBuffer<GpuMaterialTextureData> material_texture_data = VirtualResourceID::MaterialAssetTextureData;
+		HLSL::Texture3D<float4>                     cloud_density_noise   = VirtualResourceID::CloudDensityNoise;
 		HLSL::Texture3D<float>                      sdf_cloud_volume      = VirtualResourceID::SdfCloudVolume;
 		HLSL::Texture3D<u64>                        sdf_cloud_volume_mask = VirtualResourceID::SdfCloudVolumeMask;
 		HLSL::ByteBuffer                            mesh_asset_buffer     = VirtualResourceID::MeshAssetBuffer;
@@ -1594,6 +1596,7 @@ struct CloudRaymarchRenderPass {
 		HLSL::Texture2D<float>       depth_stencil                  = VirtualResourceID::DepthStencil;
 		HLSL::Texture2D<float3>      sky_panorama_lut               = VirtualResourceID::SkyPanoramaLut;
 		HLSL::Texture2D<float3>      transmittance_lut              = VirtualResourceID::TransmittanceLut;
+		HLSL::Texture3D<float4>      cloud_density_noise            = VirtualResourceID::CloudDensityNoise;
 		HLSL::Texture3D<float>       sdf_cloud_volume               = VirtualResourceID::SdfCloudVolume;
 		HLSL::Texture3D<u64>         sdf_cloud_volume_mask          = VirtualResourceID::SdfCloudVolumeMask;
 		HLSL::Texture3D<float>       cloud_optical_depth_volume     = VirtualResourceID::CloudOpticalDepthVolume;
@@ -1617,6 +1620,7 @@ struct CloudOpticalDepthVolumeRenderPass {
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
 		HLSL::RegularBuffer<u32>     cloud_update_list          = VirtualResourceID::CloudCullingCommands;
+		HLSL::Texture3D<float4>      cloud_density_noise        = VirtualResourceID::CloudDensityNoise;
 		HLSL::Texture3D<float>       sdf_cloud_volume           = VirtualResourceID::SdfCloudVolume;
 		HLSL::Texture3D<u64>         sdf_cloud_volume_mask      = VirtualResourceID::SdfCloudVolumeMask;
 		HLSL::Texture2DArray<float>  blue_noise_1d              = VirtualResourceID::BlueNoise1D;
@@ -1638,6 +1642,7 @@ struct CloudRadianceTransferVolumeRenderPass {
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
 		HLSL::RegularBuffer<u32>  cloud_update_list                = VirtualResourceID::CloudCullingCommands;
+		HLSL::Texture3D<float4>   cloud_density_noise              = VirtualResourceID::CloudDensityNoise;
 		HLSL::Texture3D<float>    sdf_cloud_volume                 = VirtualResourceID::SdfCloudVolume;
 		HLSL::Texture3D<u64>      sdf_cloud_volume_mask            = VirtualResourceID::SdfCloudVolumeMask;
 		HLSL::Texture3D<float>    cloud_optical_depth_volume       = VirtualResourceID::CloudOpticalDepthVolume;

@@ -255,10 +255,12 @@ static void CreateSceneConstants(RecordContext* record_context, uint2 render_tar
 		scene.clouds.density_noise_scale     = 1.f / Math::Max(cloud_settings.density_noise_tiling, 1.f);
 		
 		if (cloud_settings.density_noise.guid != 0) {
-			auto density_noise_texture = QueryEntityByGUID<TextureAssetType>(*asset_system, cloud_settings.density_noise.guid);
-			scene.clouds.density_noise = density_noise_texture.descriptor_allocation->index;
+			auto asset = QueryEntityByGUID<TextureAssetType>(*asset_system, cloud_settings.density_noise.guid);
 			
-			density_noise_texture.cpu_streaming_requests->RequestMinimumResidency(128);
+			record_context->resource_table->Set(VirtualResourceID::CloudDensityNoise, asset.resource_allocation->resource, asset.runtime_data_layout->size);
+			asset.cpu_streaming_requests->RequestMinimumResidency(128);
+		} else {
+			record_context->resource_table->Reset(VirtualResourceID::CloudDensityNoise);
 		}
 	}
 	
@@ -446,10 +448,15 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	
 	render_passes.AddWait(CommandQueueType::Graphics, render_passes.AddSignal(CommandQueueType::Compute)); 
 	
+	{
+		render_passes.PushQueue(CommandQueueType::Compute);
+		defer{ render_passes.PopQueue(); };
+		
+		render_passes.Add<CloudOpticalDepthVolumeRenderPass>();
+		render_passes.Add<CloudRadianceTransferVolumeRenderPass>();
+	}
 	
 	render_passes.Add<AtmosphereCompositeRenderPass>();
-	render_passes.Add<CloudOpticalDepthVolumeRenderPass>();
-	render_passes.Add<CloudRadianceTransferVolumeRenderPass>();
 	
 	
 	auto& copy_meshlet_culling_statistics = render_passes.Add<CopyMeshletCullingStatisticsRenderPass>();
@@ -481,6 +488,8 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 		render_passes.Add<LightingTemporalDenoiserRenderPass>();
 		render_passes.Add<LightingSpatialDenoiserRenderPass>();
 	}
+	
+	render_passes.AddWait(CommandQueueType::Graphics, render_passes.AddSignal(CommandQueueType::Compute)); 
 	
 	render_passes.Add<CloudRaymarchRenderPass>();
 	

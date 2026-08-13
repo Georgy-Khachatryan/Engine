@@ -3,6 +3,7 @@
 #include "Basic.hlsl"
 
 // Ratio tracking estimator is based on https://pbr-book.org/4ed/Volume_Scattering/Transmittance#
+template<typename DensitySamplerT>
 float TraceVolumetricMediumTransmittanceRay(float3 origin, float3 direction, float t_max, inout uint hash) {
 	VolumetricSceneIntersection intersection = RayBoxIntersection(origin - scene.clouds.world_space_position, direction, scene.clouds.world_space_size);
 	if (intersection.is_hit == false) return 1.0;
@@ -13,23 +14,20 @@ float TraceVolumetricMediumTransmittanceRay(float3 origin, float3 direction, flo
 	if (ray_t >= intersection.t_max) return 1.0;
 	
 	float transmittance = 1.0;
-	VoxelTraversalState traversal_state = BeginVoxelTraversal(origin, direction, ray_t, intersection.t_max);
+	
+	DensitySamplerT density_sampler;
+	density_sampler.BeginTraversal(origin, direction, ray_t, intersection.t_max);
 	
 	uint max_iterations = 1024;
 	for (uint i = 0; i < max_iterations; i += 1) {
 		float2 u = ComputeRandomUnorm16x2(hash);
 		
-		ray_t = VoxelGridSkipEmptySpace(traversal_state, direction, ray_t);
+		ray_t = density_sampler.SkipEmptySpace(direction, ray_t);
 		ray_t += SampleExponentialDistribution(u.x, scene.clouds.extinction_coefficients);
 		
 		if (ray_t < intersection.t_max) {
 			float3 position = direction * ray_t + origin;
-			
-#if defined(USE_SIMPLE_DENSITY_SAMPLER)
-			float density = ComputeVolumetricMediumDensitySimple(position);
-#else // !defined(USE_SIMPLE_DENSITY_SAMPLER)
-			float density = ComputeVolumetricMediumDensity(position);
-#endif // !defined(USE_SIMPLE_DENSITY_SAMPLER)
+			float density = density_sampler.SampleDensity(position);
 			
 			transmittance *= (1.0 - density);
 		} else {
@@ -44,6 +42,7 @@ float TraceVolumetricMediumTransmittanceRay(float3 origin, float3 direction, flo
 	return transmittance;
 }
 
+template<typename DensitySamplerT>
 VolumeInteractionType SampleVolumetricMedium(inout RayDesc ray_desc, float t_max, inout uint hash) {
 	VolumetricSceneIntersection intersection = RayBoxIntersection(ray_desc.Origin - scene.clouds.world_space_position, ray_desc.Direction, scene.clouds.world_space_size);
 	if (intersection.is_hit == false) return VolumeInteractionType::None;
@@ -54,23 +53,20 @@ VolumeInteractionType SampleVolumetricMedium(inout RayDesc ray_desc, float t_max
 	if (ray_t >= intersection.t_max) return VolumeInteractionType::None;
 	
 	VolumeInteractionType interaction_type = VolumeInteractionType::None;
-	VoxelTraversalState traversal_state = BeginVoxelTraversal(ray_desc.Origin, ray_desc.Direction, intersection.t_min, intersection.t_max);
+	
+	DensitySamplerT density_sampler;
+	density_sampler.BeginTraversal(ray_desc.Origin, ray_desc.Direction, intersection.t_min, intersection.t_max);
 	
 	uint max_iterations = 1024;
 	for (uint i = 0; i < max_iterations; i += 1) {
 		float2 u = ComputeRandomUnorm16x2(hash);
 		
-		ray_t = VoxelGridSkipEmptySpace(traversal_state, ray_desc.Direction, ray_t);
+		ray_t = density_sampler.SkipEmptySpace(ray_desc.Direction, ray_t);
 		ray_t += SampleExponentialDistribution(u.x, scene.clouds.extinction_coefficients);
 		
 		if (ray_t < intersection.t_max) {
 			float3 position = ray_desc.Direction * ray_t + ray_desc.Origin;
-			
-#if defined(USE_SIMPLE_DENSITY_SAMPLER)
-			float density = ComputeVolumetricMediumDensitySimple(position);
-#else // !defined(USE_SIMPLE_DENSITY_SAMPLER)
-			float density = ComputeVolumetricMediumDensity(position);
-#endif // !defined(USE_SIMPLE_DENSITY_SAMPLER)
+			float density = density_sampler.SampleDensity(position);
 			
 			float p_absorption = (scene.clouds.absorption_coefficients / scene.clouds.extinction_coefficients) * density;
 			float p_scattering = (scene.clouds.scattering_coefficients / scene.clouds.extinction_coefficients) * density;
