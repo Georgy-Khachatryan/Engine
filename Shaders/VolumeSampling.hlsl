@@ -14,7 +14,7 @@ float TraceVolumetricMediumTransmittanceRay(float3 origin, float3 direction, flo
 	
 	float transmittance = 1.0;
 	
-	VoxelTraversalState traversal_state = BeginVoxelTraversal(origin, direction, ray_t, intersection.t_max);
+	VoxelTraversalState traversal_state = BeginVoxelTraversal(origin, direction, intersection.t_max);
 	
 	uint max_iterations = 1024;
 	for (uint i = 0; i < max_iterations; i += 1) {
@@ -51,7 +51,7 @@ VolumeInteractionType SampleVolumetricMedium(inout RayDesc ray_desc, float t_max
 	
 	VolumeInteractionType interaction_type = VolumeInteractionType::None;
 	
-	VoxelTraversalState traversal_state = BeginVoxelTraversal(ray_desc.Origin, ray_desc.Direction, intersection.t_min, intersection.t_max);
+	VoxelTraversalState traversal_state = BeginVoxelTraversal(ray_desc.Origin, ray_desc.Direction, intersection.t_max);
 	
 	uint max_iterations = 1024;
 	for (uint i = 0; i < max_iterations; i += 1) {

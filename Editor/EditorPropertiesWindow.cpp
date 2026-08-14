@@ -185,6 +185,11 @@ static void WorldComponentEntityView(StackAllocator* alloc, WorldEntitySystem& w
 		
 		ImGui::TableEntityComboBox(alloc, "Density Noise", &asset_system, &settings.density_noise.guid, ECS::GetEntityTypeID<TextureAssetType>::id);
 		ImGui::TableSliderFloat("Density Noise Tiling", &settings.density_noise_tiling, 1.f, 256.f, "%.2f", ImGuiSliderFlags_Logarithmic);
+		ImGui::TableSliderFloat("Density Noise Scroll Speed", &settings.density_noise_scroll_speed, 0.f, 64.f);
+		float scroll_heading_degrees = settings.density_noise_scroll_heading * Math::radians_to_degrees;
+		if (ImGui::TableSliderFloat("Density Noise Scroll Heading", &scroll_heading_degrees, -180.f, 180.f)) {
+			settings.density_noise_scroll_heading = scroll_heading_degrees * Math::degrees_to_radians;
+		}
 	}
 	
 	if (entity.lighting_settings && ImGui::TableCollapsingHeader("Lighting Settings")) {

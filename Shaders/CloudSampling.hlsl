@@ -33,8 +33,8 @@ float ComputeVolumetricMediumDensity(float3 position, float noise_mip_level) {
 	
 	if (dimensional_profile < (0.5 / 255.0)) return 0.0;
 	
-	Texture3D<float4> density_noise = ResourceDescriptorHeap[scene.clouds.density_noise];
-	float4 noise = density_noise.SampleLevel(sampler_linear_wrap, position * scene.clouds.density_noise_scale, 0);
+	Texture3D<float4> density_noise = ResourceDescriptorHeap[scene.clouds.density_noise_index];
+	float4 noise = density_noise.SampleLevel(sampler_linear_wrap, position * scene.clouds.density_noise_scale + float3(scene.clouds.density_noise_offset, 0.0), 0);
 	
 	float wispy_noise_scale   = 3.33;
 	float billowy_noise_scale = 0.8;
@@ -60,7 +60,7 @@ struct VoxelTraversalState {
 	float ray_t_max;
 };
 
-VoxelTraversalState BeginVoxelTraversal(float3 origin, float3 direction, float ray_t_min, float ray_t_max) {
+VoxelTraversalState BeginVoxelTraversal(float3 origin, float3 direction, float ray_t_max) {
 	VoxelTraversalState state;
 	state.inv_direction = select(abs(direction) < 0.0001, /*nan*/asfloat(0x7FC00000), 1.0 / direction); // See @inv_direction for reference.
 	state.origin        = (origin - scene.clouds.world_space_position) * scene.clouds.inv_world_space_size.x + 1.0;
@@ -71,14 +71,14 @@ VoxelTraversalState BeginVoxelTraversal(float3 origin, float3 direction, float r
 
 float VoxelGridSkipEmptySpace(VoxelTraversalState state, float3 direction, float ray_t_min) {
 	float ray_t = ray_t_min * scene.clouds.inv_world_space_size.x;
-	float3 position = clamp(state.origin + direction * ray_t, 1.0, asfloat(0x3FFFFFFF));
+	float3 position = clamp(state.origin + direction * ray_t, 1.0, asfloat(0x3FFFFFFF)); // [1, 2)
 	
-	uint max_iterations = 128 + 128 + 32 - 1;
+	uint max_iterations = CloudConstants::mask_volume_size_bits.x + CloudConstants::mask_volume_size_bits.y + CloudConstants::mask_volume_size_bits.z - 1;
 	for (uint i = 0; i < max_iterations && ray_t < state.ray_t_max; i += 1) {
 		uint3 position_u32 = asuint(position);
 		
 		uint3 volume_coordinates = (position_u32 >> 18) & 0x1F;
-		uint  voxel_index = ((position_u32.x >> 16) & 0x3) | ((position_u32.y >> 14) & (0x3 << 2)) | ((position_u32.z >> 12) & (0x3 << 4));
+		uint  voxel_index = RowMajorEncode3D(position_u32 >> 16, 2);
 		
 		u64 voxel = sdf_cloud_volume_mask[volume_coordinates];
 		

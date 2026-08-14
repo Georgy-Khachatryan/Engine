@@ -286,6 +286,7 @@ void EditorViewportWindow(StackAllocator* alloc, UndoRedoSystem& undo_redo_syste
 	
 	auto renderer_world = world_entity.renderer_world;
 	renderer_world->window_size                  = float2(window_size);
+	renderer_world->time                         = renderer_world->reference_path_tracer_percent > 0.f ? 0.0 : ImGui::GetTime();
 	renderer_world->delta_time                   = ImGui::GetIO().DeltaTime;
 	renderer_world->mouse_cursor_position        = s32x2(window_relative_mouse_position);
 	renderer_world->debug_mesh_instance_arrays   = draw_list_3d.Flush();

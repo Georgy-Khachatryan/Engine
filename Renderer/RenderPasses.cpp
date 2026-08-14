@@ -254,6 +254,12 @@ static void CreateSceneConstants(RecordContext* record_context, uint2 render_tar
 		scene.clouds.scattering_anisotropy   = cloud_settings.scattering_anisotropy;
 		scene.clouds.density_noise_scale     = 1.f / Math::Max(cloud_settings.density_noise_tiling, 1.f);
 		
+		auto density_noise_offset = -renderer_world.time * (double)cloud_settings.density_noise_scroll_speed * (double)scene.clouds.density_noise_scale;
+		scene.clouds.density_noise_offset = float2(
+			(float)fmod(cos(cloud_settings.density_noise_scroll_heading) * density_noise_offset, 1.0),
+			(float)fmod(sin(cloud_settings.density_noise_scroll_heading) * density_noise_offset, 1.0)
+		);
+		
 		if (cloud_settings.density_noise.guid != 0) {
 			auto asset = QueryEntityByGUID<TextureAssetType>(*asset_system, cloud_settings.density_noise.guid);
 			auto size = asset.runtime_data_layout->size;
@@ -267,9 +273,9 @@ static void CreateSceneConstants(RecordContext* record_context, uint2 render_tar
 			
 			scene.clouds.lighting_volume_noise_mip_offset = lighting_volume_noise_mip_offset;
 			scene.clouds.raymarch_noise_mip_scale         = raymarch_noise_mip_scale;
-			scene.clouds.density_noise                    = asset.descriptor_allocation->index;
+			scene.clouds.density_noise_index              = asset.descriptor_allocation->index;
 		} else {
-			scene.clouds.density_noise = 0;
+			scene.clouds.density_noise_index = 0;
 		}
 	}
 	

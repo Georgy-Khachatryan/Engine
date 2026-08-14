@@ -31,10 +31,10 @@ float RaymarchHybridOpticalDepthRay(float3 origin, float3 direction, float noise
 #endif // defined(CLOUD_RAYMARCH) || defined(RADIANCE_TRANSFER_VOLUME)
 
 void SkipEmptySpaceInTwoDirections(RayDesc ray_desc, inout VolumetricSceneIntersection intersection) {
-	VoxelTraversalState forward_traversal_state = BeginVoxelTraversal(ray_desc.Origin, ray_desc.Direction, intersection.t_min, intersection.t_max);
+	VoxelTraversalState forward_traversal_state = BeginVoxelTraversal(ray_desc.Origin, ray_desc.Direction, intersection.t_max);
 	intersection.t_min = VoxelGridSkipEmptySpace(forward_traversal_state, ray_desc.Direction, intersection.t_min);
 	
-	VoxelTraversalState backward_traversal_state = BeginVoxelTraversal(ray_desc.Origin + ray_desc.Direction * intersection.t_max, -ray_desc.Direction, intersection.t_min, intersection.t_max - intersection.t_min);
+	VoxelTraversalState backward_traversal_state = BeginVoxelTraversal(ray_desc.Origin + ray_desc.Direction * intersection.t_max, -ray_desc.Direction, intersection.t_max - intersection.t_min);
 	intersection.t_max -= VoxelGridSkipEmptySpace(backward_traversal_state, -ray_desc.Direction, 0.0);
 }
 
