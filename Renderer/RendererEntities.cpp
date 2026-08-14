@@ -13,7 +13,7 @@ void UpdateEntityAliveMasks(StackAllocator* alloc, RecordContext* record_context
 	ProfilerScope("UpdateEntityAliveMasks");
 	
 	for (auto* entity_array : QueryEntities<AliveEntityMaskQuery>(alloc, entity_system)) {
-		if (entity_array->count == 0) continue;
+		if (entity_array->capacity == 0) continue;
 		
 		auto created_mask = entity_array->created_mask;
 		auto removed_mask = entity_array->removed_mask;

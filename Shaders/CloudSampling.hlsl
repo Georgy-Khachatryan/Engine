@@ -33,7 +33,8 @@ float ComputeVolumetricMediumDensity(float3 position, float noise_mip_level) {
 	
 	if (dimensional_profile < (0.5 / 255.0)) return 0.0;
 	
-	float4 noise = cloud_density_noise.SampleLevel(sampler_linear_wrap, position * scene.clouds.density_noise_scale, noise_mip_level);
+	Texture3D<float4> density_noise = ResourceDescriptorHeap[scene.clouds.density_noise];
+	float4 noise = density_noise.SampleLevel(sampler_linear_wrap, position * scene.clouds.density_noise_scale, 0);
 	
 	float wispy_noise_scale   = 3.33;
 	float billowy_noise_scale = 0.8;

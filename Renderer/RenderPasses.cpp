@@ -258,7 +258,6 @@ static void CreateSceneConstants(RecordContext* record_context, uint2 render_tar
 			auto asset = QueryEntityByGUID<TextureAssetType>(*asset_system, cloud_settings.density_noise.guid);
 			auto size = asset.runtime_data_layout->size;
 			
-			record_context->resource_table->Set(VirtualResourceID::CloudDensityNoise, asset.resource_allocation->resource, size);
 			asset.cpu_streaming_requests->RequestMinimumResidency(size.x);
 			
 			float lighting_volume_voxel_size       = scene.clouds.world_space_size.x / CloudConstants::lighting_volume_size.x;
@@ -268,8 +267,9 @@ static void CreateSceneConstants(RecordContext* record_context, uint2 render_tar
 			
 			scene.clouds.lighting_volume_noise_mip_offset = lighting_volume_noise_mip_offset;
 			scene.clouds.raymarch_noise_mip_scale         = raymarch_noise_mip_scale;
+			scene.clouds.density_noise                    = asset.descriptor_allocation->index;
 		} else {
-			record_context->resource_table->Reset(VirtualResourceID::CloudDensityNoise);
+			scene.clouds.density_noise = 0;
 		}
 	}
 	

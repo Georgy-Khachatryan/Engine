@@ -67,10 +67,13 @@ struct CloudConstants {
 	float3 inv_world_space_size   = 0.f;
 	float extinction_coefficients = 0.f;
 	
-	float scattering_anisotropy = 0.f;
+	u32   density_noise         = 0;
 	float density_noise_scale   = 0.f;
 	float lighting_volume_noise_mip_offset = 0.f;
 	float raymarch_noise_mip_scale         = 0.f;
+	
+	float scattering_anisotropy = 0.f;
+	uint3 padding_0;
 };
 
 NOTES(Meta::HlslFile{ "SceneData.hlsl"_sl })
