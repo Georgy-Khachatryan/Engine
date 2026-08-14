@@ -6,7 +6,7 @@
 compile_const float hybrid_transmittance_ray_length = 8.0;
 
 #if defined(CLOUD_RAYMARCH) || defined(RADIANCE_TRANSFER_VOLUME)
-float RaymarchHybridOpticalDepthRay(float3 origin, float3 direction) {
+float RaymarchHybridOpticalDepthRay(float3 origin, float3 direction, float noise_mip_level) {
 	float optical_depth = 0.0;
 	
 	float sample_count = 3.0;
@@ -16,7 +16,7 @@ float RaymarchHybridOpticalDepthRay(float3 origin, float3 direction) {
 		float ray_t = Pow2(t) * hybrid_transmittance_ray_length;
 		
 		float3 position = direction * ray_t + origin;
-		float density = ComputeVolumetricMediumDensity(position);
+		float density = ComputeVolumetricMediumDensity(position, noise_mip_level);
 		
 		float extinction_coefficients = density;
 		optical_depth += extinction_coefficients * (ray_t - prev_ray_t);
@@ -61,23 +61,23 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	
 	SkipEmptySpaceInTwoDirections(ray_desc, intersection);
 	
-	float ray_t = max(intersection.t_min, 0.0);
-	
 	float3 scattering = 0.0;
 	float transmittance = 1.0;
-	float cloud_depth = intersection.t_max;
+	float cloud_t_min = intersection.t_max;
 	
+	float sample_count = 0.0;
 	float delta_t = 8.0;
-	ray_t += delta_t * LoadBlueNoise(blue_noise_1d, thread_id, scene.frame_index);
-	for (; (ray_t < intersection.t_max) && (transmittance > (1.0 / 256.0)); ray_t += delta_t) {
+	float ray_t = intersection.t_min + delta_t * LoadBlueNoise(blue_noise_1d, thread_id, scene.frame_index);
+	for (; (ray_t < intersection.t_max) && (transmittance > (1.0 / 256.0)); ray_t += delta_t, sample_count += 1.0) {
 		float3 position = ray_desc.Direction * ray_t + ray_desc.Origin;
+		float noise_mip_level = (float)min(FloorLog2(max(ray_t * scene.clouds.raymarch_noise_mip_scale, 1.0)), 7);
 		
-		float density = ComputeVolumetricMediumDensity(position);
+		float density = ComputeVolumetricMediumDensity(position, noise_mip_level);
 		float extinction_coefficients = density * scene.clouds.extinction_coefficients;
 		float scattering_coefficients = density * scene.clouds.scattering_coefficients;
 		
 		if (extinction_coefficients > (1.0 / 1024.0)) {
-			float sun_optical_depth = RaymarchHybridOpticalDepthRay(position, scene.atmosphere.world_space_sun_direction);
+			float sun_optical_depth = RaymarchHybridOpticalDepthRay(position, scene.atmosphere.world_space_sun_direction, noise_mip_level);
 			
 			float3 sample_uvw = (position - scene.clouds.world_space_position) * scene.clouds.inv_world_space_size;
 			float2 radiance_transfer = cloud_radiance_transfer_volume.SampleLevel(sampler_linear_clamp, sample_uvw, 0);
@@ -91,7 +91,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 			scattering.z += radiance_transfer.y     * scattering_integral;
 			transmittance *= slice_transmittance;
 			
-			cloud_depth = min(cloud_depth, ray_t);
+			cloud_t_min = min(cloud_t_min, ray_t);
 		}
 	}
 	
@@ -100,7 +100,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	
 	float3 sky_radiance = SampleSkyPanoramaLUT(scene.atmosphere, sky_panorama_lut, transmittance_lut, scene.world_space_camera_position, float3(0.0, 0.0, 1.0), false);
 	
-	float3 sun_irradiance = scene.atmosphere.sun_color * scene.atmosphere.sun_irradiance * SampleTransmittanceLUT(scene.atmosphere, transmittance_lut, ray_desc.Direction * cloud_depth + ray_desc.Origin);
+	float3 sun_irradiance = scene.atmosphere.sun_color * scene.atmosphere.sun_irradiance * SampleTransmittanceLUT(scene.atmosphere, transmittance_lut, ray_desc.Direction * cloud_t_min + ray_desc.Origin);
 	
 	float3 radiance = sun_irradiance * scattering.x + sun_irradiance * scattering.y + scattering.z * sky_radiance;
 	scene_radiance[thread_id] = float4(scene_radiance[thread_id].xyz * transmittance + radiance * scene.exposure_estimate, 1.0);
@@ -109,20 +109,14 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 
 
 #if defined(OPTICAL_DEPTH_VOLUME)
-float RaymarchOpticalDepthRay(float3 origin, float3 direction, float t_max, bool is_simple = false) {
+float RaymarchOpticalDepthRay(float3 origin, float3 direction, float t_max) {
 	float optical_depth = 0.0;
-	
-	float sample_count = 64.0;
+	float noise_mip_level = scene.clouds.lighting_volume_noise_mip_offset;
 	
 	float delta_t = 4.0;
-	for (float ray_t = hybrid_transmittance_ray_length; ray_t < t_max; ray_t += delta_t) {
+	for (float ray_t = hybrid_transmittance_ray_length; ray_t < t_max; ray_t += delta_t, noise_mip_level += 1.0) {
 		float3 position = direction * ray_t + origin;
-		float density = ComputeVolumetricMediumDensity(position);
-		
-		if (is_simple) {
-			float3 sample_uvw = (position - scene.clouds.world_space_position) * scene.clouds.inv_world_space_size;
-			density = sdf_cloud_volume.SampleLevel(sampler_linear_clamp, sample_uvw, 0);
-		}
+		float density = ComputeVolumetricMediumDensity(position, min(noise_mip_level, 7.0));
 		
 		float extinction_coefficients = density;
 		optical_depth += extinction_coefficients * delta_t;
@@ -134,9 +128,9 @@ float RaymarchOpticalDepthRay(float3 origin, float3 direction, float t_max, bool
 [ThreadGroupSize(64, 1, 1)]
 void MainCS(uint group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	uint update_command = cloud_update_list[group_id];
-	uint3 thread_id = (uint3(update_command, update_command >> 8, update_command >> 16) & 0xFF) * 4 + (uint3(thread_index, thread_index >> 2, thread_index >> 4) & 0x3);
+	uint3 thread_id = RowMajorDecode3D(update_command, 8) * 4 + RowMajorDecode3D(thread_index, 2);
 	
-	float3 thread_uv = (thread_id + 0.5) / (CloudConstants::cloud_volume_size / 2);
+	float3 thread_uv = (thread_id + 0.5) / CloudConstants::lighting_volume_size;
 	float3 world_space_position = thread_uv * scene.clouds.world_space_size + scene.clouds.world_space_position;
 	
 	RayDesc ray_desc;
@@ -144,8 +138,6 @@ void MainCS(uint group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	ray_desc.Direction = scene.atmosphere.world_space_sun_direction;
 	
 	VolumetricSceneIntersection intersection = RayBoxIntersection(ray_desc.Origin - scene.clouds.world_space_position, ray_desc.Direction, scene.clouds.world_space_size);
-	intersection.t_min = max(intersection.t_min, 0.0);
-	
 	SkipEmptySpaceInTwoDirections(ray_desc, intersection);
 	
 	float optical_depth = RaymarchOpticalDepthRay(ray_desc.Origin + ray_desc.Direction * intersection.t_min, ray_desc.Direction, intersection.t_max - intersection.t_min);
@@ -155,25 +147,19 @@ void MainCS(uint group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 
 
 #if defined(RADIANCE_TRANSFER_VOLUME)
-#define USE_SIMPLE_DENSITY_SAMPLER
 #include "VolumeSampling.hlsl"
 
-#if defined(USE_SIMPLE_DENSITY_SAMPLER)
-using PassCloudDensitySampler = SimpleCloudDensitySampler;
-#else // !defined(USE_SIMPLE_DENSITY_SAMPLER)
-using PassCloudDensitySampler = CloudDensitySampler;
-#endif // !defined(USE_SIMPLE_DENSITY_SAMPLER)
-
+#define USE_OPTICAL_DEPTH_VOLUME
 
 [ThreadGroupSize(64, 1, 1)]
 void MainCS(uint group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	uint update_command = cloud_update_list[group_id];
-	uint3 thread_id = (uint3(update_command, update_command >> 8, update_command >> 16) & 0xFF) * 4 + (uint3(thread_index, thread_index >> 2, thread_index >> 4) & 0x3);
+	uint3 thread_id = RowMajorDecode3D(update_command, 8) * 4 + RowMajorDecode3D(thread_index, 2);
 	
-	float3 thread_uv = (thread_id + 0.5) / (CloudConstants::cloud_volume_size / 2);
+	uint hash = WyHash32(RowMajorEncode3D(thread_id, 10), scene.frame_index);
+	
+	float3 thread_uv = (thread_id + ComputeRandomUnorm10x3(hash)) / CloudConstants::lighting_volume_size;
 	float3 world_space_position = thread_uv * scene.clouds.world_space_size + scene.clouds.world_space_position;
-	
-	uint hash = WyHash32(thread_id.x | (thread_id.y << 8) | (thread_id.z << 16), scene.frame_index);
 	
 	uint max_path_length = 32;
 	// uint max_path_length = 4;
@@ -188,7 +174,8 @@ void MainCS(uint group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	
 	[loop]
 	for (uint i = 0; i < max_path_length; i += 1) {
-		VolumeInteractionType volume_interaction_type = SampleVolumetricMedium<PassCloudDensitySampler>(ray_desc, 1024.0, hash);
+		float noise_mip_level = min((float)i + scene.clouds.lighting_volume_noise_mip_offset, 7.0);
+		VolumeInteractionType volume_interaction_type = SampleVolumetricMedium(ray_desc, 1024.0, hash, noise_mip_level);
 		
 		if (volume_interaction_type == VolumeInteractionType::Absorption) {
 			i = max_path_length;
@@ -198,12 +185,11 @@ void MainCS(uint group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 			
 			float phase_function = PhaseFunctionHG(dot(wo, scene.atmosphere.world_space_sun_direction), phase_function_g);
 			
-#if defined(USE_SIMPLE_DENSITY_SAMPLER)
-			// Might as well use cheap shadows if we're using approximate density sampler.
-			float transmittance = exp(-RaymarchHybridOpticalDepthRay(ray_desc.Origin, scene.atmosphere.world_space_sun_direction));
-#else // !defined(USE_SIMPLE_DENSITY_SAMPLER)
-			float transmittance = TraceVolumetricMediumTransmittanceRay<PassCloudDensitySampler>(ray_desc.Origin, scene.atmosphere.world_space_sun_direction, 1024.0, hash);
-#endif // !defined(USE_SIMPLE_DENSITY_SAMPLER)
+#if defined(USE_OPTICAL_DEPTH_VOLUME)
+			float transmittance = exp(-RaymarchHybridOpticalDepthRay(ray_desc.Origin, scene.atmosphere.world_space_sun_direction, noise_mip_level));
+#else // !defined(USE_OPTICAL_DEPTH_VOLUME)
+			float transmittance = TraceVolumetricMediumTransmittanceRay(ray_desc.Origin, scene.atmosphere.world_space_sun_direction, 1024.0, hash, noise_mip_level);
+#endif // !defined(USE_OPTICAL_DEPTH_VOLUME)
 			
 			radiance_transfer.x += transmittance * phase_function;
 			

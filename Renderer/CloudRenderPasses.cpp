@@ -17,7 +17,7 @@ void CloudEntityCullingRenderPass::RecordPass(RecordContext* record_context) {
 	
 	auto* cloud_entities = QueryEntityTypeArray<CloudVolumeEntityType>(*world_system);
 	if (cloud_entities->capacity != 0) { // TODO: Minimize the dispatch size.
-		CmdDispatch(record_context, DivideAndRoundUp(cloud_entities->capacity, 256u));
+		CmdDispatch(record_context, DivideAndRoundUp(cloud_entities->capacity, CloudCullingConstants::thread_group_size));
 	}
 }
 
@@ -51,7 +51,7 @@ void BuildCloudUpdateListRenderPass::RecordPass(RecordContext* record_context) {
 	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
 	CmdSetRootArgument(record_context, root_signature.scene, VirtualResourceID::SceneConstants);
 	
-	CmdDispatch(record_context, DivideAndRoundUp(CloudConstants::cloud_volume_size / 8u, 4u));
+	CmdDispatch(record_context, DivideAndRoundUp(CloudConstants::culling_volume_size, 4u));
 }
 
 void CompositeCloudVolumeRenderPass::CreatePipelines(PipelineLibrary* lib) {
@@ -82,7 +82,7 @@ void BuildCloudVolumeMaskRenderPass::RecordPass(RecordContext* record_context) {
 	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
 	CmdSetRootArgument(record_context, root_signature.scene, VirtualResourceID::SceneConstants);
 	
-	CmdDispatch(record_context, DivideAndRoundUp(CloudConstants::cloud_volume_size / 4u, 4u));
+	CmdDispatch(record_context, DivideAndRoundUp(CloudConstants::mask_volume_size_bits, 4u));
 }
 
 

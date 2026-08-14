@@ -19,26 +19,21 @@ VolumetricSceneIntersection RayBoxIntersection(float3 ray_origin, float3 ray_dir
 	float3 t1 = max(t_min, t_max);
 	
 	VolumetricSceneIntersection intersection;
-	intersection.t_min = max(max(t0.x, t0.y), t0.z);
+	intersection.t_min = max(max(t0.x, t0.y), max(t0.z, 0.0));
 	intersection.t_max = min(min(t1.x, t1.y), t1.z);
 	intersection.is_hit = (intersection.t_min <= intersection.t_max) && (intersection.t_max > 0.0);
 	
 	return intersection;
 }
 
-float ComputeVolumetricMediumDensitySimple(float3 position) {
-	float3 sample_uvw = (position - scene.clouds.world_space_position) * scene.clouds.inv_world_space_size;
-	return sdf_cloud_volume.SampleLevel(sampler_linear_clamp, sample_uvw, 0);
-}
-
 // Based on "Methods (and madness) to model and render immersive real-time voxel-based clouds." by Andrew Schneider.
-float ComputeVolumetricMediumDensity(float3 position) {
+float ComputeVolumetricMediumDensity(float3 position, float noise_mip_level) {
 	float3 sample_uvw = (position - scene.clouds.world_space_position) * scene.clouds.inv_world_space_size;
 	float dimensional_profile = sdf_cloud_volume.SampleLevel(sampler_linear_clamp, sample_uvw, 0);
 	
 	if (dimensional_profile < (0.5 / 255.0)) return 0.0;
 	
-	float4 noise = cloud_density_noise.SampleLevel(sampler_linear_wrap, position * scene.clouds.density_noise_scale, 0);
+	float4 noise = cloud_density_noise.SampleLevel(sampler_linear_wrap, position * scene.clouds.density_noise_scale, noise_mip_level);
 	
 	float wispy_noise_scale   = 3.33;
 	float billowy_noise_scale = 0.8;
@@ -111,29 +106,5 @@ float VoxelGridSkipEmptySpace(VoxelTraversalState state, float3 direction, float
 	
 	return ray_t * scene.clouds.world_space_size.x;
 }
-
-struct CloudDensitySamplerBase {
-	VoxelTraversalState traversal_state;
-	
-	void BeginTraversal(float3 origin, float3 direction, float ray_t_min, float ray_t_max) {
-		traversal_state = BeginVoxelTraversal(origin, direction, ray_t_min, ray_t_max);
-	}
-	
-	float SkipEmptySpace(float3 direction, float ray_t) {
-		return VoxelGridSkipEmptySpace(traversal_state, direction, ray_t);
-	}
-};
-
-struct CloudDensitySampler : CloudDensitySamplerBase {
-	float SampleDensity(float3 position) {
-		return ComputeVolumetricMediumDensity(position);
-	}
-};
-
-struct SimpleCloudDensitySampler : CloudDensitySamplerBase {
-	float SampleDensity(float3 position) {
-		return ComputeVolumetricMediumDensitySimple(position);
-	}
-};
 
 #endif // CLOUDSAMPLING_HLSL

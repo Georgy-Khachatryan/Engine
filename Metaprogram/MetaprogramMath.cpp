@@ -56,37 +56,37 @@ static void GenerateVectorType(StringBuilder& builder, u32 count, String type, S
 	
 	for (auto op : ops) {
 		if (count == 2) {
-			builder.Append("%0 operator%1(const %0& other) const { return %0(x %1 other.x, y %1 other.y); }\n"_sl, name, op);
-			builder.Append("%0 operator%1(%2 other) const { return %0(x %1 other, y %1 other); }\n\n"_sl, name, op, type);
+			builder.Append("constexpr %0 operator%1(const %0& other) const { return %0(x %1 other.x, y %1 other.y); }\n"_sl, name, op);
+			builder.Append("constexpr %0 operator%1(%2 other) const { return %0(x %1 other, y %1 other); }\n\n"_sl, name, op, type);
 		} else if (count == 3) {
-			builder.Append("%0 operator%1(const %0& other) const { return %0(x %1 other.x, y %1 other.y, z %1 other.z); }\n"_sl, name, op);
-			builder.Append("%0 operator%1(%2 other) const { return %0(x %1 other, y %1 other, z %1 other); }\n\n"_sl, name, op, type);
+			builder.Append("constexpr %0 operator%1(const %0& other) const { return %0(x %1 other.x, y %1 other.y, z %1 other.z); }\n"_sl, name, op);
+			builder.Append("constexpr %0 operator%1(%2 other) const { return %0(x %1 other, y %1 other, z %1 other); }\n\n"_sl, name, op, type);
 		} else if (count == 4) {
-			builder.Append("%0 operator%1(const %0& other) const { return %0(x %1 other.x, y %1 other.y, z %1 other.z, w %1 other.w); }\n"_sl, name, op);
-			builder.Append("%0 operator%1(%2 other) const { return %0(x %1 other, y %1 other, z %1 other, w %1 other); }\n\n"_sl, name, op, type);
+			builder.Append("constexpr %0 operator%1(const %0& other) const { return %0(x %1 other.x, y %1 other.y, z %1 other.z, w %1 other.w); }\n"_sl, name, op);
+			builder.Append("constexpr %0 operator%1(%2 other) const { return %0(x %1 other, y %1 other, z %1 other, w %1 other); }\n\n"_sl, name, op, type);
 		}
 	}
 	
 	for (auto op : ops) {
 		if (count == 2) {
-			builder.Append("%0& operator%1=(const %0& other) { x %1= other.x; y %1= other.y; return *this; }\n"_sl, name, op);
-			builder.Append("%0& operator%1=(%2 other) { x %1= other; y %1= other; return *this; }\n\n"_sl, name, op, type);
+			builder.Append("constexpr %0& operator%1=(const %0& other) { x %1= other.x; y %1= other.y; return *this; }\n"_sl, name, op);
+			builder.Append("constexpr %0& operator%1=(%2 other) { x %1= other; y %1= other; return *this; }\n\n"_sl, name, op, type);
 		} else if (count == 3) {
-			builder.Append("%0& operator%1=(const %0& other) { x %1= other.x; y %1= other.y; z %1= other.z; return *this; }\n"_sl, name, op);
-			builder.Append("%0& operator%1=(%2 other) { x %1= other; y %1= other; z %1= other; return *this; }\n\n"_sl, name, op, type);
+			builder.Append("constexpr %0& operator%1=(const %0& other) { x %1= other.x; y %1= other.y; z %1= other.z; return *this; }\n"_sl, name, op);
+			builder.Append("constexpr %0& operator%1=(%2 other) { x %1= other; y %1= other; z %1= other; return *this; }\n\n"_sl, name, op, type);
 		} else if (count == 4) {
-			builder.Append("%0& operator%1=(const %0& other) { x %1= other.x; y %1= other.y; z %1= other.z; w %1= other.w; return *this; }\n"_sl, name, op);
-			builder.Append("%0& operator%1=(%2 other) { x %1= other; y %1= other; z %1= other; w %1= other; return *this; }\n\n"_sl, name, op, type);
+			builder.Append("constexpr %0& operator%1=(const %0& other) { x %1= other.x; y %1= other.y; z %1= other.z; w %1= other.w; return *this; }\n"_sl, name, op);
+			builder.Append("constexpr %0& operator%1=(%2 other) { x %1= other; y %1= other; z %1= other; w %1= other; return *this; }\n\n"_sl, name, op, type);
 		}
 	}
 	
 	for (auto op : unary_ops) {
 		if (count == 2) {
-			builder.Append("%0 operator%1() const { return %0(%1.x, %1y); }\n\n"_sl, name, op);
+			builder.Append("constexpr %0 operator%1() const { return %0(%1.x, %1y); }\n\n"_sl, name, op);
 		} else if (count == 3) {
-			builder.Append("%0 operator%1() const { return %0(%1.x, %1y, %1z); }\n\n"_sl, name, op);
+			builder.Append("constexpr %0 operator%1() const { return %0(%1.x, %1y, %1z); }\n\n"_sl, name, op);
 		} else if (count == 4) {
-			builder.Append("%0 operator%1() const { return %0(%1.x, %1y, %1z, %1w); }\n\n"_sl, name, op);
+			builder.Append("constexpr %0 operator%1() const { return %0(%1.x, %1y, %1z, %1w); }\n\n"_sl, name, op);
 		}
 	}
 	
@@ -255,28 +255,28 @@ static void GenerateVectorFunctions(StringBuilder& builder, u32 count, String ty
 }
 
 static void GenerateScalarFunctions(StringBuilder& builder) {
-	builder.Append("compile_const u64 Min(u64 lh, u64 rh) { return lh < rh ? lh : rh; }\n"_sl);
-	builder.Append("compile_const u64 Max(u64 lh, u64 rh) { return lh > rh ? lh : rh; }\n"_sl);
-	builder.Append("compile_const u32 Min(u32 lh, u32 rh) { return lh < rh ? lh : rh; }\n"_sl);
-	builder.Append("compile_const u32 Max(u32 lh, u32 rh) { return lh > rh ? lh : rh; }\n"_sl);
-	builder.Append("compile_const u16 Min(u16 lh, u16 rh) { return lh < rh ? lh : rh; }\n"_sl);
-	builder.Append("compile_const u16 Max(u16 lh, u16 rh) { return lh > rh ? lh : rh; }\n"_sl);
-	builder.Append("compile_const u8  Min(u8  lh, u8  rh) { return lh < rh ? lh : rh; }\n"_sl);
-	builder.Append("compile_const u8  Max(u8  lh, u8  rh) { return lh > rh ? lh : rh; }\n\n"_sl);
+	builder.Append("constexpr inline u64 Min(u64 lh, u64 rh) { return lh < rh ? lh : rh; }\n"_sl);
+	builder.Append("constexpr inline u64 Max(u64 lh, u64 rh) { return lh > rh ? lh : rh; }\n"_sl);
+	builder.Append("constexpr inline u32 Min(u32 lh, u32 rh) { return lh < rh ? lh : rh; }\n"_sl);
+	builder.Append("constexpr inline u32 Max(u32 lh, u32 rh) { return lh > rh ? lh : rh; }\n"_sl);
+	builder.Append("constexpr inline u16 Min(u16 lh, u16 rh) { return lh < rh ? lh : rh; }\n"_sl);
+	builder.Append("constexpr inline u16 Max(u16 lh, u16 rh) { return lh > rh ? lh : rh; }\n"_sl);
+	builder.Append("constexpr inline u8  Min(u8  lh, u8  rh) { return lh < rh ? lh : rh; }\n"_sl);
+	builder.Append("constexpr inline u8  Max(u8  lh, u8  rh) { return lh > rh ? lh : rh; }\n\n"_sl);
 	
-	builder.Append("compile_const s64 Min(s64 lh, s64 rh) { return lh < rh ? lh : rh; }\n"_sl);
-	builder.Append("compile_const s64 Max(s64 lh, s64 rh) { return lh > rh ? lh : rh; }\n"_sl);
-	builder.Append("compile_const s32 Min(s32 lh, s32 rh) { return lh < rh ? lh : rh; }\n"_sl);
-	builder.Append("compile_const s32 Max(s32 lh, s32 rh) { return lh > rh ? lh : rh; }\n"_sl);
-	builder.Append("compile_const s16 Min(s16 lh, s16 rh) { return lh < rh ? lh : rh; }\n"_sl);
-	builder.Append("compile_const s16 Max(s16 lh, s16 rh) { return lh > rh ? lh : rh; }\n"_sl);
-	builder.Append("compile_const s8  Min(s8  lh, s8  rh) { return lh < rh ? lh : rh; }\n"_sl);
-	builder.Append("compile_const s8  Max(s8  lh, s8  rh) { return lh > rh ? lh : rh; }\n\n"_sl);
+	builder.Append("constexpr inline s64 Min(s64 lh, s64 rh) { return lh < rh ? lh : rh; }\n"_sl);
+	builder.Append("constexpr inline s64 Max(s64 lh, s64 rh) { return lh > rh ? lh : rh; }\n"_sl);
+	builder.Append("constexpr inline s32 Min(s32 lh, s32 rh) { return lh < rh ? lh : rh; }\n"_sl);
+	builder.Append("constexpr inline s32 Max(s32 lh, s32 rh) { return lh > rh ? lh : rh; }\n"_sl);
+	builder.Append("constexpr inline s16 Min(s16 lh, s16 rh) { return lh < rh ? lh : rh; }\n"_sl);
+	builder.Append("constexpr inline s16 Max(s16 lh, s16 rh) { return lh > rh ? lh : rh; }\n"_sl);
+	builder.Append("constexpr inline s8  Min(s8  lh, s8  rh) { return lh < rh ? lh : rh; }\n"_sl);
+	builder.Append("constexpr inline s8  Max(s8  lh, s8  rh) { return lh > rh ? lh : rh; }\n\n"_sl);
 	
-	builder.Append("compile_const float Min(float lh, float rh) { return lh < rh ? lh : rh; }\n"_sl);
-	builder.Append("compile_const float Max(float lh, float rh) { return lh > rh ? lh : rh; }\n\n"_sl);
+	builder.Append("constexpr inline float Min(float lh, float rh) { return lh < rh ? lh : rh; }\n"_sl);
+	builder.Append("constexpr inline float Max(float lh, float rh) { return lh > rh ? lh : rh; }\n\n"_sl);
 	
-	builder.Append("compile_const float Lerp(float lh, float rh, float t) { return lh * (1.f - t) + rh * t; }\n\n"_sl);
+	builder.Append("constexpr inline float Lerp(float lh, float rh, float t) { return lh * (1.f - t) + rh * t; }\n\n"_sl);
 }
 
 void WriteCodeForMathLibrary(StackAllocator* alloc) {

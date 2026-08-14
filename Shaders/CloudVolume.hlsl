@@ -2,6 +2,14 @@
 
 using IndirectArgumentsLayout = CloudCullingIndirectArgumentsLayout;
 
+u32 EncodeCloudCullingCellIndex(uint3 cell_coordinates) {
+	return cell_coordinates.x | (cell_coordinates.y << 6) | (cell_coordinates.z << 12);
+}
+
+uint3 DecodeCloudCullingCellIndex(u32 index) {
+	return uint3(index, index >> 6, index >> 12) & uint3(0x3F, 0x3F, 0x7);
+}
+
 #if defined(CLOUD_ENTITY_CULLING)
 compile_const uint thread_group_size = CloudCullingConstants::thread_group_size;
 
@@ -39,9 +47,16 @@ void MainCS(uint thread_id : SV_DispatchThreadID) {
 	uint3 aabb_size_cells = aabb_max_cells - aabb_min_cells;
 	uint aabb_volume_cells = aabb_size_cells.x * aabb_size_cells.y * aabb_size_cells.z;
 	
-	uint packed_aabb_min = (aabb_min_cells.x - 0) | ((aabb_min_cells.y - 0) << 6) | ((aabb_min_cells.z - 0) << 12);
-	uint packed_aabb_max = (aabb_max_cells.x - 1) | ((aabb_max_cells.y - 1) << 6) | ((aabb_max_cells.z - 1) << 12);
+	uint packed_aabb_min = EncodeCloudCullingCellIndex(aabb_min_cells - 0);
+	uint packed_aabb_max = EncodeCloudCullingCellIndex(aabb_max_cells - 1);
 	uint packed_aabb     = packed_aabb_min | (packed_aabb_max << 15);
+	
+	if (aabb_volume_cells != 0) {
+		float3 target_resolution = aabb_radius * 2.0 * scene.clouds.inv_world_space_size * CloudConstants::cloud_volume_size;
+		
+		u32 max_target_resolution = (u32)max(max(target_resolution.x, target_resolution.y), max(target_resolution.z, 1.0));
+		InterlockedMax(texture_streaming_feedback[cloud.sdf_texture], max_target_resolution);
+	}
 	
 	uint aabb_volume_offset = 0;
 	while (aabb_volume_cells != 0) {
@@ -66,8 +81,8 @@ void MainCS(uint thread_id : SV_DispatchThreadID) {
 	
 	uint cloud_entity_index = (cloud_culling_command.x & 0x1FFFFu);
 	uint aabb_volume_offset = (cloud_culling_command.x >> 17) + (thread_id & CreateBitMaskSmall(constants.bin_index));
-	uint3 aabb_min_cells    = (uint3(cloud_culling_command.y >> 0,  cloud_culling_command.y >> 6,  cloud_culling_command.y >> 12) & uint3(0x3F, 0x3F, 0x7)) + 0;
-	uint3 aabb_max_cells    = (uint3(cloud_culling_command.y >> 15, cloud_culling_command.y >> 21, cloud_culling_command.y >> 27) & uint3(0x3F, 0x3F, 0x7)) + 1;
+	uint3 aabb_min_cells    = DecodeCloudCullingCellIndex(cloud_culling_command.y >>  0) + 0;
+	uint3 aabb_max_cells    = DecodeCloudCullingCellIndex(cloud_culling_command.y >> 15) + 1;
 	uint3 aabb_size_cells   = aabb_max_cells - aabb_min_cells;
 	
 	uint3 cell_coordinates;
@@ -94,7 +109,7 @@ void MainCS(uint thread_id : SV_DispatchThreadID) {
 	// This would require relatively large maximum distance to be stored in the SDF, or even using a separate SDF texture.
 	
 	if (is_visible) {
-		uint cell_index  = cell_coordinates.x | (cell_coordinates.y << 6) | (cell_coordinates.z << 12);
+		uint cell_index  = EncodeCloudCullingCellIndex(cell_coordinates);
 		uint cell_offset = cell_index * CloudCullingConstants::max_elements_per_cell;
 		
 		BitArraySetBit(cloud_culling_grid, cloud_entity_index, cell_offset);
@@ -107,7 +122,7 @@ void MainCS(uint thread_id : SV_DispatchThreadID) {
 void MainCS(uint3 thread_id : SV_DispatchThreadID, uint thread_index : SV_GroupIndex) {
 	uint3 cell_coordinates = thread_id;
 	
-	uint cell_index  = cell_coordinates.x | (cell_coordinates.y << 6) | (cell_coordinates.z << 12);
+	uint cell_index  = EncodeCloudCullingCellIndex(cell_coordinates);
 	uint cell_offset = cell_index * CloudCullingConstants::max_elements_per_cell;
 	
 	// Update any cells that have cloud volumes.
@@ -119,7 +134,7 @@ void MainCS(uint3 thread_id : SV_DispatchThreadID, uint thread_index : SV_GroupI
 	// Update any cells that had clouds last frame to clean up stale data left behind by moving clouds.
 	if (is_occupied == false) {
 		u64 voxel = sdf_cloud_volume_mask[thread_id / 2];
-		uint voxel_index = ((thread_id.x << 1) & 0x2) | ((thread_id.y << 3) & 0x8) | ((thread_id.z << 5) & 0x20);
+		uint voxel_index = RowMajorEncode3D(thread_id * 2, 2);
 		
 		// Culling happens at 64x64x16 virtual resolution, while voxels are stored at 128x128x32 resolution and
 		// packed into 32x32x8 blocks, 4x4x4 each. So we need to check 2x2x2 texel block for each culling thread.
@@ -145,7 +160,7 @@ void MainCS(uint group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	}
 	
 	uint cell_index = cloud_update_list[group_id >> 3];
-	uint3 thread_id = (uint3(cell_index, cell_index >> 6, cell_index >> 12) & uint3(0x3F, 0x3F, 0x7)) * 8 + (uint3(group_id, group_id >> 1, group_id >> 2) & 0x1) * 4 + (uint3(thread_index, thread_index >> 2, thread_index >> 4) & 0x3);
+	uint3 thread_id = DecodeCloudCullingCellIndex(cell_index) * 8 + RowMajorDecode3D(group_id, 1) * 4 + RowMajorDecode3D(thread_index, 2);
 	
 	float3 thread_uv = (thread_id + 0.5) / CloudConstants::cloud_volume_size;
 	float3 world_space_position = thread_uv * scene.clouds.world_space_size + scene.clouds.world_space_position;
@@ -220,8 +235,7 @@ void MainCS(uint3 thread_id : SV_DispatchThreadID, uint thread_index : SV_GroupI
 		uint command_index = 0;
 		InterlockedAdd(indirect_arguments[IndirectArgumentsLayout::FineCloudUpdateList].x, 1u, command_index);
 		
-		thread_id /= 2;
-		cloud_update_list[command_index] = thread_id.x | (thread_id.y << 8) | (thread_id.z << 16);
+		cloud_update_list[command_index] = RowMajorEncode3D(thread_id / 2, 8);
 	}
 }
 #endif // defined(BUILD_CLOUD_VOLUME_MASK)

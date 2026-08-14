@@ -127,18 +127,10 @@ static void UpdateCloudVolumeEntityGpuComponents(StackAllocator* alloc, RecordCo
 	auto* entity_array = QueryEntityTypeArray<CloudVolumeEntityType>(world_system);
 	auto streams = ExtractComponentStreams<CloudVolumeEntityType>(entity_array);
 	
-	auto texture_streams = ExtractComponentStreams<TextureAssetType>(QueryEntityTypeArray<TextureAssetType>(asset_system));
-	
-	for (u64 i : BitArrayIt(entity_array->alive_mask)) {
-		auto* texture_asset = HashTableFind(asset_system.entity_guid_to_entity_id, streams.cloud_volume[i].sdf_texture.guid);
-		if (texture_asset != nullptr) {
-			auto texture_entity_id = texture_asset->value.entity_id;
-			texture_streams.cpu_streaming_requests[texture_entity_id.index].RequestMinimumResidency(128);
-		}
-	}
-	
 	u64 dirty_entity_count = BitArrayCountSetBits(entity_array->dirty_mask);
 	if (dirty_entity_count == 0) return;
+	
+	auto texture_streams = ExtractComponentStreams<TextureAssetType>(QueryEntityTypeArray<TextureAssetType>(asset_system));
 	
 	auto gpu_cloud_volume_entity_data = AllocateGpuComponentUploadBuffer(record_context, dirty_entity_count, streams.gpu_cloud_volume_entity_data);
 	for (u64 i : BitArrayIt(entity_array->dirty_mask)) {

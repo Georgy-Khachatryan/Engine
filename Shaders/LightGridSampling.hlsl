@@ -1,6 +1,14 @@
 #ifndef LIGHTGRIDSAMPLING_HLSL
 #define LIGHTGRIDSAMPLING_HLSL
 
+u32 EncodeLightGridCellIndex(uint3 cell_coordinates) {
+	return cell_coordinates.x | (cell_coordinates.y << 4) | (cell_coordinates.z << 8);
+}
+
+uint3 DecodeLightGridCellIndex(u32 index) {
+	return uint3(index >> 0, index >> 4, index >> 8) & 0xF;
+}
+
 struct LightGridCellCoordinates {
 	u32 cascade_index;
 	u32 cell_offset;
@@ -26,7 +34,7 @@ LightGridCellCoordinates ComputeLightGridCellCoordinates(float3 world_space_posi
 		float grid_cell_size   = LightCullingConstants::grid_cell_size * (1u << result.cascade_index);
 		uint3 cell_coordinates = (uint3)floor((world_space_position - cascade_desc.xyz) / grid_cell_size);
 		
-		uint cell_index = cell_coordinates.x | (cell_coordinates.y << 4) | (cell_coordinates.z << 8);
+		uint cell_index = EncodeLightGridCellIndex(cell_coordinates);
 		result.cell_offset = cell_index * LightCullingConstants::max_elements_per_cell + result.cascade_index * LightCullingConstants::max_elements_per_cascade;
 	}
 	

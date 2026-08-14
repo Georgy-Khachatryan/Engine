@@ -1,5 +1,6 @@
 #include "Basic.hlsl"
 #include "Generated/LightData.hlsl"
+#include "LightGridSampling.hlsl"
 
 compile_const uint thread_group_size = LightCullingConstants::thread_group_size;
 
@@ -47,17 +48,17 @@ void MainCS(uint thread_id : SV_DispatchThreadID) {
 	}
 	
 	compile_const float grid_size_cells = LightCullingConstants::grid_size_cells;
-	float grid_cell_size = LightCullingConstants::grid_cell_size;
+	float inv_grid_cell_size = 1.f / LightCullingConstants::grid_cell_size;
 	
-	for (uint cascade_index = 0; cascade_index < LightCullingConstants::grid_cascade_count; cascade_index += 1, grid_cell_size *= 2.0) {
+	for (uint cascade_index = 0; cascade_index < LightCullingConstants::grid_cascade_count; cascade_index += 1, inv_grid_cell_size *= 0.5) {
 		float4 cascade_desc = scene.light_grid_cascade_descs[cascade_index];
-		uint3 aabb_min_cells = (uint3)clamp(floor((aabb_min - cascade_desc.xyz) / grid_cell_size), 0.0, grid_size_cells);
-		uint3 aabb_max_cells = (uint3)clamp(ceil((aabb_max  - cascade_desc.xyz) / grid_cell_size), 0.0, grid_size_cells);
+		uint3 aabb_min_cells = (uint3)clamp(floor((aabb_min - cascade_desc.xyz) * inv_grid_cell_size), 0.0, grid_size_cells);
+		uint3 aabb_max_cells = (uint3)clamp(ceil((aabb_max  - cascade_desc.xyz) * inv_grid_cell_size), 0.0, grid_size_cells);
 		uint3 aabb_size_cells = aabb_max_cells - aabb_min_cells;
 		uint aabb_volume_cells = aabb_size_cells.x * aabb_size_cells.y * aabb_size_cells.z;
 		
-		uint packed_aabb_min = (aabb_min_cells.x - 0) | ((aabb_min_cells.y - 0) << 4) | ((aabb_min_cells.z - 0) << 8);
-		uint packed_aabb_max = (aabb_max_cells.x - 1) | ((aabb_max_cells.y - 1) << 4) | ((aabb_max_cells.z - 1) << 8);
+		uint packed_aabb_min = EncodeLightGridCellIndex(aabb_min_cells - 0);
+		uint packed_aabb_max = EncodeLightGridCellIndex(aabb_max_cells - 1);
 		uint packed_aabb     = packed_aabb_min | (packed_aabb_max << 12);
 		
 		uint aabb_volume_offset = 0;
@@ -83,8 +84,8 @@ void MainCS(uint thread_id : SV_DispatchThreadID) {
 	
 	uint light_entity_index = (light_culling_command.x & 0x1FFFFFFu);
 	uint aabb_volume_offset = (((light_culling_command.x >> 28) << 8) | (light_culling_command.y >> 24)) + (thread_id & CreateBitMaskSmall(constants.bin_index));
-	uint3 aabb_min_cells    = (uint3(light_culling_command.y >> 0,  light_culling_command.y >> 4,  light_culling_command.y >> 8)  & 0xF) + 0;
-	uint3 aabb_max_cells    = (uint3(light_culling_command.y >> 12, light_culling_command.y >> 16, light_culling_command.y >> 20) & 0xF) + 1;
+	uint3 aabb_min_cells    = DecodeLightGridCellIndex(light_culling_command.y >>  0) + 0;
+	uint3 aabb_max_cells    = DecodeLightGridCellIndex(light_culling_command.y >> 12) + 1;
 	uint3 aabb_size_cells   = aabb_max_cells - aabb_min_cells;
 	uint  cascade_index     = (light_culling_command.x >> 25) & 0x7;
 	
@@ -119,7 +120,7 @@ void MainCS(uint thread_id : SV_DispatchThreadID) {
 	}
 	
 	if (is_visible) {
-		uint cell_index  = cell_coordinates.x | (cell_coordinates.y << 4) | (cell_coordinates.z << 8);
+		uint cell_index  = EncodeLightGridCellIndex(cell_coordinates);
 		uint cell_offset = cell_index * LightCullingConstants::max_elements_per_cell + cascade_index * LightCullingConstants::max_elements_per_cascade;
 		
 		BitArraySetBit(light_culling_grid, light_entity_index, cell_offset);
@@ -138,7 +139,7 @@ void MainCS(uint3 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	uint cascade_index = (group_id.z / LightCullingConstants::grid_size_cells);
 	uint3 cell_coordinates = uint3(group_id.xy, group_id.z % LightCullingConstants::grid_size_cells);
 	
-	uint cell_index  = cell_coordinates.x | (cell_coordinates.y << 4) | (cell_coordinates.z << 8);
+	uint cell_index  = EncodeLightGridCellIndex(cell_coordinates);
 	uint cell_offset = cell_index * LightCullingConstants::max_elements_per_cell + cascade_index * LightCullingConstants::max_elements_per_cascade;
 	
 	uint bitmask               = light_culling_grid[cell_offset + thread_index];
@@ -173,7 +174,7 @@ void MainCS(uint3 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	uint end_index   = min(group_prefix_bit_count + bitmask_bit_count, LightCullingConstants::max_lights_per_cell) + 1u;
 	
 	for (uint i = begin_index; i < end_index; i += 1, bitmask &= (bitmask - 1)) {
-		gs_light_list[i] = firstbitlow(bitmask) + thread_index * 32u;
+		gs_light_list[i] = thread_index * 32u + firstbitlow(bitmask);
 	}
 	
 	GroupMemoryBarrierWithGroupSync();

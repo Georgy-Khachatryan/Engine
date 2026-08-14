@@ -17,12 +17,12 @@ static void BuildResourceTable(RecordContext* record_context, WorldEntitySystem*
 	table.Set(ID::SkyPanoramaLut,        TextureSize(TextureFormat::R16G16B16A16_FLOAT, AtmosphereConstants::sky_panorama_lut_size));
 	
 	table.Set(ID::SdfCloudVolume,              TextureSize(TextureFormat::R8_UNORM,    CloudConstants::cloud_volume_size));
-	table.Set(ID::SdfCloudVolumeTransientMask, TextureSize(TextureFormat::R8_UINT,     CloudConstants::cloud_volume_size / 4u));
-	table.Set(ID::SdfCloudVolumeMask,          TextureSize(TextureFormat::R32G32_UINT, CloudConstants::cloud_volume_size / 16u));
+	table.Set(ID::SdfCloudVolumeTransientMask, TextureSize(TextureFormat::R8_UINT,     CloudConstants::mask_volume_size_bits));
+	table.Set(ID::SdfCloudVolumeMask,          TextureSize(TextureFormat::R32G32_UINT, CloudConstants::mask_volume_size_blocks));
 	
-	table.Set(ID::CloudOpticalDepthVolume,      TextureSize(TextureFormat::R16_FLOAT,   CloudConstants::cloud_volume_size / 2u));
-	table.Set(ID::CloudRadianceTransferVolume0, TextureSize(TextureFormat::R16G16_FLOAT, CloudConstants::cloud_volume_size / 2u));
-	table.Set(ID::CloudRadianceTransferVolume1, TextureSize(TextureFormat::R16G16_FLOAT, CloudConstants::cloud_volume_size / 2u));
+	table.Set(ID::CloudOpticalDepthVolume,      TextureSize(TextureFormat::R16_FLOAT,    CloudConstants::lighting_volume_size));
+	table.Set(ID::CloudRadianceTransferVolume0, TextureSize(TextureFormat::R16G16_FLOAT, CloudConstants::lighting_volume_size));
+	table.Set(ID::CloudRadianceTransferVolume1, TextureSize(TextureFormat::R16G16_FLOAT, CloudConstants::lighting_volume_size));
 	
 	table.SwapHistory(ID::CloudRadianceTransferVolume0, ID::CloudRadianceTransferVolume1);
 	
@@ -256,9 +256,18 @@ static void CreateSceneConstants(RecordContext* record_context, uint2 render_tar
 		
 		if (cloud_settings.density_noise.guid != 0) {
 			auto asset = QueryEntityByGUID<TextureAssetType>(*asset_system, cloud_settings.density_noise.guid);
+			auto size = asset.runtime_data_layout->size;
 			
-			record_context->resource_table->Set(VirtualResourceID::CloudDensityNoise, asset.resource_allocation->resource, asset.runtime_data_layout->size);
-			asset.cpu_streaming_requests->RequestMinimumResidency(128);
+			record_context->resource_table->Set(VirtualResourceID::CloudDensityNoise, asset.resource_allocation->resource, size);
+			asset.cpu_streaming_requests->RequestMinimumResidency(size.x);
+			
+			float lighting_volume_voxel_size       = scene.clouds.world_space_size.x / CloudConstants::lighting_volume_size.x;
+			float noise_texels_per_meter           = (float)size.x * scene.clouds.density_noise_scale;
+			float lighting_volume_noise_mip_offset = roundf(log2f(lighting_volume_voxel_size * noise_texels_per_meter));
+			float raymarch_noise_mip_scale         = noise_texels_per_meter * (scene.clip_to_view_coef.x * scene.inv_render_target_size.x * 2.f);
+			
+			scene.clouds.lighting_volume_noise_mip_offset = lighting_volume_noise_mip_offset;
+			scene.clouds.raymarch_noise_mip_scale         = raymarch_noise_mip_scale;
 		} else {
 			record_context->resource_table->Reset(VirtualResourceID::CloudDensityNoise);
 		}
@@ -276,9 +285,9 @@ static void CreateSceneConstants(RecordContext* record_context, uint2 render_tar
 	}
 	
 	
-	scene.visibility_hash_table_distance_to_cell_size_scale = world_entity.lighting_settings->visibility_hash_table_target_cell_size_pixels / (scene.view_to_clip_coef.x * scene.render_target_size.x * 0.5f);
-	scene.radiance_hash_table_distance_to_cell_size_scale   = world_entity.lighting_settings->radiance_hash_table_target_cell_size_pixels / (scene.view_to_clip_coef.x * scene.render_target_size.x * 0.5f);
-	scene.cdf_hash_table_distance_to_cell_size_scale        = world_entity.lighting_settings->cdf_hash_table_target_cell_size_pixels / (scene.view_to_clip_coef.x * scene.render_target_size.x * 0.5f);
+	scene.visibility_hash_table_distance_to_cell_size_scale = world_entity.lighting_settings->visibility_hash_table_target_cell_size_pixels * (scene.clip_to_view_coef.x * scene.inv_render_target_size.x * 2.f);
+	scene.radiance_hash_table_distance_to_cell_size_scale   = world_entity.lighting_settings->radiance_hash_table_target_cell_size_pixels   * (scene.clip_to_view_coef.x * scene.inv_render_target_size.x * 2.f);
+	scene.cdf_hash_table_distance_to_cell_size_scale        = world_entity.lighting_settings->cdf_hash_table_target_cell_size_pixels        * (scene.clip_to_view_coef.x * scene.inv_render_target_size.x * 2.f);
 	
 	scene.visible_light_tile_list_size = DivideAndRoundUp(render_target_size, LightingConstants::visible_light_tile_size);
 	scene.wrs_min_light_weight = world_entity.lighting_settings->wrs_min_light_weight;
@@ -399,19 +408,6 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 			auto& build_tlas = render_passes.Add<BuildTlasRenderPass>();
 			build_tlas.world_system = world_system;
 		}
-		
-		{
-			auto& cloud_entity_culling = render_passes.Add<CloudEntityCullingRenderPass>();
-			cloud_entity_culling.world_system = world_system;
-			
-			render_passes.Add<CloudCullingRenderPass>();
-			render_passes.Add<BuildCloudUpdateListRenderPass>();
-			
-			auto& composite_cloud_volume = render_passes.Add<CompositeCloudVolumeRenderPass>();
-			composite_cloud_volume.world_system = world_system;
-			
-			render_passes.Add<BuildCloudVolumeMaskRenderPass>();
-		}
 	}
 	
 	{
@@ -452,8 +448,23 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 		render_passes.PushQueue(CommandQueueType::Compute);
 		defer{ render_passes.PopQueue(); };
 		
-		render_passes.Add<CloudOpticalDepthVolumeRenderPass>();
-		render_passes.Add<CloudRadianceTransferVolumeRenderPass>();
+		{
+			auto& cloud_entity_culling = render_passes.Add<CloudEntityCullingRenderPass>();
+			cloud_entity_culling.world_system = world_system;
+			
+			render_passes.Add<CloudCullingRenderPass>();
+			render_passes.Add<BuildCloudUpdateListRenderPass>();
+			
+			auto& composite_cloud_volume = render_passes.Add<CompositeCloudVolumeRenderPass>();
+			composite_cloud_volume.world_system = world_system;
+			
+			render_passes.Add<BuildCloudVolumeMaskRenderPass>();
+		}
+		
+		{
+			render_passes.Add<CloudOpticalDepthVolumeRenderPass>();
+			render_passes.Add<CloudRadianceTransferVolumeRenderPass>();
+		}
 	}
 	
 	render_passes.Add<AtmosphereCompositeRenderPass>();

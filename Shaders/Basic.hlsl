@@ -121,7 +121,14 @@ u32 WyHash32(u32 a, u32 b) {
 
 // Result has exclusive upper bound, i.e. the range is [0, 1).
 float2 ComputeRandomUnorm16x2(inout uint hash) {
-	float2 result = float2(hash & 0xFFFF, (hash >> 16) & 0xFFFF) * rcp(0x10000);
+	float2 result = float2(hash & 0xFFFF, hash >> 16) * rcp(0x10000);
+	hash = WyHash32(hash, 0);
+	return result;
+}
+
+// Result has exclusive upper bound, i.e. the range is [0, 1).
+float3 ComputeRandomUnorm10x3(inout uint hash) {
+	float3 result = float3(uint3(hash, hash >> 10, hash >> 20) & 0x3FF) * rcp(0x400);
 	hash = WyHash32(hash, 0);
 	return result;
 }
@@ -131,6 +138,23 @@ uint ComputeRandomU32(inout uint hash, uint max_value) {
 	uint result = hash % max_value;
 	hash = WyHash32(hash, 0);
 	return result;
+}
+
+
+uint CreateBitMaskSmall(uint bit_count) {
+	return ((1u << bit_count) - 1);
+}
+
+uint CreateBitMask(uint bit_count) {
+	return bit_count >= 32 ? u32_max : CreateBitMaskSmall(bit_count);
+}
+
+u32 RoundUpToPowerOf2(u32 v) {
+	return 1u << (firstbithigh(v - 1u) + 1u);
+}
+
+s32 FloorLog2(float value) {
+	return ((asint(value) >> 23) & 0xFF) - 127;
 }
 
 
@@ -165,6 +189,16 @@ uint2 MortonEncode2x2(uint2 coordinates) {
 uint2 MortonDecode2x2(uint code) {
 	return uint2(code, code >> 1) & 0x1;
 }
+
+uint RowMajorEncode3D(uint3 coordinates, uint bit_count) {
+	coordinates &= CreateBitMaskSmall(bit_count);
+	return coordinates.x | (coordinates.y << bit_count) | (coordinates.z << bit_count * 2);
+}
+
+uint3 RowMajorDecode3D(uint code, uint bit_count) {
+	return uint3(code, code >> bit_count, code >> bit_count * 2) & CreateBitMaskSmall(bit_count);
+}
+
 
 float3 DecodeSRGB(float3 x) { return select(x < 0.04045, (x / 12.92), pow((x + 0.055) / 1.055, 2.4)); }
 float3 EncodeSRGB(float3 x) { return select(x < 0.0031308, 12.92 * x, (1.055 * pow(x, 1.0 / 2.4) - 0.055)); }
@@ -549,17 +583,5 @@ bool BitArrayTestBit(vector<uint, component_count> mask, u32 index, u32 offset =
 #define GsBitArrayTestBit(gs_mask, index) ((gs_mask[index / 32u] & (1u << (index % 32u))) != 0)
 #define GsBitArraySetBit(gs_mask, index) InterlockedOr(gs_mask[index / 32u], 1u << (index % 32u))
 #define GsBitArrayResetBit(gs_mask, index) InterlockedAnd(gs_mask[index / 32u], ~(1u << (index % 32u)))
-
-uint CreateBitMaskSmall(uint bit_count) {
-	return ((1u << bit_count) - 1);
-}
-
-uint CreateBitMask(uint bit_count) {
-	return bit_count >= 32 ? u32_max : CreateBitMaskSmall(bit_count);
-}
-
-u32 RoundUpToPowerOf2(u32 v) {
-	return 1u << (firstbithigh(v - 1u) + 1u);
-}
 
 #endif // BASIC_HLSL

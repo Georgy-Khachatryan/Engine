@@ -1449,7 +1449,7 @@ NOTES(Meta::HlslFile{ "CloudData.hlsl"_sl })
 struct CloudCullingConstants {
 	compile_const u32 thread_group_size = 256u;
 	
-	compile_const uint3 grid_size_cells = uint3(64, 64, 8);
+	compile_const uint3 grid_size_cells = CloudConstants::culling_volume_size;
 	compile_const u32   grid_cell_count = grid_size_cells.x * grid_size_cells.y * grid_size_cells.z;
 	
 	compile_const u32 max_elements_per_cell = 8;
@@ -1481,10 +1481,11 @@ struct CloudEntityCullingRenderPass {
 	WorldEntitySystem* world_system = nullptr;
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
-		HLSL::RegularBuffer<u32>                      cloud_volume_alive_mask = VirtualResourceID::CloudVolumeAliveMask;
-		HLSL::RegularBuffer<GpuCloudVolumeEntityData> cloud_volume_data       = VirtualResourceID::GpuCloudVolumeEntityData;
-		HLSL::RWRegularBuffer<uint2>                  cloud_culling_commands  = VirtualResourceID::CloudCullingCommands;
-		HLSL::RWRegularBuffer<uint4>                  indirect_arguments      = VirtualResourceID::CloudCullingIndirectArguments;
+		HLSL::RegularBuffer<u32>                      cloud_volume_alive_mask    = VirtualResourceID::CloudVolumeAliveMask;
+		HLSL::RegularBuffer<GpuCloudVolumeEntityData> cloud_volume_data          = VirtualResourceID::GpuCloudVolumeEntityData;
+		HLSL::RWRegularBuffer<uint2>                  cloud_culling_commands     = VirtualResourceID::CloudCullingCommands;
+		HLSL::RWRegularBuffer<uint4>                  indirect_arguments         = VirtualResourceID::CloudCullingIndirectArguments;
+		HLSL::RWRegularBuffer<u32>                    texture_streaming_feedback = VirtualResourceID::TextureStreamingFeedback;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {

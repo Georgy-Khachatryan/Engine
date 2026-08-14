@@ -37,7 +37,7 @@ struct PathTracerShadowSampler {
 		
 #if ENABLE_VOLUME_RENDERING
 		if (transmittance == 1.0) {
-			transmittance = TraceVolumetricMediumTransmittanceRay<CloudDensitySampler>(ray_desc.Origin, ray_desc.Direction, ray_length, hash);
+			transmittance = TraceVolumetricMediumTransmittanceRay(ray_desc.Origin, ray_desc.Direction, ray_length, hash, 0.0);
 		}
 #endif // ENABLE_VOLUME_RENDERING
 		
@@ -79,7 +79,7 @@ float3 MainPT(uint2 thread_id, uint sample_index) {
 		}
 		
 #if ENABLE_VOLUME_RENDERING
-		VolumeInteractionType volume_interaction_type = SampleVolumetricMedium<CloudDensitySampler>(ray_desc, ray_query.CommittedRayT(), hash);
+		VolumeInteractionType volume_interaction_type = SampleVolumetricMedium(ray_desc, ray_query.CommittedRayT(), hash, 0.0);
 #else // !ENABLE_VOLUME_RENDERING
 		compile_const VolumeInteractionType volume_interaction_type = VolumeInteractionType::None;
 #endif // !ENABLE_VOLUME_RENDERING
