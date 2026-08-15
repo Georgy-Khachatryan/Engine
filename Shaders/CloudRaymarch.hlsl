@@ -1,7 +1,9 @@
 #include "Basic.hlsl"
+#if !defined(SHADOW_MAP_FILTER)
 #include "AtmosphereSampling.hlsl"
 #include "BrdfSampling.hlsl"
 #include "CloudSampling.hlsl"
+#endif // !defined(SHADOW_MAP_FILTER)
 
 compile_const float hybrid_transmittance_ray_length = 8.0;
 
@@ -30,6 +32,7 @@ float RaymarchHybridOpticalDepthRay(float3 origin, float3 direction, float noise
 }
 #endif // defined(CLOUD_RAYMARCH) || defined(RADIANCE_TRANSFER_VOLUME)
 
+#if defined(CLOUD_RAYMARCH) || defined(OPTICAL_DEPTH_VOLUME) || defined(SHADOW_MAP)
 void SkipEmptySpaceInTwoDirections(RayDesc ray_desc, inout VolumetricSceneIntersection intersection) {
 	VoxelTraversalState forward_traversal_state = BeginVoxelTraversal(ray_desc.Origin, ray_desc.Direction, intersection.t_max);
 	intersection.t_min = VoxelGridSkipEmptySpace(forward_traversal_state, ray_desc.Direction, intersection.t_min);
@@ -37,6 +40,7 @@ void SkipEmptySpaceInTwoDirections(RayDesc ray_desc, inout VolumetricSceneInters
 	VoxelTraversalState backward_traversal_state = BeginVoxelTraversal(ray_desc.Origin + ray_desc.Direction * intersection.t_max, -ray_desc.Direction, intersection.t_max - intersection.t_min);
 	intersection.t_max -= VoxelGridSkipEmptySpace(backward_traversal_state, -ray_desc.Direction, 0.0);
 }
+#endif // defined(CLOUD_RAYMARCH) || defined(OPTICAL_DEPTH_VOLUME) || defined(SHADOW_MAP)
 
 #if defined(CLOUD_RAYMARCH)
 [ThreadGroupSize(256, 1, 1)]
@@ -56,7 +60,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	float depth = depth_stencil[thread_id];
 	if (depth != 0.0) {
 		float3 view_space_position = TransformScreenUvToViewSpace(thread_uv, depth, scene.clip_to_view_coef, scene.jitter_offset_ndc);
-		intersection.t_max = min(intersection.t_max, view_space_position.z);
+		intersection.t_max = min(intersection.t_max, length(view_space_position));
 	}
 	
 	SkipEmptySpaceInTwoDirections(ray_desc, intersection);
@@ -144,6 +148,78 @@ void MainCS(uint group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	cloud_optical_depth_volume[thread_id] = optical_depth;
 }
 #endif // defined(OPTICAL_DEPTH_VOLUME)
+
+
+#if defined(SHADOW_MAP)
+float3 RaymarchBeerShadowMapRay(float3 origin, float3 direction, float t_min, float t_max) {
+	float noise_mip_level = scene.clouds.lighting_volume_noise_mip_offset;
+	
+	float optical_depth = 0.0;
+	float cloud_t_max   = t_min;
+	float cloud_t_min   = t_max;
+	
+	float delta_t = 4.0;
+	for (float ray_t = t_min; ray_t < t_max; ray_t += delta_t, noise_mip_level += 1.0) {
+		float3 position = direction * ray_t + origin;
+		float density = ComputeVolumetricMediumDensity(position, min(noise_mip_level, 7.0));
+		
+		if (density > (1.0 / 255.0)) {
+			cloud_t_max = max(cloud_t_max, ray_t);
+			cloud_t_min = min(cloud_t_min, ray_t);
+			optical_depth += density * delta_t;
+		}
+	}
+	
+	bool is_valid = (optical_depth != 0.0);
+	return is_valid ? float3(cloud_t_min, cloud_t_max, optical_depth * scene.clouds.extinction_coefficients) : float3(t_min, t_max, 0.0);
+}
+
+[ThreadGroupSize(256, 1, 1)]
+void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
+	uint2  thread_id = group_id * 16 + MortonDecode(thread_index);
+	float2 thread_uv = (thread_id + 0.5) / CloudConstants::shadow_map_size;
+	
+	RayInfo view_space_ray = RayInfoFromScreenUv(thread_uv, scene.clouds.clip_to_view_coef);
+	
+	RayDesc ray_desc;
+	ray_desc.Origin    = mul(scene.clouds.view_to_world, float4(view_space_ray.origin, 1.0));
+	ray_desc.Direction = mul((float3x3)scene.clouds.view_to_world, view_space_ray.direction);
+	
+	VolumetricSceneIntersection intersection = RayBoxIntersection(ray_desc.Origin - scene.clouds.world_space_position, ray_desc.Direction, scene.clouds.world_space_size);
+	SkipEmptySpaceInTwoDirections(ray_desc, intersection);
+	
+	float3 shadow_map = RaymarchBeerShadowMapRay(ray_desc.Origin, ray_desc.Direction, intersection.t_min, intersection.t_max);
+	transient_cloud_shadow_map[thread_id] = shadow_map;
+}
+#endif // defined(SHADOW_MAP)
+
+
+#if defined(SHADOW_MAP_FILTER)
+#include "TextureSampling.hlsl"
+
+[ThreadGroupSize(256, 1, 1)]
+void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
+	uint2 thread_id = group_id * 16 + MortonDecode(thread_index);
+	
+	float3 shadow_map_sum = 0.0;
+	float  weight_sum = 0.0;
+	
+	compile_const s32 radius = 1;
+	for (s32 y = -radius; y <= radius; y += 1) {
+		for (s32 x = -radius; x <= radius; x += 1) {
+			float weight = ComputeGaussianWeight(x, y, radius);
+			s32x2 sample_position = thread_id + s32x2(x, y);
+			
+			if (all(sample_position >= 0) && all(sample_position < CloudConstants::shadow_map_size)) {
+				shadow_map_sum += transient_cloud_shadow_map[sample_position] * weight;
+				weight_sum += weight;
+			}
+		}
+	}
+	
+	cloud_shadow_map[thread_id] = shadow_map_sum * rcp(weight_sum);
+}
+#endif // defined(SHADOW_MAP_FILTER)
 
 
 #if defined(RADIANCE_TRANSFER_VOLUME)

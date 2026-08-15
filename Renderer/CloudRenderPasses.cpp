@@ -103,10 +103,30 @@ void CloudRaymarchRenderPass::RecordPass(RecordContext* record_context) {
 }
 
 void CloudOpticalDepthVolumeRenderPass::CreatePipelines(PipelineLibrary* lib) {
-	pipeline_id = CreateComputePipeline(lib, CloudRaymarchShadersID, CloudRaymarchShaders::OpticalDepthVolume);
+	pipeline_id_optical_depth_volume = CreateComputePipeline(lib, CloudRaymarchShadersID, CloudRaymarchShaders::OpticalDepthVolume);
+	pipeline_id_shadow_map           = CreateComputePipeline(lib, CloudRaymarchShadersID, CloudRaymarchShaders::ShadowMap);
 }
 
 void CloudOpticalDepthVolumeRenderPass::RecordPass(RecordContext* record_context) {
+	auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
+	CmdSetRootSignature(record_context, root_signature);
+	
+	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
+	CmdSetRootArgument(record_context, root_signature.scene, VirtualResourceID::SceneConstants);
+	
+	u32 indirect_arguments_offset = (u32)CloudCullingIndirectArgumentsLayout::FineCloudUpdateList;
+	CmdSetPipelineState(record_context, pipeline_id_optical_depth_volume);
+	CmdDispatchIndirect(record_context, GpuAddress(VirtualResourceID::CloudCullingIndirectArguments, indirect_arguments_offset * sizeof(uint4)));
+	
+	CmdSetPipelineState(record_context, pipeline_id_shadow_map);
+	CmdDispatch(record_context, DivideAndRoundUp(uint2(CloudConstants::shadow_map_size, CloudConstants::shadow_map_size), 16u));
+}
+
+void CloudShadowMapFilterRenderPass::CreatePipelines(PipelineLibrary* lib) {
+	pipeline_id = CreateComputePipeline(lib, CloudRaymarchShadersID, CloudRaymarchShaders::ShadowMapFilter);
+}
+
+void CloudShadowMapFilterRenderPass::RecordPass(RecordContext* record_context) {
 	auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
 	CmdSetRootSignature(record_context, root_signature);
 	CmdSetPipelineState(record_context, pipeline_id);
@@ -114,8 +134,7 @@ void CloudOpticalDepthVolumeRenderPass::RecordPass(RecordContext* record_context
 	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
 	CmdSetRootArgument(record_context, root_signature.scene, VirtualResourceID::SceneConstants);
 	
-	u32 indirect_arguments_offset = (u32)CloudCullingIndirectArgumentsLayout::FineCloudUpdateList;
-	CmdDispatchIndirect(record_context, GpuAddress(VirtualResourceID::CloudCullingIndirectArguments, indirect_arguments_offset * sizeof(uint4)));
+	CmdDispatch(record_context, DivideAndRoundUp(uint2(CloudConstants::shadow_map_size, CloudConstants::shadow_map_size), 16u));
 }
 
 void CloudRadianceTransferVolumeRenderPass::CreatePipelines(PipelineLibrary* lib) {

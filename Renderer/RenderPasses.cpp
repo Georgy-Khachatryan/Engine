@@ -24,7 +24,12 @@ static void BuildResourceTable(RecordContext* record_context, WorldEntitySystem*
 	table.Set(ID::CloudRadianceTransferVolume0, TextureSize(TextureFormat::R16G16_FLOAT, CloudConstants::lighting_volume_size));
 	table.Set(ID::CloudRadianceTransferVolume1, TextureSize(TextureFormat::R16G16_FLOAT, CloudConstants::lighting_volume_size));
 	
+	table.Set(ID::CloudShadowMap0, TextureSize(TextureFormat::R11G11B10_FLOAT, uint2(CloudConstants::shadow_map_size, CloudConstants::shadow_map_size)));
+	table.Set(ID::CloudShadowMap1, TextureSize(TextureFormat::R11G11B10_FLOAT, uint2(CloudConstants::shadow_map_size, CloudConstants::shadow_map_size)));
+	table.Set(ID::TransientCloudShadowMap, TextureSize(TextureFormat::R11G11B10_FLOAT, uint2(CloudConstants::shadow_map_size, CloudConstants::shadow_map_size)));
+	
 	table.SwapHistory(ID::CloudRadianceTransferVolume0, ID::CloudRadianceTransferVolume1);
+	table.SwapHistory(ID::CloudShadowMap0, ID::CloudShadowMap1);
 	
 	table.Set(ID::CloudCullingCommands,          CloudCullingConstants::culling_command_count    * sizeof(uint2));
 	table.Set(ID::CloudCullingIndirectArguments, (u32)CloudCullingIndirectArgumentsLayout::Count * sizeof(uint4));
@@ -277,6 +282,38 @@ static void CreateSceneConstants(RecordContext* record_context, uint2 render_tar
 		} else {
 			scene.clouds.density_noise_index = 0;
 		}
+		
+		{
+			float3x3 world_to_view_rotation = Math::BuildOrthonormalBasis(scene.atmosphere.world_space_sun_direction);
+			float3x3 view_to_world_rotation = Math::Transpose(world_to_view_rotation);
+			
+			float3 cloud_aabb_min = scene.clouds.world_space_position;
+			float3 cloud_aabb_max = scene.clouds.world_space_position + scene.clouds.world_space_size;
+			
+			float3 aabb_min = +FLT_MAX;
+			float3 aabb_max = -FLT_MAX;
+			for (u32 i = 0; i < 8; i += 1) {
+				auto uv_corner = float3(uint3(i, i >> 1, i >> 2) & 0x1);
+				auto world_space_corner = Math::Lerp(cloud_aabb_min, cloud_aabb_max, uv_corner);
+				auto shadow_view_space_corner = world_to_view_rotation * world_space_corner;
+				
+				aabb_min = Math::Min(aabb_min, shadow_view_space_corner);
+				aabb_max = Math::Max(aabb_max, shadow_view_space_corner);
+			}
+			
+			float3 view_space_shadow_position = float3((aabb_min.xy + aabb_max.xy) * 0.5f, aabb_min.z);
+			scene.clouds.world_to_view.r0 = float4(world_to_view_rotation.r0, -view_space_shadow_position.x);
+			scene.clouds.world_to_view.r1 = float4(world_to_view_rotation.r1, -view_space_shadow_position.y);
+			scene.clouds.world_to_view.r2 = float4(world_to_view_rotation.r2, -view_space_shadow_position.z);
+			
+			float3 world_space_shadow_position = view_to_world_rotation * view_space_shadow_position;
+			scene.clouds.view_to_world.r0 = float4(view_to_world_rotation.r0, world_space_shadow_position.x);
+			scene.clouds.view_to_world.r1 = float4(view_to_world_rotation.r1, world_space_shadow_position.y);
+			scene.clouds.view_to_world.r2 = float4(view_to_world_rotation.r2, world_space_shadow_position.z);
+			
+			scene.clouds.view_to_clip_coef = Math::OrthographicViewToClip(aabb_max.xy - aabb_min.xy, aabb_max.z - aabb_min.z);
+			scene.clouds.clip_to_view_coef = Math::ViewToClipInverse(scene.clouds.view_to_clip_coef);
+		}
 	}
 	
 	for (u32 i = 0; i < LightCullingConstants::grid_cascade_count; i += 1) {
@@ -470,6 +507,7 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 		{
 			render_passes.Add<CloudOpticalDepthVolumeRenderPass>();
 			render_passes.Add<CloudRadianceTransferVolumeRenderPass>();
+			render_passes.Add<CloudShadowMapFilterRenderPass>();
 		}
 	}
 	

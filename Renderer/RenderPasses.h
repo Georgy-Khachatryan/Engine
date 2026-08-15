@@ -108,6 +108,18 @@ enum struct VirtualResourceID : u32 {
 	CloudCullingCommands,
 	CloudCullingGrid,
 	
+	SdfCloudVolume,
+	SdfCloudVolumeTransientMask,
+	SdfCloudVolumeMask,
+	
+	CloudOpticalDepthVolume,
+	CloudRadianceTransferVolume0,
+	CloudRadianceTransferVolume1,
+	
+	CloudShadowMap0,
+	CloudShadowMap1,
+	TransientCloudShadowMap,
+	
 	// Radiance cache:
 	RadianceHashTableKeys,
 	RadianceHashTableValues,
@@ -121,12 +133,6 @@ enum struct VirtualResourceID : u32 {
 	TransmittanceLut,
 	MultipleScatteringLut,
 	SkyPanoramaLut,
-	SdfCloudVolume,
-	SdfCloudVolumeTransientMask,
-	SdfCloudVolumeMask,
-	CloudOpticalDepthVolume,
-	CloudRadianceTransferVolume0,
-	CloudRadianceTransferVolume1,
 	
 	// Reference Path Tracer:
 	ReferencePathTracerRadiance,
@@ -1151,6 +1157,7 @@ struct DeferredLightingRenderPass {
 		HLSL::Texture2D<float3>                 indirect_specular                = VirtualResourceID::IndirectSpecular;
 		HLSL::RegularBuffer<GpuLightEntityData> light_entity_data                = VirtualResourceID::GpuLightEntityData;
 		HLSL::RegularBuffer<u32>                light_culling_grid               = VirtualResourceID::LightCullingGrid;
+		HLSL::Texture2D<float3>                 cloud_shadow_map                 = VirtualResourceID::CloudShadowMap0;
 		HLSL::TopLevelRTAS                      scene_tlas                       = VirtualResourceID::SceneTLAS;
 		HLSL::Texture2D<float>                  denoiser_penumbra_mask_0         = VirtualResourceID::DenoiserPenumbraMask0;
 		HLSL::RWTexture2D<float>                denoiser_penumbra_mask_1         = VirtualResourceID::DenoiserPenumbraMask1;
@@ -1234,6 +1241,7 @@ struct IndirectDiffuseRenderPass {
 		HLSL::RegularBuffer<GpuMaterialTextureData> material_texture_data            = VirtualResourceID::MaterialAssetTextureData;
 		HLSL::ByteBuffer                            mesh_asset_buffer                = VirtualResourceID::MeshAssetBuffer;
 		HLSL::RegularBuffer<u32>                    light_culling_grid               = VirtualResourceID::LightCullingGrid;
+		HLSL::Texture2D<float3>                     cloud_shadow_map                 = VirtualResourceID::CloudShadowMap0;
 		HLSL::TopLevelRTAS                          scene_tlas                       = VirtualResourceID::SceneTLAS;
 		HLSL::RWRegularBuffer<u64>                  radiance_hash_table_keys         = VirtualResourceID::RadianceHashTableKeys;
 		HLSL::RWByteBuffer                          radiance_hash_table_values       = VirtualResourceID::RadianceHashTableValues;
@@ -1271,6 +1279,7 @@ struct IndirectSpecularRenderPass {
 		HLSL::RegularBuffer<GpuMaterialTextureData> material_texture_data            = VirtualResourceID::MaterialAssetTextureData;
 		HLSL::ByteBuffer                            mesh_asset_buffer                = VirtualResourceID::MeshAssetBuffer;
 		HLSL::RegularBuffer<u32>                    light_culling_grid               = VirtualResourceID::LightCullingGrid;
+		HLSL::Texture2D<float3>                     cloud_shadow_map                 = VirtualResourceID::CloudShadowMap0;
 		HLSL::TopLevelRTAS                          scene_tlas                       = VirtualResourceID::SceneTLAS;
 		HLSL::RWRegularBuffer<u64>                  radiance_hash_table_keys         = VirtualResourceID::RadianceHashTableKeys;
 		HLSL::RWByteBuffer                          radiance_hash_table_values       = VirtualResourceID::RadianceHashTableValues;
@@ -1583,7 +1592,9 @@ NOTES(Meta::ShaderName{ "CloudRaymarch.hlsl"_sl })
 enum struct CloudRaymarchShaders : u32 {
 	CloudRaymarch          = 1u << 0,
 	OpticalDepthVolume     = 1u << 1,
-	RadianceTransferVolume = 1u << 2,
+	ShadowMap              = 1u << 2,
+	ShadowMapFilter        = 1u << 3,
+	RadianceTransferVolume = 1u << 4,
 };
 SHADER_DEFINITION_GENERATED_CODE(CloudRaymarchShaders);
 
@@ -1617,12 +1628,29 @@ struct CloudOpticalDepthVolumeRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
-		HLSL::RegularBuffer<u32>     cloud_update_list          = VirtualResourceID::CloudCullingCommands;
-		HLSL::Texture3D<float>       sdf_cloud_volume           = VirtualResourceID::SdfCloudVolume;
-		HLSL::Texture3D<u64>         sdf_cloud_volume_mask      = VirtualResourceID::SdfCloudVolumeMask;
-		HLSL::Texture2DArray<float>  blue_noise_1d              = VirtualResourceID::BlueNoise1D;
-		HLSL::Texture2DArray<float2> blue_noise_2d              = VirtualResourceID::BlueNoise2D;
-		HLSL::RWTexture3D<float>     cloud_optical_depth_volume = VirtualResourceID::CloudOpticalDepthVolume;
+		HLSL::RegularBuffer<u32>  cloud_update_list          = VirtualResourceID::CloudCullingCommands;
+		HLSL::Texture3D<float>    sdf_cloud_volume           = VirtualResourceID::SdfCloudVolume;
+		HLSL::Texture3D<u64>      sdf_cloud_volume_mask      = VirtualResourceID::SdfCloudVolumeMask;
+		HLSL::RWTexture3D<float>  cloud_optical_depth_volume = VirtualResourceID::CloudOpticalDepthVolume;
+		HLSL::RWTexture2D<float3> transient_cloud_shadow_map = VirtualResourceID::TransientCloudShadowMap;
+	};
+	
+	struct RootSignature : HLSL::BaseRootSignature {
+		HLSL::ConstantBuffer<SceneConstants> scene;
+		HLSL::DescriptorTable<Descriptors> descriptor_table;
+	};
+	
+	inline static PipelineID pipeline_id_optical_depth_volume;
+	inline static PipelineID pipeline_id_shadow_map;
+};
+
+NOTES(Meta::RenderPass{})
+struct CloudShadowMapFilterRenderPass {
+	RENDER_PASS_GENERATED_CODE();
+	
+	struct Descriptors : HLSL::BaseDescriptorTable {
+		HLSL::RWTexture2D<float3> transient_cloud_shadow_map = VirtualResourceID::TransientCloudShadowMap;
+		HLSL::RWTexture2D<float3> cloud_shadow_map           = VirtualResourceID::CloudShadowMap1;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {

@@ -56,6 +56,13 @@ struct CloudConstants {
 	compile_const uint3 culling_volume_size     = cloud_volume_size / 8;
 	compile_const uint3 mask_volume_size_bits   = cloud_volume_size / 4;
 	compile_const uint3 mask_volume_size_blocks = cloud_volume_size / 16;
+	compile_const u32   shadow_map_size         = 512;
+	
+	
+	float3x4 world_to_view;
+	float3x4 view_to_world;
+	float4 view_to_clip_coef;
+	float4 clip_to_view_coef;
 	
 	
 	float3 world_space_position;

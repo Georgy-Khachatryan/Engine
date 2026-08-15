@@ -2,8 +2,9 @@
 #define LIGHTSAMPLING_HLSL
 
 #include "AtmosphereSampling.hlsl"
-#include "LightGridSampling.hlsl"
 #include "BasicHashTable.hlsl"
+#include "LightGridSampling.hlsl"
+#include "TextureSampling.hlsl"
 
 struct VisibilityHashTableKey : HashTableKey {
 	float cell_size;
@@ -119,6 +120,23 @@ LightShadingInfo ComputeLightShadingInfo(float3 shading_position, u32 light_enti
 		shading_info.light_direction   = light.light_direction;
 		shading_info.shadow_ray_length = 1024.0;
 		shading_info.light_irradiance *= SampleTransmittanceLUT(scene.atmosphere, transmittance_lut, shading_position);
+		
+#if defined(DEFERRED_LIGHTING) || defined(INDIRECT_DIFFUSE) || defined(INDIRECT_SPECULAR)
+		float3 shadow_view_space_position = mul(scene.clouds.world_to_view, float4(shading_position, 1.0));
+		float4 shadow_clip_space_position = TransformViewToClipSpace(shadow_view_space_position, scene.clouds.view_to_clip_coef);
+		float2 shadow_uv_position = NdcToScreenUv(shadow_clip_space_position.xy);
+		
+		if (all(shadow_uv_position >= 0) && all(shadow_uv_position <= 1.0)) {
+			float3 shadow_map = SampleTextureCatmullRom(cloud_shadow_map, sampler_linear_clamp, shadow_uv_position, 0.0, CloudConstants::shadow_map_size, 1.0 / CloudConstants::shadow_map_size);
+			
+			// During filtering the ordering of min/max depth might get swapped.
+			float min_cloud_depth = min(shadow_map.x, shadow_map.y);
+			float max_cloud_depth = max(shadow_map.x, max(shadow_map.y, min_cloud_depth + (1.0 / 1024.0)));
+			float optical_depth   = smoothstep(max_cloud_depth, min_cloud_depth, max(shadow_view_space_position.z, 0.0)) * shadow_map.z;
+			
+			shading_info.light_irradiance *= saturate(exp(-optical_depth));
+		}
+#endif // defined(DEFERRED_LIGHTING) || defined(INDIRECT_DIFFUSE) || defined(INDIRECT_SPECULAR)
 	} else {
 		float3 light_vector = light.light_position - shading_position;
 		float distance_to_light_square = dot(light_vector, light_vector);
