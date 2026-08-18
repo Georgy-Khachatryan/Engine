@@ -51,12 +51,13 @@ struct AtmosphereConstants {
 
 NOTES(Meta::HlslFile{ "CloudData.hlsl"_sl })
 struct CloudConstants {
-	compile_const uint3 cloud_volume_size       = uint3(512, 512, 64);
-	compile_const uint3 lighting_volume_size    = cloud_volume_size / 2;
-	compile_const uint3 culling_volume_size     = cloud_volume_size / 8;
-	compile_const uint3 mask_volume_size_bits   = cloud_volume_size / 4;
-	compile_const uint3 mask_volume_size_blocks = cloud_volume_size / 16;
-	compile_const u32   shadow_map_size         = 512;
+	compile_const uint3 cloud_volume_size        = uint3(512, 512, 64);
+	compile_const uint3 lighting_volume_size     = cloud_volume_size / 2;
+	compile_const uint3 sample_count_volume_size = lighting_volume_size / 4;
+	compile_const uint3 culling_volume_size      = cloud_volume_size / 8;
+	compile_const uint3 mask_volume_size_bits    = cloud_volume_size / 4;
+	compile_const uint3 mask_volume_size_blocks  = cloud_volume_size / 16;
+	compile_const u32   shadow_map_size          = 512;
 	
 	
 	float3x4 world_to_view;

@@ -33,7 +33,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 		break;
 	} case DebugVisualizationMode::Depth: {
 		float3 view_space_position = TransformScreenUvToViewSpace(thread_uv, depth, scene.clip_to_view_coef, scene.jitter_offset_ndc);
-		result = PlasmaHeatMap(sin(log2(view_space_position.z) * 2.0 * PI) * 0.5 + 0.5);
+		result = PlasmaHeatMap(sin(log2(view_space_position.z) * TAU) * 0.5 + 0.5);
 		break;
 	} case DebugVisualizationMode::TriangleID:
 	case DebugVisualizationMode::MeshletID:

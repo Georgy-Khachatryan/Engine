@@ -102,11 +102,10 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	float phase_function_g = scene.clouds.scattering_anisotropy;
 	scattering.x *= PhaseFunctionHG(dot(-ray_desc.Direction, scene.atmosphere.world_space_sun_direction), phase_function_g);
 	
-	float3 sky_radiance = SampleSkyPanoramaLUT(scene.atmosphere, sky_panorama_lut, transmittance_lut, scene.world_space_camera_position, float3(0.0, 0.0, 1.0), false);
-	
+	float3 sky_irradiance = average_sky_irradiance[uint2(0, 0)];
 	float3 sun_irradiance = scene.atmosphere.sun_color * scene.atmosphere.sun_irradiance * SampleTransmittanceLUT(scene.atmosphere, transmittance_lut, ray_desc.Direction * cloud_t_min + ray_desc.Origin);
 	
-	float3 radiance = sun_irradiance * scattering.x + sun_irradiance * scattering.y + scattering.z * sky_radiance;
+	float3 radiance = sun_irradiance * scattering.x + sun_irradiance * scattering.y + scattering.z * sky_irradiance;
 	scene_radiance[thread_id] = float4(scene_radiance[thread_id].xyz * transmittance + radiance * scene.exposure_estimate, 1.0);
 }
 #endif // defined(CLOUD_RAYMARCH)
@@ -227,6 +226,8 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 
 #define USE_OPTICAL_DEPTH_VOLUME
 
+groupshared float2 gs_radiance_transfer[8];
+
 [ThreadGroupSize(64, 1, 1)]
 void MainCS(uint group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	uint update_command = cloud_update_list[group_id];
@@ -237,14 +238,21 @@ void MainCS(uint group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	float3 thread_uv = (thread_id + ComputeRandomUnorm10x3(hash)) / CloudConstants::lighting_volume_size;
 	float3 world_space_position = thread_uv * scene.clouds.world_space_size + scene.clouds.world_space_position;
 	
-	uint max_path_length = 32;
-	// uint max_path_length = 4;
+	// uint max_path_length = 32;
+	uint max_path_length = 4;
 	
 	// Use isotropic phase function on the first scattering vertex to make sure radiance transfer is view independent.
 	// This also allows us to sample the radiance transfer volume for the last vertex on the path to get more bounces.
 	RayDesc ray_desc;
 	ray_desc.Origin    = world_space_position;
 	ray_desc.Direction = SphereMapping(ComputeRandomUnorm16x2(hash));
+	
+	u32 history_frame_count = cloud_sample_count_volume[thread_id / 4];
+	
+	if (thread_index == 0) {
+		uint max_frame_count = 256;
+		cloud_sample_count_volume[thread_id / 4] = min(history_frame_count + 1, max_frame_count);
+	}
 	
 	float2 radiance_transfer = 0.0;
 	
@@ -262,7 +270,8 @@ void MainCS(uint group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 			float phase_function = PhaseFunctionHG(dot(wo, scene.atmosphere.world_space_sun_direction), phase_function_g);
 			
 #if defined(USE_OPTICAL_DEPTH_VOLUME)
-			float transmittance = exp(-RaymarchHybridOpticalDepthRay(ray_desc.Origin, scene.atmosphere.world_space_sun_direction, noise_mip_level));
+			float optical_depth = RaymarchHybridOpticalDepthRay(ray_desc.Origin, scene.atmosphere.world_space_sun_direction, noise_mip_level);
+			float transmittance = exp(-optical_depth);
 #else // !defined(USE_OPTICAL_DEPTH_VOLUME)
 			float transmittance = TraceVolumetricMediumTransmittanceRay(ray_desc.Origin, scene.atmosphere.world_space_sun_direction, 1024.0, hash, noise_mip_level);
 #endif // !defined(USE_OPTICAL_DEPTH_VOLUME)
@@ -270,22 +279,65 @@ void MainCS(uint group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 			radiance_transfer.x += transmittance * phase_function;
 			
 			if (i + 1 == max_path_length) {
+				//
 				// Append the path from the previous frame to the end of the current frame path.
-				float3 sample_uvw = (ray_desc.Origin - scene.clouds.world_space_position) * scene.clouds.inv_world_space_size;
-				radiance_transfer += cloud_radiance_transfer_volume_1.SampleLevel(sampler_linear_clamp, sample_uvw, 0);
+				//
+				if (history_frame_count != 0) {
+					//
+					// Sample higher MIP levels when we don't have a lot of accumulated frames. In theory we should load the
+					// history frame count at the the sample position, but it's good enough to use the current one.
+					//
+					float mip_level = history_frame_count < 32 ? 2.0 : (history_frame_count < 64 ? 1.0 : 0.0);
+					
+					float3 sample_uvw = (ray_desc.Origin - scene.clouds.world_space_position) * scene.clouds.inv_world_space_size;
+					radiance_transfer += max(cloud_radiance_transfer_volume_1.SampleLevel(sampler_linear_clamp, sample_uvw, mip_level), 0.0);
+				} else {
+					//
+					// If we don't have any history samples, jump start convergence from a reasonable initial estimate.
+					//
+					radiance_transfer += float2(phase_function * exp(-optical_depth * 0.05), 0.25);
+				}
 			} else {
 				ray_desc.Direction = SamplePhaseFunctionHG(wo, phase_function_g, ComputeRandomUnorm16x2(hash));
 			}
 		} else {
-			radiance_transfer.y += max(ray_desc.Direction.z * 4.0, 0.0);
+			radiance_transfer.y += max(ray_desc.Direction.z * 2.0, 0.0);
 			i = max_path_length;
 		}
 	}
 	
-	float accumulation_ratio = 1.0 / min(scene.frame_index, 400);
-	
+	float accumulation_ratio = 1.0 / (history_frame_count + 1);
 	float2 old_accumulated_radiance_transfer = max(cloud_radiance_transfer_volume_1[thread_id], 0.0);
-	float2 new_accumulated_radiance_transfer = lerp(old_accumulated_radiance_transfer, radiance_transfer, accumulation_ratio);
-	cloud_radiance_transfer_volume_0[thread_id] = max(new_accumulated_radiance_transfer, 0.0);
+	float2 new_accumulated_radiance_transfer = max(lerp(old_accumulated_radiance_transfer, radiance_transfer, accumulation_ratio), 0.0);
+	
+	// Dither to prevent energy loss with very low accumulation ratio.
+	cloud_radiance_transfer_volume_0_0[thread_id] = DitherFloat16(max(new_accumulated_radiance_transfer, 0.0), ComputeRandomUnorm16x2(hash));
+	
+	
+	new_accumulated_radiance_transfer += WaveShuffleXor(new_accumulated_radiance_transfer, 0x1);
+	new_accumulated_radiance_transfer += WaveShuffleXor(new_accumulated_radiance_transfer, 0x4);
+	new_accumulated_radiance_transfer += WaveShuffleXor(new_accumulated_radiance_transfer, 0x10);
+	new_accumulated_radiance_transfer *= (1.0 / 8.0);
+	
+	if ((thread_index & 0b101010) == thread_index) {
+		cloud_radiance_transfer_volume_0_1[thread_id / 2] = DitherFloat16(new_accumulated_radiance_transfer, ComputeRandomUnorm16x2(hash));
+		
+		uint octant_index = ((thread_index >> 1) & 0x1) | ((thread_index >> 2) & 0x2) | ((thread_index >> 3) & 0x4);
+		gs_radiance_transfer[octant_index] = new_accumulated_radiance_transfer;
+	}
+	
+	GroupMemoryBarrierWithGroupSync();
+	
+	if (thread_index < 8) {
+		new_accumulated_radiance_transfer = gs_radiance_transfer[thread_index];
+		new_accumulated_radiance_transfer += WaveShuffleXor(new_accumulated_radiance_transfer, 0x1);
+		new_accumulated_radiance_transfer += WaveShuffleXor(new_accumulated_radiance_transfer, 0x2);
+		new_accumulated_radiance_transfer += WaveShuffleXor(new_accumulated_radiance_transfer, 0x4);
+		new_accumulated_radiance_transfer *= (1.0 / 8.0);
+		
+		if (thread_index == 0) {
+			cloud_radiance_transfer_volume_0_2[thread_id / 4] = DitherFloat16(new_accumulated_radiance_transfer, ComputeRandomUnorm16x2(hash));
+		}
+	}
 }
 #endif // defined(RADIANCE_TRANSFER_VOLUME)

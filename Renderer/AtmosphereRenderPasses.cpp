@@ -33,7 +33,8 @@ void MultipleScatteringLutRenderPass::RecordPass(RecordContext* record_context) 
 }
 
 void SkyPanoramaLutRenderPass::CreatePipelines(PipelineLibrary* lib) {
-	pipeline_id = CreateComputePipeline(lib, AtmosphereShadersID, AtmosphereShaders::SkyPanoramaLut);
+	pipeline_id_sky_panorama_lut       = CreateComputePipeline(lib, AtmosphereShadersID, AtmosphereShaders::SkyPanoramaLut);
+	pipeline_id_average_sky_irradiance = CreateComputePipeline(lib, AtmosphereShadersID, AtmosphereShaders::AverageSkyIrradiance);
 }
 
 void SkyPanoramaLutRenderPass::RecordPass(RecordContext* record_context) {
@@ -42,9 +43,12 @@ void SkyPanoramaLutRenderPass::RecordPass(RecordContext* record_context) {
 	CmdSetRootSignature(record_context, root_signature);
 	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
 	CmdSetRootArgument(record_context, root_signature.scene, VirtualResourceID::SceneConstants);
-	CmdSetPipelineState(record_context, pipeline_id);
 	
+	CmdSetPipelineState(record_context, pipeline_id_sky_panorama_lut);
 	CmdDispatch(record_context, DivideAndRoundUp(AtmosphereConstants::sky_panorama_lut_size, AtmosphereConstants::thread_group_size));
+	
+	CmdSetPipelineState(record_context, pipeline_id_average_sky_irradiance);
+	CmdDispatch(record_context);
 }
 
 void AtmosphereCompositeRenderPass::CreatePipelines(PipelineLibrary* lib) {

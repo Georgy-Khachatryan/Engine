@@ -94,7 +94,7 @@ static void CreateDescriptorTables(GraphicsContextD3D12* context, ArrayView<HLSL
 				desc.ViewDimension         = D3D12_UAV_DIMENSION_TEXTURE3D;
 				desc.Texture3D.MipSlice    = descriptor.texture.mip_index;
 				desc.Texture3D.FirstWSlice = 0;
-				desc.Texture3D.WSize       = resource.texture.size.DepthSliceCount();
+				desc.Texture3D.WSize       = u32_max;
 				
 				device->CreateUnorderedAccessView(resource.texture.resource.d3d12, nullptr, &desc, descriptor_table_handle);
 				break;

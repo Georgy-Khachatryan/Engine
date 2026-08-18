@@ -115,6 +115,7 @@ enum struct VirtualResourceID : u32 {
 	CloudOpticalDepthVolume,
 	CloudRadianceTransferVolume0,
 	CloudRadianceTransferVolume1,
+	CloudSampleCountVolume,
 	
 	CloudShadowMap0,
 	CloudShadowMap1,
@@ -133,6 +134,7 @@ enum struct VirtualResourceID : u32 {
 	TransmittanceLut,
 	MultipleScatteringLut,
 	SkyPanoramaLut,
+	AverageSkyIrradiance,
 	
 	// Reference Path Tracer:
 	ReferencePathTracerRadiance,
@@ -240,7 +242,8 @@ enum struct AtmosphereShaders : u32 {
 	TransmittanceLut      = 1u << 0,
 	MultipleScatteringLut = 1u << 1,
 	SkyPanoramaLut        = 1u << 2,
-	AtmosphereComposite   = 1u << 3,
+	AverageSkyIrradiance  = 1u << 3,
+	AtmosphereComposite   = 1u << 4,
 };
 SHADER_DEFINITION_GENERATED_CODE(AtmosphereShaders);
 
@@ -285,6 +288,7 @@ struct SkyPanoramaLutRenderPass {
 		HLSL::Texture2D<float3>   transmittance_lut       = VirtualResourceID::TransmittanceLut;
 		HLSL::Texture2D<float3>   multiple_scattering_lut = VirtualResourceID::MultipleScatteringLut;
 		HLSL::RWTexture2D<float4> sky_panorama_lut        = VirtualResourceID::SkyPanoramaLut;
+		HLSL::RWTexture2D<float4> average_sky_irradiance  = VirtualResourceID::AverageSkyIrradiance;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {
@@ -292,7 +296,8 @@ struct SkyPanoramaLutRenderPass {
 		HLSL::DescriptorTable<Descriptors> descriptor_table;
 	};
 	
-	inline static PipelineID pipeline_id;
+	inline static PipelineID pipeline_id_sky_panorama_lut;
+	inline static PipelineID pipeline_id_average_sky_irradiance;
 };
 
 NOTES(Meta::RenderPass{})
@@ -1605,6 +1610,7 @@ struct CloudRaymarchRenderPass {
 	struct Descriptors : HLSL::BaseDescriptorTable {
 		HLSL::Texture2D<float>       depth_stencil                  = VirtualResourceID::DepthStencil;
 		HLSL::Texture2D<float3>      sky_panorama_lut               = VirtualResourceID::SkyPanoramaLut;
+		HLSL::Texture2D<float3>      average_sky_irradiance         = VirtualResourceID::AverageSkyIrradiance;
 		HLSL::Texture2D<float3>      transmittance_lut              = VirtualResourceID::TransmittanceLut;
 		HLSL::Texture3D<float>       sdf_cloud_volume               = VirtualResourceID::SdfCloudVolume;
 		HLSL::Texture3D<u64>         sdf_cloud_volume_mask          = VirtualResourceID::SdfCloudVolumeMask;
@@ -1666,12 +1672,15 @@ struct CloudRadianceTransferVolumeRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
-		HLSL::RegularBuffer<u32>  cloud_update_list                = VirtualResourceID::CloudCullingCommands;
-		HLSL::Texture3D<float>    sdf_cloud_volume                 = VirtualResourceID::SdfCloudVolume;
-		HLSL::Texture3D<u64>      sdf_cloud_volume_mask            = VirtualResourceID::SdfCloudVolumeMask;
-		HLSL::Texture3D<float>    cloud_optical_depth_volume       = VirtualResourceID::CloudOpticalDepthVolume;
-		HLSL::Texture3D<float2>   cloud_radiance_transfer_volume_1 = VirtualResourceID::CloudRadianceTransferVolume1;
-		HLSL::RWTexture3D<float2> cloud_radiance_transfer_volume_0 = VirtualResourceID::CloudRadianceTransferVolume0;
+		HLSL::RegularBuffer<u32>  cloud_update_list                  = VirtualResourceID::CloudCullingCommands;
+		HLSL::Texture3D<float>    sdf_cloud_volume                   = VirtualResourceID::SdfCloudVolume;
+		HLSL::Texture3D<u64>      sdf_cloud_volume_mask              = VirtualResourceID::SdfCloudVolumeMask;
+		HLSL::Texture3D<float>    cloud_optical_depth_volume         = VirtualResourceID::CloudOpticalDepthVolume;
+		HLSL::Texture3D<float2>   cloud_radiance_transfer_volume_1   = VirtualResourceID::CloudRadianceTransferVolume1;
+		HLSL::RWTexture3D<u32>    cloud_sample_count_volume          = VirtualResourceID::CloudSampleCountVolume;
+		HLSL::RWTexture3D<float2> cloud_radiance_transfer_volume_0_0 = HLSL::RWTexture3D<float2>(VirtualResourceID::CloudRadianceTransferVolume0, 0);
+		HLSL::RWTexture3D<float2> cloud_radiance_transfer_volume_0_1 = HLSL::RWTexture3D<float2>(VirtualResourceID::CloudRadianceTransferVolume0, 1);
+		HLSL::RWTexture3D<float2> cloud_radiance_transfer_volume_0_2 = HLSL::RWTexture3D<float2>(VirtualResourceID::CloudRadianceTransferVolume0, 2);
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {

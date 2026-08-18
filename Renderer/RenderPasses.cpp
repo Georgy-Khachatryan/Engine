@@ -15,14 +15,16 @@ static void BuildResourceTable(RecordContext* record_context, WorldEntitySystem*
 	table.Set(ID::TransmittanceLut,      TextureSize(TextureFormat::R16G16B16A16_FLOAT, AtmosphereConstants::transmittance_lut_size));
 	table.Set(ID::MultipleScatteringLut, TextureSize(TextureFormat::R16G16B16A16_FLOAT, AtmosphereConstants::multiple_scattering_lut_size));
 	table.Set(ID::SkyPanoramaLut,        TextureSize(TextureFormat::R16G16B16A16_FLOAT, AtmosphereConstants::sky_panorama_lut_size));
+	table.Set(ID::AverageSkyIrradiance,  TextureSize(TextureFormat::R16G16B16A16_FLOAT, uint2(1, 1)));
 	
 	table.Set(ID::SdfCloudVolume,              TextureSize(TextureFormat::R8_UNORM,    CloudConstants::cloud_volume_size));
 	table.Set(ID::SdfCloudVolumeTransientMask, TextureSize(TextureFormat::R8_UINT,     CloudConstants::mask_volume_size_bits));
 	table.Set(ID::SdfCloudVolumeMask,          TextureSize(TextureFormat::R32G32_UINT, CloudConstants::mask_volume_size_blocks));
 	
 	table.Set(ID::CloudOpticalDepthVolume,      TextureSize(TextureFormat::R16_FLOAT,    CloudConstants::lighting_volume_size));
-	table.Set(ID::CloudRadianceTransferVolume0, TextureSize(TextureFormat::R16G16_FLOAT, CloudConstants::lighting_volume_size));
-	table.Set(ID::CloudRadianceTransferVolume1, TextureSize(TextureFormat::R16G16_FLOAT, CloudConstants::lighting_volume_size));
+	table.Set(ID::CloudRadianceTransferVolume0, TextureSize(TextureFormat::R16G16_FLOAT, CloudConstants::lighting_volume_size, 3));
+	table.Set(ID::CloudRadianceTransferVolume1, TextureSize(TextureFormat::R16G16_FLOAT, CloudConstants::lighting_volume_size, 3));
+	table.Set(ID::CloudSampleCountVolume,       TextureSize(TextureFormat::R16_UINT,     CloudConstants::sample_count_volume_size));
 	
 	table.Set(ID::CloudShadowMap0, TextureSize(TextureFormat::R11G11B10_FLOAT, uint2(CloudConstants::shadow_map_size, CloudConstants::shadow_map_size)));
 	table.Set(ID::CloudShadowMap1, TextureSize(TextureFormat::R11G11B10_FLOAT, uint2(CloudConstants::shadow_map_size, CloudConstants::shadow_map_size)));

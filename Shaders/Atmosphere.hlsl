@@ -2,8 +2,6 @@
 #include "AtmosphereSampling.hlsl"
 #include "Generated/SceneData.hlsl"
 
-compile_const uint thread_group_size = AtmosphereConstants::thread_group_size;
-
 //
 // Sebastien Hillaire. 2020. A Scalable and Production Ready Sky and Atmosphere Rendering Technique.
 // https://github.com/sebh/UnrealEngineSkyAtmosphere see license in THIRD_PARTY_LICENSES.md
@@ -87,6 +85,8 @@ float3 IntegrateTransmittance(float3 planet_space_position, float3 planet_space_
 	return exp(-optical_depth);
 }
 
+compile_const uint thread_group_size = AtmosphereConstants::thread_group_size;
+
 [ThreadGroupSize(thread_group_size * thread_group_size, 1, 1)]
 void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	uint2  thread_id = group_id * thread_group_size + MortonDecode(thread_index);
@@ -102,10 +102,11 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 }
 #endif // defined(TRANSMITTANCE_LUT)
 
+
 #if defined(MULTIPLE_SCATTERING_LUT)
 struct MultipleScatteringValues {
 	float3 multiple_scattering;
-	float3 scattered_radiance ;
+	float3 scattered_radiance;
 };
 
 MultipleScatteringValues IntegrateMultipleScattering(float3 planet_space_position, float3 planet_space_direction, float3 planet_space_sun_direction) {
@@ -142,7 +143,7 @@ MultipleScatteringValues IntegrateMultipleScattering(float3 planet_space_positio
 		float2 transmittance_lut_uv = TransmittanceLutCoordinatesToUv(scene.atmosphere, coordinates);
 		float3 transmittance_to_light = transmittance_lut.SampleLevel(sampler_linear_clamp, transmittance_lut_uv, 0);
 		
-		float3 slice_scattering = transmittance_to_light * medium.scattering * (1.0 / (4.0 * PI));
+		float3 slice_scattering = transmittance_to_light * medium.scattering * ONE_OVER_FOUR_PI;
 		result.multiple_scattering += ComputeScatteringIntegral(medium.scattering, slice_transmittance, medium.extinction) * transmittance;
 		result.scattered_radiance  += ComputeScatteringIntegral(slice_scattering,  slice_transmittance, medium.extinction) * transmittance;
 		
@@ -187,7 +188,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	float view_height = scene.atmosphere.bottom_radius + saturate(group_uv.y + planet_radius_offset) * (scene.atmosphere.top_radius - scene.atmosphere.bottom_radius - planet_radius_offset);
 	
 	float2 rand = (MortonDecode(thread_index) + 0.5) * rcp(sqrt_sample_count);
-	float theta = 2.0 * PI * rand.x;
+	float theta = TAU * rand.x;
 	float phi   = acos(rand.y * 2.0 - 1.0);
 	
 	float sin_phi   = sin(phi);
@@ -226,7 +227,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 #endif // defined(MULTIPLE_SCATTERING_LUT)
 
 
-#if defined(SKY_PANORAMA_LUT)
+#if defined(SKY_PANORAMA_LUT) || defined(AVERAGE_SKY_IRRADIANCE)
 float RayleighPhase(float cos_theta) {
 	float factor = 3.0 / (16.0 * PI);
 	return factor * (1.0 + cos_theta * cos_theta);
@@ -297,6 +298,11 @@ float3 IntegrateScattering(float3 planet_space_position, float3 planet_space_dir
 	
 	return scattered_radiance;
 }
+#endif // defined(SKY_PANORAMA_LUT) || defined(AVERAGE_SKY_IRRADIANCE)
+
+
+#if defined(SKY_PANORAMA_LUT)
+compile_const uint thread_group_size = AtmosphereConstants::thread_group_size;
 
 [ThreadGroupSize(thread_group_size * thread_group_size, 1, 1)]
 void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
@@ -328,7 +334,49 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 #endif // defined(SKY_PANORAMA_LUT)
 
 
+#if defined(AVERAGE_SKY_IRRADIANCE)
+compile_const u32 thread_group_size = 32;
+compile_const u32 thread_group_area = thread_group_size * thread_group_size;
+
+compile_const uint min_wave_size = 4;
+groupshared float3 gs_irradiance[thread_group_area / min_wave_size];
+
+[ThreadGroupSize(thread_group_area, 1, 1)]
+void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
+	uint2  thread_id = group_id * thread_group_size + MortonDecode(thread_index);
+	float2 thread_uv = thread_id * inv_sky_panorama_lut_size;
+	
+	float3 planet_space_direction = CosineWeightedHemisphereMapping(thread_uv);
+	float3 planet_space_position  = TransformWorldToPlanetSpace(scene.world_space_camera_position, scene.atmosphere.bottom_radius);
+	
+	float3 scattering = IntegrateScattering(planet_space_position, planet_space_direction, scene.atmosphere.world_space_sun_direction);
+	
+	float3 lane_irradiance = scattering * scene.atmosphere.sun_color * scene.atmosphere.sun_irradiance;
+	float3 wave_irradiance = WaveActiveSum(lane_irradiance);
+	
+	if (WaveIsFirstLane()) {
+		gs_irradiance[thread_index / WaveGetLaneCount()] = wave_irradiance;
+	}
+	
+	GroupMemoryBarrierWithGroupSync();
+	
+	if (thread_index == 0) {
+		float3 group_irradiance = wave_irradiance;
+		
+		uint wave_count = thread_group_area / WaveGetLaneCount();
+		for (uint i = 0; i < wave_count; i += 1) {
+			group_irradiance += gs_irradiance[i];
+		}
+		
+		average_sky_irradiance[uint2(0, 0)] = float4(group_irradiance / (float)thread_group_area, 1.0);
+	}
+}
+#endif // defined(AVERAGE_SKY_IRRADIANCE)
+
+
 #if defined(ATMOSPHERE_COMPOSITE)
+compile_const uint thread_group_size = AtmosphereConstants::thread_group_size;
+
 [ThreadGroupSize(thread_group_size * thread_group_size, 1, 1)]
 void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	uint2  thread_id = group_id * thread_group_size + MortonDecode(thread_index);

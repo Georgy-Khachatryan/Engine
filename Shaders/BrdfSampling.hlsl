@@ -19,7 +19,7 @@ enum struct VolumeInteractionType : u32 {
 //
 float3 SampleVndfHemisphere(float2 u, float3 wo) {
 	// Sample a spherical cap in (-wo.z, 1].
-	float phi = 2.0 * PI * u.x;
+	float phi = TAU * u.x;
 	
 	float z = mad((1.0 - u.y), (1.0 + wo.z), -wo.z);
 	float sin_theta = sqrt(saturate(1.0 - z * z));

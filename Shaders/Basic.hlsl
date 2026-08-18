@@ -229,6 +229,7 @@ vector<T, 3> DecodeR10G10B10(uint encoded) { return vector<T, 3>(uint3(encoded >
 // and blue all share the same exponent. The color channels store a 9-bit value ranging
 // from [0/512, 511/512] which multiplies by 2^Exp and Exp ranges from [-15, 16].
 // Floating point specials are not encoded.
+//
 uint EncodeR9G9B9E5(float3 color) {
 	// To determine the shared exponent, we must clamp the channels to an expressible range.
 	compile_const float max_val = asfloat(0x477F8000); // 1.FF x 2^+15
@@ -258,6 +259,23 @@ float3 DecodeR9G9B9E5(uint p) {
 	float3 rgb = uint3(p, p >> 9, p >> 18) & 0x1FF;
 	return ldexp(rgb, (s32)(p >> 27) - 24);
 }
+
+//
+// For reference see "Dithering for Floating-Point Number Representation" by Rezso Dunay, Istvan Kollar, and Bernard Widrow
+//
+// This implementation doesn't handle corner points, since it's rare to have changes in the exponent.
+// Dither is applied in [0, q) range instead of (-q/2, +q/2) because UAV/RTV writes always round to zero.
+//
+template<s32 component_count>
+vector<float, component_count> DitherFloat16(vector<float, component_count> value, vector<float, component_count> q) {
+	compile_const float epsilon = 0.0009765625; // (float)asfloat16(asuint16((float16)1.0) + (u16)1) - (float)1.0
+	
+	// Subtract the exponent (scale by epsilon) before extracting the exponent to flush denorms to zero.
+	vector<float, component_count> magnitude = asfloat(asint(value * epsilon) & (0xFF << 23));
+	
+	return value + magnitude * q;
+}
+
 
 bool WaveIsHighestMatchingLane(uint4 match_mask) {
 	s32x4 lane_indices = (s32x4)(firstbithigh(match_mask) | uint4(0, 0x20, 0x40, 0x60));
@@ -577,7 +595,7 @@ bool BitArrayTestBit(StructuredBuffer<uint> mask, u32 index, u32 offset = 0) { r
 void BitArraySetBit(RWStructuredBuffer<uint> mask, u32 index, u32 offset = 0) { InterlockedOr(mask[offset + index / 32u], 1u << (index % 32u)); }
 void BitArrayResetBit(RWStructuredBuffer<uint> mask, u32 index, u32 offset = 0) { InterlockedAnd(mask[offset + index / 32u], ~(1u << (index % 32u))); }
 
-template<int component_count>
+template<s32 component_count>
 bool BitArrayTestBit(vector<uint, component_count> mask, u32 index, u32 offset = 0) { return (mask[offset + index / 32u] & (1u << (index % 32u))) != 0; }
 
 #define GsBitArrayTestBit(gs_mask, index) ((gs_mask[index / 32u] & (1u << (index % 32u))) != 0)

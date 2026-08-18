@@ -10,7 +10,7 @@ struct VolumetricSceneIntersection {
 
 // Box is assumed to be in [0, extent] range.
 VolumetricSceneIntersection RayBoxIntersection(float3 ray_origin, float3 ray_direction, float3 extent) {
-	float3 inv_direction = select(abs(ray_direction) < 0.0001, /*nan*/asfloat(0x7FC00000), 1.0 / ray_direction); // See @inv_direction for reference.
+	float3 inv_direction = select(ray_direction == 0.0, /*nan*/asfloat(0x7FC00000), 1.0 / ray_direction); // See @inv_direction for reference.
 	
 	float3 t_min = -ray_origin * inv_direction;
 	float3 t_max = extent * inv_direction + t_min;
@@ -62,7 +62,7 @@ struct VoxelTraversalState {
 
 VoxelTraversalState BeginVoxelTraversal(float3 origin, float3 direction, float ray_t_max) {
 	VoxelTraversalState state;
-	state.inv_direction = select(abs(direction) < 0.0001, /*nan*/asfloat(0x7FC00000), 1.0 / direction); // See @inv_direction for reference.
+	state.inv_direction = select(direction == 0.0, /*nan*/asfloat(0x7FC00000), 1.0 / direction); // See @inv_direction for reference.
 	state.origin        = (origin - scene.clouds.world_space_position) * scene.clouds.inv_world_space_size.x + 1.0;
 	state.ray_t_max     = ray_t_max * scene.clouds.inv_world_space_size.x - 0.001;
 	
