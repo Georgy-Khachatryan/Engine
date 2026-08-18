@@ -135,7 +135,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	ray_desc.TMin      = 0.0;
 	ray_desc.TMax      = 1024.0;
 	
-	ray_desc.Origin += world_space_normal * (1.0 / 1024.0);
+	ray_desc.Origin += ComputeNormalBiasFromDepth(world_space_normal, view_space_position.z);
 	
 	float3 wo = mul(world_to_tangent, -ray_desc.Direction);
 	float abs_cos_theta_o = abs(wo.z);
@@ -216,7 +216,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 		
 		float3 world_space_normal = properties.normal;
 		
-		ray_desc.Origin += ray_desc.Direction * ray_query.CommittedRayT() + world_space_normal * (1.0 / 1024.0);
+		ray_desc.Origin += ray_desc.Direction * ray_query.CommittedRayT() + ComputeNormalBias(world_space_normal);
 		
 		float  metalness    = properties.metalness;
 		float  roughness    = properties.roughness;

@@ -80,7 +80,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	float3 diffuse_albedo = albedo_metalness.xyz;
 	
 	float3 world_space_normal = DecodeHemiOctahedralMap01(normal_roughness.xy) * float3(1.0, 1.0, normal_roughness.w * 2.0 - 1.0);
-	ray_desc.Origin += world_space_normal * (1.0 / 1024.0);
+	ray_desc.Origin += ComputeNormalBiasFromDepth(world_space_normal, view_space_position.z);
 	
 	float light_sampling_blue_noise = LoadBlueNoise(blue_noise_1d, thread_id + scene.blue_noise_base_offset, scene.frame_index);
 	float min_light_weight = src_tile_valid ? scene.wrs_min_light_weight : 0.0;

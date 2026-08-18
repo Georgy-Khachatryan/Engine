@@ -37,7 +37,10 @@ compile_const u32 meshlet_feedback_asset_header_size  = 2;
 compile_const u32 mesh_feedback_buffer_header_size    = 1;
 
 #if defined(MAIN_PASS) || defined(DISOCCLUSION_PASS)
-compile_const MeshletGroupResidencyMask target_residency_mask = MeshletGroupResidencyMask::Page;
+// TODO: Make this a setting.
+// Render geometry only when acceleration structures are ready, otherwise we might have self shadowing artifacts.
+compile_const MeshletGroupResidencyMask target_residency_mask = MeshletGroupResidencyMask::RTAS;
+// compile_const MeshletGroupResidencyMask target_residency_mask = MeshletGroupResidencyMask::Page;
 #endif // defined(MAIN_PASS) || defined(DISOCCLUSION_PASS)
 
 #if defined(RAYTRACING_PASS)

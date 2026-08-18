@@ -277,6 +277,19 @@ vector<float, component_count> DitherFloat16(vector<float, component_count> valu
 }
 
 
+//
+// Scale bias with distance to prevent self shadowing artifacts when computing position from depth buffer.
+// At 64m it's 1/1024, at 128 it's 2/1024, etc.
+//
+float3 ComputeNormalBiasFromDepth(float3 normal, float view_space_depth) {
+	return normal * max(asfloat(asint(view_space_depth * (1.0 / 65536.0)) & (0xFF << 23)), 1.0 / 1024.0);
+}
+
+float3 ComputeNormalBias(float3 normal) {
+	return normal * (1.0 / 1024.0);
+}
+
+
 bool WaveIsHighestMatchingLane(uint4 match_mask) {
 	s32x4 lane_indices = (s32x4)(firstbithigh(match_mask) | uint4(0, 0x20, 0x40, 0x60));
 	u32 highest_lane_index = (u32)max(max(lane_indices.x, lane_indices.y), max(lane_indices.z, lane_indices.w));

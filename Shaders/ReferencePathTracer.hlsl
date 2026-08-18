@@ -127,7 +127,7 @@ float3 MainPT(uint2 thread_id, uint sample_index) {
 			
 			float3 world_space_normal = properties.normal;
 			
-			ray_desc.Origin += ray_desc.Direction * ray_query.CommittedRayT() + world_space_normal * (1.0 / 1024.0);
+			ray_desc.Origin += ray_desc.Direction * ray_query.CommittedRayT() + ComputeNormalBias(world_space_normal);
 			
 			float  metalness    = properties.metalness;
 			float  roughness    = properties.roughness;
