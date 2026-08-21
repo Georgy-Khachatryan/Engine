@@ -204,6 +204,7 @@ static void CreateSceneConstants(RecordContext* record_context, uint2 render_tar
 	
 	scene.frame_index           = (u32)record_context->frame_index;
 	scene.mouse_cursor_position = renderer_world.mouse_cursor_position;
+	scene.feature_flags         = SceneFeatureFlags::None;
 	
 	scene.exposure_estimate      = renderer_world.automatic_exposure_histogram.final_exposure;
 	scene.exposure_history_ratio = scene.exposure_estimate * scene.inv_exposure_estimate;
@@ -252,6 +253,10 @@ static void CreateSceneConstants(RecordContext* record_context, uint2 render_tar
 	{
 		auto& cloud_settings = *world_entity.cloud_settings;
 		
+		if (cloud_settings.is_enabled) {
+			scene.feature_flags |= SceneFeatureFlags::Clouds;
+		}
+		
 		scene.clouds.world_space_size        = float3(CloudConstants::cloud_volume_size) * cloud_settings.voxel_size_meters;
 		scene.clouds.world_space_position    = cloud_settings.world_space_position - scene.clouds.world_space_size * 0.5f;
 		scene.clouds.inv_world_space_size    = float3(1.f) / scene.clouds.world_space_size;
@@ -260,6 +265,9 @@ static void CreateSceneConstants(RecordContext* record_context, uint2 render_tar
 		scene.clouds.extinction_coefficients = cloud_settings.scattering_coefficients + cloud_settings.absorption_coefficients;
 		scene.clouds.scattering_anisotropy   = cloud_settings.scattering_anisotropy;
 		scene.clouds.density_noise_scale     = 1.f / Math::Max(cloud_settings.density_noise_tiling, 1.f);
+		scene.clouds.absorption_probability  = scene.clouds.absorption_coefficients / scene.clouds.extinction_coefficients;
+		scene.clouds.scattering_probability  = scene.clouds.scattering_coefficients / scene.clouds.extinction_coefficients;
+		scene.clouds.inv_extinction_coefficients = 1.f / scene.clouds.extinction_coefficients;
 		
 		auto density_noise_offset = -renderer_world.time * (double)cloud_settings.density_noise_scroll_speed * (double)scene.clouds.density_noise_scale;
 		scene.clouds.density_noise_offset = float2(
@@ -316,6 +324,25 @@ static void CreateSceneConstants(RecordContext* record_context, uint2 render_tar
 			scene.clouds.view_to_clip_coef = Math::OrthographicViewToClip(aabb_max.xy - aabb_min.xy, aabb_max.z - aabb_min.z);
 			scene.clouds.clip_to_view_coef = Math::ViewToClipInverse(scene.clouds.view_to_clip_coef);
 		}
+	}
+	
+	{
+		auto& fog_settings = *world_entity.fog_settings;
+		
+		if (fog_settings.is_enabled) {
+			scene.feature_flags |= SceneFeatureFlags::Fog;
+		}
+		
+		scene.fog.world_space_size        = float3(CloudConstants::cloud_volume_size) * fog_settings.voxel_size_meters;
+		scene.fog.world_space_position    = fog_settings.world_space_position - scene.fog.world_space_size * 0.5f;
+		scene.fog.inv_world_space_size    = float3(1.f) / scene.fog.world_space_size;
+		scene.fog.scattering_coefficients = fog_settings.scattering_coefficients;
+		scene.fog.absorption_coefficients = fog_settings.absorption_coefficients;
+		scene.fog.extinction_coefficients = fog_settings.scattering_coefficients + fog_settings.absorption_coefficients;
+		scene.fog.height_falloff          = Math::LOG_E_TWO / fog_settings.half_density_height;
+		scene.fog.absorption_probability  = scene.fog.absorption_coefficients / scene.fog.extinction_coefficients;
+		scene.fog.scattering_probability  = scene.fog.scattering_coefficients / scene.fog.extinction_coefficients;
+		scene.fog.inv_extinction_coefficients = 1.f / scene.fog.extinction_coefficients;
 	}
 	
 	for (u32 i = 0; i < LightCullingConstants::grid_cascade_count; i += 1) {

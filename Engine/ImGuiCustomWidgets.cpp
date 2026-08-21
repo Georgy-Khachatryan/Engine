@@ -503,6 +503,15 @@ bool ImGui::TableSliderFloat(const char* label, float* v, float v_min, float v_m
 	return result;
 }
 
+bool ImGui::TableCheckbox(const char* label, bool* value) {
+	bool result = false;
+	if (ImGui::BeginTableItem(label)) {
+		result = ImGui::Checkbox("", value);
+		ImGui::EndTableItem();
+	}
+	return result;
+}
+
 bool ImGui::TableCombo(const char* label, s32* current_item, const char* items_separated_by_zeros, s32 popup_max_height_in_items) {
 	bool result = false;
 	if (ImGui::BeginTableItem(label)) {

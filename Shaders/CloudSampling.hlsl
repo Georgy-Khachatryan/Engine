@@ -8,8 +8,8 @@ struct VolumetricSceneIntersection {
 	bool is_hit;
 };
 
-// Box is assumed to be in [0, extent] range.
-VolumetricSceneIntersection RayBoxIntersection(float3 ray_origin, float3 ray_direction, float3 extent) {
+// Box is assumed to be in [0, extent] range. Intersection ray time is limited between [0, ray_t_max=inf].
+VolumetricSceneIntersection RayBoxIntersection(float3 ray_origin, float3 ray_direction, float3 extent, float ray_t_max = asfloat(0x7F800000)) {
 	float3 inv_direction = select(ray_direction == 0.0, /*nan*/asfloat(0x7FC00000), 1.0 / ray_direction); // See @inv_direction for reference.
 	
 	float3 t_min = -ray_origin * inv_direction;
@@ -20,7 +20,7 @@ VolumetricSceneIntersection RayBoxIntersection(float3 ray_origin, float3 ray_dir
 	
 	VolumetricSceneIntersection intersection;
 	intersection.t_min = max(max(t0.x, t0.y), max(t0.z, 0.0));
-	intersection.t_max = min(min(t1.x, t1.y), t1.z);
+	intersection.t_max = min(min(t1.x, t1.y), min(t1.z, ray_t_max));
 	intersection.is_hit = (intersection.t_min <= intersection.t_max) && (intersection.t_max > 0.0);
 	
 	return intersection;

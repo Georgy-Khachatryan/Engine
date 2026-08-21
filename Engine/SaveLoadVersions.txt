@@ -62,6 +62,18 @@ struct CloudSettings {
 		density_noise_scroll_speed float32 0;
 		density_noise_scroll_heading float32 0;
 	}
+	/*Version*/ 6 {
+		world_space_position float3 0;
+		voxel_size_meters float32 0;
+		scattering_coefficients float32 0;
+		absorption_coefficients float32 0;
+		scattering_anisotropy float32 0;
+		density_noise EntityGUID<TextureAssetType> 0;
+		density_noise_tiling float32 0;
+		density_noise_scroll_speed float32 0;
+		density_noise_scroll_heading float32 0;
+		is_enabled bool 0;
+	}
 }
 
 struct CloudVolume {
@@ -136,6 +148,26 @@ struct ExposureSettings {
 		exposure_min_ev float32 0;
 		exposure_max_ev float32 0;
 		method ExposureMethod 0;
+	}
+}
+
+struct FogSettings {
+	/*Version*/ 1 {
+		world_space_position float3 0;
+		voxel_size_meters float32 0;
+		scattering_coefficients float32 0;
+		absorption_coefficients float32 0;
+		scattering_anisotropy float32 0;
+		half_density_height float32 0;
+	}
+	/*Version*/ 2 {
+		world_space_position float3 0;
+		voxel_size_meters float32 0;
+		scattering_coefficients float32 0;
+		absorption_coefficients float32 0;
+		scattering_anisotropy float32 0;
+		half_density_height float32 0;
+		is_enabled bool 0;
 	}
 }
 

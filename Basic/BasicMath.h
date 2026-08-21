@@ -169,10 +169,11 @@ inline uint4 DivideAndRoundUpLog2(uint4 numerator, uint4 offset) { return (numer
 
 
 namespace Math {
-	compile_const float HALF_PI  = 1.5707964f;
-	compile_const float PI       = 3.1415927f;
-	compile_const float TAU      = 6.2831854f;
-	compile_const float SQRT_TWO = 1.4142135f;
+	compile_const float HALF_PI   = 1.5707964f;
+	compile_const float PI        = 3.1415927f;
+	compile_const float TAU       = 6.2831854f;
+	compile_const float SQRT_TWO  = 1.4142135f;
+	compile_const float LOG_E_TWO = 0.6931472f;
 	compile_const float degrees_to_radians = 0.017453292f;
 	compile_const float radians_to_degrees = 57.29578f;
 	

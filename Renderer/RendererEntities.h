@@ -65,6 +65,10 @@ struct CloudConstants {
 	float4 view_to_clip_coef;
 	float4 clip_to_view_coef;
 	
+	float absorption_probability      = 0.f;
+	float scattering_probability      = 0.f;
+	float inv_extinction_coefficients = 0.f;
+	u32   padding_0                   = 0;
 	
 	float3 world_space_position;
 	float scattering_coefficients = 0.f;
@@ -82,8 +86,34 @@ struct CloudConstants {
 	float lighting_volume_noise_mip_offset = 0.f;
 	float raymarch_noise_mip_scale         = 0.f;
 	float scattering_anisotropy            = 0.f;
-	u32   padding_0                        = 0;
+	u32   padding_1                        = 0;
 };
+
+NOTES(Meta::HlslFile{ "FogData.hlsl"_sl })
+struct FogConstants {
+	float absorption_probability      = 0.f;
+	float scattering_probability      = 0.f;
+	float inv_extinction_coefficients = 0.f;
+	float height_falloff              = 0.f;
+	
+	float3 world_space_position;
+	float scattering_coefficients = 0.f;
+	
+	float3 world_space_size       = 0.f;
+	float absorption_coefficients = 0.f;
+	
+	float3 inv_world_space_size   = 0.f;
+	float extinction_coefficients = 0.f;
+};
+
+NOTES(Meta::HlslFile{ "SceneData.hlsl"_sl })
+enum struct SceneFeatureFlags : u32 {
+	None   = 0,
+	Clouds = 1u << 0,
+	Fog    = 1u << 1,
+};
+ENUM_FLAGS_OPERATORS(SceneFeatureFlags);
+
 
 NOTES(Meta::HlslFile{ "SceneData.hlsl"_sl })
 struct SceneConstants {
@@ -121,7 +151,7 @@ struct SceneConstants {
 	float meshlet_world_to_pixel_scale; // Used for meshlet LOD error computation.
 	
 	float3 prev_world_space_camera_position;
-	u32 padding_0 = 0;
+	SceneFeatureFlags feature_flags = SceneFeatureFlags::None;
 	
 	float texture_world_to_pixel_scale; // Used for texture streaming feedback.
 	u32 frame_index = 0;
@@ -153,6 +183,7 @@ struct SceneConstants {
 	
 	AtmosphereConstants atmosphere;
 	CloudConstants clouds;
+	FogConstants fog;
 };
 
 using TextureAssetGUID = EntityGUID<TextureAssetType>;
@@ -170,6 +201,21 @@ struct CloudSettings {
 	float density_noise_tiling = 16.f;
 	float density_noise_scroll_speed   = 2.f; // m/s
 	float density_noise_scroll_heading = 0.f;
+	
+	bool is_enabled = false;
+};
+
+NOTES()
+struct FogSettings {
+	float3 world_space_position = float3(0.f, 0.f, 128.f);
+	float  voxel_size_meters    = 4.f;
+	
+	float scattering_coefficients = 0.0025f;
+	float absorption_coefficients = 0.f;
+	float scattering_anisotropy   = 0.4f;
+	float half_density_height     = 20.f; // Height at which density is half of the maximum density.
+	
+	bool is_enabled = false;
 };
 
 NOTES(Meta::HlslFile{ "ToneMappingData.hlsl"_sl })
@@ -470,6 +516,7 @@ struct WorldEntityQuery {
 	ECS::Component<CameraEntityGUID>     camera_entity;
 	ECS::Component<RendererWorld>        renderer_world;
 	ECS::Component<CloudSettings>        cloud_settings;
+	ECS::Component<FogSettings>          fog_settings;
 	ECS::Component<LightingSettings>     lighting_settings;
 	ECS::Component<ExposureSettings>     exposure_settings;
 	ECS::Component<ToneMappingSettings>  tone_mapping_settings;

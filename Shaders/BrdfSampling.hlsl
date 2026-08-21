@@ -102,6 +102,10 @@ float3 SamplePhaseFunctionHG(float3 wo, float g, float2 u) {
 	return mul(tangent_to_world, wi);
 }
 
+float SampleExponentialDistributionRcp(float u, float rcp_extinction_coefficients) {
+	return -log(1.0 - u) * rcp_extinction_coefficients;
+}
+
 float SampleExponentialDistribution(float u, float extinction_coefficients) {
 	return -log(1.0 - u) / extinction_coefficients;
 }

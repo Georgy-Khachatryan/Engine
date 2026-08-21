@@ -21,6 +21,7 @@ struct WorldEntityType {
 	ECS::Component<RendererWorld>    renderer_world;
 	
 	ECS::Component<CloudSettings>        cloud_settings;
+	ECS::Component<FogSettings>          fog_settings;
 	ECS::Component<LightingSettings>     lighting_settings;
 	ECS::Component<ExposureSettings>     exposure_settings;
 	ECS::Component<ToneMappingSettings>  tone_mapping_settings;

@@ -128,15 +128,8 @@ static void WorldComponentEntityView(StackAllocator* alloc, WorldEntitySystem& w
 			
 			ImGui::TableCombo("Debug Visualization", (s32*)&renderer_world.debug_visualization_mode, debug_visualization_mode_names, (s32)DebugVisualizationMode::Count);
 			
-			if (ImGui::BeginTableItem("Freeze Culling State")) {
-				ImGui::Checkbox("", &renderer_world.debug_freeze_culling_camera.enabled);
-				ImGui::EndTableItem();
-			}
-			
-			if (ImGui::BeginTableItem("Enable Async Compute")) {
-				ImGui::Checkbox("", &renderer_world.enable_async_compute);
-				ImGui::EndTableItem();
-			}
+			ImGui::TableCheckbox("Freeze Culling State", &renderer_world.debug_freeze_culling_camera.enabled);
+			ImGui::TableCheckbox("Enable Async Compute", &renderer_world.enable_async_compute);
 		}
 		
 		if (ImGui::TableCollapsingHeader("Reference Path Tracer", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -176,6 +169,10 @@ static void WorldComponentEntityView(StackAllocator* alloc, WorldEntitySystem& w
 	
 	if (entity.cloud_settings && ImGui::TableCollapsingHeader("Cloud Settings")) {
 		auto& settings = *entity.cloud_settings;
+		
+		ImGuiScopeID("Clouds");
+		ImGui::TableCheckbox("Enabled", &settings.is_enabled);
+		
 		ImGui::TableDragFloatWithReset("Position", &settings.world_space_position.x, 3, 0.1f);
 		ImGui::TableSliderFloat("Voxel Size Meters", &settings.voxel_size_meters, 0.f, 32.f);
 		
@@ -190,6 +187,20 @@ static void WorldComponentEntityView(StackAllocator* alloc, WorldEntitySystem& w
 		if (ImGui::TableSliderFloat("Density Noise Scroll Heading", &scroll_heading_degrees, -180.f, 180.f)) {
 			settings.density_noise_scroll_heading = scroll_heading_degrees * Math::degrees_to_radians;
 		}
+	}
+	
+	if (entity.fog_settings && ImGui::TableCollapsingHeader("Fog Settings")) {
+		auto& settings = *entity.fog_settings;
+		
+		ImGuiScopeID("Fog");
+		ImGui::TableCheckbox("Enabled", &settings.is_enabled);
+		
+		ImGui::TableDragFloatWithReset("Position", &settings.world_space_position.x, 3, 0.1f);
+		ImGui::TableSliderFloat("Voxel Size Meters", &settings.voxel_size_meters, 0.f, 32.f);
+		
+		ImGui::TableSliderFloat("Scattering Coefficients", &settings.scattering_coefficients, 0.f, 0.1f);
+		ImGui::TableSliderFloat("Absorption Coefficients", &settings.absorption_coefficients, 0.f, 0.1f);
+		ImGui::TableSliderFloat("Half Density Height", &settings.half_density_height, 1.f, 256.f, "%.2f", ImGuiSliderFlags_Logarithmic);
 	}
 	
 	if (entity.lighting_settings && ImGui::TableCollapsingHeader("Lighting Settings")) {
