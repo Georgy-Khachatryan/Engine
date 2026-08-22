@@ -65,7 +65,7 @@ float TraceVolumetricMediumTransmittanceRay(float3 origin, float3 direction, flo
 				
 				if (ray_t < intersection.t_max) {
 					float3 position = direction * ray_t + origin;
-					float density = ComputeVolumetricMediumDensity(position, noise_mip_level);
+					float density = ComputeCloudMediumDensity(position, noise_mip_level);
 					
 					transmittance *= (1.0 - density);
 				} else {
@@ -128,7 +128,7 @@ VolumeInteractionType SampleVolumetricMedium(inout RayDesc ray_desc, float t_max
 				
 				if (ray_t < intersection.t_max) {
 					float3 position = ray_desc.Direction * ray_t + ray_desc.Origin;
-					float density = ComputeVolumetricMediumDensity(position, noise_mip_level);
+					float density = ComputeCloudMediumDensity(position, noise_mip_level);
 					
 					float p_absorption = scene.clouds.absorption_probability * density;
 					float p_scattering = scene.clouds.scattering_probability * density;

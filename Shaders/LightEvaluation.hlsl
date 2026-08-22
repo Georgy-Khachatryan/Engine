@@ -78,7 +78,7 @@ void EvaluatePhaseFunction(
 	inout ShadowSamplerT shadow_sampler,
 	float3 shading_position,
 	float3 wo,
-	float  phase_function_g,
+	float3 dual_hg_parameters,
 	float3 throughput,
 	LightSample light_sample
 ) {
@@ -94,7 +94,7 @@ void EvaluatePhaseFunction(
 	bool evaluate_phase_function = any(shadowed_light_irradiance > 0.0);
 	
 	if (evaluate_phase_function) {
-		float phase_function = PhaseFunctionHG(dot(wo, shading_info.light_direction), phase_function_g);
+		float phase_function = PhaseFunctionDualHG(dot(wo, shading_info.light_direction), dual_hg_parameters);
 		
 		light_accumulator.AddDiffuse(shadowed_light_irradiance * phase_function);
 	}

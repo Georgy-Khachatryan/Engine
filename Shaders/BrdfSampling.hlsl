@@ -102,6 +102,24 @@ float3 SamplePhaseFunctionHG(float3 wo, float g, float2 u) {
 	return mul(tangent_to_world, wi);
 }
 
+float PhaseFunctionDualHG(float cos_theta, float3 parameters) {
+	return lerp(PhaseFunctionHG(cos_theta, parameters.x), PhaseFunctionHG(cos_theta, parameters.y), parameters.z);
+}
+
+float3 SamplePhaseFunctionDualHG(float3 wo, float3 parameters, float2 u) {
+	float g = 0.0;
+	if (u.x < parameters.z) {
+		u.x = u.x / parameters.z;
+		g = parameters.x;
+	} else {
+		u.x = (u.x - parameters.z) / (1.0 - parameters.z);
+		g = parameters.y;
+	}
+	
+	return SamplePhaseFunctionHG(wo, g, u);
+}
+
+
 float SampleExponentialDistributionRcp(float u, float rcp_extinction_coefficients) {
 	return -log(1.0 - u) * rcp_extinction_coefficients;
 }

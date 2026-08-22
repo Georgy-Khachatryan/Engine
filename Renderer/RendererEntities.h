@@ -83,10 +83,12 @@ struct CloudConstants {
 	float  density_noise_scale  = 0.f;
 	float2 density_noise_offset = 0.f;
 	
+	float3 dual_hg_parameters = 0.f;
+	u32    padding_1          = 0;
+	
 	float lighting_volume_noise_mip_offset = 0.f;
 	float raymarch_noise_mip_scale         = 0.f;
-	float scattering_anisotropy            = 0.f;
-	u32   padding_1                        = 0;
+	uint2 padding_2                        = 0;
 };
 
 NOTES(Meta::HlslFile{ "FogData.hlsl"_sl })
@@ -195,7 +197,7 @@ struct CloudSettings {
 	
 	float scattering_coefficients = 1.f;
 	float absorption_coefficients = 0.f;
-	float scattering_anisotropy   = 0.4f;
+	float3 dual_hg_parameters     = float3(-0.2f, 0.8f, 0.4f);
 	
 	TextureAssetGUID density_noise;
 	float density_noise_tiling = 16.f;

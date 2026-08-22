@@ -18,7 +18,7 @@ float RaymarchHybridOpticalDepthRay(float3 origin, float3 direction, float noise
 		float ray_t = Pow2(t) * hybrid_transmittance_ray_length;
 		
 		float3 position = direction * ray_t + origin;
-		float density = ComputeVolumetricMediumDensity(position, noise_mip_level);
+		float density = ComputeCloudMediumDensity(position, noise_mip_level);
 		
 		float extinction_coefficients = density;
 		optical_depth += extinction_coefficients * (ray_t - prev_ray_t);
@@ -72,11 +72,11 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	float sample_count = 0.0;
 	float delta_t = 8.0;
 	float ray_t = intersection.t_min + delta_t * LoadBlueNoise(blue_noise_1d, thread_id, scene.frame_index);
-	for (; (ray_t < intersection.t_max) && (transmittance > (1.0 / 256.0)); ray_t += delta_t, sample_count += 1.0) {
+	for (; (ray_t < intersection.t_max) && (transmittance > (1.0 / 8192.0)); ray_t += delta_t, sample_count += 1.0) {
 		float3 position = ray_desc.Direction * ray_t + ray_desc.Origin;
 		float noise_mip_level = (float)min(FloorLog2(max(ray_t * scene.clouds.raymarch_noise_mip_scale, 1.0)), 7);
 		
-		float density = ComputeVolumetricMediumDensity(position, noise_mip_level);
+		float density = ComputeCloudMediumDensity(position, noise_mip_level);
 		float extinction_coefficients = density * scene.clouds.extinction_coefficients;
 		float scattering_coefficients = density * scene.clouds.scattering_coefficients;
 		
@@ -99,8 +99,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 		}
 	}
 	
-	float phase_function_g = scene.clouds.scattering_anisotropy;
-	scattering.x *= PhaseFunctionHG(dot(-ray_desc.Direction, scene.atmosphere.world_space_sun_direction), phase_function_g);
+	scattering.x *= PhaseFunctionDualHG(dot(-ray_desc.Direction, scene.atmosphere.world_space_sun_direction), scene.clouds.dual_hg_parameters);
 	
 	float3 sky_irradiance = average_sky_irradiance[uint2(0, 0)];
 	float3 sun_irradiance = scene.atmosphere.sun_color * scene.atmosphere.sun_irradiance * SampleTransmittanceLUT(scene.atmosphere, transmittance_lut, ray_desc.Direction * cloud_t_min + ray_desc.Origin);
@@ -119,7 +118,7 @@ float RaymarchOpticalDepthRay(float3 origin, float3 direction, float t_max) {
 	float delta_t = 4.0;
 	for (float ray_t = hybrid_transmittance_ray_length; ray_t < t_max; ray_t += delta_t, noise_mip_level += 1.0) {
 		float3 position = direction * ray_t + origin;
-		float density = ComputeVolumetricMediumDensity(position, min(noise_mip_level, 7.0));
+		float density = ComputeCloudMediumDensity(position, min(noise_mip_level, 7.0));
 		
 		float extinction_coefficients = density;
 		optical_depth += extinction_coefficients * delta_t;
@@ -160,7 +159,7 @@ float3 RaymarchBeerShadowMapRay(float3 origin, float3 direction, float t_min, fl
 	float delta_t = 4.0;
 	for (float ray_t = t_min; ray_t < t_max; ray_t += delta_t, noise_mip_level += 1.0) {
 		float3 position = direction * ray_t + origin;
-		float density = ComputeVolumetricMediumDensity(position, min(noise_mip_level, 7.0));
+		float density = ComputeCloudMediumDensity(position, min(noise_mip_level, 7.0));
 		
 		if (density > (1.0 / 255.0)) {
 			cloud_t_max = max(cloud_t_max, ray_t);
@@ -265,9 +264,8 @@ void MainCS(uint group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 			i = max_path_length;
 		} else if (volume_interaction_type == VolumeInteractionType::Scattering) {
 			float3 wo = -ray_desc.Direction;
-			float phase_function_g = scene.clouds.scattering_anisotropy;
 			
-			float phase_function = PhaseFunctionHG(dot(wo, scene.atmosphere.world_space_sun_direction), phase_function_g);
+			float phase_function = PhaseFunctionDualHG(dot(wo, scene.atmosphere.world_space_sun_direction), scene.clouds.dual_hg_parameters);
 			
 #if defined(USE_OPTICAL_DEPTH_VOLUME)
 			float optical_depth = RaymarchHybridOpticalDepthRay(ray_desc.Origin, scene.atmosphere.world_space_sun_direction, noise_mip_level);
@@ -298,7 +296,7 @@ void MainCS(uint group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 					radiance_transfer += float2(phase_function * exp(-optical_depth * 0.05), 0.25);
 				}
 			} else {
-				ray_desc.Direction = SamplePhaseFunctionHG(wo, phase_function_g, ComputeRandomUnorm16x2(hash));
+				ray_desc.Direction = SamplePhaseFunctionDualHG(wo, scene.clouds.dual_hg_parameters, ComputeRandomUnorm16x2(hash));
 			}
 		} else {
 			radiance_transfer.y += max(ray_desc.Direction.z * 2.0, 0.0);

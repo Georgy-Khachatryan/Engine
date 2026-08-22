@@ -263,7 +263,7 @@ static void CreateSceneConstants(RecordContext* record_context, uint2 render_tar
 		scene.clouds.scattering_coefficients = cloud_settings.scattering_coefficients;
 		scene.clouds.absorption_coefficients = cloud_settings.absorption_coefficients;
 		scene.clouds.extinction_coefficients = cloud_settings.scattering_coefficients + cloud_settings.absorption_coefficients;
-		scene.clouds.scattering_anisotropy   = cloud_settings.scattering_anisotropy;
+		scene.clouds.dual_hg_parameters      = cloud_settings.dual_hg_parameters;
 		scene.clouds.density_noise_scale     = 1.f / Math::Max(cloud_settings.density_noise_tiling, 1.f);
 		scene.clouds.absorption_probability  = scene.clouds.absorption_coefficients / scene.clouds.extinction_coefficients;
 		scene.clouds.scattering_probability  = scene.clouds.scattering_coefficients / scene.clouds.extinction_coefficients;

@@ -74,6 +74,18 @@ struct CloudSettings {
 		density_noise_scroll_heading float32 0;
 		is_enabled bool 0;
 	}
+	/*Version*/ 7 {
+		world_space_position float3 0;
+		voxel_size_meters float32 0;
+		scattering_coefficients float32 0;
+		absorption_coefficients float32 0;
+		dual_hg_parameters float3 0;
+		density_noise EntityGUID<TextureAssetType> 0;
+		density_noise_tiling float32 0;
+		density_noise_scroll_speed float32 0;
+		density_noise_scroll_heading float32 0;
+		is_enabled bool 0;
+	}
 }
 
 struct CloudVolume {

@@ -178,7 +178,9 @@ static void WorldComponentEntityView(StackAllocator* alloc, WorldEntitySystem& w
 		
 		ImGui::TableSliderFloat("Scattering Coefficients", &settings.scattering_coefficients, 0.f, 4.f);
 		ImGui::TableSliderFloat("Absorption Coefficients", &settings.absorption_coefficients, 0.f, 4.f);
-		ImGui::TableSliderFloat("Scattering Anisotropy", &settings.scattering_anisotropy, -0.9f, +0.9f);
+		ImGui::TableSliderFloat("Forward Scattering Anisotropy", &settings.dual_hg_parameters.x, -0.9f, 0.f);
+		ImGui::TableSliderFloat("Backward Scattering Anisotropy", &settings.dual_hg_parameters.y, 0.f, +0.9f);
+		ImGui::TableSliderFloat("Scattering Anisotropy Blend", &settings.dual_hg_parameters.z, 0.f, 1.f);
 		
 		ImGui::TableEntityComboBox(alloc, "Density Noise", &asset_system, &settings.density_noise.guid, ECS::GetEntityTypeID<TextureAssetType>::id);
 		ImGui::TableSliderFloat("Density Noise Tiling", &settings.density_noise_tiling, 1.f, 256.f, "%.2f", ImGuiSliderFlags_Logarithmic);

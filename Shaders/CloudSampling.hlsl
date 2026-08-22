@@ -27,7 +27,7 @@ VolumetricSceneIntersection RayBoxIntersection(float3 ray_origin, float3 ray_dir
 }
 
 // Based on "Methods (and madness) to model and render immersive real-time voxel-based clouds." by Andrew Schneider.
-float ComputeVolumetricMediumDensity(float3 position, float noise_mip_level) {
+float ComputeCloudMediumDensity(float3 position, float noise_mip_level) {
 	float3 sample_uvw = (position - scene.clouds.world_space_position) * scene.clouds.inv_world_space_size;
 	float dimensional_profile = sdf_cloud_volume.SampleLevel(sampler_linear_clamp, sample_uvw, 0);
 	

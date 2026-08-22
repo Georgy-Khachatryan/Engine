@@ -97,7 +97,6 @@ float3 MainPT(uint2 thread_id, uint sample_index) {
 			LightSample light_sample = SampleLightUniform(ray_desc.Origin, hash);
 			
 			float3 wo = -ray_desc.Direction;
-			float phase_function_g = scene.clouds.scattering_anisotropy;
 			
 			if (light_sample.light_entity_index != u32_max) {
 				PathTracerShadowSampler shadow_sampler;
@@ -108,13 +107,13 @@ float3 MainPT(uint2 thread_id, uint sample_index) {
 					shadow_sampler,
 					ray_desc.Origin,
 					wo,
-					phase_function_g,
+					scene.clouds.dual_hg_parameters,
 					throughput,
 					light_sample
 				);
 			}
 			
-			ray_desc.Direction = SamplePhaseFunctionHG(wo, phase_function_g, ComputeRandomUnorm16x2(hash));
+			ray_desc.Direction = SamplePhaseFunctionDualHG(wo, scene.clouds.dual_hg_parameters, ComputeRandomUnorm16x2(hash));
 #endif // ENABLE_VOLUME_RENDERING
 		} else if (ray_query.CommittedStatus() == COMMITTED_TRIANGLE_HIT) {
 			MaterialProperties properties = SampleMaterialFromHitResult(
