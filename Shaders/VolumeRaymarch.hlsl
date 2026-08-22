@@ -1,14 +1,14 @@
 #include "Basic.hlsl"
-#if !defined(SHADOW_MAP_FILTER)
+#if !defined(CLOUD_SHADOW_MAP_FILTER)
 #include "AtmosphereSampling.hlsl"
 #include "BrdfSampling.hlsl"
 #include "CloudSampling.hlsl"
 #include "VolumeSampling.hlsl"
-#endif // !defined(SHADOW_MAP_FILTER)
+#endif // !defined(CLOUD_SHADOW_MAP_FILTER)
 
 compile_const float hybrid_transmittance_ray_length = 8.0;
 
-#if defined(CLOUD_RAYMARCH) || defined(RADIANCE_TRANSFER_VOLUME)
+#if defined(VOLUME_RAYMARCH) || defined(CLOUD_RADIANCE_TRANSFER_VOLUME)
 float RaymarchHybridOpticalDepthRay(float3 origin, float3 direction, float noise_mip_level) {
 	float optical_depth = 0.0;
 	
@@ -31,9 +31,9 @@ float RaymarchHybridOpticalDepthRay(float3 origin, float3 direction, float noise
 	
 	return optical_depth * scene.clouds.extinction_coefficients + cloud_optical_depth;
 }
-#endif // defined(CLOUD_RAYMARCH) || defined(RADIANCE_TRANSFER_VOLUME)
+#endif // defined(VOLUME_RAYMARCH) || defined(CLOUD_RADIANCE_TRANSFER_VOLUME)
 
-#if defined(CLOUD_RAYMARCH) || defined(OPTICAL_DEPTH_VOLUME) || defined(SHADOW_MAP)
+#if defined(VOLUME_RAYMARCH) || defined(CLOUD_OPTICAL_DEPTH_VOLUME) || defined(CLOUD_SHADOW_MAP)
 void SkipEmptySpaceInTwoDirections(RayDesc ray_desc, inout VolumetricSceneIntersection intersection) {
 	VoxelTraversalState forward_traversal_state = BeginVoxelTraversal(ray_desc.Origin, ray_desc.Direction, intersection.t_max);
 	intersection.t_min = VoxelGridSkipEmptySpace(forward_traversal_state, ray_desc.Direction, intersection.t_min);
@@ -43,12 +43,12 @@ void SkipEmptySpaceInTwoDirections(RayDesc ray_desc, inout VolumetricSceneInters
 	
 	intersection.is_hit = (intersection.t_min < intersection.t_max);
 }
-#endif // defined(CLOUD_RAYMARCH) || defined(OPTICAL_DEPTH_VOLUME) || defined(SHADOW_MAP)
+#endif // defined(VOLUME_RAYMARCH) || defined(CLOUD_OPTICAL_DEPTH_VOLUME) || defined(CLOUD_SHADOW_MAP)
 
-#if defined(CLOUD_RAYMARCH)
+#if defined(VOLUME_RAYMARCH)
 [ThreadGroupSize(256, 1, 1)]
 void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
-	uint2 thread_id = group_id * 16 + MortonDecode(thread_index);
+	uint2  thread_id = group_id * 16 + MortonDecode(thread_index);
 	float2 thread_uv = (thread_id + 0.5) * scene.inv_render_target_size;
 	
 	RayInfo view_space_ray = RayInfoFromScreenUv(thread_uv, scene.clip_to_view_coef);
@@ -126,10 +126,16 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 				}
 			}
 			
-			float2 radiance_transfer = 0.0;
+			float2 cloud_radiance_transfer = 0.0;
 			if (cloud_density > 0.0) {
 				float3 sample_uvw = (position - scene.clouds.world_space_position) * scene.clouds.inv_world_space_size;
-				radiance_transfer = cloud_radiance_transfer_volume.SampleLevel(sampler_linear_clamp, sample_uvw, 0);
+				cloud_radiance_transfer = cloud_radiance_transfer_volume.SampleLevel(sampler_linear_clamp, sample_uvw, 0);
+			}
+			
+			float2 fog_radiance_transfer = 0.0;
+			if (fog_density > 0.0) {
+				float3 sample_uvw = (position - scene.fog.world_space_position) * scene.fog.inv_world_space_size;
+				fog_radiance_transfer = fog_radiance_transfer_volume.SampleLevel(sampler_linear_clamp, sample_uvw, 0);
 			}
 			
 			float slice_transmittance = exp(-extinction_coefficients * delta_t);
@@ -138,8 +144,8 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 			float fog_scattering_integral   = fog_scattering_coefficients   * scattering_integral;
 			
 			scattering.x += exp(-cloud_sun_optical_depth) * cloud_scattering_integral + exp(-fog_sun_optical_depth) * fog_scattering_integral;
-			scattering.y += radiance_transfer.x           * cloud_scattering_integral; // TODO: + fog_radiance_transfer.x * fog_scattering_integral;
-			scattering.z += radiance_transfer.y           * cloud_scattering_integral; // TODO: + fog_radiance_transfer.y * fog_scattering_integral;
+			scattering.y += cloud_radiance_transfer.x     * cloud_scattering_integral + fog_radiance_transfer.x     * fog_scattering_integral;
+			scattering.z += cloud_radiance_transfer.y     * cloud_scattering_integral + fog_radiance_transfer.y     * fog_scattering_integral;
 			transmittance *= slice_transmittance;
 			
 			if (cloud_density > 0.0) {
@@ -156,10 +162,10 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	float3 radiance = sun_irradiance * scattering.x + sun_irradiance * scattering.y + scattering.z * sky_irradiance;
 	scene_radiance[thread_id] = float4(scene_radiance[thread_id].xyz * transmittance + radiance * scene.exposure_estimate, 1.0);
 }
-#endif // defined(CLOUD_RAYMARCH)
+#endif // defined(VOLUME_RAYMARCH)
 
 
-#if defined(OPTICAL_DEPTH_VOLUME)
+#if defined(CLOUD_OPTICAL_DEPTH_VOLUME)
 float RaymarchOpticalDepthRay(float3 origin, float3 direction, float t_max) {
 	float optical_depth = 0.0;
 	float noise_mip_level = scene.clouds.lighting_volume_noise_mip_offset;
@@ -194,10 +200,10 @@ void MainCS(uint group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	float optical_depth = RaymarchOpticalDepthRay(ray_desc.Origin + ray_desc.Direction * intersection.t_min, ray_desc.Direction, intersection.t_max - intersection.t_min);
 	cloud_optical_depth_volume[thread_id] = optical_depth;
 }
-#endif // defined(OPTICAL_DEPTH_VOLUME)
+#endif // defined(CLOUD_OPTICAL_DEPTH_VOLUME)
 
 
-#if defined(SHADOW_MAP)
+#if defined(CLOUD_SHADOW_MAP)
 float3 RaymarchBeerShadowMapRay(float3 origin, float3 direction, float t_min, float t_max) {
 	float noise_mip_level = scene.clouds.lighting_volume_noise_mip_offset;
 	
@@ -238,10 +244,10 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	float3 shadow_map = RaymarchBeerShadowMapRay(ray_desc.Origin, ray_desc.Direction, intersection.t_min, intersection.t_max);
 	transient_cloud_shadow_map[thread_id] = shadow_map;
 }
-#endif // defined(SHADOW_MAP)
+#endif // defined(CLOUD_SHADOW_MAP)
 
 
-#if defined(SHADOW_MAP_FILTER)
+#if defined(CLOUD_SHADOW_MAP_FILTER)
 #include "TextureSampling.hlsl"
 
 [ThreadGroupSize(256, 1, 1)]
@@ -266,10 +272,24 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	
 	cloud_shadow_map[thread_id] = shadow_map_sum * rcp(weight_sum);
 }
-#endif // defined(SHADOW_MAP_FILTER)
+#endif // defined(CLOUD_SHADOW_MAP_FILTER)
+
+#if defined(CLOUD_RADIANCE_TRANSFER_VOLUME) || defined(FOG_RADIANCE_TRANSFER_VOLUME)
+RayDesc CreatePrimaryRay(float3 world_space_position, inout uint hash) {
+	// Use isotropic phase function on the first scattering vertex to make sure radiance transfer is view independent.
+	// This also allows us to sample the radiance transfer volume for the last vertex on the path to get more bounces.
+	RayDesc ray_desc;
+	ray_desc.Origin    = world_space_position;
+	ray_desc.Direction = SphereMapping(ComputeRandomUnorm16x2(hash));
+	ray_desc.TMin      = 0.0;
+	ray_desc.TMax      = 1024.0;
+	
+	return ray_desc;
+}
+#endif // defined(CLOUD_RADIANCE_TRANSFER_VOLUME) || defined(FOG_RADIANCE_TRANSFER_VOLUME)
 
 
-#if defined(RADIANCE_TRANSFER_VOLUME)
+#if defined(CLOUD_RADIANCE_TRANSFER_VOLUME)
 #include "VolumeSampling.hlsl"
 
 #define USE_OPTICAL_DEPTH_VOLUME
@@ -289,11 +309,7 @@ void MainCS(uint group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	// uint max_path_length = 32;
 	uint max_path_length = 4;
 	
-	// Use isotropic phase function on the first scattering vertex to make sure radiance transfer is view independent.
-	// This also allows us to sample the radiance transfer volume for the last vertex on the path to get more bounces.
-	RayDesc ray_desc;
-	ray_desc.Origin    = world_space_position;
-	ray_desc.Direction = SphereMapping(ComputeRandomUnorm16x2(hash));
+	RayDesc ray_desc = CreatePrimaryRay(world_space_position, hash);
 	
 	u32 history_frame_count = cloud_sample_count_volume[thread_id / 4];
 	
@@ -387,4 +403,59 @@ void MainCS(uint group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 		}
 	}
 }
-#endif // defined(RADIANCE_TRANSFER_VOLUME)
+#endif // defined(CLOUD_RADIANCE_TRANSFER_VOLUME)
+
+#if defined(FOG_RADIANCE_TRANSFER_VOLUME)
+#include "VolumeSampling.hlsl"
+
+[ThreadGroupSize(4, 4, 4)]
+void MainCS(uint3 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
+	uint3 thread_id = group_id * 4 + RowMajorDecode3D(thread_index, 2);
+	
+	uint hash = WyHash32(RowMajorEncode3D(thread_id, 10), scene.frame_index);
+	
+	float3 thread_uv = (thread_id + ComputeRandomUnorm10x3(hash)) / FogConstants::lighting_volume_size;
+	float3 world_space_position = thread_uv * scene.fog.world_space_size + scene.fog.world_space_position;
+	
+	// uint max_path_length = 32;
+	uint max_path_length = 4;
+	
+	RayDesc ray_desc = CreatePrimaryRay(world_space_position, hash);
+	
+	float2 radiance_transfer = 0.0;
+	
+	[loop]
+	for (uint i = 0; i < max_path_length; i += 1) {
+		VolumeInteractionType volume_interaction_type = SampleVolumetricMedium(ray_desc, 1024.0, hash, 7.0);
+		
+		if (volume_interaction_type == VolumeInteractionType::Absorption) {
+			i = max_path_length;
+		} else if (volume_interaction_type == VolumeInteractionType::Scattering) {
+			float3 wo = -ray_desc.Direction;
+			
+			float phase_function = PhaseFunctionDualHG(dot(wo, scene.atmosphere.world_space_sun_direction), scene.clouds.dual_hg_parameters);
+			float transmittance = TraceVolumetricMediumTransmittanceRay(ray_desc.Origin, scene.atmosphere.world_space_sun_direction, 1024.0, hash, 7.0);
+			
+			radiance_transfer.x += transmittance * phase_function;
+			
+			if (i + 1 == max_path_length) {
+				// Append the path from the previous frame to the end of the current frame path.
+				float3 sample_uvw = (ray_desc.Origin - scene.fog.world_space_position) * scene.fog.inv_world_space_size;
+				radiance_transfer += max(fog_radiance_transfer_volume_1.SampleLevel(sampler_linear_clamp, sample_uvw, 0.0), 0.0);
+			} else {
+				ray_desc.Direction = SamplePhaseFunctionDualHG(wo, scene.clouds.dual_hg_parameters, ComputeRandomUnorm16x2(hash));
+			}
+		} else {
+			radiance_transfer.y += max(ray_desc.Direction.z * 2.0, 0.0);
+			i = max_path_length;
+		}
+	}
+	
+	float accumulation_ratio = 1.0 / min(scene.frame_index, 1024);
+	float2 old_accumulated_radiance_transfer = max(fog_radiance_transfer_volume_1[thread_id], 0.0);
+	float2 new_accumulated_radiance_transfer = max(lerp(old_accumulated_radiance_transfer, radiance_transfer, accumulation_ratio), 0.0);
+	
+	// Dither to prevent energy loss with very low accumulation ratio.
+	fog_radiance_transfer_volume_0[thread_id] = DitherFloat16(max(new_accumulated_radiance_transfer, 0.0), ComputeRandomUnorm16x2(hash));
+}
+#endif // defined(CLOUD_RADIANCE_TRANSFER_VOLUME)

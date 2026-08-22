@@ -117,6 +117,9 @@ enum struct VirtualResourceID : u32 {
 	CloudRadianceTransferVolume1,
 	CloudSampleCountVolume,
 	
+	FogRadianceTransferVolume0,
+	FogRadianceTransferVolume1,
+	
 	CloudShadowMap0,
 	CloudShadowMap1,
 	TransientCloudShadowMap,
@@ -1593,18 +1596,19 @@ struct BuildCloudVolumeMaskRenderPass {
 };
 
 
-NOTES(Meta::ShaderName{ "CloudRaymarch.hlsl"_sl })
-enum struct CloudRaymarchShaders : u32 {
-	CloudRaymarch          = 1u << 0,
-	OpticalDepthVolume     = 1u << 1,
-	ShadowMap              = 1u << 2,
-	ShadowMapFilter        = 1u << 3,
-	RadianceTransferVolume = 1u << 4,
+NOTES(Meta::ShaderName{ "VolumeRaymarch.hlsl"_sl })
+enum struct VolumeRaymarchShaders : u32 {
+	VolumeRaymarch              = 1u << 0,
+	CloudOpticalDepthVolume     = 1u << 1,
+	CloudShadowMap              = 1u << 2,
+	CloudShadowMapFilter        = 1u << 3,
+	CloudRadianceTransferVolume = 1u << 4,
+	FogRadianceTransferVolume   = 1u << 5,
 };
-SHADER_DEFINITION_GENERATED_CODE(CloudRaymarchShaders);
+SHADER_DEFINITION_GENERATED_CODE(VolumeRaymarchShaders);
 
 NOTES(Meta::RenderPass{})
-struct CloudRaymarchRenderPass {
+struct VolumeRaymarchRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
@@ -1616,6 +1620,7 @@ struct CloudRaymarchRenderPass {
 		HLSL::Texture3D<u64>         sdf_cloud_volume_mask          = VirtualResourceID::SdfCloudVolumeMask;
 		HLSL::Texture3D<float>       cloud_optical_depth_volume     = VirtualResourceID::CloudOpticalDepthVolume;
 		HLSL::Texture3D<float2>      cloud_radiance_transfer_volume = VirtualResourceID::CloudRadianceTransferVolume0;
+		HLSL::Texture3D<float2>      fog_radiance_transfer_volume   = VirtualResourceID::FogRadianceTransferVolume0;
 		HLSL::Texture2D<float3>      cloud_shadow_map               = VirtualResourceID::CloudShadowMap0;
 		HLSL::Texture2DArray<float>  blue_noise_1d                  = VirtualResourceID::BlueNoise1D;
 		HLSL::Texture2DArray<float2> blue_noise_2d                  = VirtualResourceID::BlueNoise2D;
@@ -1669,7 +1674,7 @@ struct CloudShadowMapFilterRenderPass {
 };
 
 NOTES(Meta::RenderPass{})
-struct CloudRadianceTransferVolumeRenderPass {
+struct RadianceTransferVolumeRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
@@ -1678,10 +1683,12 @@ struct CloudRadianceTransferVolumeRenderPass {
 		HLSL::Texture3D<u64>      sdf_cloud_volume_mask              = VirtualResourceID::SdfCloudVolumeMask;
 		HLSL::Texture3D<float>    cloud_optical_depth_volume         = VirtualResourceID::CloudOpticalDepthVolume;
 		HLSL::Texture3D<float2>   cloud_radiance_transfer_volume_1   = VirtualResourceID::CloudRadianceTransferVolume1;
+		HLSL::Texture3D<float2>   fog_radiance_transfer_volume_1     = VirtualResourceID::FogRadianceTransferVolume1;
 		HLSL::RWTexture3D<u32>    cloud_sample_count_volume          = VirtualResourceID::CloudSampleCountVolume;
 		HLSL::RWTexture3D<float2> cloud_radiance_transfer_volume_0_0 = HLSL::RWTexture3D<float2>(VirtualResourceID::CloudRadianceTransferVolume0, 0);
 		HLSL::RWTexture3D<float2> cloud_radiance_transfer_volume_0_1 = HLSL::RWTexture3D<float2>(VirtualResourceID::CloudRadianceTransferVolume0, 1);
 		HLSL::RWTexture3D<float2> cloud_radiance_transfer_volume_0_2 = HLSL::RWTexture3D<float2>(VirtualResourceID::CloudRadianceTransferVolume0, 2);
+		HLSL::RWTexture3D<float2> fog_radiance_transfer_volume_0     = VirtualResourceID::FogRadianceTransferVolume0;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {
@@ -1689,7 +1696,8 @@ struct CloudRadianceTransferVolumeRenderPass {
 		HLSL::DescriptorTable<Descriptors> descriptor_table;
 	};
 	
-	inline static PipelineID pipeline_id;
+	inline static PipelineID pipeline_id_cloud_radiance_transfer_volume;
+	inline static PipelineID pipeline_id_fog_radiance_transfer_volume;
 };
 
 

@@ -96,6 +96,8 @@ struct CloudConstants {
 
 NOTES(Meta::HlslFile{ "FogData.hlsl"_sl })
 struct FogConstants {
+	compile_const uint3 lighting_volume_size = uint3(32, 32, 4);
+	
 	float absorption_probability      = 0.f;
 	float scattering_probability      = 0.f;
 	float inv_extinction_coefficients = 0.f;

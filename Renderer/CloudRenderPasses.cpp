@@ -86,11 +86,11 @@ void BuildCloudVolumeMaskRenderPass::RecordPass(RecordContext* record_context) {
 }
 
 
-void CloudRaymarchRenderPass::CreatePipelines(PipelineLibrary* lib) {
-	pipeline_id = CreateComputePipeline(lib, CloudRaymarchShadersID, CloudRaymarchShaders::CloudRaymarch);
+void VolumeRaymarchRenderPass::CreatePipelines(PipelineLibrary* lib) {
+	pipeline_id = CreateComputePipeline(lib, VolumeRaymarchShadersID, VolumeRaymarchShaders::VolumeRaymarch);
 }
 
-void CloudRaymarchRenderPass::RecordPass(RecordContext* record_context) {
+void VolumeRaymarchRenderPass::RecordPass(RecordContext* record_context) {
 	auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
 	CmdSetRootSignature(record_context, root_signature);
 	CmdSetPipelineState(record_context, pipeline_id);
@@ -103,8 +103,8 @@ void CloudRaymarchRenderPass::RecordPass(RecordContext* record_context) {
 }
 
 void CloudOpticalDepthVolumeRenderPass::CreatePipelines(PipelineLibrary* lib) {
-	pipeline_id_optical_depth_volume = CreateComputePipeline(lib, CloudRaymarchShadersID, CloudRaymarchShaders::OpticalDepthVolume);
-	pipeline_id_shadow_map           = CreateComputePipeline(lib, CloudRaymarchShadersID, CloudRaymarchShaders::ShadowMap);
+	pipeline_id_optical_depth_volume = CreateComputePipeline(lib, VolumeRaymarchShadersID, VolumeRaymarchShaders::CloudOpticalDepthVolume);
+	pipeline_id_shadow_map           = CreateComputePipeline(lib, VolumeRaymarchShadersID, VolumeRaymarchShaders::CloudShadowMap);
 }
 
 void CloudOpticalDepthVolumeRenderPass::RecordPass(RecordContext* record_context) {
@@ -123,7 +123,7 @@ void CloudOpticalDepthVolumeRenderPass::RecordPass(RecordContext* record_context
 }
 
 void CloudShadowMapFilterRenderPass::CreatePipelines(PipelineLibrary* lib) {
-	pipeline_id = CreateComputePipeline(lib, CloudRaymarchShadersID, CloudRaymarchShaders::ShadowMapFilter);
+	pipeline_id = CreateComputePipeline(lib, VolumeRaymarchShadersID, VolumeRaymarchShaders::CloudShadowMapFilter);
 }
 
 void CloudShadowMapFilterRenderPass::RecordPass(RecordContext* record_context) {
@@ -137,19 +137,23 @@ void CloudShadowMapFilterRenderPass::RecordPass(RecordContext* record_context) {
 	CmdDispatch(record_context, DivideAndRoundUp(uint2(CloudConstants::shadow_map_size, CloudConstants::shadow_map_size), 16u));
 }
 
-void CloudRadianceTransferVolumeRenderPass::CreatePipelines(PipelineLibrary* lib) {
-	pipeline_id = CreateComputePipeline(lib, CloudRaymarchShadersID, CloudRaymarchShaders::RadianceTransferVolume);
+void RadianceTransferVolumeRenderPass::CreatePipelines(PipelineLibrary* lib) {
+	pipeline_id_cloud_radiance_transfer_volume = CreateComputePipeline(lib, VolumeRaymarchShadersID, VolumeRaymarchShaders::CloudRadianceTransferVolume);
+	pipeline_id_fog_radiance_transfer_volume   = CreateComputePipeline(lib, VolumeRaymarchShadersID, VolumeRaymarchShaders::FogRadianceTransferVolume);
 }
 
-void CloudRadianceTransferVolumeRenderPass::RecordPass(RecordContext* record_context) {
+void RadianceTransferVolumeRenderPass::RecordPass(RecordContext* record_context) {
 	auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
 	CmdSetRootSignature(record_context, root_signature);
-	CmdSetPipelineState(record_context, pipeline_id);
 	
 	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
 	CmdSetRootArgument(record_context, root_signature.scene, VirtualResourceID::SceneConstants);
 	
+	CmdSetPipelineState(record_context, pipeline_id_fog_radiance_transfer_volume);
+	CmdDispatch(record_context, DivideAndRoundUp(FogConstants::lighting_volume_size, 4u));
+	
 	u32 indirect_arguments_offset = (u32)CloudCullingIndirectArgumentsLayout::FineCloudUpdateList;
+	CmdSetPipelineState(record_context, pipeline_id_cloud_radiance_transfer_volume);
 	CmdDispatchIndirect(record_context, GpuAddress(VirtualResourceID::CloudCullingIndirectArguments, indirect_arguments_offset * sizeof(uint4)));
 }
 

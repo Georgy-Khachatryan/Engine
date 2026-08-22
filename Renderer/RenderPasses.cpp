@@ -26,11 +26,15 @@ static void BuildResourceTable(RecordContext* record_context, WorldEntitySystem*
 	table.Set(ID::CloudRadianceTransferVolume1, TextureSize(TextureFormat::R16G16_FLOAT, CloudConstants::lighting_volume_size, 3));
 	table.Set(ID::CloudSampleCountVolume,       TextureSize(TextureFormat::R16_UINT,     CloudConstants::sample_count_volume_size));
 	
+	table.Set(ID::FogRadianceTransferVolume0, TextureSize(TextureFormat::R16G16_FLOAT, FogConstants::lighting_volume_size));
+	table.Set(ID::FogRadianceTransferVolume1, TextureSize(TextureFormat::R16G16_FLOAT, FogConstants::lighting_volume_size));
+	
 	table.Set(ID::CloudShadowMap0, TextureSize(TextureFormat::R11G11B10_FLOAT, uint2(CloudConstants::shadow_map_size, CloudConstants::shadow_map_size)));
 	table.Set(ID::CloudShadowMap1, TextureSize(TextureFormat::R11G11B10_FLOAT, uint2(CloudConstants::shadow_map_size, CloudConstants::shadow_map_size)));
 	table.Set(ID::TransientCloudShadowMap, TextureSize(TextureFormat::R11G11B10_FLOAT, uint2(CloudConstants::shadow_map_size, CloudConstants::shadow_map_size)));
 	
 	table.SwapHistory(ID::CloudRadianceTransferVolume0, ID::CloudRadianceTransferVolume1);
+	table.SwapHistory(ID::FogRadianceTransferVolume0, ID::FogRadianceTransferVolume1);
 	table.SwapHistory(ID::CloudShadowMap0, ID::CloudShadowMap1);
 	
 	table.Set(ID::CloudCullingCommands,          CloudCullingConstants::culling_command_count    * sizeof(uint2));
@@ -345,8 +349,8 @@ static void CreateSceneConstants(RecordContext* record_context, uint2 render_tar
 		scene.fog.inv_extinction_coefficients = 1.f / scene.fog.extinction_coefficients;
 		
 		float max_height = logf(CloudConstants::extinction_coefficients_threshold * scene.fog.inv_extinction_coefficients) / -scene.fog.height_falloff;
-		scene.fog.world_space_size.z     = max_height;
-		scene.fog.inv_world_space_size.z = 1.f / max_height;
+		scene.fog.world_space_size.z     = Math::Min(scene.fog.world_space_size.z, max_height);
+		scene.fog.inv_world_space_size.z = 1.f / scene.fog.world_space_size.z;
 	}
 	
 	for (u32 i = 0; i < LightCullingConstants::grid_cascade_count; i += 1) {
@@ -539,7 +543,7 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 		
 		{
 			render_passes.Add<CloudOpticalDepthVolumeRenderPass>();
-			render_passes.Add<CloudRadianceTransferVolumeRenderPass>();
+			render_passes.Add<RadianceTransferVolumeRenderPass>();
 			render_passes.Add<CloudShadowMapFilterRenderPass>();
 		}
 	}
@@ -579,7 +583,7 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	
 	render_passes.AddWait(CommandQueueType::Graphics, render_passes.AddSignal(CommandQueueType::Compute)); 
 	
-	render_passes.Add<CloudRaymarchRenderPass>();
+	render_passes.Add<VolumeRaymarchRenderPass>();
 	
 	if (renderer_world.reference_path_tracer_percent != 0.f) {
 		render_passes.Add<ReferencePathTracerRenderPass>();
