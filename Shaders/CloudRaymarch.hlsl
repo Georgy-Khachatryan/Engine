@@ -3,6 +3,7 @@
 #include "AtmosphereSampling.hlsl"
 #include "BrdfSampling.hlsl"
 #include "CloudSampling.hlsl"
+#include "VolumeSampling.hlsl"
 #endif // !defined(SHADOW_MAP_FILTER)
 
 compile_const float hybrid_transmittance_ray_length = 8.0;
@@ -39,6 +40,8 @@ void SkipEmptySpaceInTwoDirections(RayDesc ray_desc, inout VolumetricSceneInters
 	
 	VoxelTraversalState backward_traversal_state = BeginVoxelTraversal(ray_desc.Origin + ray_desc.Direction * intersection.t_max, -ray_desc.Direction, intersection.t_max - intersection.t_min);
 	intersection.t_max -= VoxelGridSkipEmptySpace(backward_traversal_state, -ray_desc.Direction, 0.0);
+	
+	intersection.is_hit = (intersection.t_min < intersection.t_max);
 }
 #endif // defined(CLOUD_RAYMARCH) || defined(OPTICAL_DEPTH_VOLUME) || defined(SHADOW_MAP)
 
@@ -54,48 +57,94 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	ray_desc.Origin    = mul(scene.view_to_world, float4(view_space_ray.origin, 1.0));
 	ray_desc.Direction = mul((float3x3)scene.view_to_world, view_space_ray.direction);
 	
-	VolumetricSceneIntersection intersection = RayBoxIntersection(ray_desc.Origin - scene.clouds.world_space_position, ray_desc.Direction, scene.clouds.world_space_size);
-	if (intersection.is_hit == false) return;
-	
 	float depth = depth_stencil[thread_id];
-	if (depth != 0.0) {
-		float3 view_space_position = TransformScreenUvToViewSpace(thread_uv, depth, scene.clip_to_view_coef, scene.jitter_offset_ndc);
-		intersection.t_max = min(intersection.t_max, length(view_space_position));
+	float ray_t_max = length(TransformScreenUvToViewSpace(thread_uv, depth, scene.clip_to_view_coef, scene.jitter_offset_ndc));
+	
+	VolumetricSceneIntersection intersection = (VolumetricSceneIntersection)0;
+	VolumetricSceneIntersection clouds_intersection = (VolumetricSceneIntersection)0;
+	
+	if (scene.feature_flags & SceneFeatureFlags::Clouds) {
+		clouds_intersection = RayBoxIntersection(ray_desc.Origin - scene.clouds.world_space_position, ray_desc.Direction, scene.clouds.world_space_size, ray_t_max);
+		SkipEmptySpaceInTwoDirections(ray_desc, clouds_intersection);
+		
+		intersection = clouds_intersection;
 	}
 	
-	SkipEmptySpaceInTwoDirections(ray_desc, intersection);
+	if (scene.feature_flags & SceneFeatureFlags::Fog) {
+		VolumetricSceneIntersection fog_intersection = RayBoxIntersection(ray_desc.Origin - scene.fog.world_space_position, ray_desc.Direction, scene.fog.world_space_size, ray_t_max);
+		if (intersection.is_hit) {
+			intersection.t_min = min(intersection.t_min, fog_intersection.t_min);
+			intersection.t_max = max(intersection.t_max, fog_intersection.t_max);
+		} else {
+			intersection = fog_intersection;
+		}
+	}
 	
 	float3 scattering = 0.0;
 	float transmittance = 1.0;
-	float cloud_t_min = intersection.t_max;
 	
+	float cloud_t_min  = intersection.t_max;
 	float sample_count = 0.0;
-	float delta_t = 8.0;
-	float ray_t = intersection.t_min + delta_t * LoadBlueNoise(blue_noise_1d, thread_id, scene.frame_index);
-	for (; (ray_t < intersection.t_max) && (transmittance > (1.0 / 8192.0)); ray_t += delta_t, sample_count += 1.0) {
+	
+	float noise   = LoadBlueNoise(blue_noise_1d, thread_id, scene.frame_index);
+	float delta_t = (clouds_intersection.is_hit ? 8.0 : 32.0);
+	float ray_t   = intersection.t_min + delta_t * noise;
+	
+	for (; (ray_t < intersection.t_max) && (transmittance >= CloudConstants::transmittance_threshold); ray_t += delta_t, sample_count += 1.0) {
 		float3 position = ray_desc.Direction * ray_t + ray_desc.Origin;
 		float noise_mip_level = (float)min(FloorLog2(max(ray_t * scene.clouds.raymarch_noise_mip_scale, 1.0)), 7);
 		
-		float density = ComputeCloudMediumDensity(position, noise_mip_level);
-		float extinction_coefficients = density * scene.clouds.extinction_coefficients;
-		float scattering_coefficients = density * scene.clouds.scattering_coefficients;
+		float cloud_density = 0.0;
+		if ((ray_t >= clouds_intersection.t_min) && (ray_t <= clouds_intersection.t_max)) {
+			cloud_density = ComputeCloudMediumDensity(position, noise_mip_level);
+		}
+		float fog_density = ComputeFogMediumDensity(position.z);
 		
-		if (extinction_coefficients > (1.0 / 1024.0)) {
-			float sun_optical_depth = RaymarchHybridOpticalDepthRay(position, scene.atmosphere.world_space_sun_direction, noise_mip_level);
+		float cloud_scattering_coefficients = scene.clouds.scattering_coefficients * cloud_density;
+		float fog_scattering_coefficients   = scene.fog.scattering_coefficients    * fog_density;
+		float extinction_coefficients       = scene.clouds.extinction_coefficients * cloud_density + scene.fog.extinction_coefficients * fog_density;
+		
+		if (extinction_coefficients >= CloudConstants::extinction_coefficients_threshold) {
+			float cloud_sun_optical_depth = 0.0;
+			if (cloud_density > 0.0) {
+				cloud_sun_optical_depth = RaymarchHybridOpticalDepthRay(position, scene.atmosphere.world_space_sun_direction, noise_mip_level);
+			}
 			
-			float3 sample_uvw = (position - scene.clouds.world_space_position) * scene.clouds.inv_world_space_size;
-			float2 radiance_transfer = cloud_radiance_transfer_volume.SampleLevel(sampler_linear_clamp, sample_uvw, 0);
+			float fog_sun_optical_depth = 0.0;
+			if (fog_density > 0.0) {
+				float3 shadow_view_space_position = mul(scene.clouds.world_to_view, float4(position, 1.0));
+				float4 shadow_clip_space_position = TransformViewToClipSpace(shadow_view_space_position, scene.clouds.view_to_clip_coef);
+				float2 shadow_uv_position = NdcToScreenUv(shadow_clip_space_position.xy);
+				
+				if (all(shadow_uv_position >= 0) && all(shadow_uv_position <= 1.0)) {
+					float3 shadow_map = cloud_shadow_map.SampleLevel(sampler_linear_clamp, shadow_uv_position, 0.0);
+					
+					// During filtering the ordering of min/max depth might get swapped.
+					float min_cloud_depth = min(shadow_map.x, shadow_map.y);
+					float max_cloud_depth = max(shadow_map.x, max(shadow_map.y, min_cloud_depth + (1.0 / 1024.0)));
+					fog_sun_optical_depth = smoothstep(max_cloud_depth, min_cloud_depth, max(shadow_view_space_position.z, 0.0)) * shadow_map.z;
+				}
+			}
 			
-			// scattering_coefficients / extinction_coefficients could be precomputed. For clouds it's generally 1.0
+			float2 radiance_transfer = 0.0;
+			if (cloud_density > 0.0) {
+				float3 sample_uvw = (position - scene.clouds.world_space_position) * scene.clouds.inv_world_space_size;
+				radiance_transfer = cloud_radiance_transfer_volume.SampleLevel(sampler_linear_clamp, sample_uvw, 0);
+			}
+			
 			float slice_transmittance = exp(-extinction_coefficients * delta_t);
-			float scattering_integral = transmittance * scattering_coefficients * (1.0 - slice_transmittance) / extinction_coefficients;
+			float scattering_integral = transmittance * (1.0 - slice_transmittance) / extinction_coefficients;
+			float cloud_scattering_integral = cloud_scattering_coefficients * scattering_integral;
+			float fog_scattering_integral   = fog_scattering_coefficients   * scattering_integral;
 			
-			scattering.x += exp(-sun_optical_depth) * scattering_integral;
-			scattering.y += radiance_transfer.x     * scattering_integral;
-			scattering.z += radiance_transfer.y     * scattering_integral;
+			scattering.x += exp(-cloud_sun_optical_depth) * cloud_scattering_integral + exp(-fog_sun_optical_depth) * fog_scattering_integral;
+			scattering.y += radiance_transfer.x           * cloud_scattering_integral; // TODO: + fog_radiance_transfer.x * fog_scattering_integral;
+			scattering.z += radiance_transfer.y           * cloud_scattering_integral; // TODO: + fog_radiance_transfer.y * fog_scattering_integral;
 			transmittance *= slice_transmittance;
 			
-			cloud_t_min = min(cloud_t_min, ray_t);
+			if (cloud_density > 0.0) {
+				cloud_t_min = min(cloud_t_min, ray_t);
+			}
 		}
 	}
 	

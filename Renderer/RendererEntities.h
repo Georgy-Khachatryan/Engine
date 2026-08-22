@@ -59,6 +59,9 @@ struct CloudConstants {
 	compile_const uint3 mask_volume_size_blocks  = cloud_volume_size / 16;
 	compile_const u32   shadow_map_size          = 512;
 	
+	compile_const float transmittance_threshold           = 1.f / 8192.f;
+	compile_const float extinction_coefficients_threshold = 1.f / 8192.f;
+	
 	
 	float3x4 world_to_view;
 	float3x4 view_to_world;

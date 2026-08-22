@@ -1616,6 +1616,7 @@ struct CloudRaymarchRenderPass {
 		HLSL::Texture3D<u64>         sdf_cloud_volume_mask          = VirtualResourceID::SdfCloudVolumeMask;
 		HLSL::Texture3D<float>       cloud_optical_depth_volume     = VirtualResourceID::CloudOpticalDepthVolume;
 		HLSL::Texture3D<float2>      cloud_radiance_transfer_volume = VirtualResourceID::CloudRadianceTransferVolume0;
+		HLSL::Texture2D<float3>      cloud_shadow_map               = VirtualResourceID::CloudShadowMap0;
 		HLSL::Texture2DArray<float>  blue_noise_1d                  = VirtualResourceID::BlueNoise1D;
 		HLSL::Texture2DArray<float2> blue_noise_2d                  = VirtualResourceID::BlueNoise2D;
 		HLSL::RWTexture2D<float4>    scene_radiance                 = VirtualResourceID::SceneRadiance;

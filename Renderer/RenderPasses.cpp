@@ -343,6 +343,10 @@ static void CreateSceneConstants(RecordContext* record_context, uint2 render_tar
 		scene.fog.absorption_probability  = scene.fog.absorption_coefficients / scene.fog.extinction_coefficients;
 		scene.fog.scattering_probability  = scene.fog.scattering_coefficients / scene.fog.extinction_coefficients;
 		scene.fog.inv_extinction_coefficients = 1.f / scene.fog.extinction_coefficients;
+		
+		float max_height = logf(CloudConstants::extinction_coefficients_threshold * scene.fog.inv_extinction_coefficients) / -scene.fog.height_falloff;
+		scene.fog.world_space_size.z     = max_height;
+		scene.fog.inv_world_space_size.z = 1.f / max_height;
 	}
 	
 	for (u32 i = 0; i < LightCullingConstants::grid_cascade_count; i += 1) {

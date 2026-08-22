@@ -21,7 +21,7 @@ VolumetricSceneIntersection RayBoxIntersection(float3 ray_origin, float3 ray_dir
 	VolumetricSceneIntersection intersection;
 	intersection.t_min = max(max(t0.x, t0.y), max(t0.z, 0.0));
 	intersection.t_max = min(min(t1.x, t1.y), min(t1.z, ray_t_max));
-	intersection.is_hit = (intersection.t_min <= intersection.t_max) && (intersection.t_max > 0.0);
+	intersection.is_hit = (intersection.t_min < intersection.t_max);
 	
 	return intersection;
 }
@@ -64,7 +64,7 @@ VoxelTraversalState BeginVoxelTraversal(float3 origin, float3 direction, float r
 	VoxelTraversalState state;
 	state.inv_direction = select(direction == 0.0, /*nan*/asfloat(0x7FC00000), 1.0 / direction); // See @inv_direction for reference.
 	state.origin        = (origin - scene.clouds.world_space_position) * scene.clouds.inv_world_space_size.x + 1.0;
-	state.ray_t_max     = ray_t_max * scene.clouds.inv_world_space_size.x - 0.001;
+	state.ray_t_max     = ray_t_max * scene.clouds.inv_world_space_size.x;
 	
 	return state;
 }
