@@ -6,38 +6,6 @@
 #include "LightGridSampling.hlsl"
 #include "TextureSampling.hlsl"
 
-struct VisibilityHashTableKey : HashTableKey {
-	float cell_size;
-};
-
-VisibilityHashTableKey BuildVisibilityHashTableKey(float3 shading_position, u32 light_entity_index, float3 world_space_camera_position, float3 world_space_normal, float2 random_offset_2d) {
-	compile_const float min_hash_cell_size     = 1.0 / 128.0;
-	compile_const float inv_min_hash_cell_size = 1.0 / min_hash_cell_size;
-	
-	bool apply_random_offset = true;
-	if (apply_random_offset) {
-		float center_distance_to_camera = length(shading_position - world_space_camera_position);
-		float center_cell_size = max(center_distance_to_camera * scene.visibility_hash_table_distance_to_cell_size_scale, min_hash_cell_size);
-		
-		float3x3 world_to_tangent = BuildOrthonormalBasis(world_space_normal);
-		float3x3 tangent_to_world = transpose(world_to_tangent);
-		
-		shading_position += mul(tangent_to_world, float3(random_offset_2d * center_cell_size, 0.0));
-	}
-	
-	float distance_to_camera = length(shading_position - world_space_camera_position);
-	HashCellSize cell_size = QuantizeHashCellSize(distance_to_camera * scene.visibility_hash_table_distance_to_cell_size_scale, min_hash_cell_size, inv_min_hash_cell_size);
-	
-	uint3 cell_position = ((s32x3)round(shading_position / cell_size.hash_cell_size)) & 0x1FFF;
-	
-	VisibilityHashTableKey result;
-	result.key  = (u64)cell_position.x | ((u64)cell_position.y << 13) | ((u64)cell_position.z << 26) | ((u64)(cell_size.level_of_detail + 1) << 39) | ((u64)light_entity_index << 48);
-	result.hash = WyHash32((u32)result.key, (u32)(result.key >> 32));
-	result.cell_size = cell_size.hash_cell_size;
-	
-	return result;
-}
-
 struct RadianceHashTableKey : HashTableKey {
 	
 };

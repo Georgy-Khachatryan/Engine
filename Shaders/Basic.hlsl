@@ -54,6 +54,7 @@ compile_const u64 u64_max = (u64)0xFFFFFFFFFFFFFFFF;
 compile_const u64 u64_min = (u64)0x0000000000000000;
 compile_const s64 s64_max = (s64)0x7FFFFFFFFFFFFFFF;
 compile_const s64 s64_min = (s64)0x8000000000000000;
+compile_const float float16_max = 65504.0;
 
 template<typename T, u32 fixed_count>
 struct FixedCountArray {
@@ -364,6 +365,7 @@ float3 ViridisHeatMapSRGB(float t) {
 	float3 c4 = float3(6.228269936347081, 14.17993336680509, 56.69055260068105);
 	float3 c5 = float3(4.776384997670288, -13.74514537774601, -65.35303263337234);
 	float3 c6 = float3(-5.435455855934631, 4.645852612178535, 26.3124352495832);
+	t = saturate(t);
 	return c0 + t * (c1 + t * (c2 + t * (c3 + t * (c4 + t * (c5 + t * c6)))));
 }
 
@@ -375,6 +377,7 @@ float3 PlasmaHeatMapSRGB(float t) {
 	float3 c4 = float3(-11.10743619062271, -82.66631109428045, 60.13984767418263);
 	float3 c5 = float3(10.02306557647065, 71.41361770095349, -54.07218655560067);
 	float3 c6 = float3(-3.658713842777788, -22.93153465461149, 18.19190778539828);
+	t = saturate(t);
 	return c0 + t * (c1 + t * (c2 + t * (c3 + t * (c4 + t * (c5 + t * c6)))));
 }
 

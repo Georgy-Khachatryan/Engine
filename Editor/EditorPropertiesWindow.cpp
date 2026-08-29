@@ -178,8 +178,8 @@ static void WorldComponentEntityView(StackAllocator* alloc, WorldEntitySystem& w
 		
 		ImGui::TableSliderFloat("Scattering Coefficients", &settings.scattering_coefficients, 0.f, 4.f);
 		ImGui::TableSliderFloat("Absorption Coefficients", &settings.absorption_coefficients, 0.f, 4.f);
-		ImGui::TableSliderFloat("Forward Scattering Anisotropy", &settings.dual_hg_parameters.x, -0.9f, 0.f);
-		ImGui::TableSliderFloat("Backward Scattering Anisotropy", &settings.dual_hg_parameters.y, 0.f, +0.9f);
+		ImGui::TableSliderFloat("Backward Scattering Anisotropy", &settings.dual_hg_parameters.x, -0.9f, 0.f);
+		ImGui::TableSliderFloat("Forward Scattering Anisotropy", &settings.dual_hg_parameters.y, 0.f, +0.9f);
 		ImGui::TableSliderFloat("Scattering Anisotropy Blend", &settings.dual_hg_parameters.z, 0.f, 1.f);
 		
 		ImGui::TableEntityComboBox(alloc, "Density Noise", &asset_system, &settings.density_noise.guid, ECS::GetEntityTypeID<TextureAssetType>::id);
@@ -208,7 +208,7 @@ static void WorldComponentEntityView(StackAllocator* alloc, WorldEntitySystem& w
 	if (entity.lighting_settings && ImGui::TableCollapsingHeader("Lighting Settings")) {
 		auto& settings = *entity.lighting_settings;
 		ImGui::TableSliderFloat("WRS Min Light Weight", &settings.wrs_min_light_weight, 0.f, 1.f);
-		ImGui::TableSliderFloat("Visibility Cache Target Cell Size Pixels", &settings.visibility_hash_table_target_cell_size_pixels, 1.f, 64.f);
+		ImGui::TableSliderFloat("Indirect Lighting Min Roughness", &settings.indirect_lighting_min_roughness, 0.f, 1.f);
 		ImGui::TableSliderFloat("Radiance Cache Target Cell Size Pixels", &settings.radiance_hash_table_target_cell_size_pixels, 1.f, 64.f);
 		ImGui::TableSliderFloat("CDF Hash Table Cell Size Pixels", &settings.cdf_hash_table_target_cell_size_pixels, 16.f, 256.f);
 	}

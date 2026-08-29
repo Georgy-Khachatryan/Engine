@@ -231,7 +231,7 @@ void MainCS(uint3 thread_id : SV_DispatchThreadID, uint thread_index : SV_GroupI
 	
 	// Fine cloud update passes run at half volume resolution, so they need 1 4x4x4 thread group for each 8x8x8 full resolution block.
 	bool is_octant_occupied = (thread_index & 0b101010) == thread_index && ((gs_occupancy_mask >> thread_index) & 0x00330033) != 0;
-	if (is_octant_occupied) {
+	if (is_octant_occupied && (scene.feature_flags & SceneFeatureFlags::Clouds)) {
 		uint command_index = 0;
 		InterlockedAdd(indirect_arguments[IndirectArgumentsLayout::FineCloudUpdateList].x, 1u, command_index);
 		

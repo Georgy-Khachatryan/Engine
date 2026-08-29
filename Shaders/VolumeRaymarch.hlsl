@@ -98,7 +98,11 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 		if ((ray_t >= clouds_intersection.t_min) && (ray_t <= clouds_intersection.t_max)) {
 			cloud_density = ComputeCloudMediumDensity(position, noise_mip_level);
 		}
-		float fog_density = ComputeFogMediumDensity(position.z);
+		
+		float fog_density = 0.0;
+		if (scene.feature_flags & SceneFeatureFlags::Fog) {
+			fog_density = ComputeFogMediumDensity(position.z);
+		}
 		
 		float cloud_scattering_coefficients = scene.clouds.scattering_coefficients * cloud_density;
 		float fog_scattering_coefficients   = scene.fog.scattering_coefficients    * fog_density;
@@ -238,10 +242,14 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	ray_desc.Origin    = mul(scene.clouds.view_to_world, float4(view_space_ray.origin, 1.0));
 	ray_desc.Direction = mul((float3x3)scene.clouds.view_to_world, view_space_ray.direction);
 	
-	VolumetricSceneIntersection intersection = RayBoxIntersection(ray_desc.Origin - scene.clouds.world_space_position, ray_desc.Direction, scene.clouds.world_space_size);
-	SkipEmptySpaceInTwoDirections(ray_desc, intersection);
+	float3 shadow_map = 0.0;
+	if (scene.feature_flags & SceneFeatureFlags::Clouds) {
+		VolumetricSceneIntersection intersection = RayBoxIntersection(ray_desc.Origin - scene.clouds.world_space_position, ray_desc.Direction, scene.clouds.world_space_size);
+		SkipEmptySpaceInTwoDirections(ray_desc, intersection);
+		
+		shadow_map = RaymarchBeerShadowMapRay(ray_desc.Origin, ray_desc.Direction, intersection.t_min, intersection.t_max);
+	}
 	
-	float3 shadow_map = RaymarchBeerShadowMapRay(ray_desc.Origin, ray_desc.Direction, intersection.t_min, intersection.t_max);
 	transient_cloud_shadow_map[thread_id] = shadow_map;
 }
 #endif // defined(CLOUD_SHADOW_MAP)

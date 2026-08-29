@@ -219,7 +219,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 		ray_desc.Origin += ray_desc.Direction * ray_query.CommittedRayT() + ComputeNormalBias(world_space_normal);
 		
 		float  metalness    = properties.metalness;
-		float  roughness    = properties.roughness;
+		float  roughness    = max(properties.roughness, scene.indirect_lighting_min_roughness); // Suppress caustic paths.
 		float3 conductor_f0 = properties.albedo;
 		float  alpha        = Pow2(roughness);
 		float  alpha_square = Pow2(alpha);
@@ -356,7 +356,6 @@ void MainCS(uint thread_id : SV_DispatchThreadID) {
 	if (radiance_and_sample_count.w > 0.0) {
 		// Make sure to clamp infinities to float16_max on very bright hash cells. Even if this introduces
 		// a hue shift, such bright radiance would almost certainly saturate to white during tone mapping.
-		compile_const float float16_max = 65504.0;
 		radiance = min((float3)radiance_and_sample_count.xyz, float16_max) / min((float)radiance_and_sample_count.w, float16_max);
 	}
 	

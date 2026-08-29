@@ -35,23 +35,6 @@ void BuildVisibleLightTileListRenderPass::RecordPass(RecordContext* record_conte
 	CmdDispatch(record_context, DivideAndRoundUp(uint2(render_target_size), LightingConstants::visible_light_tile_size));
 }
 
-
-void UpdateVisibilityHashTableRenderPass::CreatePipelines(PipelineLibrary* lib) {
-	pipeline_id = CreateComputePipeline(lib, DeferredLightingShadersID, DeferredLightingShaders::UpdateVisibilityHashTable);
-}
-
-void UpdateVisibilityHashTableRenderPass::RecordPass(RecordContext* record_context) {
-	auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
-	CmdSetRootSignature(record_context, root_signature);
-	CmdSetPipelineState(record_context, pipeline_id);
-	
-	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
-	CmdSetRootArgument(record_context, root_signature.scene, VirtualResourceID::SceneConstants);
-	
-	CmdDispatch(record_context, DivideAndRoundUp(LightingConstants::visibility_hash_table_size, 256u));
-}
-
-
 void IndirectDiffuseRenderPass::CreatePipelines(PipelineLibrary* lib) {
 	pipeline_id = CreateComputePipeline(lib, IndirectLightingShadersID, IndirectLightingShaders::IndirectDiffuse);
 }

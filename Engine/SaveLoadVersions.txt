@@ -243,6 +243,12 @@ struct LightingSettings {
 		radiance_hash_table_target_cell_size_pixels float32 0;
 		cdf_hash_table_target_cell_size_pixels float32 0;
 	}
+	/*Version*/ 4 {
+		wrs_min_light_weight float32 0;
+		indirect_lighting_min_roughness float32 0;
+		radiance_hash_table_target_cell_size_pixels float32 0;
+		cdf_hash_table_target_cell_size_pixels float32 0;
+	}
 }
 
 struct MaterialTextureData {

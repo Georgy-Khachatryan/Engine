@@ -68,8 +68,8 @@ enum struct VirtualResourceID : u32 {
 	DenoiserRadianceSourceD,
 	DenoiserAccumulatedFrameCount0,
 	DenoiserAccumulatedFrameCount1,
-	DenoiserPenumbraMask0,
-	DenoiserPenumbraMask1,
+	DenoiserVariance0,
+	DenoiserVariance1,
 	
 	// Mesh rendering:
 	VisibleMeshlets,
@@ -90,9 +90,6 @@ enum struct VirtualResourceID : u32 {
 	LightCullingCommands,
 	LightCullingGrid,
 	VisibleLightTileList,
-	
-	VisibilityHashTableKeys,
-	VisibilityHashTableValues,
 	
 	IndirectDiffuse,
 	IndirectSpecular,
@@ -1098,7 +1095,6 @@ struct VisibilityBufferResolveRenderPass {
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
 		HLSL::Texture2D<u32>                        visibility_buffer     = VirtualResourceID::VisibilityBuffer;
-		HLSL::Texture2D<float>                      depth_stencil         = VirtualResourceID::DepthStencil;
 		HLSL::RegularBuffer<GpuTransform>           prev_mesh_transforms  = VirtualResourceID::MeshEntityPrevGpuTransform;
 		HLSL::RegularBuffer<GpuTransform>           mesh_transforms       = VirtualResourceID::MeshEntityGpuTransform;
 		HLSL::RegularBuffer<GpuMeshAssetData>       mesh_asset_data       = VirtualResourceID::GpuMeshAssetData;
@@ -1133,16 +1129,14 @@ struct LightingConstants {
 	compile_const u32 visible_light_tile_size = 8;
 	compile_const u32 visible_light_tile_area = visible_light_tile_size * visible_light_tile_size;
 	
-	compile_const u32 visibility_hash_table_size = 1024u * 1024u;
-	compile_const u32 radiance_hash_table_size   = 1024u * 1024u;
-	compile_const u32 cdf_hash_table_size        = cdf_hash_table_atlas_size_tiles * cdf_hash_table_atlas_size_tiles;
+	compile_const u32 radiance_hash_table_size = 1024u * 1024u;
+	compile_const u32 cdf_hash_table_size      = cdf_hash_table_atlas_size_tiles * cdf_hash_table_atlas_size_tiles;
 };
 
 NOTES(Meta::ShaderName{ "DeferredLighting.hlsl"_sl })
 enum struct DeferredLightingShaders : u32 {
 	DeferredLighting          = 1u << 0,
 	BuildVisibleLightTileList = 1u << 1,
-	UpdateVisibilityHashTable = 1u << 2,
 };
 SHADER_DEFINITION_GENERATED_CODE(DeferredLightingShaders);
 
@@ -1167,13 +1161,9 @@ struct DeferredLightingRenderPass {
 		HLSL::RegularBuffer<u32>                light_culling_grid               = VirtualResourceID::LightCullingGrid;
 		HLSL::Texture2D<float3>                 cloud_shadow_map                 = VirtualResourceID::CloudShadowMap0;
 		HLSL::TopLevelRTAS                      scene_tlas                       = VirtualResourceID::SceneTLAS;
-		HLSL::Texture2D<float>                  denoiser_penumbra_mask_0         = VirtualResourceID::DenoiserPenumbraMask0;
-		HLSL::RWTexture2D<float>                denoiser_penumbra_mask_1         = VirtualResourceID::DenoiserPenumbraMask1;
 		HLSL::RWTexture2D<u32>                  denoiser_radiance_source_s       = VirtualResourceID::DenoiserRadianceSourceS;
 		HLSL::RWTexture2D<u32>                  denoiser_radiance_source_d       = VirtualResourceID::DenoiserRadianceSourceD;
 		HLSL::RWRegularBuffer<u32>              visible_light_tile_list          = VirtualResourceID::VisibleLightTileList;
-		HLSL::RWRegularBuffer<u64>              visibility_hash_table_keys       = VirtualResourceID::VisibilityHashTableKeys;
-		HLSL::RWRegularBuffer<u32>              visibility_hash_table_values     = VirtualResourceID::VisibilityHashTableValues;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {
@@ -1191,23 +1181,6 @@ struct BuildVisibleLightTileListRenderPass {
 	struct Descriptors : HLSL::BaseDescriptorTable {
 		HLSL::Texture2D<u32>       denoiser_disocclusion_mask = VirtualResourceID::DenoiserDisocclusionMask;
 		HLSL::RWRegularBuffer<u32> visible_light_tile_list    = VirtualResourceID::VisibleLightTileList;
-	};
-	
-	struct RootSignature : HLSL::BaseRootSignature {
-		HLSL::ConstantBuffer<SceneConstants> scene;
-		HLSL::DescriptorTable<Descriptors> descriptor_table;
-	};
-	
-	inline static PipelineID pipeline_id;
-};
-
-NOTES(Meta::RenderPass{})
-struct UpdateVisibilityHashTableRenderPass {
-	RENDER_PASS_GENERATED_CODE();
-	
-	struct Descriptors : HLSL::BaseDescriptorTable {
-		HLSL::RWRegularBuffer<u64> visibility_hash_table_keys   = VirtualResourceID::VisibilityHashTableKeys;
-		HLSL::RWRegularBuffer<u32> visibility_hash_table_values = VirtualResourceID::VisibilityHashTableValues;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {
@@ -1389,23 +1362,23 @@ struct LightingTemporalDenoiserRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
-		HLSL::Texture2D<float2>  ggx_preintegrated_brdf_lut         = VirtualResourceID::GgxPreintegratedBrdfLUT;
-		HLSL::Texture2D<float>   depth_stencil_history              = VirtualResourceID::DepthStencilHistory;
-		HLSL::Texture2D<float>   depth_stencil                      = VirtualResourceID::DepthStencil;
-		HLSL::Texture2D<float4>  gb_albedo_metalness                = VirtualResourceID::GBufferAlbedoMetalness;
-		HLSL::Texture2D<float4>  gb_normal_roughness                = VirtualResourceID::GBufferNormalRoughness;
-		HLSL::Texture2D<float2>  motion_vectors                     = VirtualResourceID::MotionVectors;
-		HLSL::Texture2D<u32>     denoiser_disocclusion_mask         = VirtualResourceID::DenoiserDisocclusionMask;
-		HLSL::Texture2D<float>   denoiser_accumulated_frame_count_0 = VirtualResourceID::DenoiserAccumulatedFrameCount0;
-		HLSL::Texture2D<float>   denoiser_penumbra_mask_0           = VirtualResourceID::DenoiserPenumbraMask0;
-		HLSL::Texture2D<float3>  denoiser_radiance_source_s         = VirtualResourceID::DenoiserRadianceSourceS;
-		HLSL::Texture2D<float3>  denoiser_radiance_source_d         = VirtualResourceID::DenoiserRadianceSourceD;
-		HLSL::Texture2D<float3>  denoiser_radiance_history_s_0      = VirtualResourceID::DenoiserRadianceHistoryS0;
-		HLSL::Texture2D<float3>  denoiser_radiance_history_d_0      = VirtualResourceID::DenoiserRadianceHistoryD0;
-		HLSL::RWTexture2D<u32>   denoiser_radiance_history_s_1      = VirtualResourceID::DenoiserRadianceHistoryS1;
-		HLSL::RWTexture2D<u32>   denoiser_radiance_history_d_1      = VirtualResourceID::DenoiserRadianceHistoryD1;
-		HLSL::RWTexture2D<float> denoiser_accumulated_frame_count_1 = VirtualResourceID::DenoiserAccumulatedFrameCount1;
-		HLSL::RWTexture2D<float> denoiser_penumbra_mask_1           = VirtualResourceID::DenoiserPenumbraMask1;
+		HLSL::Texture2D<float2>   ggx_preintegrated_brdf_lut         = VirtualResourceID::GgxPreintegratedBrdfLUT;
+		HLSL::Texture2D<float>    depth_stencil_history              = VirtualResourceID::DepthStencilHistory;
+		HLSL::Texture2D<float>    depth_stencil                      = VirtualResourceID::DepthStencil;
+		HLSL::Texture2D<float4>   gb_albedo_metalness                = VirtualResourceID::GBufferAlbedoMetalness;
+		HLSL::Texture2D<float4>   gb_normal_roughness                = VirtualResourceID::GBufferNormalRoughness;
+		HLSL::Texture2D<float2>   motion_vectors                     = VirtualResourceID::MotionVectors;
+		HLSL::Texture2D<u32>      denoiser_disocclusion_mask         = VirtualResourceID::DenoiserDisocclusionMask;
+		HLSL::Texture2D<float>    denoiser_accumulated_frame_count_0 = VirtualResourceID::DenoiserAccumulatedFrameCount0;
+		HLSL::Texture2D<float4>   denoiser_variance_0                = VirtualResourceID::DenoiserVariance0;
+		HLSL::Texture2D<float3>   denoiser_radiance_source_s         = VirtualResourceID::DenoiserRadianceSourceS;
+		HLSL::Texture2D<float3>   denoiser_radiance_source_d         = VirtualResourceID::DenoiserRadianceSourceD;
+		HLSL::Texture2D<float3>   denoiser_radiance_history_s_0      = VirtualResourceID::DenoiserRadianceHistoryS0;
+		HLSL::Texture2D<float3>   denoiser_radiance_history_d_0      = VirtualResourceID::DenoiserRadianceHistoryD0;
+		HLSL::RWTexture2D<u32>    denoiser_radiance_history_s_1      = VirtualResourceID::DenoiserRadianceHistoryS1;
+		HLSL::RWTexture2D<u32>    denoiser_radiance_history_d_1      = VirtualResourceID::DenoiserRadianceHistoryD1;
+		HLSL::RWTexture2D<float>  denoiser_accumulated_frame_count_1 = VirtualResourceID::DenoiserAccumulatedFrameCount1;
+		HLSL::RWTexture2D<float4> denoiser_variance_1                = VirtualResourceID::DenoiserVariance1;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {
@@ -1425,12 +1398,13 @@ struct LightingSpatialDenoiserRenderPass {
 		HLSL::Texture2D<float>    depth_stencil                      = VirtualResourceID::DepthStencil;
 		HLSL::Texture2D<float4>   gb_albedo_metalness                = VirtualResourceID::GBufferAlbedoMetalness;
 		HLSL::Texture2D<float4>   gb_normal_roughness                = VirtualResourceID::GBufferNormalRoughness;
+		HLSL::Texture2D<u32>      denoiser_disocclusion_mask         = VirtualResourceID::DenoiserDisocclusionMask;
 		HLSL::Texture2D<float>    denoiser_accumulated_frame_count_1 = VirtualResourceID::DenoiserAccumulatedFrameCount1;
+		HLSL::Texture2D<float4>   denoiser_variance_1                = VirtualResourceID::DenoiserVariance1;
 		HLSL::Texture2D<float3>   denoiser_radiance_not_blurred_s    = VirtualResourceID::DenoiserRadianceHistoryS1;
 		HLSL::Texture2D<float3>   denoiser_radiance_not_blurred_d    = VirtualResourceID::DenoiserRadianceHistoryD1;
 		HLSL::Texture2D<float3>   denoiser_radiance_history_s_1      = VirtualResourceID::DenoiserRadianceHistoryS1;
 		HLSL::Texture2D<float3>   denoiser_radiance_history_d_1      = VirtualResourceID::DenoiserRadianceHistoryD1;
-		HLSL::Texture2D<float>    denoiser_penumbra_mask_1           = VirtualResourceID::DenoiserPenumbraMask1;
 		HLSL::RWTexture2D<u32>    denoiser_radiance_history_s_0      = VirtualResourceID::DenoiserRadianceHistoryS0;
 		HLSL::RWTexture2D<u32>    denoiser_radiance_history_d_0      = VirtualResourceID::DenoiserRadianceHistoryD0;
 		HLSL::RWTexture2D<float4> scene_radiance                     = VirtualResourceID::SceneRadiance;

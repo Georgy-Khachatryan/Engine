@@ -74,42 +74,14 @@ float2 ComputeBilinearSamplePixelCoordinates(float2 pixel_coordinates) {
 	return floor(pixel_coordinates + (-0.5 + 1.0 / 512.0));
 }
 
-template<uint channel_index, typename T>
-vector<T, 4> GatherChannel(Texture2D<T> src_texture, SamplerState src_sampler, float2 uv, s32x2 offset = 0) {
-	switch (channel_index) {
-	case 0: return src_texture.GatherRed(src_sampler, uv, offset).wzxy;
-	}
-	_Static_assert(channel_index < 1, "Invalid GatherChannel channel_index.");
-}
+// Texels are in 2x2 morton order (which matches row major 2x2 order).
+#define GatherChannel0(texture, ...) (texture.GatherRed  (__VA_ARGS__).wzxy)
+#define GatherChannel1(texture, ...) (texture.GatherGreen(__VA_ARGS__).wzxy)
+#define GatherChannel2(texture, ...) (texture.GatherBlue (__VA_ARGS__).wzxy)
+#define GatherChannel3(texture, ...) (texture.GatherAlpha(__VA_ARGS__).wzxy)
 
-template<uint channel_index, typename T>
-vector<T, 4> GatherChannel(Texture2D<vector<T, 2> > src_texture, SamplerState src_sampler, float2 uv, s32x2 offset = 0) {
-	switch (channel_index) {
-	case 0: return src_texture.GatherRed(src_sampler, uv, offset).wzxy;
-	case 1: return src_texture.GatherGreen(src_sampler, uv, offset).wzxy;
-	}
-	_Static_assert(channel_index < 2, "Invalid GatherChannel channel_index.");
-}
-
-template<uint channel_index, typename T>
-vector<T, 4> GatherChannel(Texture2D<vector<T, 3> > src_texture, SamplerState src_sampler, float2 uv, s32x2 offset = 0) {
-	switch (channel_index) {
-	case 0: return src_texture.GatherRed(src_sampler, uv, offset).wzxy;
-	case 1: return src_texture.GatherGreen(src_sampler, uv, offset).wzxy;
-	case 2: return src_texture.GatherBlue(src_sampler, uv, offset).wzxy;
-	}
-	_Static_assert(channel_index < 3, "Invalid GatherChannel channel_index.");
-}
-
-template<uint channel_index, typename T>
-vector<T, 4> GatherChannel(Texture2D<vector<T, 4> > src_texture, SamplerState src_sampler, float2 uv, s32x2 offset = 0) {
-	switch (channel_index) {
-	case 0: return src_texture.GatherRed(src_sampler, uv, offset).wzxy;
-	case 1: return src_texture.GatherGreen(src_sampler, uv, offset).wzxy;
-	case 2: return src_texture.GatherBlue(src_sampler, uv, offset).wzxy;
-	case 3: return src_texture.GatherAlpha(src_sampler, uv, offset).wzxy;
-	}
-	_Static_assert(channel_index < 4, "Invalid GatherChannel channel_index.");
-}
+#define GatherMatrix2x4(texture, matrix_type, ...) matrix<matrix_type, 2, 4>(GatherChannel0(texture, __VA_ARGS__), GatherChannel1(texture, __VA_ARGS__))
+#define GatherMatrix3x4(texture, matrix_type, ...) matrix<matrix_type, 3, 4>(GatherChannel0(texture, __VA_ARGS__), GatherChannel1(texture, __VA_ARGS__), GatherChannel2(texture, __VA_ARGS__))
+#define GatherMatrix4x4(texture, matrix_type, ...) matrix<matrix_type, 4, 4>(GatherChannel0(texture, __VA_ARGS__), GatherChannel1(texture, __VA_ARGS__), GatherChannel2(texture, __VA_ARGS__), GatherChannel3(texture, __VA_ARGS__))
 
 #endif // TEXTURESAMPLING_HLSL

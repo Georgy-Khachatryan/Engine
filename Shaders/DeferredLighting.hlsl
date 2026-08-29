@@ -5,20 +5,15 @@
 #include "LightSampling.hlsl"
 #include "LightEvaluation.hlsl"
 
-struct HashTableShadowSampler {
+struct DirectLightingShadowSampler {
 	float2 penumbra_noise;
-	
-	float hashed_visibility;
-	float hashed_visibility_weight;
-	
-	float penumbra_mask;
 	bool is_shadow_trace_visible;
 	
 	float EvaluateVisibility(float3 ray_origin, float3 ray_direction, float ray_length) {
 		RayQuery<
 			RAY_FLAG_CULL_NON_OPAQUE |
 			RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES |
-			// RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH |
+			RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH |
 			RAY_FLAG_NONE
 		> ray_query;
 		
@@ -31,9 +26,8 @@ struct HashTableShadowSampler {
 		}
 		
 		is_shadow_trace_visible = ray_query.CommittedStatus() == COMMITTED_NOTHING;
-		penumbra_mask = is_shadow_trace_visible ? 0.0 : ray_query.CommittedRayT() * light_penumbra_size;
 		
-		return lerp(is_shadow_trace_visible ? 1.0 : 0.0, hashed_visibility, hashed_visibility_weight);
+		return is_shadow_trace_visible ? 1.0 : 0.0;
 	}
 };
 
@@ -98,7 +92,6 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	SplitLightAccumulator light_accumulator;
 	light_accumulator.specular_radiance = 0.0;
 	light_accumulator.diffuse_radiance  = 0.0;
-	float penumbra_mask = 0.0;
 	
 	bool demodulate_radiance = true;
 	bool is_shadow_trace_visible = false;
@@ -106,24 +99,13 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	if (light_sample.light_entity_index != u32_max) {
 		float3x3 world_to_tangent = BuildOrthonormalBasis(world_space_normal);
 		
-		float2 hash_table_blue_noise = ConcentricMapping(LoadBlueNoise(blue_noise_2d, thread_id + uint2(63, 17) + scene.blue_noise_base_offset, scene.frame_index));
-		
-		VisibilityHashTableKey key = BuildVisibilityHashTableKey(ray_desc.Origin, light_sample.light_entity_index, scene.prev_world_space_camera_position, world_space_normal, hash_table_blue_noise);
-		HashTableFindResult find_result = HashTableFind(visibility_hash_table_keys, key, LightingConstants::visibility_hash_table_size);
-		uint dst_index = find_result.hash_index + LightingConstants::visibility_hash_table_size;
-		
 		float3 wo = mul(world_to_tangent, -ray_desc.Direction);
 		float abs_cos_theta_o = abs(wo.z);
 		
-		float penumbra_size_meters = max(denoiser_penumbra_mask_0.SampleLevel(sampler_linear_clamp, thread_uv + motion_uv_offset, 0), 0.0);
-		
 		float3 single_scattering_energy = SamplePreintegratedBrdfTable(ggx_single_scattering_energy_lut, abs_cos_theta_o, roughness);
 		
-		HashTableShadowSampler shadow_sampler;
+		DirectLightingShadowSampler shadow_sampler;
 		shadow_sampler.penumbra_noise = ConcentricMapping(LoadBlueNoise(blue_noise_2d, thread_id + uint2(61, 67) + scene.blue_noise_base_offset, scene.frame_index));
-		shadow_sampler.hashed_visibility        = find_result.is_found ? saturate(f16tof32(visibility_hash_table_values[dst_index])) : 0.0;
-		shadow_sampler.hashed_visibility_weight = find_result.is_found ? smoothstep(0.6, 1.0, penumbra_size_meters / key.cell_size) : 0.0;
-		shadow_sampler.penumbra_mask            = 0.0;
 		shadow_sampler.is_shadow_trace_visible  = false;
 		
 		EvaluateBRDF(
@@ -149,19 +131,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 			light_accumulator.specular_radiance /= max(specular_demodulation, 1.0 / 128.0);
 		}
 		
-		// Not multiplying by inv_pdf, the result is less noisy and biased towards the most important light.
-		penumbra_mask           = light_sample.light_is_maybe_visible ? shadow_sampler.penumbra_mask : 0.0;
 		is_shadow_trace_visible = shadow_sampler.is_shadow_trace_visible;
-		
-		if (light_sample.light_is_maybe_visible && (penumbra_size_meters > 0.0)) {
-			VisibilityHashTableKey key = BuildVisibilityHashTableKey(ray_desc.Origin, light_sample.light_entity_index, scene.world_space_camera_position, world_space_normal, hash_table_blue_noise);
-			HashTableFindResult add_result = HashTableAddOrFind(visibility_hash_table_keys, key, LightingConstants::visibility_hash_table_size, LightingConstants::visibility_hash_table_size);
-			
-			if (add_result.is_found) {
-				uint src_index = add_result.hash_index;
-				InterlockedAdd(visibility_hash_table_values[src_index], (u32)((shadow_sampler.is_shadow_trace_visible ? 1u : 0) | (1u << 16u)));
-			}
-		}
 	}
 	
 	// TODO: Denoise indirect diffuse and specular separately.
@@ -174,7 +144,6 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	
 	denoiser_radiance_source_s[thread_id] = EncodeR9G9B9E5(light_accumulator.specular_radiance * scene.exposure_estimate);
 	denoiser_radiance_source_d[thread_id] = EncodeR9G9B9E5(light_accumulator.diffuse_radiance  * scene.exposure_estimate);
-	denoiser_penumbra_mask_1[thread_id] = penumbra_mask;
 }
 #endif // defined(DEFERRED_LIGHTING)
 
@@ -264,58 +233,3 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	DeduplicateAndWriteVisibleLightTileList(dst_tile_index, thread_index);
 }
 #endif // defined(BUILD_VISIBLE_LIGHT_TILE_LIST)
-
-
-#if defined(UPDATE_VISIBILITY_HASH_TABLE)
-#include "Generated/LightData.hlsl"
-
-[ThreadGroupSize(256, 1, 1)]
-void MainCS(uint thread_id : SV_DispatchThreadID) {
-	if (thread_id >= LightingConstants::visibility_hash_table_size) return;
-	
-	uint src_index = thread_id;
-	uint dst_index = thread_id + LightingConstants::visibility_hash_table_size;
-	
-	u32 visibility_and_sample_count = visibility_hash_table_values[src_index];
-	
-	float visibility = 0.0;
-	if (visibility_and_sample_count != 0) {
-		visibility = (float)(visibility_and_sample_count & 0xFFFF) * rcp((float)(visibility_and_sample_count >> 16u));
-	}
-	
-	u32 history_payload = visibility_hash_table_values[dst_index];
-	
-	float history_visibility  = f16tof32(history_payload);
-	u32   history_frame_count = (history_payload >> 16) & 0xFF;
-	u32   unused_frame_count  = visibility_and_sample_count == 0 ? (history_payload >> 24) : 0;
-	
-	u32   max_frame_count    = 16;
-	float accumulation_ratio = 1.0 / (history_frame_count + 1.0);
-	
-	u32 new_history_payload = 0;
-	if (visibility_and_sample_count != 0) {
-		visibility = lerp(history_visibility, visibility, accumulation_ratio);
-		u32 result_frame_count = min(history_frame_count + 1, max_frame_count);
-		
-		new_history_payload |= f32tof16(visibility);
-		new_history_payload |= ((result_frame_count & 0xFF) << 16);
-	} else {
-		new_history_payload |= f32tof16(history_visibility);
-		new_history_payload |= ((history_frame_count & 0xFF) << 16);
-		new_history_payload |= ((unused_frame_count + 1) << 24);
-	}
-	bool kill_hash_cell = (unused_frame_count >= 16);
-	
-	if (kill_hash_cell) {
-		new_history_payload = 0;
-		visibility_hash_table_keys[src_index] = 0;
-		visibility_hash_table_keys[dst_index] = 0;
-	} else {
-		visibility_hash_table_keys[src_index] = visibility_hash_table_keys[dst_index];
-	}
-	
-	visibility_hash_table_values[src_index] = 0u;
-	visibility_hash_table_values[dst_index] = new_history_payload;
-}
-#endif // defined(UPDATE_VISIBILITY_HASH_TABLE)
-

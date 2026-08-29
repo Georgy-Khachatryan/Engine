@@ -172,14 +172,10 @@ struct SceneConstants {
 	
 	uint2 visible_light_tile_list_size;
 	float wrs_min_light_weight = 0.f;
-	u32 padding_1 = 0;
+	float indirect_lighting_min_roughness = 0.f;
 	
-	float visibility_hash_table_distance_to_cell_size_scale;
 	float radiance_hash_table_distance_to_cell_size_scale;
 	float cdf_hash_table_distance_to_cell_size_scale;
-	u32 padding_2 = 0;
-	
-	uint2 indirect_diffuse_cdf_tile_list_size;
 	uint2 blue_noise_base_offset;
 	
 	s32x2 mouse_cursor_position;
@@ -286,10 +282,10 @@ struct ToneMappingSettings {
 
 NOTES()
 struct LightingSettings {
-	float wrs_min_light_weight = 0.2f;
-	float visibility_hash_table_target_cell_size_pixels = 16.f;
-	float radiance_hash_table_target_cell_size_pixels   = 32.f;
-	float cdf_hash_table_target_cell_size_pixels        = 64.f;
+	float wrs_min_light_weight                        = 0.2f;
+	float indirect_lighting_min_roughness             = 0.25f;
+	float radiance_hash_table_target_cell_size_pixels = 32.f;
+	float cdf_hash_table_target_cell_size_pixels      = 64.f;
 };
 
 NOTES()
