@@ -66,7 +66,7 @@ void MainCS(uint thread_id : SV_DispatchThreadID) {
 	}
 	
 	if (thread_id == 0) {
-		culling_hzb_build_state[thread_id] = 0;
+		parallel_reduction_state[thread_id] = 0;
 	}
 	
 	if (thread_id < constants.meshlet_streaming_feedback_size) {

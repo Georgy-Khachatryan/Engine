@@ -91,6 +91,7 @@
     <ClCompile Include="Renderer/RendererEntities.cpp" />
     <ClCompile Include="Renderer/RenderPassArray.cpp" />
     <ClCompile Include="Renderer/RenderPasses.cpp" />
+    <ClCompile Include="Renderer/TerrainEditorRenderPasses.cpp" />
     <ClCompile Include="Renderer/TextureAssetImporter.cpp" />
     <ClCompile Include="Renderer/TextureStreamingSystem.cpp" />
     <ClCompile Include="Renderer/ToneMappingRenderPasses.cpp" />

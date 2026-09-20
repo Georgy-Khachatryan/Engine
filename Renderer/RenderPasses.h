@@ -51,7 +51,7 @@ enum struct VirtualResourceID : u32 {
 	SceneRadianceResult,
 	SceneConstants,
 	CullingHZB,
-	CullingHzbBuildState,
+	ParallelReductionState,
 	TlasMeshInstances,
 	SceneTLAS,
 	LuminanceHistogram,
@@ -140,6 +140,9 @@ enum struct VirtualResourceID : u32 {
 	ReferencePathTracerRadiance,
 	GgxSingleScatteringEnergyLUT,
 	GgxPreintegratedBrdfLUT,
+	
+	// Terrain Editor:
+	TerrainHeightField,
 	
 	// Debug geometry:
 	DebugGeometryDepthStencil,
@@ -703,7 +706,7 @@ struct MeshletClearBuffersRenderPass {
 		HLSL::RWRegularBuffer<u32>   meshlet_streaming_feedback       = VirtualResourceID::MeshletStreamingFeedback;
 		HLSL::RWRegularBuffer<u32>   mesh_streaming_feedback          = VirtualResourceID::MeshStreamingFeedback;
 		HLSL::RWRegularBuffer<u32>   texture_streaming_feedback       = VirtualResourceID::TextureStreamingFeedback;
-		HLSL::RWRegularBuffer<u32>   culling_hzb_build_state          = VirtualResourceID::CullingHzbBuildState;
+		HLSL::RWRegularBuffer<u32>   parallel_reduction_state         = VirtualResourceID::ParallelReductionState;
 		HLSL::RWRegularBuffer<u32>   instance_meshlet_counts          = VirtualResourceID::InstanceMeshletCounts;
 		HLSL::RWRegularBuffer<uint4> light_culling_indirect_arguments = VirtualResourceID::LightCullingIndirectArguments;
 		HLSL::RWRegularBuffer<u32>   light_culling_grid               = VirtualResourceID::LightCullingGrid;
@@ -871,6 +874,13 @@ struct CopyStreamingFeedbackRenderPass {
 };
 
 
+struct ParallelReductionSettings {
+	// The last 32x32 thread group reads 64x64 rect. Plus one u32 for the thread group exit counter.
+	compile_const u32 build_state_size = (64u * 64u + 1u) * sizeof(u32);
+	compile_const u32 max_mip_count    = 12;
+};
+
+
 NOTES(Meta::ShaderName{ "BuildHZB.hlsl"_sl })
 enum struct BuildHzbShaders : u32 {};
 SHADER_DEFINITION_GENERATED_CODE(BuildHzbShaders);
@@ -879,14 +889,13 @@ NOTES(Meta::RenderPass{})
 struct BuildHzbRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
-	compile_const u32 culling_hzb_build_state_size = (64u * 64u + 1) * sizeof(u32);
-	compile_const u32 culling_hzb_max_mip_count = 12;
 	static TextureSize ComputeCullingHzbSize(uint2 render_target_size);
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
-		HLSL::Texture2D<float> depth_stencil = VirtualResourceID::DepthStencil;
-		HLSL::RWRegularBuffer<u32> culling_hzb_build_state = VirtualResourceID::CullingHzbBuildState;
-		FixedCountArray<HLSL::RWTexture2D<float>, culling_hzb_max_mip_count> culling_hzb;
+		HLSL::Texture2D<float>     depth_stencil            = VirtualResourceID::DepthStencil;
+		HLSL::RWRegularBuffer<u32> parallel_reduction_state = VirtualResourceID::ParallelReductionState;
+		
+		FixedCountArray<HLSL::RWTexture2D<float>, ParallelReductionSettings::max_mip_count> culling_hzb;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {
@@ -1937,3 +1946,81 @@ struct ImGuiRenderPass {
 	inline static PipelineID hdr_pipeline_id;
 };
 
+
+NOTES(Meta::ShaderName{ "TerrainEditorLayers.hlsl"_sl })
+enum struct TerrainEditorLayersShaders : u32 {
+	
+};
+SHADER_DEFINITION_GENERATED_CODE(TerrainEditorLayersShaders);
+
+NOTES(Meta::RenderPass{})
+struct TerrainEditorLayersRenderPass {
+	RENDER_PASS_GENERATED_CODE();
+	
+	struct Descriptors : HLSL::BaseDescriptorTable {
+		HLSL::RWTexture2D<float> height_field = VirtualResourceID::TerrainHeightField;
+	};
+	
+	struct RootSignature : HLSL::BaseRootSignature {
+		struct PushConstants {
+			u32   render_target_size     = 0;
+			float inv_render_target_size = 0;
+		};
+		
+		HLSL::PushConstantBuffer<PushConstants> constants;
+		HLSL::DescriptorTable<Descriptors> descriptor_table;
+	};
+	
+	inline static PipelineID pipeline_id;
+};
+
+
+NOTES(Meta::ShaderName{ "TerrainEditorPreview.hlsl"_sl })
+enum struct TerrainEditorPreviewShaders : u32 {
+	BuildPreview = 1u << 0,
+	TracePreview = 1u << 1,
+};
+SHADER_DEFINITION_GENERATED_CODE(TerrainEditorPreviewShaders);
+
+NOTES(Meta::RenderPass{})
+struct TerrainEditorBuildPreviewRenderPass {
+	RENDER_PASS_GENERATED_CODE();
+	
+	struct Descriptors : HLSL::BaseDescriptorTable {
+		HLSL::Texture2D<float>     height_field;
+		HLSL::RWRegularBuffer<u32> parallel_reduction_state = VirtualResourceID::ParallelReductionState;
+		
+		FixedCountArray<HLSL::RWTexture2D<float>, ParallelReductionSettings::max_mip_count> height_field_mips;
+	};
+	
+	struct RootSignature : HLSL::BaseRootSignature {
+		struct PushConstants {
+			u32   render_target_size      = 0;
+			float inv_render_target_size  = 0;
+			u32   last_thread_group_index = 0;
+		};
+		
+		HLSL::PushConstantBuffer<PushConstants> constants;
+		HLSL::DescriptorTable<Descriptors> descriptor_table;
+	};
+	
+	inline static PipelineID pipeline_id;
+};
+
+NOTES(Meta::RenderPass{})
+struct TerrainEditorTracePreviewRenderPass {
+	RENDER_PASS_GENERATED_CODE();
+	
+	struct Descriptors : HLSL::BaseDescriptorTable {
+		HLSL::Texture2D<float>    depth_stencil  = VirtualResourceID::DepthStencil;
+		HLSL::Texture2D<float>    height_field   = VirtualResourceID::TerrainHeightField;
+		HLSL::RWTexture2D<float4> scene_radiance = VirtualResourceID::SceneRadiance;
+	};
+	
+	struct RootSignature : HLSL::BaseRootSignature {
+		HLSL::ConstantBuffer<SceneConstants> scene;
+		HLSL::DescriptorTable<Descriptors> descriptor_table;
+	};
+	
+	inline static PipelineID pipeline_id;
+};

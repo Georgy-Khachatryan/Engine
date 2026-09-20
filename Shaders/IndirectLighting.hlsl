@@ -105,7 +105,7 @@ compile_const u32 thread_group_area = thread_group_size * thread_group_size;
 [ThreadGroupSize(thread_group_size * thread_group_size, 1, 1)]
 void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	uint2  thread_id = group_id * thread_group_size + MortonDecode(thread_index);
-	float2 thread_uv = (thread_id + 0.5 - scene.jitter_offset_pixels) * scene.inv_render_target_size;
+	float2 thread_uv = (thread_id + 0.5) * scene.inv_render_target_size;
 	
 	float depth = depth_stencil[thread_id];
 	if (depth == 0.0) {
@@ -121,7 +121,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	
 	uint hash = WyHash32(thread_id.x | (thread_id.y << 16), scene.frame_index);
 	
-	float3 view_space_position = TransformScreenUvToViewSpace(thread_uv, depth, scene.clip_to_view_coef);
+	float3 view_space_position = TransformScreenUvToViewSpace(thread_uv, depth, scene.clip_to_view_coef, scene.jitter_offset_ndc);
 	
 	float4 normal_roughness   = gb_normal_roughness[thread_id];
 	float3 world_space_normal = DecodeHemiOctahedralMap01(normal_roughness.xy) * float3(1.0, 1.0, normal_roughness.w * 2.0 - 1.0);

@@ -30,7 +30,7 @@ TextureSize BuildHzbRenderPass::ComputeCullingHzbSize(uint2 render_target_size) 
 	size.x = Math::Max(RoundUpToPowerOfTwo32(render_target_size.x) >> 2u, 1u);
 	size.y = Math::Max(RoundUpToPowerOfTwo32(render_target_size.y) >> 2u, 1u);
 	size.z = 1u;
-	size.mips = Math::Min(FirstBitHigh32(Math::Max(size.x, size.y)), culling_hzb_max_mip_count);
+	size.mips = Math::Min(FirstBitHigh32(Math::Max(size.x, size.y)), ParallelReductionSettings::max_mip_count);
 	size.format = TextureFormat::R32_FLOAT;
 	
 	return size;

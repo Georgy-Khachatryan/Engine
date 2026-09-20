@@ -2,30 +2,6 @@
 #define CLOUDSAMPLING_HLSL
 #include "Basic.hlsl"
 
-struct VolumetricSceneIntersection {
-	float t_min;
-	float t_max;
-	bool is_hit;
-};
-
-// Box is assumed to be in [0, extent] range. Intersection ray time is limited between [0, ray_t_max=inf].
-VolumetricSceneIntersection RayBoxIntersection(float3 ray_origin, float3 ray_direction, float3 extent, float ray_t_max = asfloat(0x7F800000)) {
-	float3 inv_direction = select(ray_direction == 0.0, /*nan*/asfloat(0x7FC00000), 1.0 / ray_direction); // See @inv_direction for reference.
-	
-	float3 t_min = -ray_origin * inv_direction;
-	float3 t_max = extent * inv_direction + t_min;
-	
-	float3 t0 = min(t_min, t_max);
-	float3 t1 = max(t_min, t_max);
-	
-	VolumetricSceneIntersection intersection;
-	intersection.t_min = max(max(t0.x, t0.y), max(t0.z, 0.0));
-	intersection.t_max = min(min(t1.x, t1.y), min(t1.z, ray_t_max));
-	intersection.is_hit = (intersection.t_min < intersection.t_max);
-	
-	return intersection;
-}
-
 // Based on "Methods (and madness) to model and render immersive real-time voxel-based clouds." by Andrew Schneider.
 float ComputeCloudMediumDensity(float3 position, float noise_mip_level) {
 	float3 sample_uvw = (position - scene.clouds.world_space_position) * scene.clouds.inv_world_space_size;

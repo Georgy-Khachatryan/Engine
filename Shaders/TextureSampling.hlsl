@@ -57,10 +57,7 @@ float ComputeGaussianWeight(float x, float y, float radius) {
 }
 
 
-// https://www.reedbeta.com/blog/texture-gathers-and-coordinate-precision/
-float4 ComputeBilinearWeights(float2 pixel_coordinates) {
-	float2 fractional = frac(pixel_coordinates + (-0.5 + 1.0 / 512.0));
-	
+float4 ComputeBilinearWeightsFromFractional(float2 fractional) {
 	float4 bilinear_weights;
 	bilinear_weights.x = (1.0 - fractional.x) * (1.0 - fractional.y);
 	bilinear_weights.y = fractional.x * (1.0 - fractional.y);
@@ -70,9 +67,20 @@ float4 ComputeBilinearWeights(float2 pixel_coordinates) {
 	return bilinear_weights;
 }
 
+// https://www.reedbeta.com/blog/texture-gathers-and-coordinate-precision/
+float4 ComputeBilinearWeights(float2 pixel_coordinates) {
+	float2 fractional = frac(pixel_coordinates + (-0.5 + 1.0 / 512.0));
+	return ComputeBilinearWeightsFromFractional(fractional);
+}
+
 float2 ComputeBilinearSamplePixelCoordinates(float2 pixel_coordinates) {
 	return floor(pixel_coordinates + (-0.5 + 1.0 / 512.0));
 }
+
+float2 SmootherStepShape(float2 value) {
+	return value * value * value * (value * (value * 6.0 - 15.0) + 10.0);
+}
+
 
 // Texels are in 2x2 morton order (which matches row major 2x2 order).
 #define GatherChannel0(texture, ...) (texture.GatherRed  (__VA_ARGS__).wzxy)

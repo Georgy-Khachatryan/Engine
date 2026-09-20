@@ -386,6 +386,7 @@ struct RendererWorld {
 	bool  reset_reference_path_tracer   = false;
 	bool  enable_async_compute          = true;
 	bool  enable_debug_readback         = false;
+	bool  enable_terrain_editor_preview = false;
 	
 	SceneOutputSettings output_settings;
 	

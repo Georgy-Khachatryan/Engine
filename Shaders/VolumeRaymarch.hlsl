@@ -34,7 +34,7 @@ float RaymarchHybridOpticalDepthRay(float3 origin, float3 direction, float noise
 #endif // defined(VOLUME_RAYMARCH) || defined(CLOUD_RADIANCE_TRANSFER_VOLUME)
 
 #if defined(VOLUME_RAYMARCH) || defined(CLOUD_OPTICAL_DEPTH_VOLUME) || defined(CLOUD_SHADOW_MAP)
-void SkipEmptySpaceInTwoDirections(RayDesc ray_desc, inout VolumetricSceneIntersection intersection) {
+void SkipEmptySpaceInTwoDirections(RayDesc ray_desc, inout BoxIntersection intersection) {
 	VoxelTraversalState forward_traversal_state = BeginVoxelTraversal(ray_desc.Origin, ray_desc.Direction, intersection.t_max);
 	intersection.t_min = VoxelGridSkipEmptySpace(forward_traversal_state, ray_desc.Direction, intersection.t_min);
 	
@@ -60,8 +60,8 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	float depth = depth_stencil[thread_id];
 	float ray_t_max = length(TransformScreenUvToViewSpace(thread_uv, depth, scene.clip_to_view_coef, scene.jitter_offset_ndc));
 	
-	VolumetricSceneIntersection intersection = (VolumetricSceneIntersection)0;
-	VolumetricSceneIntersection clouds_intersection = (VolumetricSceneIntersection)0;
+	BoxIntersection intersection = (BoxIntersection)0;
+	BoxIntersection clouds_intersection = (BoxIntersection)0;
 	
 	if (scene.feature_flags & SceneFeatureFlags::Clouds) {
 		clouds_intersection = RayBoxIntersection(ray_desc.Origin - scene.clouds.world_space_position, ray_desc.Direction, scene.clouds.world_space_size, ray_t_max);
@@ -71,7 +71,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	}
 	
 	if (scene.feature_flags & SceneFeatureFlags::Fog) {
-		VolumetricSceneIntersection fog_intersection = RayBoxIntersection(ray_desc.Origin - scene.fog.world_space_position, ray_desc.Direction, scene.fog.world_space_size, ray_t_max);
+		BoxIntersection fog_intersection = RayBoxIntersection(ray_desc.Origin - scene.fog.world_space_position, ray_desc.Direction, scene.fog.world_space_size, ray_t_max);
 		if (intersection.is_hit) {
 			intersection.t_min = min(intersection.t_min, fog_intersection.t_min);
 			intersection.t_max = max(intersection.t_max, fog_intersection.t_max);
@@ -198,7 +198,7 @@ void MainCS(uint group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	ray_desc.Origin    = world_space_position;
 	ray_desc.Direction = scene.atmosphere.world_space_sun_direction;
 	
-	VolumetricSceneIntersection intersection = RayBoxIntersection(ray_desc.Origin - scene.clouds.world_space_position, ray_desc.Direction, scene.clouds.world_space_size);
+	BoxIntersection intersection = RayBoxIntersection(ray_desc.Origin - scene.clouds.world_space_position, ray_desc.Direction, scene.clouds.world_space_size);
 	SkipEmptySpaceInTwoDirections(ray_desc, intersection);
 	
 	float optical_depth = RaymarchOpticalDepthRay(ray_desc.Origin + ray_desc.Direction * intersection.t_min, ray_desc.Direction, intersection.t_max - intersection.t_min);
@@ -244,7 +244,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	
 	float3 shadow_map = 0.0;
 	if (scene.feature_flags & SceneFeatureFlags::Clouds) {
-		VolumetricSceneIntersection intersection = RayBoxIntersection(ray_desc.Origin - scene.clouds.world_space_position, ray_desc.Direction, scene.clouds.world_space_size);
+		BoxIntersection intersection = RayBoxIntersection(ray_desc.Origin - scene.clouds.world_space_position, ray_desc.Direction, scene.clouds.world_space_size);
 		SkipEmptySpaceInTwoDirections(ray_desc, intersection);
 		
 		shadow_map = RaymarchBeerShadowMapRay(ray_desc.Origin, ray_desc.Direction, intersection.t_min, intersection.t_max);

@@ -40,7 +40,7 @@ float TraceVolumetricMediumTransmittanceRay(float3 origin, float3 direction, flo
 	
 	// Sample fog transmittance analytically.
 	if (scene.feature_flags & SceneFeatureFlags::Fog) {
-		VolumetricSceneIntersection intersection = RayBoxIntersection(origin - scene.fog.world_space_position, direction, scene.fog.world_space_size, t_max);
+		BoxIntersection intersection = RayBoxIntersection(origin - scene.fog.world_space_position, direction, scene.fog.world_space_size, t_max);
 		
 		if (intersection.is_hit) {
 			transmittance = ComputeFogMediumTransmittance(origin, direction, intersection.t_min, intersection.t_max);
@@ -49,7 +49,7 @@ float TraceVolumetricMediumTransmittanceRay(float3 origin, float3 direction, flo
 	
 	// Sample cloud transmittance using ratio tracking estimator, which is based on https://pbr-book.org/4ed/Volume_Scattering/Transmittance#
 	if (scene.feature_flags & SceneFeatureFlags::Clouds) {
-		VolumetricSceneIntersection intersection = RayBoxIntersection(origin - scene.clouds.world_space_position, direction, scene.clouds.world_space_size, t_max);
+		BoxIntersection intersection = RayBoxIntersection(origin - scene.clouds.world_space_position, direction, scene.clouds.world_space_size, t_max);
 		
 		if (intersection.is_hit) {
 			float ray_t = intersection.t_min;
@@ -88,7 +88,7 @@ VolumeInteractionType SampleVolumetricMedium(inout RayDesc ray_desc, float t_max
 	
 	// Sample fog free path distance using closed form tracking.
 	if (scene.feature_flags & SceneFeatureFlags::Fog) {
-		VolumetricSceneIntersection intersection = RayBoxIntersection(ray_desc.Origin - scene.fog.world_space_position, ray_desc.Direction, scene.fog.world_space_size, sample_t);
+		BoxIntersection intersection = RayBoxIntersection(ray_desc.Origin - scene.fog.world_space_position, ray_desc.Direction, scene.fog.world_space_size, sample_t);
 		
 		if (intersection.is_hit) {
 			float2 u = ComputeRandomUnorm16x2(hash);
@@ -112,7 +112,7 @@ VolumeInteractionType SampleVolumetricMedium(inout RayDesc ray_desc, float t_max
 	
 	// Sample cloud free path distance using delta tracking.
 	if (scene.feature_flags & SceneFeatureFlags::Clouds) {
-		VolumetricSceneIntersection intersection = RayBoxIntersection(ray_desc.Origin - scene.clouds.world_space_position, ray_desc.Direction, scene.clouds.world_space_size, sample_t);
+		BoxIntersection intersection = RayBoxIntersection(ray_desc.Origin - scene.clouds.world_space_position, ray_desc.Direction, scene.clouds.world_space_size, sample_t);
 		
 		if (intersection.is_hit) {
 			float ray_t = intersection.t_min;

@@ -73,8 +73,8 @@ static void BuildResourceTable(RecordContext* record_context, WorldEntitySystem*
 	table.Set(ID::GgxSingleScatteringEnergyLUT, TextureSize(TextureFormat::R10G10B10A2_UNORM, 32, 32), Flags::UAV);
 	table.Set(ID::GgxPreintegratedBrdfLUT,      TextureSize(TextureFormat::R16G16_UNORM, 32, 32), Flags::UAV);
 	
-	table.Set(ID::CullingHZB,           BuildHzbRenderPass::ComputeCullingHzbSize(render_target_size));
-	table.Set(ID::CullingHzbBuildState, BuildHzbRenderPass::culling_hzb_build_state_size);
+	table.Set(ID::CullingHZB, BuildHzbRenderPass::ComputeCullingHzbSize(render_target_size));
+	table.Set(ID::ParallelReductionState, ParallelReductionSettings::build_state_size);
 	
 	table.Set(ID::LightCullingCommands,          LightCullingConstants::culling_command_count     * sizeof(uint2));
 	table.Set(ID::LightCullingIndirectArguments, LightCullingConstants::culling_command_bin_count * sizeof(uint4));
@@ -113,12 +113,16 @@ static void BuildResourceTable(RecordContext* record_context, WorldEntitySystem*
 	table.Set(ID::DenoiserRadianceSourceD,   TextureSize(TextureFormat::R9G9B9E5_FLOAT, render_target_size), Flags::UAV);
 	table.Set(ID::DenoiserAccumulatedFrameCount0,  TextureSize(TextureFormat::R8_UNORM, render_target_size), Flags::UAV);
 	table.Set(ID::DenoiserAccumulatedFrameCount1,  TextureSize(TextureFormat::R8_UNORM, render_target_size), Flags::UAV);
-	table.Set(ID::DenoiserVariance0,              TextureSize(TextureFormat::R16G16B16A16_FLOAT, render_target_size), Flags::UAV);
-	table.Set(ID::DenoiserVariance1,              TextureSize(TextureFormat::R16G16B16A16_FLOAT, render_target_size), Flags::UAV);
+	table.Set(ID::DenoiserVariance0,     TextureSize(TextureFormat::R16G16B16A16_FLOAT, render_target_size), Flags::UAV);
+	table.Set(ID::DenoiserVariance1,     TextureSize(TextureFormat::R16G16B16A16_FLOAT, render_target_size), Flags::UAV);
 	
 	table.SwapHistory(ID::DepthStencil,                   ID::DepthStencilHistory);
 	table.SwapHistory(ID::DenoiserAccumulatedFrameCount0, ID::DenoiserAccumulatedFrameCount1);
 	table.SwapHistory(ID::DenoiserVariance0,              ID::DenoiserVariance1);
+	
+	u32 height_field_size      = 2048;
+	u32 height_field_mip_count = Math::Min(FirstBitHigh32(height_field_size) + 1, ParallelReductionSettings::max_mip_count + 1);
+	table.Set(ID::TerrainHeightField, TextureSize(TextureFormat::R32_FLOAT, uint2(height_field_size, height_field_size), 1, height_field_mip_count));
 	
 	auto& output_settings = renderer_world->output_settings;
 	if (output_settings.mode == SceneOutputMode::ExternalRenderTarget) {
@@ -587,6 +591,12 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 		render_passes.Add<ReferencePathTracerRenderPass>();
 	}
 	
+	if (renderer_world.enable_terrain_editor_preview) {
+		render_passes.Add<TerrainEditorLayersRenderPass>();
+		
+		render_passes.Add<TerrainEditorBuildPreviewRenderPass>();
+		render_passes.Add<TerrainEditorTracePreviewRenderPass>();
+	}
 	
 	auto& debug_geometry = render_passes.Add<DebugGeometryRenderPass>();
 	debug_geometry.debug_mesh_instance_arrays = renderer_world.debug_mesh_instance_arrays;

@@ -130,6 +130,7 @@ static void WorldComponentEntityView(StackAllocator* alloc, WorldEntitySystem& w
 			
 			ImGui::TableCheckbox("Freeze Culling State", &renderer_world.debug_freeze_culling_camera.enabled);
 			ImGui::TableCheckbox("Enable Async Compute", &renderer_world.enable_async_compute);
+			ImGui::TableCheckbox("Enable Terrain Editor Preview", &renderer_world.enable_terrain_editor_preview);
 		}
 		
 		if (ImGui::TableCollapsingHeader("Reference Path Tracer", ImGuiTreeNodeFlags_DefaultOpen)) {
