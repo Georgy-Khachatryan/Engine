@@ -84,7 +84,8 @@ EntityID CreateEntity(EntitySystemBase& system, EntityTypeID entity_type_id, u64
 		u64 guid = optional_guid != 0 ? optional_guid : GenerateRandomNumber64(system.guid_random_seed);
 		streams.guid[entity_id.index].guid = guid;
 		
-		HashTableAddOrFind(system.entity_guid_to_entity_id, &system.heap, guid, { entity_id, entity_type_id });
+		auto result = HashTableAddOrFind(system.entity_guid_to_entity_id, &system.heap, guid, { entity_id, entity_type_id });
+		DebugAssert(result.is_added, "Entity with the same GUID already exists. GUID: 0x%x, Optional GUID: 0x%x..", guid, optional_guid);
 	}
 	
 	array.count += 1;

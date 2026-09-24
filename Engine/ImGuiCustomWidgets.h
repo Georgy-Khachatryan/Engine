@@ -52,7 +52,7 @@ namespace ImGui {
 	bool EntityComboBoxWithColor(StackAllocator* alloc, const char* label, EntitySystemBase* entity_system, float* color, u32 channel_count, u64* guid, EntityTypeID entity_type_id);
 	bool ImageButtonEx(const char* str_id, ImGuiTextureID texture_id, const ImVec2& image_size, ImGuiButtonFlags flags = 0, const ImVec2& uv_min = ImVec2(0.f, 0.f), const ImVec2& uv_max = ImVec2(1.f, 1.f));
 	bool EntityDragDropSource(EntityTypeID entity_type_id, u64 guid);
-	bool EntityDragDropTarget(EntityTypeID entity_type_id, u64* guid);
+	bool EntityDragDropTarget(EntityTypeID entity_type_id, u64* guid, ImGuiDragDropFlags flags = 0, bool* is_delivery = nullptr);
 	
 	bool BeginMainMenuBarEx(float frame_padding_y = -1.f); // The first call of the frame should provide padding that all subsequent calls would use.
 	void EndMainMenuBarEx();
@@ -65,6 +65,7 @@ namespace ImGui {
 	void TableLabelText(const char* label, float max_width = -1.f); // Right justified, clips with ellipsis on the right side.
 	bool TableInputText(const char* label, String& string, HeapAllocator* heap, ImGuiInputTextFlags flags = 0, ImGuiInputTextCallback callback = nullptr, void* user_data = nullptr);
 	bool TableDragFloatWithReset(const char* label, float* data, u32 component_count, float v_speed = 1.f, float v_min = 0.f, float v_max = 0.f, const char* format = "%.3f", ImGuiSliderFlags flags = 0, const char* const* component_labels = nullptr, const float* default_values = nullptr);
+	bool TableDragFloat(const char* label, float* data, float v_speed = 1.f, float v_min = 0.f, float v_max = 0.f, const char* format = "%.3f", ImGuiSliderFlags flags = 0);
 	bool TableSliderFloat(const char* label, float* v, float v_min, float v_max, const char* format = "%.3f", ImGuiSliderFlags flags = 0);
 	bool TableCheckbox(const char* label, bool* value);
 	bool TableCombo(const char* label, s32* current_item, const char* items_separated_by_zeros, s32 popup_max_height_in_items = -1);

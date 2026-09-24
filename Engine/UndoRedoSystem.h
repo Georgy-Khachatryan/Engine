@@ -44,6 +44,7 @@ struct UndoRedoSystem {
 	// Zero group index means no group.
 	u64 group_index_allocator = 1;
 	u64 group_index = 0;
+	u64 group_stack_depth = 0;
 };
 
 void InitializeUndoRedoSystem(UndoRedoSystem& system, HeapAllocator* heap);

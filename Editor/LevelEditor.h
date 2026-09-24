@@ -42,6 +42,7 @@ void EditorAssetBrowserWindow(StackAllocator* alloc, UndoRedoSystem& undo_redo_s
 
 void EditorViewportWindow(StackAllocator* alloc, UndoRedoSystem& undo_redo_system, WorldEntitySystem& world_system, AssetEntitySystem& asset_system, EditorSelectionStateEntity world_selection_state_entity, u64 world_entity_guid, GraphicsContext* graphics_context, VirtualResourceTable* resource_table, Array<EditorWorldView>& editor_world_views);
 
+void TerrainEditorWindow(StackAllocator* alloc, UndoRedoSystem& undo_redo_system, WorldEntitySystem& world_system, EditorSelectionStateEntity selection_state_entity);
 
 LevelEditor* CreateLevelEditor(StackAllocator* alloc, GraphicsContext* graphics_context, AssetEntitySystem& asset_system);
 void ReleaseLevelEditor(LevelEditor* level_editor, GraphicsContext* graphics_context);
@@ -53,3 +54,4 @@ void ReleaseEditorIconCache(EditorIconCache* icon_cache, GraphicsContext* graphi
 void EditorIconCacheUpdate(StackAllocator* alloc, EditorIconCache* icon_cache, AssetEntitySystem& asset_system, Array<EditorWorldView>& editor_world_views);
 void EditorIconCacheDrawIcon(EditorIconCache* icon_cache, EntitySystemBase& entity_system, u64 entity_guid, EntityTypeID entity_type_id);
 
+u64 EntityCreationComboBox(const char* label, const char* hint, EntitySystemBase& entity_system, UndoRedoSystem& undo_redo_system, EditorSelectionStateEntity selection_state_entity, ArrayView<const EntityTypeID> entity_type_ids);

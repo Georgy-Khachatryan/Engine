@@ -1957,12 +1957,17 @@ NOTES(Meta::RenderPass{})
 struct TerrainEditorLayersRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
+	WorldEntitySystem* world_system = nullptr;
+	
 	struct Descriptors : HLSL::BaseDescriptorTable {
+		HLSL::ByteBuffer layer_constants;
+		
 		HLSL::RWTexture2D<float> height_field = VirtualResourceID::TerrainHeightField;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {
 		struct PushConstants {
+			u32   layer_constants_offset = 0; 
 			u32   render_target_size     = 0;
 			float inv_render_target_size = 0;
 		};

@@ -115,6 +115,16 @@ T& ArrayEmplace(Array<T>& array, AllocatorT* alloc) {
 	return array[array.count++] = {};
 }
 
+template<typename ArrayT, typename AllocatorT>
+void ArrayInsert(ArrayT& array, AllocatorT* alloc, u64 index, const typename ArrayT::ValueType& value) {
+	if (array.count >= array.capacity) ArrayReserve(array, alloc, array.capacity ? (array.capacity * 3 / 2 + 1) : 8);
+	
+	array.count += 1;
+	
+	if (index + 1 != array.count) memmove(&array[index + 1], &array[index], (array.count - index - 1) * sizeof(typename ArrayT::ValueType));
+	array[index] = value;
+}
+
 
 template<typename ArrayT>
 void ArrayAppend(ArrayT& array, const typename ArrayT::ValueType& value) {
@@ -126,6 +136,16 @@ template<typename ArrayT>
 typename ArrayT::ValueType& ArrayEmplace(ArrayT& array) {
 	DebugAssert(array.count < array.capacity, "ArrayAppend overflowed allocated buffer: %..", array.capacity);
 	return array[array.count++] = {};
+}
+
+template<typename ArrayT>
+void ArrayInsert(ArrayT& array, u64 index, const typename ArrayT::ValueType& value) {
+	DebugAssert(array.count < array.capacity, "ArrayInsert overflowed allocated buffer: %..", array.capacity);
+	
+	array.count += 1;
+	
+	if (index + 1 != array.count) memmove(&array[index + 1], &array[index], (array.count - index - 1) * sizeof(typename ArrayT::ValueType));
+	array[index] = value;
 }
 
 
@@ -175,6 +195,21 @@ ArrayView<const T> ArrayViewCreate(const T(&array)[size]) { return ArrayView<con
 
 template<typename ArrayT>
 ArrayView<typename ArrayT::ValueType> ArrayViewCreate(ArrayT& array, u64 begin, u64 end) { return { array.data + begin, end - begin }; }
+
+
+template<typename T, typename Equals = typename bool(*)(const T&, const T&)>
+u64 ArrayFind(ArrayView<T> array, const T& value, Equals&& equals = [](const T& lh, const T& rh)-> bool { return lh == rh; }) {
+	u64 index = u64_max;
+	
+	for (u64 i = 0; i < array.count; i += 1) {
+		if (equals(array[i], value)) {
+			index = i;
+			break;
+		}
+	}
+	
+	return index;
+}
 
 
 template<typename T, typename LessThan = typename bool(*)(const T&, const T&)>

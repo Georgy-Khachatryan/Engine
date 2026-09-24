@@ -3,6 +3,7 @@
 #include "EditorEntities.h"
 #include "Engine/ImGuiCustomWidgets.h"
 #include "Engine/UndoRedoSystem.h"
+#include "Renderer/TerrainEditorEntities.h"
 
 static void SharedComponentEntityView(StackAllocator* alloc, EntitySystemBase& entity_system, SharedEntityEditorQuery entity) {
 	if (entity.guid) {
@@ -282,6 +283,62 @@ static void WorldComponentEntityView(StackAllocator* alloc, WorldEntitySystem& w
 			ImGui::TableSliderFloat("Blend Ratio", &settings.blend_ratio, 0.f, 1.f);
 			ImGui::TableSliderFloat("Fade Start", &settings.fade_start, 0.f, 2.f);
 			ImGui::TableSliderFloat("Fade End", &settings.fade_end, 0.f, 2.f);
+		}
+	}
+	
+	
+	if (entity.terrain_height_layer_noise_cpu_settings) {
+		auto& settings = *entity.terrain_height_layer_noise_cpu_settings;
+		
+		if (ImGui::TableCollapsingHeader("Noise", ImGuiTreeNodeFlags_DefaultOpen)) {
+			ImGuiScopeID("Noise");
+			
+			compile_const char* terrain_editor_noise_type_names[(u32)TerrainEditorNoiseType::Count] = {
+				"Gradient",
+				"Gradient Billow",
+				"Value",
+				"Voronoi F1",
+				"Voronoi F2",
+				"Voronoi F2 Minus F1",
+				"Voronoi ID",
+			};
+			
+			ImGui::TableCombo("Type", (s32*)&settings.type, terrain_editor_noise_type_names, (s32)TerrainEditorNoiseType::Count, (s32)TerrainEditorNoiseType::Count);
+			if (ImGui::BeginTableItem("Seed")) {
+				ImGui::InputInt("", (s32*)&settings.random_seed);
+				ImGui::EndTableItem();
+			}
+			
+			ImGui::TableDragFloat("Scale", &settings.scale);
+			ImGui::TableSliderFloat("Anisotropy", &settings.anisotropy, -1.f, 1.f);
+			ImGui::TableSliderFloat("Rotation", &settings.rotation, -180.f, 180.f);
+			ImGui::TableDragFloat("Amplitude", &settings.amplitude);
+		}
+		
+		if (ImGui::TableCollapsingHeader("Octaves", ImGuiTreeNodeFlags_DefaultOpen)) {
+			ImGuiScopeID("Octaves");
+			
+			if (ImGui::BeginTableItem("Octave Count")) {
+				ImGui::SliderInt("", (s32*)&settings.octave_count, 1, 10, "%d", ImGuiSliderFlags_AlwaysClamp);
+				ImGui::EndTableItem();
+			}
+			
+			ImGui::TableDragFloat("Lacunarity", &settings.lacunarity, 0.01f);
+			ImGui::TableDragFloat("Gain", &settings.gain, 0.01f);
+		}
+		
+		if (ImGui::TableCollapsingHeader("Distortion", ImGuiTreeNodeFlags_DefaultOpen)) {
+			ImGuiScopeID("Distortion");
+			
+			ImGui::TableCombo("Type", (s32*)&settings.distortion_type, "None\0Gradient\0", (s32)TerrainEditorDistortionType::Count);
+			
+			ImGui::TableDragFloat("Scale", &settings.distortion_scale, 0.25f);
+			ImGui::TableDragFloat("Amplitude", &settings.distortion_amplitude, 0.25f);
+			
+			if (ImGui::BeginTableItem("Octave Count")) {
+				ImGui::SliderInt("", (s32*)&settings.distortion_octave_count, 1, 6, "%d", ImGuiSliderFlags_AlwaysClamp);
+				ImGui::EndTableItem();
+			}
 		}
 	}
 }

@@ -176,8 +176,22 @@ static void ReleaseNameComponents(StackAllocator* alloc, EntitySystemBase& entit
 	}
 }
 
+static void ReleaseHierarchyComponents(StackAllocator* alloc, EntitySystemBase& entity_system) {
+	ProfilerScope("ReleaseHierarchyComponents");
+	
+	for (auto* entity_array : QueryEntities<HierarchyQuery>(alloc, entity_system)) {
+		auto streams = ExtractComponentStreams<HierarchyQuery>(entity_array);
+		
+		for (u64 i : BitArrayIt(entity_array->removed_mask)) {
+			entity_system.heap.Deallocate(streams.hierarchy[i].children.data);
+			streams.hierarchy[i] = {};
+		}
+	}
+}
+
 void ReleaseEntityComponents(StackAllocator* alloc, EntitySystemBase& entity_system) {
 	ProfilerScope("ReleaseEntityComponents");
 	
 	ReleaseNameComponents(alloc, entity_system);
+	ReleaseHierarchyComponents(alloc, entity_system);
 }

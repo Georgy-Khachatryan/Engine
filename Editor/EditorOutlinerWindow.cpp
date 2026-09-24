@@ -6,9 +6,11 @@
 
 #include <SDK/imgui/imgui_internal.h>
 
-static void EntityCreationComboBox(const char* label, const char* hint, EntitySystemBase& entity_system, UndoRedoSystem& undo_redo_system, EditorSelectionStateEntity selection_state_entity, ArrayView<const EntityTypeID> entity_type_ids) {
-	if (ImGui::BeginCombo(label, hint, ImGuiComboFlags_WidthFitPreview) == false) return;
+u64 EntityCreationComboBox(const char* label, const char* hint, EntitySystemBase& entity_system, UndoRedoSystem& undo_redo_system, EditorSelectionStateEntity selection_state_entity, ArrayView<const EntityTypeID> entity_type_ids) {
+	if (ImGui::BeginCombo(label, hint, ImGuiComboFlags_WidthFitPreview) == false) return 0;
+	defer { ImGui::EndCombo(); };
 	
+	u64 created_entity_guid = 0;
 	for (auto entity_type_id : entity_type_ids) {
 		auto name = entity_type_name_table[entity_type_id.index];
 		
@@ -19,21 +21,22 @@ static void EntityCreationComboBox(const char* label, const char* hint, EntitySy
 			
 			auto entity = ExtractComponentStreams<GuidNameQuery>(entity_array, entity_id);
 			entity.name->name = StringCopy(&entity_system.heap, name);
+			created_entity_guid = entity.guid->guid;
 			
 			BeginUndoRedoGroup(undo_redo_system);
-			UndoRedoCreateEntity(undo_redo_system, entity_system, entity.guid->guid);
+			UndoRedoCreateEntity(undo_redo_system, entity_system, created_entity_guid);
 			
 			auto& selected_entities_hash_table = selection_state_entity.selection_state->selected_entities_hash_table;
 			BeginUndoRedoCommand("Select Created Entity"_sl, undo_redo_system, entity_system, selection_state_entity.guid->guid);
 			HashTableClear(selected_entities_hash_table);
-			HashTableAddOrFind(selected_entities_hash_table, &entity_system.heap, entity.guid->guid);
+			HashTableAddOrFind(selected_entities_hash_table, &entity_system.heap, created_entity_guid);
 			EndUndoRedoCommand(undo_redo_system);
 			
 			EndUndoRedoGroup(undo_redo_system);
 		}
 	}
 	
-	ImGui::EndCombo();
+	return created_entity_guid;
 }
 
 struct EntityViewTableEntry {
@@ -318,12 +321,15 @@ static void EntityViewTableWithCreationAndSearch(StackAllocator* alloc, const ch
 	}
 }
 
+struct TerrainEditorLayerStackEntityType;
+
 void EditorOutlinerWindow(StackAllocator* alloc, UndoRedoSystem& undo_redo_system, WorldEntitySystem& world_system, EditorSelectionStateEntity selection_state_entity, LevelEditorIO& level_editor_io) {
 	static const EntityTypeID creatable_world_entity_type_ids[] = {
 		ECS::GetEntityTypeID<MeshEntityType>::id,
 		ECS::GetEntityTypeID<LightEntityType>::id,
 		ECS::GetEntityTypeID<CameraEntityType>::id,
 		ECS::GetEntityTypeID<CloudVolumeEntityType>::id,
+		ECS::GetEntityTypeID<TerrainEditorLayerStackEntityType>::id,
 	};
 	
 	ImGui::Begin("Outliner");

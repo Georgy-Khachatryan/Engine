@@ -88,6 +88,18 @@ static void DuplicateSelectedEntities(StackAllocator* alloc, WorldEntitySystem& 
 	
 	auto& selected_entities_hash_table = selection_state_entity.selection_state->selected_entities_hash_table;
 	for (auto [guid] : selected_entities_hash_table) {
+		auto entity = QueryEntityByGUID<GuidHierarchyQuery>(world_system, guid);
+		if (entity.hierarchy != nullptr) {
+			auto& hierarchy = *entity.hierarchy;
+			
+			// TODO: Figure out what to do with the children. Duplicate them as well?
+			if (hierarchy.children.count != 0) {
+				HashTableRemove(selected_entities_hash_table, guid);
+			}
+		}
+	}
+	
+	for (auto [guid] : selected_entities_hash_table) {
 		auto typed_entity_id = FindEntityByGUID(world_system, guid);
 		auto* entity_array = QueryEntityTypeArray(world_system, typed_entity_id.entity_type_id);
 		SaveLoadEntityForTooling(buffer, entity_array, typed_entity_id.entity_id);
@@ -107,10 +119,24 @@ static void DuplicateSelectedEntities(StackAllocator* alloc, WorldEntitySystem& 
 		auto entity_id = CreateEntity(world_system, src_typed_entity_id.entity_type_id);
 		SaveLoadEntityForTooling(buffer, entity_array, entity_id);
 		
-		auto guid_query = ExtractComponentStreams<GuidQuery>(entity_array, entity_id);
-		ArrayAppend(new_entity_guids, guid_query.guid->guid);
+		auto entity = ExtractComponentStreams<GuidHierarchyQuery>(entity_array, entity_id);
+		ArrayAppend(new_entity_guids, entity.guid->guid);
 		
-		UndoRedoCreateEntity(undo_redo_system, world_system, guid_query.guid->guid);
+		if (entity.hierarchy != nullptr) {
+			auto& hierarchy = *entity.hierarchy;
+			
+			if (hierarchy.parent.guid != 0) {
+				auto parent = QueryEntityByGUID<GuidHierarchyQuery>(world_system, hierarchy.parent.guid);
+				u64 index = ArrayFind<GuidComponent>(parent.hierarchy->children, GuidComponent{ guid });
+				DebugAssert(index != u64_max, "Parent doesn't have it's child in the children array.");
+				
+				BeginUndoRedoCommand("Create Child"_sl, undo_redo_system, world_system, hierarchy.parent.guid);
+				ArrayInsert(parent.hierarchy->children, &world_system.heap, index, *entity.guid);
+				EndUndoRedoCommand(undo_redo_system);
+			}
+		}
+		
+		UndoRedoCreateEntity(undo_redo_system, world_system, entity.guid->guid);
 	}
 	
 	
@@ -131,6 +157,24 @@ static void RemoveSelectedEntities(WorldEntitySystem& world_system, UndoRedoSyst
 	HashTableRemove(selected_entities_hash_table, camera_entity_guid); // Don't remove the active camera.
 	
 	for (auto& [guid] : selected_entities_hash_table) {
+		auto entity = QueryEntityByGUID<GuidHierarchyQuery>(world_system, guid);
+		if (entity.hierarchy != nullptr) {
+			auto& hierarchy = *entity.hierarchy;
+			
+			// TODO: Figure out what to do with the children. Delete them? Attach to parent?
+			if (hierarchy.children.count != 0) continue;
+			
+			if (hierarchy.parent.guid != 0) {
+				auto parent = QueryEntityByGUID<GuidHierarchyQuery>(world_system, hierarchy.parent.guid);
+				u64 index = ArrayFind<GuidComponent>(parent.hierarchy->children, GuidComponent{ guid });
+				DebugAssert(index != u64_max, "Parent doesn't have it's child in the children array.");
+				
+				BeginUndoRedoCommand("Remove Child"_sl, undo_redo_system, world_system, hierarchy.parent.guid);
+				ArrayErase(parent.hierarchy->children, index);
+				EndUndoRedoCommand(undo_redo_system);
+			}
+		}
+		
 		UndoRedoRemoveEntity(undo_redo_system, world_system, guid);
 		RemoveEntityByGUID(world_system, guid);
 	}
@@ -256,6 +300,8 @@ void LevelEditorUpdate(StackAllocator* alloc, GraphicsContext* graphics_context,
 	EditorPropertiesWindow(alloc, undo_redo_system, world_system, asset_system, world_selection_state_entity, asset_selection_state_entity, world_entity_guid);
 	
 	EditorViewportWindow(alloc, undo_redo_system, world_system, asset_system, world_selection_state_entity, world_entity_guid, graphics_context, level_editor_io.level_editor->resource_table, editor_world_views);
+	
+	TerrainEditorWindow(alloc, undo_redo_system, world_system, world_selection_state_entity);
 	
 	EditorIconCacheUpdate(alloc, level_editor_io.icon_cache, asset_system, editor_world_views);
 }

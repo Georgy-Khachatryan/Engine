@@ -42,6 +42,7 @@
     <ReflectedFiles Include="Renderer/MeshAsset.h" />
     <ReflectedFiles Include="Renderer/RendererEntities.h" />
     <ReflectedFiles Include="Renderer/RenderPasses.h" />
+    <ReflectedFiles Include="Renderer/TerrainEditorEntities.h" />
     <ReflectedFiles Include="Renderer/TextureAsset.h" />
   </ItemGroup>
   

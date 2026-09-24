@@ -2,6 +2,8 @@
 #include "Basic/Basic.h"
 #include "Engine/Entities.h"
 
+struct TerrainHeightLayerNoiseCpuSettings;
+
 NOTES(Meta::SaveLoadOptions{ SaveLoadFlags::Default | SaveLoadFlags::CustomSaveLoadCallback })
 struct EditorSelectionStateComponent {
 	HashTable<u64, void> selected_entities_hash_table;
@@ -36,6 +38,8 @@ struct SharedEntityEditorQuery {
 
 NOTES(Meta::ComponentQuery{})
 struct WorldEntityEditorQuery {
+	HierarchyComponent* hierarchy = nullptr;
+	
 	PositionComponent* position = nullptr;
 	RotationComponent* rotation = nullptr;
 	ScaleComponent*    scale    = nullptr;
@@ -60,6 +64,8 @@ struct WorldEntityEditorQuery {
 	ExposureSettings*     exposure_settings      = nullptr;
 	ToneMappingSettings*  tone_mapping_settings  = nullptr;
 	AntiAliasingSettings* anti_aliasing_settings = nullptr;
+	
+	TerrainHeightLayerNoiseCpuSettings* terrain_height_layer_noise_cpu_settings = nullptr;
 };
 
 NOTES(Meta::ComponentQuery{})

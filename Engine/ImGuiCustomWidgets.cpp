@@ -363,14 +363,15 @@ bool ImGui::EntityDragDropSource(EntityTypeID entity_type_id, u64 guid) {
 	return result;
 }
 
-bool ImGui::EntityDragDropTarget(EntityTypeID entity_type_id, u64* guid) {
+bool ImGui::EntityDragDropTarget(EntityTypeID entity_type_id, u64* guid, ImGuiDragDropFlags flags, bool* is_delivery) {
 	u64 current_guid = *guid;
 	if (ImGui::BeginDragDropTarget()) {
 		char type_string[32] = {};
 		ImFormatString(type_string, IM_ARRAYSIZE(type_string), "EntityTypeID:%X", entity_type_id.index);
 		
-		if (auto* payload = ImGui::AcceptDragDropPayload(type_string)) {
+		if (auto* payload = ImGui::AcceptDragDropPayload(type_string, flags)) {
 			memcpy(guid, payload->Data, sizeof(u64));
+			if (is_delivery) *is_delivery = payload->IsDelivery();
 		}
 		ImGui::EndDragDropTarget();
 	}
@@ -489,6 +490,15 @@ bool ImGui::TableDragFloatWithReset(const char* label, float* data, u32 componen
 	bool result = false;
 	if (ImGui::BeginTableItem(label)) {
 		result = ImGui::DragFloatWithReset("", data, component_count, v_speed, v_min, v_max, format, flags, component_labels, default_values);
+		ImGui::EndTableItem();
+	}
+	return result;
+}
+
+bool ImGui::TableDragFloat(const char* label, float* data, float v_speed, float v_min, float v_max, const char* format, ImGuiSliderFlags flags) {
+	bool result = false;
+	if (ImGui::BeginTableItem(label)) {
+		result = ImGui::DragFloat("", data, v_speed, v_min, v_max, format, flags);
 		ImGui::EndTableItem();
 	}
 	return result;

@@ -94,13 +94,18 @@ static void ExecuteUndoRedoCommand(UndoRedoBuffer& undo_redo_buffer, UndoRedoCom
 }
 
 void BeginUndoRedoGroup(UndoRedoSystem& system) {
-	DebugAssert(system.group_index == 0, "Nested Undo/Redo groups are not supported. Already in group %..", system.group_index);
-	system.group_index = system.group_index_allocator;
-	system.group_index_allocator += 1;
+	if (system.group_stack_depth == 0) {
+		system.group_index = system.group_index_allocator;
+		system.group_index_allocator += 1;
+	}
+	system.group_stack_depth += 1;
 }
 
 void EndUndoRedoGroup(UndoRedoSystem& system) {
-	system.group_index = 0;
+	if (system.group_stack_depth <= 1) {
+		system.group_index = 0;
+	}
+	system.group_stack_depth -= 1;
 }
 
 void BeginUndoRedoCommand(String label, UndoRedoSystem& system, EntitySystemBase& entity_system, u64 entity_guid) {
