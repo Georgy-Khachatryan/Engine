@@ -363,15 +363,14 @@ bool ImGui::EntityDragDropSource(EntityTypeID entity_type_id, u64 guid) {
 	return result;
 }
 
-bool ImGui::EntityDragDropTarget(EntityTypeID entity_type_id, u64* guid, ImGuiDragDropFlags flags, bool* is_delivery) {
+bool ImGui::EntityDragDropTarget(EntityTypeID entity_type_id, u64* guid) {
 	u64 current_guid = *guid;
 	if (ImGui::BeginDragDropTarget()) {
 		char type_string[32] = {};
 		ImFormatString(type_string, IM_ARRAYSIZE(type_string), "EntityTypeID:%X", entity_type_id.index);
 		
-		if (auto* payload = ImGui::AcceptDragDropPayload(type_string, flags)) {
+		if (auto* payload = ImGui::AcceptDragDropPayload(type_string)) {
 			memcpy(guid, payload->Data, sizeof(u64));
-			if (is_delivery) *is_delivery = payload->IsDelivery();
 		}
 		ImGui::EndDragDropTarget();
 	}

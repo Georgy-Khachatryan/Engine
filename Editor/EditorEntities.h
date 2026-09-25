@@ -3,6 +3,8 @@
 #include "Engine/Entities.h"
 
 struct TerrainHeightLayerNoiseCpuSettings;
+struct TerrainHeightLayerDistortionCpuSettings;
+struct TerrainHeightLayerStrataCpuSettings;
 
 NOTES(Meta::SaveLoadOptions{ SaveLoadFlags::Default | SaveLoadFlags::CustomSaveLoadCallback })
 struct EditorSelectionStateComponent {
@@ -65,7 +67,9 @@ struct WorldEntityEditorQuery {
 	ToneMappingSettings*  tone_mapping_settings  = nullptr;
 	AntiAliasingSettings* anti_aliasing_settings = nullptr;
 	
-	TerrainHeightLayerNoiseCpuSettings* terrain_height_layer_noise_cpu_settings = nullptr;
+	TerrainHeightLayerNoiseCpuSettings*      terrain_height_layer_noise_cpu_settings      = nullptr;
+	TerrainHeightLayerDistortionCpuSettings* terrain_height_layer_distortion_cpu_settings = nullptr;
+	TerrainHeightLayerStrataCpuSettings*     terrain_height_layer_strata_cpu_settings     = nullptr;
 };
 
 NOTES(Meta::ComponentQuery{})

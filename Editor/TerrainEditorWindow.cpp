@@ -9,6 +9,8 @@
 static void TerrainLayerCreationComboBox(UndoRedoSystem& undo_redo_system, WorldEntitySystem& world_system, EditorSelectionStateEntity selection_state_entity, TerrainEditorLayerStackEntityType layer_stack_entity) {
 	static const EntityTypeID creatable_entity_type_ids[] = {
 		ECS::GetEntityTypeID<TerrainHeightLayerNoiseEntityType>::id,
+		ECS::GetEntityTypeID<TerrainHeightLayerDistortionEntityType>::id,
+		ECS::GetEntityTypeID<TerrainHeightLayerStrataEntityType>::id,
 	};
 	
 	auto& style = ImGui::GetStyle();
@@ -45,10 +47,10 @@ void TerrainEditorWindow(StackAllocator* alloc, UndoRedoSystem& undo_redo_system
 	TerrainLayerCreationComboBox(undo_redo_system, world_system, selection_state_entity, layer_stack_entity);
 	
 	if (is_open) {
-		u64 dropped_guid   = 0;
-		u64 drop_to_index  = 0;
-		bool is_delivery   = false;
+		u64  dropped_guid  = 0;
+		u64  drop_to_index = 0;
 		auto line_position = ImVec2(0.f, 0.f);
+		bool is_delivery   = false;
 		
 		auto& children = layer_stack_entity.hierarchy->children;
 		for (u64 index = 0; index < children.count; index += 1) {
@@ -73,12 +75,24 @@ void TerrainEditorWindow(StackAllocator* alloc, UndoRedoSystem& undo_redo_system
 			
 			auto cursor_position_after = ImGui::GetCursorScreenPos();
 			
-			ImGui::EntityDragDropSource(entity_type_id, layer_entity_guid);
 			
-			if (ImGui::EntityDragDropTarget(entity_type_id, &dropped_guid, ImGuiDragDropFlags_AcceptPeekOnly, &is_delivery)) {
-				bool is_mouse_cursor_below = ImGui::GetMousePos().y > (cursor_position_before.y + cursor_position_after.y) * 0.5f;
-				drop_to_index = is_mouse_cursor_below ? index + 1 : index;
-				line_position = is_mouse_cursor_below ? cursor_position_after : cursor_position_before;
+			compile_const char* payload_type_name = "TerrainLayer";
+			if (ImGui::BeginDragDropSource()) {
+				ImGui::TextUnformatted(name.data ? name.data : entity_type_name.data);
+				ImGui::SetDragDropPayload(payload_type_name, &layer_entity_guid, sizeof(u64));
+				ImGui::EndDragDropSource();
+			}
+			
+			if (ImGui::BeginDragDropTarget()) {
+				if (auto* payload = ImGui::AcceptDragDropPayload(payload_type_name, ImGuiDragDropFlags_AcceptPeekOnly)) {
+					memcpy(&dropped_guid, payload->Data, sizeof(u64));
+					
+					bool is_mouse_cursor_below = ImGui::GetMousePos().y > (cursor_position_before.y + cursor_position_after.y) * 0.5f;
+					drop_to_index = is_mouse_cursor_below ? index + 1 : index;
+					line_position = is_mouse_cursor_below ? cursor_position_after : cursor_position_before;
+					is_delivery   = payload->IsDelivery();
+				}
+				ImGui::EndDragDropTarget();
 			}
 		}
 		

@@ -142,7 +142,8 @@ enum struct VirtualResourceID : u32 {
 	GgxPreintegratedBrdfLUT,
 	
 	// Terrain Editor:
-	TerrainHeightField,
+	TerrainHeightField0,
+	TerrainHeightField1,
 	
 	// Debug geometry:
 	DebugGeometryDepthStencil,
@@ -1953,6 +1954,8 @@ enum struct TerrainEditorLayersShaders : u32 {
 };
 SHADER_DEFINITION_GENERATED_CODE(TerrainEditorLayersShaders);
 
+enum struct TerrainEditorCommandType : u32;
+
 NOTES(Meta::RenderPass{})
 struct TerrainEditorLayersRenderPass {
 	RENDER_PASS_GENERATED_CODE();
@@ -1962,12 +1965,13 @@ struct TerrainEditorLayersRenderPass {
 	struct Descriptors : HLSL::BaseDescriptorTable {
 		HLSL::ByteBuffer layer_constants;
 		
-		HLSL::RWTexture2D<float> height_field = VirtualResourceID::TerrainHeightField;
+		HLSL::Texture2D<float>   height_field_0;
+		HLSL::RWTexture2D<float> height_field_1;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {
 		struct PushConstants {
-			u32   layer_constants_offset = 0; 
+			TerrainEditorCommandType command_type = (TerrainEditorCommandType)0;
 			u32   render_target_size     = 0;
 			float inv_render_target_size = 0;
 		};
@@ -2018,7 +2022,7 @@ struct TerrainEditorTracePreviewRenderPass {
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
 		HLSL::Texture2D<float>    depth_stencil  = VirtualResourceID::DepthStencil;
-		HLSL::Texture2D<float>    height_field   = VirtualResourceID::TerrainHeightField;
+		HLSL::Texture2D<float>    height_field   = VirtualResourceID::TerrainHeightField0;
 		HLSL::RWTexture2D<float4> scene_radiance = VirtualResourceID::SceneRadiance;
 	};
 	

@@ -396,6 +396,20 @@ enum TerrainEditorNoiseType {
 	}
 }
 
+struct TerrainHeightLayerDistortionCpuSettings {
+	/*Version*/ 0 {
+		type TerrainEditorNoiseType 1;
+		random_seed u32 0;
+		scale float32 0;
+		anisotropy float32 0;
+		rotation float32 0;
+		amplitude float32 0;
+		octave_count u32 0;
+		lacunarity float32 0;
+		gain float32 0;
+	}
+}
+
 struct TerrainHeightLayerNoiseCpuSettings {
 	/*Version*/ 1 {
 		type TerrainEditorNoiseType 1;
@@ -411,6 +425,22 @@ struct TerrainHeightLayerNoiseCpuSettings {
 		distortion_scale float32 0;
 		distortion_amplitude float32 0;
 		distortion_octave_count u32 0;
+	}
+}
+
+struct TerrainHeightLayerStrataCpuSettings {
+	/*Version*/ 2 {
+		random_seed u32 0;
+		period float32 0;
+		tilt float32 0;
+		rotation float32 0;
+		randomness float32 0;
+		amount float32 0;
+		distortion_scale float32 0;
+		distortion_amount float32 0;
+		octave_count u32 0;
+		lacunarity float32 0;
+		gain float32 0;
 	}
 }
 

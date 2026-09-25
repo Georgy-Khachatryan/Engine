@@ -287,21 +287,21 @@ static void WorldComponentEntityView(StackAllocator* alloc, WorldEntitySystem& w
 	}
 	
 	
+	compile_const char* terrain_editor_noise_type_names[(u32)TerrainEditorNoiseType::Count] = {
+		"Gradient",
+		"Gradient Billow",
+		"Value",
+		"Voronoi F1",
+		"Voronoi F2",
+		"Voronoi F2 Minus F1",
+		"Voronoi ID",
+	};
+	
 	if (entity.terrain_height_layer_noise_cpu_settings) {
 		auto& settings = *entity.terrain_height_layer_noise_cpu_settings;
 		
 		if (ImGui::TableCollapsingHeader("Noise", ImGuiTreeNodeFlags_DefaultOpen)) {
 			ImGuiScopeID("Noise");
-			
-			compile_const char* terrain_editor_noise_type_names[(u32)TerrainEditorNoiseType::Count] = {
-				"Gradient",
-				"Gradient Billow",
-				"Value",
-				"Voronoi F1",
-				"Voronoi F2",
-				"Voronoi F2 Minus F1",
-				"Voronoi ID",
-			};
 			
 			ImGui::TableCombo("Type", (s32*)&settings.type, terrain_editor_noise_type_names, (s32)TerrainEditorNoiseType::Count, (s32)TerrainEditorNoiseType::Count);
 			if (ImGui::BeginTableItem("Seed")) {
@@ -339,6 +339,75 @@ static void WorldComponentEntityView(StackAllocator* alloc, WorldEntitySystem& w
 				ImGui::SliderInt("", (s32*)&settings.distortion_octave_count, 1, 6, "%d", ImGuiSliderFlags_AlwaysClamp);
 				ImGui::EndTableItem();
 			}
+		}
+	}
+	
+	if (entity.terrain_height_layer_distortion_cpu_settings) {
+		auto& settings = *entity.terrain_height_layer_distortion_cpu_settings;
+		
+		if (ImGui::TableCollapsingHeader("Noise", ImGuiTreeNodeFlags_DefaultOpen)) {
+			ImGuiScopeID("Noise");
+			
+			ImGui::TableCombo("Type", (s32*)&settings.type, terrain_editor_noise_type_names, (s32)TerrainEditorNoiseType::Count, (s32)TerrainEditorNoiseType::Count);
+			if (ImGui::BeginTableItem("Seed")) {
+				ImGui::InputInt("", (s32*)&settings.random_seed);
+				ImGui::EndTableItem();
+			}
+			
+			ImGui::TableDragFloat("Scale", &settings.scale);
+			ImGui::TableSliderFloat("Anisotropy", &settings.anisotropy, -1.f, 1.f);
+			ImGui::TableSliderFloat("Rotation", &settings.rotation, -180.f, 180.f);
+			ImGui::TableDragFloat("Amplitude", &settings.amplitude);
+		}
+		
+		if (ImGui::TableCollapsingHeader("Octaves", ImGuiTreeNodeFlags_DefaultOpen)) {
+			ImGuiScopeID("Octaves");
+			
+			if (ImGui::BeginTableItem("Octave Count")) {
+				ImGui::SliderInt("", (s32*)&settings.octave_count, 1, 10, "%d", ImGuiSliderFlags_AlwaysClamp);
+				ImGui::EndTableItem();
+			}
+			
+			ImGui::TableDragFloat("Lacunarity", &settings.lacunarity, 0.01f);
+			ImGui::TableDragFloat("Gain", &settings.gain, 0.01f);
+		}
+	}
+	
+	if (entity.terrain_height_layer_strata_cpu_settings) {
+		auto& settings = *entity.terrain_height_layer_strata_cpu_settings;
+		
+		if (ImGui::TableCollapsingHeader("Strata", ImGuiTreeNodeFlags_DefaultOpen)) {
+			ImGuiScopeID("Strata");
+			
+			if (ImGui::BeginTableItem("Seed")) {
+				ImGui::InputInt("", (s32*)&settings.random_seed);
+				ImGui::EndTableItem();
+			}
+			
+			ImGui::TableDragFloat("Period", &settings.period, 1.f, 0.1f, FLT_MAX);
+			ImGui::TableSliderFloat("Tilt", &settings.tilt, -90.f, 90.f);
+			ImGui::TableSliderFloat("Rotation", &settings.rotation, -180.f, 180.f);
+			ImGui::TableSliderFloat("Randomness", &settings.randomness, 0.f, 1.f);
+			ImGui::TableSliderFloat("Amount", &settings.amount, 0.f, 1.f);
+		}
+		
+		if (ImGui::TableCollapsingHeader("Octaves", ImGuiTreeNodeFlags_DefaultOpen)) {
+			ImGuiScopeID("Octaves");
+			
+			if (ImGui::BeginTableItem("Octave Count")) {
+				ImGui::SliderInt("", (s32*)&settings.octave_count, 1, 10, "%d", ImGuiSliderFlags_AlwaysClamp);
+				ImGui::EndTableItem();
+			}
+			
+			ImGui::TableDragFloat("Lacunarity", &settings.lacunarity, 0.01f, 1.f, FLT_MAX);
+			ImGui::TableDragFloat("Gain", &settings.gain, 0.01f, 0.f, 1.f);
+		}
+		
+		if (ImGui::TableCollapsingHeader("Distortion", ImGuiTreeNodeFlags_DefaultOpen)) {
+			ImGuiScopeID("Distortion");
+			
+			ImGui::TableDragFloat("Scale", &settings.distortion_scale, 0.25f, 1.f, FLT_MAX);
+			ImGui::TableSliderFloat("Amount", &settings.distortion_amount, 0.f, 1.f);
 		}
 	}
 }

@@ -52,7 +52,7 @@ namespace ImGui {
 	bool EntityComboBoxWithColor(StackAllocator* alloc, const char* label, EntitySystemBase* entity_system, float* color, u32 channel_count, u64* guid, EntityTypeID entity_type_id);
 	bool ImageButtonEx(const char* str_id, ImGuiTextureID texture_id, const ImVec2& image_size, ImGuiButtonFlags flags = 0, const ImVec2& uv_min = ImVec2(0.f, 0.f), const ImVec2& uv_max = ImVec2(1.f, 1.f));
 	bool EntityDragDropSource(EntityTypeID entity_type_id, u64 guid);
-	bool EntityDragDropTarget(EntityTypeID entity_type_id, u64* guid, ImGuiDragDropFlags flags = 0, bool* is_delivery = nullptr);
+	bool EntityDragDropTarget(EntityTypeID entity_type_id, u64* guid);
 	
 	bool BeginMainMenuBarEx(float frame_padding_y = -1.f); // The first call of the frame should provide padding that all subsequent calls would use.
 	void EndMainMenuBarEx();
