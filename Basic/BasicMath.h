@@ -109,6 +109,9 @@ namespace Math {
 	template<typename T>
 	T Clamp(const T& value, const T& min, const T& max) { return Math::Max(Math::Min(value, max), min); }
 	
+	template<typename T>
+	T Pow2(const T& value) { return value * value; }
+	
 	inline Vec2f CosSin(float angle_radians) { return Vec2f(cosf(angle_radians), sinf(angle_radians)); }
 }
 

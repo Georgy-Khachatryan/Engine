@@ -371,6 +371,13 @@ enum TerrainEditorDistortionType {
 	}
 }
 
+struct TerrainEditorEqualizer {
+	/*Version*/ 0 {
+		bands FixedCountArray<float32, 12> 0;
+		scale float32 0;
+	}
+}
+
 struct TerrainEditorHierarchyComponent {
 	/*Version*/ 0 {
 		parent_guid u64 0;
@@ -408,11 +415,34 @@ struct TerrainHeightLayerDistortionCpuSettings {
 		lacunarity float32 0;
 		gain float32 0;
 	}
+	/*Version*/ 3 {
+		type TerrainEditorNoiseType 1;
+		random_seed u32 0;
+		amount TerrainEditorEqualizer 0;
+		scale float32 0;
+		anisotropy float32 0;
+		rotation float32 0;
+		amplitude float32 0;
+		octave_count u32 0;
+		lacunarity float32 0;
+		gain float32 0;
+	}
 }
 
 struct TerrainHeightLayerErosionCpuSettings {
 	/*Version*/ 1 {
 		random_seed u32 0;
+		fluvial_iteration_count u32 0;
+		fluvial_inertia float32 0;
+		fluvial_viscosity float32 0;
+		fluvial_erosion_rate float32 0;
+		fluvial_deposition_rate float32 0;
+		fluvial_evaporation_rate float32 0;
+		fluvial_initial_water float32 0;
+	}
+	/*Version*/ 5 {
+		random_seed u32 0;
+		amount TerrainEditorEqualizer 0;
 		fluvial_iteration_count u32 0;
 		fluvial_inertia float32 0;
 		fluvial_viscosity float32 0;
@@ -439,6 +469,22 @@ struct TerrainHeightLayerNoiseCpuSettings {
 		distortion_amplitude float32 0;
 		distortion_octave_count u32 0;
 	}
+	/*Version*/ 6 {
+		type TerrainEditorNoiseType 1;
+		random_seed u32 0;
+		amount TerrainEditorEqualizer 0;
+		scale float32 0;
+		anisotropy float32 0;
+		rotation float32 0;
+		amplitude float32 0;
+		octave_count u32 0;
+		lacunarity float32 0;
+		gain float32 0;
+		distortion_type TerrainEditorDistortionType 0;
+		distortion_scale float32 0;
+		distortion_amplitude float32 0;
+		distortion_octave_count u32 0;
+	}
 }
 
 struct TerrainHeightLayerStrataCpuSettings {
@@ -449,6 +495,19 @@ struct TerrainHeightLayerStrataCpuSettings {
 		rotation float32 0;
 		randomness float32 0;
 		amount float32 0;
+		distortion_scale float32 0;
+		distortion_amount float32 0;
+		octave_count u32 0;
+		lacunarity float32 0;
+		gain float32 0;
+	}
+	/*Version*/ 5 {
+		random_seed u32 0;
+		amount TerrainEditorEqualizer 0;
+		period float32 0;
+		tilt float32 0;
+		rotation float32 0;
+		randomness float32 0;
 		distortion_scale float32 0;
 		distortion_amount float32 0;
 		octave_count u32 0;

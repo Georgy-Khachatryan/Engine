@@ -26,6 +26,9 @@ void TerrainEditorCommandTypeCopy(uint2 thread_id) {
 	height_field_1[thread_id] = height_field_0[thread_id];
 }
 
+void TerrainEditorCommandTypeUpscale(uint2 thread_id, float2 thread_uv) {
+	height_field_1[thread_id] = SampleTextureCatmullRom(height_field_0, sampler_linear_clamp, thread_uv, 1.0, constants.render_target_size * 0.5, constants.inv_render_target_size * 2.0);
+}
 
 float2x2 CreateRotationMatrix(float2 cos_sin) {
 	float2x2 rotation;
@@ -75,7 +78,7 @@ vector<float, component_count> EvalueateTerrainNoise(SettingsT settings, float2 
 }
 
 void TerrainHeightLayerNoise(uint2 thread_id, float2 world_space_position) {
-	TerrainHeightLayerNoiseGpuSettings settings = layer_constants.Load<TerrainHeightLayerNoiseGpuSettings>(0);
+	TerrainHeightLayerNoiseGpuSettings settings = layer_constants.Load<TerrainHeightLayerNoiseGpuSettings>(constants.layer_constants_offset);
 	
 	float2 distortion_coordinates = world_space_position * settings.inv_distortion_scale;
 	
@@ -99,7 +102,7 @@ void TerrainHeightLayerNoise(uint2 thread_id, float2 world_space_position) {
 }
 
 void TerrainHeightLayerDistortion(uint2 thread_id, float2 world_space_position) {
-	TerrainHeightLayerDistortionGpuSettings settings = layer_constants.Load<TerrainHeightLayerDistortionGpuSettings>(0);
+	TerrainHeightLayerDistortionGpuSettings settings = layer_constants.Load<TerrainHeightLayerDistortionGpuSettings>(constants.layer_constants_offset);
 	
 	float2 noise_value = EvalueateTerrainNoise<2>(settings, world_space_position);
 	
@@ -130,7 +133,7 @@ float2 ComputeStrataSliceRange(float height, float frequency, float period, floa
 }
 
 void TerrainHeightLayerStrata(uint2 thread_id, float2 world_space_position) {
-	TerrainHeightLayerStrataGpuSettings settings = layer_constants.Load<TerrainHeightLayerStrataGpuSettings>(0);
+	TerrainHeightLayerStrataGpuSettings settings = layer_constants.Load<TerrainHeightLayerStrataGpuSettings>(constants.layer_constants_offset);
 	
 	float2x2 tilt     = CreateRotationMatrix(settings.tilt);
 	float2x2 rotation = CreateRotationMatrix(settings.rotation);
@@ -186,7 +189,7 @@ compile_const float fixed_point_scale     = 16.0 * 1024.0;
 compile_const float inv_fixed_point_scale = 1.0 / fixed_point_scale;
 
 void TerrainHeightLayerErosionSimulate(uint2 thread_id) {
-	TerrainHeightLayerErosionGpuSettings settings = layer_constants.Load<TerrainHeightLayerErosionGpuSettings>(0);
+	TerrainHeightLayerErosionGpuSettings settings = layer_constants.Load<TerrainHeightLayerErosionGpuSettings>(constants.layer_constants_offset);
 	
 	uint hash = WyHash32(thread_id.x | (thread_id.y << 16), settings.random_seed);
 	
@@ -261,6 +264,8 @@ void TerrainHeightLayerErosionSimulate(uint2 thread_id) {
 }
 
 void TerrainHeightLayerErosionApply(uint2 thread_id) {
+	TerrainHeightLayerErosionGpuSettings settings = layer_constants.Load<TerrainHeightLayerErosionGpuSettings>(constants.layer_constants_offset);
+	
 	float3 flow_map = float3(flow_field_x_1[thread_id], flow_field_y_1[thread_id], flow_field_w_1[thread_id]);
 	if (flow_map.z > 0.0) {
 		flow_field_1[thread_id] = flow_map.xy * rcp(flow_map.z);
@@ -286,6 +291,9 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 		break;
 	} case TerrainEditorCommandType::Copy: {
 		TerrainEditorCommandTypeCopy(thread_id);
+		break;
+	} case TerrainEditorCommandType::Upscale: {
+		TerrainEditorCommandTypeUpscale(thread_id, thread_uv);
 		break;
 	} case TerrainEditorCommandType::TerrainHeightLayerNoise: {
 		TerrainHeightLayerNoise(thread_id, world_space_position);

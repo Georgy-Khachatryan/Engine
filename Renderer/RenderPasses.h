@@ -1968,7 +1968,7 @@ struct TerrainEditorLayersRenderPass {
 	WorldEntitySystem* world_system = nullptr;
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
-		HLSL::ByteBuffer layer_constants;
+		HLSL::ByteBuffer layer_constants = VirtualResourceID::TransientUploadBuffer;
 		
 		HLSL::Texture2D<float>  height_field_0;
 		HLSL::Texture2D<float2> flow_field_0;
@@ -1984,6 +1984,7 @@ struct TerrainEditorLayersRenderPass {
 	struct RootSignature : HLSL::BaseRootSignature {
 		struct PushConstants {
 			TerrainEditorCommandType command_type = (TerrainEditorCommandType)0;
+			u32   layer_constants_offset = 0;
 			u32   render_target_size     = 0;
 			float inv_render_target_size = 0;
 		};

@@ -13,6 +13,7 @@ enum struct TerrainEditorCommandType : u32 {
 	
 	Clear,
 	Copy,
+	Upscale,
 	
 	TerrainHeightLayerNoise,
 	TerrainHeightLayerDistortion,
@@ -23,6 +24,35 @@ enum struct TerrainEditorCommandType : u32 {
 	TerrainHeightLayerErosionApply,
 	
 	Count
+};
+
+enum struct TerrainEditorEqualizerPreset : u32 {
+	None           = 0,
+	Neutral        = 1,
+	LowPass        = 2,
+	HighPass       = 3,
+	Linear         = 4,
+	InverseLinear  = 5,
+	VShaped        = 6,
+	InverseVShaped = 7,
+	UShaped        = 8,
+	InverseUShaped = 9,
+	
+	Count
+};
+
+NOTES()
+struct TerrainEditorEqualizer {
+	compile_const s32 min_frequency_band = -2;
+	compile_const s32 max_frequency_band = +9;
+	compile_const s32 frequency_band_count = max_frequency_band - min_frequency_band + 1;
+	
+	FixedCountArray<float, frequency_band_count> bands;
+	float scale = 1.f;
+	
+	float& operator[] (s32 index) { return bands[index - min_frequency_band]; }
+	
+	static TerrainEditorEqualizer MakePreset(TerrainEditorEqualizerPreset preset, float scale);
 };
 
 
@@ -53,10 +83,12 @@ struct TerrainHeightLayerNoiseCpuSettings {
 	TerrainEditorNoiseType type = TerrainEditorNoiseType::Gradient;
 	u32 random_seed = 0;
 	
+	TerrainEditorEqualizer amount = TerrainEditorEqualizer::MakePreset(TerrainEditorEqualizerPreset::Neutral, 0.125f);
+	
 	float scale      = 256.f; // XY scale.
 	float anisotropy = 0.f;   // XY scale anisotropy.
 	float rotation   = 0.f;   // XY rotation.
-	float amplitude  = 256.f; // Z  scale.
+	float amplitude  = 0.75f; // Z  scale relative to XY scale.
 	
 	u32 octave_count = 8;
 	float lacunarity = 2.0f; // XY scale for each subsequent octave.
@@ -103,10 +135,12 @@ struct TerrainHeightLayerDistortionCpuSettings {
 	TerrainEditorNoiseType type = TerrainEditorNoiseType::Gradient;
 	u32 random_seed = 0;
 	
+	TerrainEditorEqualizer amount = TerrainEditorEqualizer::MakePreset(TerrainEditorEqualizerPreset::Neutral, 0.125f);
+	
 	float scale      = 128.f; // XY scale.
 	float anisotropy = 0.f;   // XY scale anisotropy.
 	float rotation   = 0.f;   // Rotation around Z.
-	float amplitude  = 64.f;  // XY distortion scale.
+	float amplitude  = 0.5f;  // XY distortion scale relative the the scale.
 	
 	u32 octave_count = 8;
 	float lacunarity = 2.0f; // XY scale for each subsequent octave.
@@ -142,11 +176,12 @@ NOTES()
 struct TerrainHeightLayerStrataCpuSettings {
 	u32 random_seed = 0;
 	
+	TerrainEditorEqualizer amount = TerrainEditorEqualizer::MakePreset(TerrainEditorEqualizerPreset::Neutral, 0.125f);
+	
 	float period     = 16.f;  // Max strata slice period.
 	float tilt       = 0.f;   // Rotation around X.
 	float rotation   = 0.f;   // Rotation around Z.
 	float randomness = 1.f;   // Slice thickness randomness.
-	float amount     = 1.f;   // Overall amount.
 	
 	float distortion_scale  = 2.f;   // Slice distortion XY scale.
 	float distortion_amount = 0.25f; // Slice distortion amount.
@@ -187,6 +222,9 @@ struct TerrainHeightLayerStrataEntityType {
 NOTES()
 struct TerrainHeightLayerErosionCpuSettings {
 	u32   random_seed = 0;
+	
+	TerrainEditorEqualizer amount = TerrainEditorEqualizer::MakePreset(TerrainEditorEqualizerPreset::Neutral, 0.125f);
+	
 	u32   fluvial_iteration_count  = 16;
 	float fluvial_inertia          = 0.98f;
 	float fluvial_viscosity        = 0.02f;
@@ -218,6 +256,10 @@ struct TerrainHeightLayerErosionEntityType {
 	ECS::Component<TerrainHeightLayerErosionCpuSettings> settings;
 };
 
+NOTES(Meta::SaveLoadOptions{ SaveLoadFlags::None })
+struct TerrainEditorLayerStackPreviewState {
+	s32 min_frequency_band = TerrainEditorEqualizer::min_frequency_band;
+};
 
 NOTES(Meta::EntityType{ 4 }, Meta::ComponentQuery{})
 struct TerrainEditorLayerStackEntityType {
@@ -225,6 +267,7 @@ struct TerrainEditorLayerStackEntityType {
 	ECS::Component<NameComponent> name;
 	
 	ECS::Component<HierarchyComponent> hierarchy;
+	ECS::Component<TerrainEditorLayerStackPreviewState> preview_state;
 };
 
 NOTES(Meta::ComponentQuery{})

@@ -64,19 +64,20 @@ struct TerrainCommand {
 	TerrainEditorCommandType type = TerrainEditorCommandType::None;
 	TerrainCommandBindings bindings = TerrainCommandBindings::None;
 	
-	u32 gpu_settings_size = 0;
-	void* gpu_settings = nullptr;
+	s32 frequency_band = 0;
+	u32 gpu_settings_offset = 0;
 	
 	template<typename GpuSettingsT>
-	void SetGpuSettings(GpuSettingsT& gpu_settings_t) {
-		gpu_settings = &gpu_settings_t;
-		gpu_settings_size = sizeof(GpuSettingsT);
+	void SetGpuSettings(RecordContext* record_context, GpuSettingsT& gpu_settings_t) {
+		auto layer_constants = AllocateTransientUploadBuffer(record_context, sizeof(GpuSettingsT));
+		memcpy(layer_constants.cpu_address, &gpu_settings_t, sizeof(GpuSettingsT));
+		gpu_settings_offset = layer_constants.gpu_address.offset;
 	}
 };
 
-static void AppendTerrainCommand(Array<TerrainCommand>& commands, StackAllocator* alloc, const TerrainCommand& command, u32& height_field_epoch) {
+static void AppendTerrainCommand(Array<TerrainCommand>& commands, const TerrainCommand& command, RecordContext* record_context, u32& height_field_epoch) {
 	if (command.bindings != TerrainCommandBindings::None) {
-		ArrayAppend(commands, alloc, command);
+		ArrayAppend(commands, record_context->alloc, command);
 	}
 	
 	if (HasAnyFlags(command.bindings, TerrainCommandBindings::DstHeight)) {
@@ -84,14 +85,14 @@ static void AppendTerrainCommand(Array<TerrainCommand>& commands, StackAllocator
 	}
 }
 
-static TerrainCommand TranslateCommandTerrainHeightLayerNoiseCpuSettings(StackAllocator* alloc, TerrainHeightLayerNoiseCpuSettings& cpu_settings) {
-	auto& gpu_settings = *NewFromAlloc(alloc, TerrainHeightLayerNoiseGpuSettings);
+static void TranslateCommandTerrainHeightLayerNoiseCpuSettings(RecordContext* record_context, Array<TerrainCommand>& commands, s32 frequency_band, u32& height_field_epoch, TerrainHeightLayerNoiseCpuSettings& cpu_settings) {
+	auto& gpu_settings = *NewFromAlloc(record_context->alloc, TerrainHeightLayerNoiseGpuSettings);
 	gpu_settings.type                    = cpu_settings.type;
 	gpu_settings.random_seed             = cpu_settings.random_seed;
-	gpu_settings.inv_scale               = 1.f / cpu_settings.scale;
+	gpu_settings.inv_scale               = cpu_settings.scale == 0.f ? 1.f : 1.f / cpu_settings.scale;
 	gpu_settings.anisotropy              = cpu_settings.anisotropy;
 	gpu_settings.rotation                = Math::CosSin(cpu_settings.rotation * Math::degrees_to_radians);
-	gpu_settings.amplitude               = cpu_settings.amplitude;
+	gpu_settings.amplitude               = cpu_settings.amplitude * cpu_settings.scale * cpu_settings.amount[frequency_band] * cpu_settings.amount.scale;
 	gpu_settings.octave_count            = cpu_settings.octave_count;
 	gpu_settings.lacunarity              = cpu_settings.lacunarity;
 	gpu_settings.gain                    = cpu_settings.gain;
@@ -101,39 +102,41 @@ static TerrainCommand TranslateCommandTerrainHeightLayerNoiseCpuSettings(StackAl
 	gpu_settings.distortion_octave_count = cpu_settings.distortion_octave_count;
 	
 	TerrainCommand command;
-	command.type     = TerrainEditorCommandType::TerrainHeightLayerNoise;
-	command.bindings = TerrainCommandBindings::DstHeight | TerrainCommandBindings::SrcHeight;
-	command.SetGpuSettings(gpu_settings);
-	return command;
+	command.type      = TerrainEditorCommandType::TerrainHeightLayerNoise;
+	command.bindings  = TerrainCommandBindings::DstHeight | TerrainCommandBindings::SrcHeight;
+	command.frequency_band = frequency_band;
+	command.SetGpuSettings(record_context, gpu_settings);
+	AppendTerrainCommand(commands, command, record_context, height_field_epoch);
 }
 
-static TerrainCommand TranslateCommandTerrainHeightLayerDistortionCpuSettings(StackAllocator* alloc, TerrainHeightLayerDistortionCpuSettings& cpu_settings) {
-	auto& gpu_settings = *NewFromAlloc(alloc, TerrainHeightLayerDistortionGpuSettings);
+static void TranslateCommandTerrainHeightLayerDistortionCpuSettings(RecordContext* record_context, Array<TerrainCommand>& commands, s32 frequency_band, u32& height_field_epoch, TerrainHeightLayerDistortionCpuSettings& cpu_settings) {
+	auto& gpu_settings = *NewFromAlloc(record_context->alloc, TerrainHeightLayerDistortionGpuSettings);
 	gpu_settings.type         = cpu_settings.type;
 	gpu_settings.random_seed  = cpu_settings.random_seed;
-	gpu_settings.inv_scale    = 1.f / cpu_settings.scale;
+	gpu_settings.inv_scale    = cpu_settings.scale == 0.f ? 1.f : 1.f / cpu_settings.scale;
 	gpu_settings.anisotropy   = cpu_settings.anisotropy;
 	gpu_settings.rotation     = Math::CosSin(cpu_settings.rotation * Math::degrees_to_radians);
-	gpu_settings.amplitude    = cpu_settings.amplitude;
+	gpu_settings.amplitude    = cpu_settings.amplitude * cpu_settings.scale * cpu_settings.amount[frequency_band] * cpu_settings.amount.scale;
 	gpu_settings.octave_count = cpu_settings.octave_count;
 	gpu_settings.lacunarity   = cpu_settings.lacunarity;
 	gpu_settings.gain         = cpu_settings.gain;
 	
 	TerrainCommand command;
-	command.type     = TerrainEditorCommandType::TerrainHeightLayerDistortion;
-	command.bindings = TerrainCommandBindings::DstHeight | TerrainCommandBindings::SrcHeight;
-	command.SetGpuSettings(gpu_settings);
-	return command;
+	command.type      = TerrainEditorCommandType::TerrainHeightLayerDistortion;
+	command.bindings  = TerrainCommandBindings::DstHeight | TerrainCommandBindings::SrcHeight;
+	command.frequency_band = frequency_band;
+	command.SetGpuSettings(record_context, gpu_settings);
+	AppendTerrainCommand(commands, command, record_context, height_field_epoch);
 }
 
-static TerrainCommand TranslateCommandTerrainHeightLayerStrataCpuSettings(StackAllocator* alloc, TerrainHeightLayerStrataCpuSettings& cpu_settings) {
-	auto& gpu_settings = *NewFromAlloc(alloc, TerrainHeightLayerStrataGpuSettings);
+static void TranslateCommandTerrainHeightLayerStrataCpuSettings(RecordContext* record_context, Array<TerrainCommand>& commands, s32 frequency_band, u32& height_field_epoch, TerrainHeightLayerStrataCpuSettings& cpu_settings) {
+	auto& gpu_settings = *NewFromAlloc(record_context->alloc, TerrainHeightLayerStrataGpuSettings);
 	gpu_settings.random_seed          = cpu_settings.random_seed;
 	gpu_settings.inv_period           = 1.f / cpu_settings.period;
 	gpu_settings.tilt                 = Math::CosSin(cpu_settings.tilt * Math::degrees_to_radians);
 	gpu_settings.rotation             = Math::CosSin(cpu_settings.rotation * Math::degrees_to_radians);
 	gpu_settings.randomness           = cpu_settings.randomness;
-	gpu_settings.amount               = cpu_settings.amount;
+	gpu_settings.amount               = cpu_settings.amount[frequency_band] * cpu_settings.amount.scale;
 	gpu_settings.inv_distortion_scale = 1.f / cpu_settings.distortion_scale;
 	gpu_settings.distortion_amount    = cpu_settings.distortion_amount;
 	gpu_settings.octave_count         = cpu_settings.octave_count;
@@ -141,27 +144,30 @@ static TerrainCommand TranslateCommandTerrainHeightLayerStrataCpuSettings(StackA
 	gpu_settings.gain                 = cpu_settings.gain;
 	
 	TerrainCommand command;
-	command.type     = TerrainEditorCommandType::TerrainHeightLayerStrata;
-	command.bindings = TerrainCommandBindings::DstHeight | TerrainCommandBindings::SrcHeight;
-	command.SetGpuSettings(gpu_settings);
-	return command;
+	command.type      = TerrainEditorCommandType::TerrainHeightLayerStrata;
+	command.bindings  = TerrainCommandBindings::DstHeight | TerrainCommandBindings::SrcHeight;
+	command.frequency_band = frequency_band;
+	command.SetGpuSettings(record_context, gpu_settings);
+	AppendTerrainCommand(commands, command, record_context, height_field_epoch);
 }
 
-static void TranslateCommandTerrainHeightLayerErosionCpuSettings(StackAllocator* alloc, Array<TerrainCommand>& commands, u32& height_field_epoch, TerrainHeightLayerErosionCpuSettings& cpu_settings) {
+static void TranslateCommandTerrainHeightLayerErosionCpuSettings(RecordContext* record_context, Array<TerrainCommand>& commands, s32 frequency_band, u32& height_field_epoch, TerrainHeightLayerErosionCpuSettings& cpu_settings) {
 	using Bindings = TerrainCommandBindings;
+	u32 fluvial_iteration_count = (u32)Math::Max((float)cpu_settings.fluvial_iteration_count * cpu_settings.amount[frequency_band] * cpu_settings.amount.scale, 0.f);
 	
-	if (cpu_settings.fluvial_iteration_count != 0) {
+	if (fluvial_iteration_count != 0) {
 		TerrainCommand command;
-		command.type     = TerrainEditorCommandType::TerrainHeightLayerErosionClear;
-		command.bindings = Bindings::DstFlow | Bindings::DstFlowX | Bindings::DstFlowY | Bindings::DstFlowW | Bindings::DstErosion;
-		AppendTerrainCommand(commands, alloc, command, height_field_epoch);
+		command.type      = TerrainEditorCommandType::TerrainHeightLayerErosionClear;
+		command.bindings  = Bindings::DstFlow | Bindings::DstFlowX | Bindings::DstFlowY | Bindings::DstFlowW | Bindings::DstErosion;
+		command.frequency_band = frequency_band;
+		AppendTerrainCommand(commands, command, record_context, height_field_epoch);
 	}
 	
-	for (u32 i = 0; i < cpu_settings.fluvial_iteration_count; i += 1) {
-		auto& gpu_settings = *NewFromAlloc(alloc, TerrainHeightLayerErosionGpuSettings);
+	for (u32 i = 0; i < fluvial_iteration_count; i += 1) {
+		auto& gpu_settings = *NewFromAlloc(record_context->alloc, TerrainHeightLayerErosionGpuSettings);
 		gpu_settings.random_seed              = (u32)ComputeHash64(((u64)cpu_settings.random_seed << 32) | i);
 		gpu_settings.iteration_index          = i;
-		gpu_settings.iteration_count          = cpu_settings.fluvial_iteration_count;
+		gpu_settings.iteration_count          = fluvial_iteration_count;
 		gpu_settings.fluvial_inertia          = cpu_settings.fluvial_inertia;
 		gpu_settings.fluvial_viscosity        = cpu_settings.fluvial_viscosity;
 		gpu_settings.fluvial_erosion_rate     = cpu_settings.fluvial_erosion_rate;
@@ -171,56 +177,70 @@ static void TranslateCommandTerrainHeightLayerErosionCpuSettings(StackAllocator*
 		
 		{
 			TerrainCommand command;
-			command.type     = TerrainEditorCommandType::TerrainHeightLayerErosionSimulate;
-			command.bindings = Bindings::SrcHeight | Bindings::SrcFlow | Bindings::DstFlowX | Bindings::DstFlowY | Bindings::DstFlowW | Bindings::DstErosion;
-			command.SetGpuSettings(gpu_settings);
-			AppendTerrainCommand(commands, alloc, command, height_field_epoch);
+			command.type      = TerrainEditorCommandType::TerrainHeightLayerErosionSimulate;
+			command.bindings  = Bindings::SrcHeight | Bindings::SrcFlow | Bindings::DstFlowX | Bindings::DstFlowY | Bindings::DstFlowW | Bindings::DstErosion;
+			command.frequency_band = frequency_band;
+			command.SetGpuSettings(record_context, gpu_settings);
+			AppendTerrainCommand(commands, command, record_context, height_field_epoch);
 		}
 		
 		{
 			TerrainCommand command;
-			command.type     = TerrainEditorCommandType::TerrainHeightLayerErosionApply;
-			command.bindings = Bindings::SrcHeight | Bindings::DstHeight | Bindings::DstFlow | Bindings::DstFlowX | Bindings::DstFlowY | Bindings::DstFlowW | Bindings::DstErosion;
-			command.SetGpuSettings(gpu_settings);
-			AppendTerrainCommand(commands, alloc, command, height_field_epoch);
+			command.type      = TerrainEditorCommandType::TerrainHeightLayerErosionApply;
+			command.bindings  = Bindings::SrcHeight | Bindings::DstHeight | Bindings::DstFlow | Bindings::DstFlowX | Bindings::DstFlowY | Bindings::DstFlowW | Bindings::DstErosion;
+			command.frequency_band = frequency_band;
+			command.SetGpuSettings(record_context, gpu_settings);
+			AppendTerrainCommand(commands, command, record_context, height_field_epoch);
 		}
 	}
 }
 	
-
-static ArrayView<TerrainCommand> TranslateCommands(StackAllocator* alloc, WorldEntitySystem* world_system, ArrayView<GuidComponent> layer_entity_guids) {
+static ArrayView<TerrainCommand> TranslateCommands(RecordContext* record_context, WorldEntitySystem* world_system, ArrayView<GuidComponent> layer_entity_guids, s32 min_frequency_band, s32 mip_level_count) {
 	Array<TerrainCommand> commands;
-	ArrayReserve(commands, alloc, layer_entity_guids.count + 2);
+	ArrayReserve(commands, record_context->alloc, layer_entity_guids.count * 8);
 	u32 height_field_epoch = 0;
 	
-	{
-		TerrainCommand command;
-		command.type     = TerrainEditorCommandType::Clear;
-		command.bindings = TerrainCommandBindings::DstHeight;
-		AppendTerrainCommand(commands, alloc, command, height_field_epoch);
-	}
-	
-	for (auto [layer_entity_guid] : layer_entity_guids) {
-		auto layer = QueryEntityByGUID<TerrainEditorLayerSettingsQuery>(*world_system, layer_entity_guid);
+	s32 last_mip_index = mip_level_count - 1;
+	for (s32 mip_index = last_mip_index; mip_index >= 0; mip_index -= 1) {
+		s32 frequency_band = mip_index + TerrainEditorEqualizer::min_frequency_band;
 		
-		TerrainCommand command;
-		if (layer.noise_cpu_settings != nullptr) {
-			command = TranslateCommandTerrainHeightLayerNoiseCpuSettings(alloc, *layer.noise_cpu_settings);
-		} else if (layer.distortion_cpu_settings != nullptr) {
-			command = TranslateCommandTerrainHeightLayerDistortionCpuSettings(alloc, *layer.distortion_cpu_settings);
-		} else if (layer.strata_cpu_settings != nullptr) {
-			command = TranslateCommandTerrainHeightLayerStrataCpuSettings(alloc, *layer.strata_cpu_settings);
-		} else if (layer.erosion_cpu_settings != nullptr) {
-			TranslateCommandTerrainHeightLayerErosionCpuSettings(alloc, commands, height_field_epoch, *layer.erosion_cpu_settings);
+		if (mip_index == last_mip_index) {
+			TerrainCommand command;
+			command.type      = TerrainEditorCommandType::Clear;
+			command.bindings  = TerrainCommandBindings::DstHeight;
+			command.frequency_band = frequency_band;
+			AppendTerrainCommand(commands, command, record_context, height_field_epoch);
+		} else {
+			TerrainCommand command;
+			command.type      = TerrainEditorCommandType::Upscale;
+			command.bindings  = TerrainCommandBindings::SrcHeight | TerrainCommandBindings::DstHeight;
+			command.frequency_band = frequency_band;
+			AppendTerrainCommand(commands, command, record_context, height_field_epoch);
 		}
-		AppendTerrainCommand(commands, alloc, command, height_field_epoch);
+		
+		if (frequency_band >= min_frequency_band) {
+			for (auto [layer_entity_guid] : layer_entity_guids) {
+				auto layer = QueryEntityByGUID<TerrainEditorLayerSettingsQuery>(*world_system, layer_entity_guid);
+				
+				if (layer.noise_cpu_settings != nullptr) {
+					TranslateCommandTerrainHeightLayerNoiseCpuSettings(record_context, commands, frequency_band, height_field_epoch, *layer.noise_cpu_settings);
+				} else if (layer.distortion_cpu_settings != nullptr) {
+					TranslateCommandTerrainHeightLayerDistortionCpuSettings(record_context, commands, frequency_band, height_field_epoch, *layer.distortion_cpu_settings);
+				} else if (layer.strata_cpu_settings != nullptr) {
+					TranslateCommandTerrainHeightLayerStrataCpuSettings(record_context, commands, frequency_band, height_field_epoch, *layer.strata_cpu_settings);
+				} else if (layer.erosion_cpu_settings != nullptr) {
+					TranslateCommandTerrainHeightLayerErosionCpuSettings(record_context, commands, frequency_band, height_field_epoch, *layer.erosion_cpu_settings);
+				}
+			}
+		}
 	}
 	
 	if ((height_field_epoch & 0x1) == 0) {
 		TerrainCommand command;
-		command.type     = TerrainEditorCommandType::Copy;
-		command.bindings = TerrainCommandBindings::DstHeight | TerrainCommandBindings::SrcHeight;
-		AppendTerrainCommand(commands, alloc, command, height_field_epoch);
+		command.type      = TerrainEditorCommandType::Copy;
+		command.bindings  = TerrainCommandBindings::DstHeight | TerrainCommandBindings::SrcHeight;
+		command.frequency_band = TerrainEditorEqualizer::min_frequency_band;
+		AppendTerrainCommand(commands, command, record_context, height_field_epoch);
 	}
 	
 	return commands;
@@ -236,63 +256,83 @@ void TerrainEditorLayersRenderPass::RecordPass(RecordContext* record_context) {
 	
 	auto layer_stack_entity = QueryFirstEntityByType<TerrainEditorLayerStackEntityType>(*world_system);
 	auto& layer_entity_guids = layer_stack_entity.hierarchy->children;
+	auto& preview_state = *layer_stack_entity.preview_state;
 	
 	CmdSetRootSignature(record_context, root_signature);
 	CmdSetPipelineState(record_context, pipeline_id);
 	
 	auto render_target_size = GetTextureSize(record_context, VirtualResourceID::TerrainHeightField0);
 	
+	auto* alloc = record_context->alloc;
+	
+	HashTable<u64, Descriptors*> descriptor_table_cache;
+	HashTableReserve(descriptor_table_cache, alloc, 128);
+	
 	u32 height_field_epoch = 0;
-	for (auto& command : TranslateCommands(record_context->alloc, world_system, layer_entity_guids)) {
-		auto layer_constants = AllocateTransientUploadBuffer(record_context, command.gpu_settings_size);
-		memcpy(layer_constants.cpu_address, command.gpu_settings, command.gpu_settings_size);
+	for (auto& command : TranslateCommands(record_context, world_system, layer_entity_guids, preview_state.min_frequency_band, render_target_size.mips)) {
+		u32 mip_index = command.frequency_band - TerrainEditorEqualizer::min_frequency_band;
 		
 		RootSignature::PushConstants constants;
 		constants.command_type           = command.type;
-		constants.render_target_size     = render_target_size.x;
-		constants.inv_render_target_size = 1.f / render_target_size.x;
+		constants.layer_constants_offset = command.gpu_settings_offset;
+		constants.render_target_size     = render_target_size.x >> (u32)mip_index;
+		constants.inv_render_target_size = 1.f / constants.render_target_size;
 		
-		auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
-		descriptor_table.layer_constants.Bind(layer_constants.gpu_address, sizeof(TerrainHeightLayerNoiseGpuSettings));
 		
-		if (HasAnyFlags(command.bindings, TerrainCommandBindings::SrcHeight)) {
-			descriptor_table.height_field_0 = height_field_epoch & 0x1 ? VirtualResourceID::TerrainHeightField0 : VirtualResourceID::TerrainHeightField1;
+		u64 descriptor_table_key = 0;
+		descriptor_table_key |= (u64)command.bindings;
+		descriptor_table_key |= (u64)mip_index << 32;
+		
+		if (HasAnyFlags(command.bindings, TerrainCommandBindings::SrcHeight | TerrainCommandBindings::DstHeight)) {
+			descriptor_table_key |= (u64)(height_field_epoch & 0x1) << 38;
 		}
 		
-		if (HasAnyFlags(command.bindings, TerrainCommandBindings::DstHeight)) {
-			descriptor_table.height_field_1 = height_field_epoch & 0x1 ? VirtualResourceID::TerrainHeightField1 : VirtualResourceID::TerrainHeightField0;
+		auto [descriptor_cache_entry, is_added] = HashTableAddOrFind(descriptor_table_cache, alloc, descriptor_table_key, (Descriptors*)nullptr);
+		if (is_added) {
+			auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
+			descriptor_cache_entry->value = &descriptor_table;
+			
+			if (HasAnyFlags(command.bindings, TerrainCommandBindings::SrcHeight)) {
+				auto resource_id = height_field_epoch & 0x1 ? VirtualResourceID::TerrainHeightField0 : VirtualResourceID::TerrainHeightField1;
+				descriptor_table.height_field_0.Bind(resource_id, mip_index);
+			}
+			
+			if (HasAnyFlags(command.bindings, TerrainCommandBindings::DstHeight)) {
+				auto resource_id = height_field_epoch & 0x1 ? VirtualResourceID::TerrainHeightField1 : VirtualResourceID::TerrainHeightField0;
+				descriptor_table.height_field_1.Bind(resource_id, mip_index);
+			}
+			
+			if (HasAnyFlags(command.bindings, TerrainCommandBindings::SrcFlow)) {
+				descriptor_table.flow_field_0.Bind(VirtualResourceID::TerrainFlowField, mip_index);
+			} else if (HasAnyFlags(command.bindings, TerrainCommandBindings::DstFlow)) {
+				descriptor_table.flow_field_1.Bind(VirtualResourceID::TerrainFlowField, mip_index);
+			}
+			
+			if (HasAnyFlags(command.bindings, TerrainCommandBindings::DstFlowX)) {
+				descriptor_table.flow_field_x_1.Bind(VirtualResourceID::TerrainFlowFieldX, mip_index);
+			}
+			
+			if (HasAnyFlags(command.bindings, TerrainCommandBindings::DstFlowY)) {
+				descriptor_table.flow_field_y_1.Bind(VirtualResourceID::TerrainFlowFieldY, mip_index);
+			}
+			
+			if (HasAnyFlags(command.bindings, TerrainCommandBindings::DstFlowW)) {
+				descriptor_table.flow_field_w_1.Bind(VirtualResourceID::TerrainFlowFieldW, mip_index);
+			}
+			
+			if (HasAnyFlags(command.bindings, TerrainCommandBindings::DstErosion)) {
+				descriptor_table.erosion_field_1.Bind(VirtualResourceID::TerrainErosionField, mip_index);
+			}
 		}
 		
-		if (HasAnyFlags(command.bindings, TerrainCommandBindings::SrcFlow)) {
-			descriptor_table.flow_field_0 = VirtualResourceID::TerrainFlowField;
-		} else if (HasAnyFlags(command.bindings, TerrainCommandBindings::DstFlow)) {
-			descriptor_table.flow_field_1 = VirtualResourceID::TerrainFlowField;
-		}
 		
-		if (HasAnyFlags(command.bindings, TerrainCommandBindings::DstFlowX)) {
-			descriptor_table.flow_field_x_1 = VirtualResourceID::TerrainFlowFieldX;
-		}
-		
-		if (HasAnyFlags(command.bindings, TerrainCommandBindings::DstFlowY)) {
-			descriptor_table.flow_field_y_1 = VirtualResourceID::TerrainFlowFieldY;
-		}
-		
-		if (HasAnyFlags(command.bindings, TerrainCommandBindings::DstFlowW)) {
-			descriptor_table.flow_field_w_1 = VirtualResourceID::TerrainFlowFieldW;
-		}
-		
-		if (HasAnyFlags(command.bindings, TerrainCommandBindings::DstErosion)) {
-			descriptor_table.erosion_field_1 = VirtualResourceID::TerrainErosionField;
-		}
-		
-		
-		CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
+		CmdSetRootArgument(record_context, root_signature.descriptor_table, *descriptor_cache_entry->value);
 		CmdSetRootArgument(record_context, root_signature.constants, constants);
 		
 		if (command.type == TerrainEditorCommandType::TerrainHeightLayerErosionSimulate) {
-			CmdDispatch(record_context, DivideAndRoundUp(uint2(render_target_size), 64u));
+			CmdDispatch(record_context, DivideAndRoundUp(uint2(render_target_size) >> mip_index, 64u));
 		} else {
-			CmdDispatch(record_context, DivideAndRoundUp(uint2(render_target_size), 16u));
+			CmdDispatch(record_context, DivideAndRoundUp(uint2(render_target_size) >> mip_index, 16u));
 		}
 		
 		if (HasAnyFlags(command.bindings, TerrainCommandBindings::DstHeight)) {

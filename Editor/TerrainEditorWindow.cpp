@@ -5,6 +5,7 @@
 #include "Engine/UndoRedoSystem.h"
 #include "Renderer/TerrainEditorEntities.h"
 
+#include <SDK/imgui/imgui_internal.h>
 
 static void TerrainLayerCreationComboBox(UndoRedoSystem& undo_redo_system, WorldEntitySystem& world_system, EditorSelectionStateEntity selection_state_entity, TerrainEditorLayerStackEntityType layer_stack_entity) {
 	static const EntityTypeID creatable_entity_type_ids[] = {
@@ -43,6 +44,9 @@ void TerrainEditorWindow(StackAllocator* alloc, UndoRedoSystem& undo_redo_system
 	
 	auto layer_stack_entity = QueryFirstEntityByType<TerrainEditorLayerStackEntityType>(world_system);
 	auto& selected_entities_hash_table = selection_state_entity.selection_state->selected_entities_hash_table;
+	
+	ImGui::SetNextItemWidth(-FLT_MIN);
+	ImGui::SliderInt("##MinFrequencyBand", &layer_stack_entity.preview_state->min_frequency_band, TerrainEditorEqualizer::min_frequency_band, TerrainEditorEqualizer::max_frequency_band, "Frequency Cutoff: %d", ImGuiSliderFlags_AlwaysClamp);
 	
 	bool is_open = ImGui::CollapsingHeader("Height Layers", ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_AllowOverlap);
 	TerrainLayerCreationComboBox(undo_redo_system, world_system, selection_state_entity, layer_stack_entity);
@@ -117,5 +121,73 @@ void TerrainEditorWindow(StackAllocator* alloc, UndoRedoSystem& undo_redo_system
 			ArrayInsert(children, drop_to_index < index ? drop_to_index : (drop_to_index - 1), GuidComponent{ dropped_guid });
 			EndUndoRedoCommand(undo_redo_system);
 		}
+	}
+}
+
+
+static void TerrainEditorEqualizerWidget(const char* label, TerrainEditorEqualizer& equalizer) {
+	ImGui::BeginGroup();
+	ImGui::PushID(label);
+	
+	float width = ImGui::CalcItemWidth();
+	float height = ImMin(width * 0.5f, ImGui::GetFrameHeight() * 8.f);
+	ImGui::PushMultiItemsWidths(equalizer.frequency_band_count, width);
+	
+	auto& style = ImGui::GetStyle();
+	for (s32 i = equalizer.min_frequency_band; i <= equalizer.max_frequency_band; i += 1) {
+		ImGui::PushID(i);
+		if (i > equalizer.min_frequency_band) {
+			ImGui::SameLine(0.f, style.ItemInnerSpacing.x);
+		}
+		
+		char format_string[32] = {};
+		ImFormatString(format_string, IM_ARRAYSIZE(format_string), "%d", i);
+		
+		ImGui::VSliderFloat("", ImVec2(ImGui::CalcItemWidth(), height), &equalizer[i], 0.f, 1.f, format_string);
+		ImGui::SetItemTooltip("%.3f", equalizer[i]);
+		
+		ImGui::PopID();
+		ImGui::PopItemWidth();
+	}
+	
+	compile_const char* terrain_editor_equalizer_preset_names[(u32)TerrainEditorEqualizerPreset::Count] = {
+		"None",
+		"Neutral",
+		"Low Pass",
+		"High Pass",
+		"Linear",
+		"Inverse Linear",
+		"V Shaped",
+		"Inverse V Shaped",
+		"U Shaped",
+		"Inverse U Shaped",
+	};
+	
+	if (ImGui::BeginCombo("##Preset", "Preset", ImGuiComboFlags_WidthFitPreview)) {
+		for (u32 i = (u32)TerrainEditorEqualizerPreset::Neutral; i < (u32)TerrainEditorEqualizerPreset::Count; i += 1) {
+			ImGuiScopeID(i);
+			
+			if (ImGui::Selectable(terrain_editor_equalizer_preset_names[i], false)) {
+				equalizer = TerrainEditorEqualizer::MakePreset((TerrainEditorEqualizerPreset)i, equalizer.scale);
+			}
+		}
+		ImGui::EndCombo();
+	}
+	
+	ImGui::SameLine();
+	ImGui::SetNextItemWidth(-FLT_MIN);
+	ImGui::SliderFloat("##OverallScale", &equalizer.scale, 0.f, 1.f, "Scale: %.3f");
+	
+	ImGui::PopID();
+	ImGui::EndGroup();
+}
+
+void TableTerrainEditorEqualizerWidget(const char* label, TerrainEditorEqualizer& equalizer) {
+	if (ImGui::BeginTableItem(label)) {
+		// Would be nice to span all columns of the table, but it doesn't seem like there is a way to do it in ImGui
+		// without changing how the property editor works. We would need to end the current table and start a new one.
+		TerrainEditorEqualizerWidget("", equalizer);
+		
+		ImGui::EndTableItem();
 	}
 }

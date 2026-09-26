@@ -5,6 +5,8 @@
 #include "Engine/UndoRedoSystem.h"
 #include "Renderer/TerrainEditorEntities.h"
 
+extern void TableTerrainEditorEqualizerWidget(const char* label, TerrainEditorEqualizer& equalizer);
+
 static void SharedComponentEntityView(StackAllocator* alloc, EntitySystemBase& entity_system, SharedEntityEditorQuery entity) {
 	if (entity.guid) {
 		auto guid_string = StringFormat(alloc, "0x%"_sl, (void*)entity.guid->guid);
@@ -300,6 +302,8 @@ static void WorldComponentEntityView(StackAllocator* alloc, WorldEntitySystem& w
 	if (entity.terrain_height_layer_noise_cpu_settings) {
 		auto& settings = *entity.terrain_height_layer_noise_cpu_settings;
 		
+		TableTerrainEditorEqualizerWidget("Strength", settings.amount);
+		
 		if (ImGui::TableCollapsingHeader("Noise", ImGuiTreeNodeFlags_DefaultOpen)) {
 			ImGuiScopeID("Noise");
 			
@@ -312,7 +316,7 @@ static void WorldComponentEntityView(StackAllocator* alloc, WorldEntitySystem& w
 			ImGui::TableDragFloat("Scale", &settings.scale);
 			ImGui::TableSliderFloat("Anisotropy", &settings.anisotropy, -1.f, 1.f);
 			ImGui::TableSliderFloat("Rotation", &settings.rotation, -180.f, 180.f);
-			ImGui::TableDragFloat("Amplitude", &settings.amplitude);
+			ImGui::TableDragFloat("Amplitude", &settings.amplitude, 0.1f);
 		}
 		
 		if (ImGui::TableCollapsingHeader("Octaves", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -329,13 +333,15 @@ static void WorldComponentEntityView(StackAllocator* alloc, WorldEntitySystem& w
 			ImGui::TableCombo("Type", (s32*)&settings.distortion_type, "None\0Gradient\0", (s32)TerrainEditorDistortionType::Count);
 			
 			ImGui::TableDragFloat("Scale", &settings.distortion_scale, 0.25f);
-			ImGui::TableDragFloat("Amplitude", &settings.distortion_amplitude, 0.25f);
+			ImGui::TableDragFloat("Amplitude", &settings.distortion_amplitude, 0.1f);
 			ImGui::TableSliderU32("Octave Count", &settings.distortion_octave_count, 1, 6, "%u", ImGuiSliderFlags_AlwaysClamp);
 		}
 	}
 	
 	if (entity.terrain_height_layer_distortion_cpu_settings) {
 		auto& settings = *entity.terrain_height_layer_distortion_cpu_settings;
+		
+		TableTerrainEditorEqualizerWidget("Strength", settings.amount);
 		
 		if (ImGui::TableCollapsingHeader("Noise", ImGuiTreeNodeFlags_DefaultOpen)) {
 			ImGuiScopeID("Noise");
@@ -349,7 +355,7 @@ static void WorldComponentEntityView(StackAllocator* alloc, WorldEntitySystem& w
 			ImGui::TableDragFloat("Scale", &settings.scale);
 			ImGui::TableSliderFloat("Anisotropy", &settings.anisotropy, -1.f, 1.f);
 			ImGui::TableSliderFloat("Rotation", &settings.rotation, -180.f, 180.f);
-			ImGui::TableDragFloat("Amplitude", &settings.amplitude);
+			ImGui::TableDragFloat("Amplitude", &settings.amplitude, 0.1f);
 		}
 		
 		if (ImGui::TableCollapsingHeader("Octaves", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -364,6 +370,8 @@ static void WorldComponentEntityView(StackAllocator* alloc, WorldEntitySystem& w
 	if (entity.terrain_height_layer_strata_cpu_settings) {
 		auto& settings = *entity.terrain_height_layer_strata_cpu_settings;
 		
+		TableTerrainEditorEqualizerWidget("Strength", settings.amount);
+		
 		if (ImGui::TableCollapsingHeader("Strata", ImGuiTreeNodeFlags_DefaultOpen)) {
 			ImGuiScopeID("Strata");
 			
@@ -376,7 +384,6 @@ static void WorldComponentEntityView(StackAllocator* alloc, WorldEntitySystem& w
 			ImGui::TableSliderFloat("Tilt", &settings.tilt, -90.f, 90.f);
 			ImGui::TableSliderFloat("Rotation", &settings.rotation, -180.f, 180.f);
 			ImGui::TableSliderFloat("Randomness", &settings.randomness, 0.f, 1.f);
-			ImGui::TableSliderFloat("Amount", &settings.amount, 0.f, 1.f);
 		}
 		
 		if (ImGui::TableCollapsingHeader("Octaves", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -397,6 +404,8 @@ static void WorldComponentEntityView(StackAllocator* alloc, WorldEntitySystem& w
 	
 	if (entity.terrain_height_layer_erosion_cpu_settings) {
 		auto& settings = *entity.terrain_height_layer_erosion_cpu_settings;
+		
+		TableTerrainEditorEqualizerWidget("Strength", settings.amount);
 		
 		if (ImGui::TableCollapsingHeader("Fluvial", ImGuiTreeNodeFlags_DefaultOpen)) {
 			ImGuiScopeID("Fluvial");
