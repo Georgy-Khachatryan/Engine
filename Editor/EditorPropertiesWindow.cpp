@@ -318,11 +318,7 @@ static void WorldComponentEntityView(StackAllocator* alloc, WorldEntitySystem& w
 		if (ImGui::TableCollapsingHeader("Octaves", ImGuiTreeNodeFlags_DefaultOpen)) {
 			ImGuiScopeID("Octaves");
 			
-			if (ImGui::BeginTableItem("Octave Count")) {
-				ImGui::SliderInt("", (s32*)&settings.octave_count, 1, 10, "%d", ImGuiSliderFlags_AlwaysClamp);
-				ImGui::EndTableItem();
-			}
-			
+			ImGui::TableSliderU32("Octave Count", &settings.octave_count, 1, 10, "%u", ImGuiSliderFlags_AlwaysClamp);
 			ImGui::TableDragFloat("Lacunarity", &settings.lacunarity, 0.01f);
 			ImGui::TableDragFloat("Gain", &settings.gain, 0.01f);
 		}
@@ -334,11 +330,7 @@ static void WorldComponentEntityView(StackAllocator* alloc, WorldEntitySystem& w
 			
 			ImGui::TableDragFloat("Scale", &settings.distortion_scale, 0.25f);
 			ImGui::TableDragFloat("Amplitude", &settings.distortion_amplitude, 0.25f);
-			
-			if (ImGui::BeginTableItem("Octave Count")) {
-				ImGui::SliderInt("", (s32*)&settings.distortion_octave_count, 1, 6, "%d", ImGuiSliderFlags_AlwaysClamp);
-				ImGui::EndTableItem();
-			}
+			ImGui::TableSliderU32("Octave Count", &settings.distortion_octave_count, 1, 6, "%u", ImGuiSliderFlags_AlwaysClamp);
 		}
 	}
 	
@@ -363,11 +355,7 @@ static void WorldComponentEntityView(StackAllocator* alloc, WorldEntitySystem& w
 		if (ImGui::TableCollapsingHeader("Octaves", ImGuiTreeNodeFlags_DefaultOpen)) {
 			ImGuiScopeID("Octaves");
 			
-			if (ImGui::BeginTableItem("Octave Count")) {
-				ImGui::SliderInt("", (s32*)&settings.octave_count, 1, 10, "%d", ImGuiSliderFlags_AlwaysClamp);
-				ImGui::EndTableItem();
-			}
-			
+			ImGui::TableSliderU32("Octave Count", &settings.octave_count, 1, 10, "%u", ImGuiSliderFlags_AlwaysClamp);
 			ImGui::TableDragFloat("Lacunarity", &settings.lacunarity, 0.01f);
 			ImGui::TableDragFloat("Gain", &settings.gain, 0.01f);
 		}
@@ -394,11 +382,7 @@ static void WorldComponentEntityView(StackAllocator* alloc, WorldEntitySystem& w
 		if (ImGui::TableCollapsingHeader("Octaves", ImGuiTreeNodeFlags_DefaultOpen)) {
 			ImGuiScopeID("Octaves");
 			
-			if (ImGui::BeginTableItem("Octave Count")) {
-				ImGui::SliderInt("", (s32*)&settings.octave_count, 1, 10, "%d", ImGuiSliderFlags_AlwaysClamp);
-				ImGui::EndTableItem();
-			}
-			
+			ImGui::TableSliderU32("Octave Count", &settings.octave_count, 1, 10, "%u", ImGuiSliderFlags_AlwaysClamp);
 			ImGui::TableDragFloat("Lacunarity", &settings.lacunarity, 0.01f, 1.f, FLT_MAX);
 			ImGui::TableDragFloat("Gain", &settings.gain, 0.01f, 0.f, 1.f);
 		}
@@ -408,6 +392,27 @@ static void WorldComponentEntityView(StackAllocator* alloc, WorldEntitySystem& w
 			
 			ImGui::TableDragFloat("Scale", &settings.distortion_scale, 0.25f, 1.f, FLT_MAX);
 			ImGui::TableSliderFloat("Amount", &settings.distortion_amount, 0.f, 1.f);
+		}
+	}
+	
+	if (entity.terrain_height_layer_erosion_cpu_settings) {
+		auto& settings = *entity.terrain_height_layer_erosion_cpu_settings;
+		
+		if (ImGui::TableCollapsingHeader("Fluvial", ImGuiTreeNodeFlags_DefaultOpen)) {
+			ImGuiScopeID("Fluvial");
+			
+			if (ImGui::BeginTableItem("Seed")) {
+				ImGui::InputInt("", (s32*)&settings.random_seed);
+				ImGui::EndTableItem();
+			}
+			
+			ImGui::TableSliderU32("Iteration Count", &settings.fluvial_iteration_count, 0, 256);
+			ImGui::TableSliderFloat("Droplet Inertia", &settings.fluvial_inertia, 0.f, 1.f);
+			ImGui::TableSliderFloat("Fluid Viscosity", &settings.fluvial_viscosity, 0.f, 1.f);
+			ImGui::TableSliderFloat("Erosion Rate", &settings.fluvial_erosion_rate, 0.f, 1.f);
+			ImGui::TableSliderFloat("Deposition Rate", &settings.fluvial_deposition_rate, 0.f, 1.f);
+			ImGui::TableSliderFloat("Evaporation Rate", &settings.fluvial_evaporation_rate, 0.f, 1.f);
+			ImGui::TableSliderFloat("Initial Water", &settings.fluvial_initial_water, 0.f, 2.f);
 		}
 	}
 }

@@ -410,6 +410,19 @@ struct TerrainHeightLayerDistortionCpuSettings {
 	}
 }
 
+struct TerrainHeightLayerErosionCpuSettings {
+	/*Version*/ 1 {
+		random_seed u32 0;
+		fluvial_iteration_count u32 0;
+		fluvial_inertia float32 0;
+		fluvial_viscosity float32 0;
+		fluvial_erosion_rate float32 0;
+		fluvial_deposition_rate float32 0;
+		fluvial_evaporation_rate float32 0;
+		fluvial_initial_water float32 0;
+	}
+}
+
 struct TerrainHeightLayerNoiseCpuSettings {
 	/*Version*/ 1 {
 		type TerrainEditorNoiseType 1;

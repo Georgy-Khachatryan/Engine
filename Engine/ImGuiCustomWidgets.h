@@ -67,6 +67,7 @@ namespace ImGui {
 	bool TableDragFloatWithReset(const char* label, float* data, u32 component_count, float v_speed = 1.f, float v_min = 0.f, float v_max = 0.f, const char* format = "%.3f", ImGuiSliderFlags flags = 0, const char* const* component_labels = nullptr, const float* default_values = nullptr);
 	bool TableDragFloat(const char* label, float* data, float v_speed = 1.f, float v_min = 0.f, float v_max = 0.f, const char* format = "%.3f", ImGuiSliderFlags flags = 0);
 	bool TableSliderFloat(const char* label, float* v, float v_min, float v_max, const char* format = "%.3f", ImGuiSliderFlags flags = 0);
+	bool TableSliderU32(const char* label, u32* v, u32 v_min, u32 v_max, const char* format = "%u", ImGuiSliderFlags flags = 0);
 	bool TableCheckbox(const char* label, bool* value);
 	bool TableCombo(const char* label, s32* current_item, const char* items_separated_by_zeros, s32 popup_max_height_in_items = -1);
 	bool TableCombo(const char* label, s32* current_item, const char* const items[], s32 items_count, s32 popup_max_height_in_items = -1);

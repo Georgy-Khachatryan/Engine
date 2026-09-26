@@ -144,6 +144,11 @@ enum struct VirtualResourceID : u32 {
 	// Terrain Editor:
 	TerrainHeightField0,
 	TerrainHeightField1,
+	TerrainFlowField,
+	TerrainFlowFieldX,
+	TerrainFlowFieldY,
+	TerrainFlowFieldW,
+	TerrainErosionField,
 	
 	// Debug geometry:
 	DebugGeometryDepthStencil,
@@ -1965,8 +1970,15 @@ struct TerrainEditorLayersRenderPass {
 	struct Descriptors : HLSL::BaseDescriptorTable {
 		HLSL::ByteBuffer layer_constants;
 		
-		HLSL::Texture2D<float>   height_field_0;
-		HLSL::RWTexture2D<float> height_field_1;
+		HLSL::Texture2D<float>  height_field_0;
+		HLSL::Texture2D<float2> flow_field_0;
+		
+		HLSL::RWTexture2D<float>  height_field_1;
+		HLSL::RWTexture2D<float2> flow_field_1;
+		HLSL::RWTexture2D<s32>    flow_field_x_1;
+		HLSL::RWTexture2D<s32>    flow_field_y_1;
+		HLSL::RWTexture2D<s32>    flow_field_w_1;
+		HLSL::RWTexture2D<s32>    erosion_field_1;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {

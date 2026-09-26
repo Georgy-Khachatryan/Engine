@@ -11,6 +11,7 @@ static void TerrainLayerCreationComboBox(UndoRedoSystem& undo_redo_system, World
 		ECS::GetEntityTypeID<TerrainHeightLayerNoiseEntityType>::id,
 		ECS::GetEntityTypeID<TerrainHeightLayerDistortionEntityType>::id,
 		ECS::GetEntityTypeID<TerrainHeightLayerStrataEntityType>::id,
+		ECS::GetEntityTypeID<TerrainHeightLayerErosionEntityType>::id,
 	};
 	
 	auto& style = ImGui::GetStyle();
@@ -64,6 +65,9 @@ void TerrainEditorWindow(StackAllocator* alloc, UndoRedoSystem& undo_redo_system
 			auto entity_type_name = entity_type_name_table[entity_type_id.index];
 			
 			auto cursor_position_before = ImGui::GetCursorScreenPos();
+			
+			ImGui::Bullet();
+			ImGui::SameLine();
 			
 			auto name = terrain_layer.name->name;
 			if (ImGui::Selectable(name.data ? name.data : entity_type_name.data, is_selected)) {

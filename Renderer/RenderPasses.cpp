@@ -122,8 +122,13 @@ static void BuildResourceTable(RecordContext* record_context, WorldEntitySystem*
 	
 	u32 height_field_size      = 2048;
 	u32 height_field_mip_count = Math::Min(FirstBitHigh32(height_field_size) + 1, ParallelReductionSettings::max_mip_count + 1);
-	table.Set(ID::TerrainHeightField0, TextureSize(TextureFormat::R32_FLOAT, uint2(height_field_size, height_field_size), 1, height_field_mip_count));
-	table.Set(ID::TerrainHeightField1, TextureSize(TextureFormat::R32_FLOAT, uint2(height_field_size, height_field_size), 1, height_field_mip_count));
+	table.Set(ID::TerrainHeightField0,   TextureSize(TextureFormat::R32_FLOAT,    uint2(height_field_size, height_field_size), 1, height_field_mip_count));
+	table.Set(ID::TerrainHeightField1,   TextureSize(TextureFormat::R32_FLOAT,    uint2(height_field_size, height_field_size), 1, height_field_mip_count));
+	table.Set(ID::TerrainFlowField,      TextureSize(TextureFormat::R16G16_FLOAT, uint2(height_field_size, height_field_size), 1, height_field_mip_count));
+	table.Set(ID::TerrainFlowFieldX,     TextureSize(TextureFormat::R32_SINT,     uint2(height_field_size, height_field_size), 1, height_field_mip_count));
+	table.Set(ID::TerrainFlowFieldY,     TextureSize(TextureFormat::R32_SINT,     uint2(height_field_size, height_field_size), 1, height_field_mip_count));
+	table.Set(ID::TerrainFlowFieldW,     TextureSize(TextureFormat::R32_SINT,     uint2(height_field_size, height_field_size), 1, height_field_mip_count));
+	table.Set(ID::TerrainErosionField,   TextureSize(TextureFormat::R32_SINT,     uint2(height_field_size, height_field_size), 1, height_field_mip_count));
 	
 	auto& output_settings = renderer_world->output_settings;
 	if (output_settings.mode == SceneOutputMode::ExternalRenderTarget) {

@@ -512,6 +512,15 @@ bool ImGui::TableSliderFloat(const char* label, float* v, float v_min, float v_m
 	return result;
 }
 
+bool ImGui::TableSliderU32(const char* label, u32* v, u32 v_min, u32 v_max, const char* format, ImGuiSliderFlags flags) {
+	bool result = false;
+	if (ImGui::BeginTableItem(label)) {
+		result = ImGui::SliderScalar("", ImGuiDataType_U32, v, &v_min, &v_max, format, flags);
+		ImGui::EndTableItem();
+	}
+	return result;
+}
+
 bool ImGui::TableCheckbox(const char* label, bool* value) {
 	bool result = false;
 	if (ImGui::BeginTableItem(label)) {

@@ -9,13 +9,18 @@ compile_const String terrain_editor_data_filename = "TerrainEditorData.hlsl"_sl;
 
 NOTES(Meta::HlslFile{ terrain_editor_data_filename })
 enum struct TerrainEditorCommandType : u32 {
-	None  = 0,
-	Clear = 1,
-	Copy  = 2,
+	None = 0,
 	
-	TerrainHeightLayerNoise      = 3,
-	TerrainHeightLayerDistortion = 4,
-	TerrainHeightLayerStrata     = 5,
+	Clear,
+	Copy,
+	
+	TerrainHeightLayerNoise,
+	TerrainHeightLayerDistortion,
+	TerrainHeightLayerStrata,
+	
+	TerrainHeightLayerErosionClear,
+	TerrainHeightLayerErosionSimulate,
+	TerrainHeightLayerErosionApply,
 	
 	Count
 };
@@ -179,6 +184,41 @@ struct TerrainHeightLayerStrataEntityType {
 };
 
 
+NOTES()
+struct TerrainHeightLayerErosionCpuSettings {
+	u32   random_seed = 0;
+	u32   fluvial_iteration_count  = 16;
+	float fluvial_inertia          = 0.98f;
+	float fluvial_viscosity        = 0.02f;
+	float fluvial_erosion_rate     = 0.05f;
+	float fluvial_deposition_rate  = 0.1f;
+	float fluvial_evaporation_rate = 0.02f;
+	float fluvial_initial_water    = 1.f;
+};
+
+NOTES(Meta::HlslFile{ terrain_editor_data_filename })
+struct TerrainHeightLayerErosionGpuSettings {
+	u32   random_seed = 0;
+	u32   iteration_index          = 0;
+	u32   iteration_count          = 0;
+	float fluvial_inertia          = 0.f;
+	float fluvial_viscosity        = 0.f;
+	float fluvial_erosion_rate     = 0.f;
+	float fluvial_deposition_rate  = 0.f;
+	float fluvial_evaporation_rate = 0.f;
+	float fluvial_initial_water    = 0.f;
+};
+
+NOTES(Meta::EntityType{ 16 }, Meta::ComponentQuery{})
+struct TerrainHeightLayerErosionEntityType {
+	ECS::Component<GuidComponent> guid;
+	ECS::Component<NameComponent> name;
+	ECS::Component<HierarchyComponent> hierarchy;
+	
+	ECS::Component<TerrainHeightLayerErosionCpuSettings> settings;
+};
+
+
 NOTES(Meta::EntityType{ 4 }, Meta::ComponentQuery{})
 struct TerrainEditorLayerStackEntityType {
 	ECS::Component<GuidComponent> guid;
@@ -203,4 +243,5 @@ struct TerrainEditorLayerSettingsQuery {
 	TerrainHeightLayerNoiseCpuSettings*      noise_cpu_settings      = nullptr;
 	TerrainHeightLayerDistortionCpuSettings* distortion_cpu_settings = nullptr;
 	TerrainHeightLayerStrataCpuSettings*     strata_cpu_settings     = nullptr;
+	TerrainHeightLayerErosionCpuSettings*    erosion_cpu_settings    = nullptr;
 };
