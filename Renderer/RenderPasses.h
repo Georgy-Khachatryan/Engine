@@ -2008,6 +2008,8 @@ NOTES(Meta::RenderPass{})
 struct TerrainEditorBuildPreviewRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
+	WorldEntitySystem* world_system = nullptr;
+	
 	struct Descriptors : HLSL::BaseDescriptorTable {
 		HLSL::Texture2D<float>     height_field;
 		HLSL::RWRegularBuffer<u32> parallel_reduction_state = VirtualResourceID::ParallelReductionState;
@@ -2033,6 +2035,8 @@ NOTES(Meta::RenderPass{})
 struct TerrainEditorTracePreviewRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
+	WorldEntitySystem* world_system = nullptr;
+	
 	struct Descriptors : HLSL::BaseDescriptorTable {
 		HLSL::Texture2D<float>    depth_stencil  = VirtualResourceID::DepthStencil;
 		HLSL::Texture2D<float>    height_field   = VirtualResourceID::TerrainHeightField0;
@@ -2040,6 +2044,11 @@ struct TerrainEditorTracePreviewRenderPass {
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {
+		struct PushConstants {
+			u32 min_mip_level = 0;
+		};
+		
+		HLSL::PushConstantBuffer<PushConstants> constants;
 		HLSL::ConstantBuffer<SceneConstants> scene;
 		HLSL::DescriptorTable<Descriptors> descriptor_table;
 	};

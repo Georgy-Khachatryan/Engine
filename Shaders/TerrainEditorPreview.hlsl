@@ -27,7 +27,7 @@ float TraceRay(RayDesc ray_desc) {
 	
 	float  ray_t     = t_min;
 	float3 position  = float3(clamp(origin.xy + direction.xy * ray_t, 0.0, asfloat(0x3FFFFFFF)), origin.z + direction.z * ray_t); // [1, 2)
-	uint   mip_index = 0;
+	uint   mip_index = 11;
 	
 	bool result_is_hit = false;
 	uint max_iterations = 256;
@@ -60,7 +60,7 @@ float TraceRay(RayDesc ray_desc) {
 			position.z  = max(origin.z    + direction.z  * ray_t, max_height);
 			
 			mip_index = min(mip_index + 1, 11);
-		} else if (mip_index != 0) {
+		} else if (mip_index != constants.min_mip_level) {
 			mip_index -= 1;
 		} else {
 			// TODO: Reconstruct continuous surface.
@@ -75,16 +75,16 @@ float TraceRay(RayDesc ray_desc) {
 float3 SampleHeightFieldNormal(float3 position) {
 	float2 uv = (position.xy - terrain_world_space_position.xy) * inv_terrain_world_space_size;
 	
-	float delta_uv     = 1.0 / 2048.0;
+	float delta_uv     = 1.0 / (2048u >> constants.min_mip_level);
 	float delta_meters = delta_uv * terrain_world_space_size;
 	
 	float dx =
-		height_field.SampleLevel(sampler_linear_clamp, uv, 0.0, s32x2(-1, 0)) -
-		height_field.SampleLevel(sampler_linear_clamp, uv, 0.0, s32x2(+1, 0));
+		height_field.SampleLevel(sampler_linear_clamp, uv, constants.min_mip_level, s32x2(-1, 0)) -
+		height_field.SampleLevel(sampler_linear_clamp, uv, constants.min_mip_level, s32x2(+1, 0));
 	
 	float dy =
-		height_field.SampleLevel(sampler_linear_clamp, uv, 0.0, s32x2(0, -1)) -
-		height_field.SampleLevel(sampler_linear_clamp, uv, 0.0, s32x2(0, +1));
+		height_field.SampleLevel(sampler_linear_clamp, uv, constants.min_mip_level, s32x2(0, -1)) -
+		height_field.SampleLevel(sampler_linear_clamp, uv, constants.min_mip_level, s32x2(0, +1));
 	
 	return normalize(float3(dx, dy, 2.0 * delta_meters));
 }

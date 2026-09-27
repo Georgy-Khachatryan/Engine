@@ -46,7 +46,7 @@ void TerrainEditorWindow(StackAllocator* alloc, UndoRedoSystem& undo_redo_system
 	auto& selected_entities_hash_table = selection_state_entity.selection_state->selected_entities_hash_table;
 	
 	ImGui::SetNextItemWidth(-FLT_MIN);
-	ImGui::SliderInt("##MinFrequencyBand", &layer_stack_entity.preview_state->min_frequency_band, TerrainEditorEqualizer::min_frequency_band, TerrainEditorEqualizer::max_frequency_band, "Frequency Cutoff: %d", ImGuiSliderFlags_AlwaysClamp);
+	ImGui::SliderInt("##MinFrequencyBand", &layer_stack_entity.build_state->min_frequency_band, TerrainEditorEqualizer::min_frequency_band, TerrainEditorEqualizer::max_frequency_band, "Frequency Cutoff: %d", ImGuiSliderFlags_AlwaysClamp);
 	
 	bool is_open = ImGui::CollapsingHeader("Height Layers", ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_AllowOverlap);
 	TerrainLayerCreationComboBox(undo_redo_system, world_system, selection_state_entity, layer_stack_entity);

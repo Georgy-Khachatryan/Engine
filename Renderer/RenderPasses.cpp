@@ -598,11 +598,9 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 	}
 	
 	if (renderer_world.enable_terrain_editor_preview) {
-		auto& terrain_editor_layers = render_passes.Add<TerrainEditorLayersRenderPass>();
-		terrain_editor_layers.world_system = world_system;
-		
-		render_passes.Add<TerrainEditorBuildPreviewRenderPass>();
-		render_passes.Add<TerrainEditorTracePreviewRenderPass>();
+		render_passes.Add<TerrainEditorLayersRenderPass>().world_system = world_system;
+		render_passes.Add<TerrainEditorBuildPreviewRenderPass>().world_system = world_system;
+		render_passes.Add<TerrainEditorTracePreviewRenderPass>().world_system = world_system;
 	}
 	
 	auto& debug_geometry = render_passes.Add<DebugGeometryRenderPass>();

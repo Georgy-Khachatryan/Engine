@@ -52,6 +52,16 @@ struct TerrainEditorEqualizer {
 	
 	float& operator[] (s32 index) { return bands[index - min_frequency_band]; }
 	
+	float NormalizedBandScale(s32 index) const {
+		float sum = 0.f;
+		for (float v : bands) sum += v;
+		return bands[index - min_frequency_band] * scale * (sum > 0.f ? 1.f / sum : 0.f);
+	}
+	
+	float AdditiveBandScale(s32 index) const {
+		return bands[index - min_frequency_band] * scale;
+	}
+	
 	static TerrainEditorEqualizer MakePreset(TerrainEditorEqualizerPreset preset, float scale);
 };
 
@@ -257,7 +267,12 @@ struct TerrainHeightLayerErosionEntityType {
 };
 
 NOTES(Meta::SaveLoadOptions{ SaveLoadFlags::None })
-struct TerrainEditorLayerStackPreviewState {
+struct TerrainEditorLayerStackBuildState {
+	u64 hash                = 0;
+	u64 end_command_index   = 0;
+	u32 height_field_epoch  = 0;
+	u32 min_ready_mip_level = 0;
+	
 	s32 min_frequency_band = TerrainEditorEqualizer::min_frequency_band;
 };
 
@@ -267,7 +282,7 @@ struct TerrainEditorLayerStackEntityType {
 	ECS::Component<NameComponent> name;
 	
 	ECS::Component<HierarchyComponent> hierarchy;
-	ECS::Component<TerrainEditorLayerStackPreviewState> preview_state;
+	ECS::Component<TerrainEditorLayerStackBuildState> build_state;
 };
 
 NOTES(Meta::ComponentQuery{})

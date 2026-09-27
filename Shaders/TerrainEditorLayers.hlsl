@@ -188,6 +188,21 @@ float2 SampleHeightFieldGradient(float2 uv, float mip_index = 0.0) {
 compile_const float fixed_point_scale     = 16.0 * 1024.0;
 compile_const float inv_fixed_point_scale = 1.0 / fixed_point_scale;
 
+void TerrainHeightLayerErosionApply(uint2 thread_id) {
+	TerrainHeightLayerErosionGpuSettings settings = layer_constants.Load<TerrainHeightLayerErosionGpuSettings>(constants.layer_constants_offset);
+	
+	float3 flow_map = float3(flow_field_x_1[thread_id], flow_field_y_1[thread_id], flow_field_w_1[thread_id]) * inv_fixed_point_scale;
+	if (flow_map.z > 0.0) {
+		flow_field_1[thread_id] = flow_map.xy * rcp(flow_map.z);
+	}
+	
+	float texel_size_meters = height_field_extent * constants.inv_render_target_size;
+	float erosion = clamp((float)erosion_field_1[thread_id] * inv_fixed_point_scale, -texel_size_meters, +texel_size_meters);
+	erosion_field_1[thread_id] = 0;
+	
+	height_field_1[thread_id] = height_field_0[thread_id] + erosion;
+}
+
 void TerrainHeightLayerErosionSimulate(uint2 thread_id) {
 	TerrainHeightLayerErosionGpuSettings settings = layer_constants.Load<TerrainHeightLayerErosionGpuSettings>(constants.layer_constants_offset);
 	
@@ -261,21 +276,6 @@ void TerrainHeightLayerErosionSimulate(uint2 thread_id) {
 			InterlockedAdd(erosion_field_1[sample_id], (s32)(sediment * fixed_point_scale));
 		}
 	}
-}
-
-void TerrainHeightLayerErosionApply(uint2 thread_id) {
-	TerrainHeightLayerErosionGpuSettings settings = layer_constants.Load<TerrainHeightLayerErosionGpuSettings>(constants.layer_constants_offset);
-	
-	float3 flow_map = float3(flow_field_x_1[thread_id], flow_field_y_1[thread_id], flow_field_w_1[thread_id]);
-	if (flow_map.z > 0.0) {
-		flow_field_1[thread_id] = flow_map.xy * rcp(flow_map.z);
-	}
-	
-	float texel_size_meters = height_field_extent * constants.inv_render_target_size;
-	float erosion = clamp((float)erosion_field_1[thread_id] * inv_fixed_point_scale, -texel_size_meters, +texel_size_meters);
-	erosion_field_1[thread_id] = 0;
-	
-	height_field_1[thread_id] = height_field_0[thread_id] + erosion;
 }
 
 [ThreadGroupSize(thread_group_size * thread_group_size, 1, 1)]
