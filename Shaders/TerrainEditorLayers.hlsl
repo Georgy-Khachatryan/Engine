@@ -203,7 +203,7 @@ void TerrainHeightLayerErosionApply(uint2 thread_id) {
 	height_field_1[thread_id] = height_field_0[thread_id] + erosion;
 }
 
-void TerrainHeightLayerErosionSimulate(uint2 thread_id) {
+void TerrainHeightLayerErosionSimulateFluvial(uint2 thread_id) {
 	TerrainHeightLayerErosionGpuSettings settings = layer_constants.Load<TerrainHeightLayerErosionGpuSettings>(constants.layer_constants_offset);
 	
 	uint hash = WyHash32(thread_id.x | (thread_id.y << 16), settings.random_seed);
@@ -211,11 +211,10 @@ void TerrainHeightLayerErosionSimulate(uint2 thread_id) {
 	float2 thread_uv = (thread_id + ComputeRandomUnorm16x2(hash)) * 4.0 * constants.inv_render_target_size;
 	float2 position  = UvToWorldSpacePosition(thread_uv);
 	
+	float  sediment = 0.0;
+	float  water    = settings.fluvial_initial_water;
+	float  height   = height_field_0.SampleLevel(sampler_linear_clamp, thread_uv, 0.0);
 	float2 velocity = SampleHeightFieldGradient(thread_uv);
-	
-	float sediment = 0.0;
-	float water    = settings.fluvial_initial_water;
-	float height   = height_field_0.SampleLevel(sampler_linear_clamp, thread_uv, 0.0);
 	
 	float texel_size_meters = height_field_extent * constants.inv_render_target_size;
 	
@@ -278,6 +277,74 @@ void TerrainHeightLayerErosionSimulate(uint2 thread_id) {
 	}
 }
 
+void TerrainHeightLayerErosionSimulateThermal(uint2 thread_id) {
+	TerrainHeightLayerErosionGpuSettings settings = layer_constants.Load<TerrainHeightLayerErosionGpuSettings>(constants.layer_constants_offset);
+	
+	uint hash = WyHash32(thread_id.x | (thread_id.y << 16), settings.random_seed);
+	
+	float2 thread_uv = (thread_id + ComputeRandomUnorm16x2(hash)) * 4.0 * constants.inv_render_target_size;
+	float2 position  = UvToWorldSpacePosition(thread_uv);
+	
+	float  sediment = 0.0;
+	float  height   = height_field_0.SampleLevel(sampler_linear_clamp, thread_uv, 0.0);
+	float2 velocity = SampleHeightFieldGradient(thread_uv);
+	
+	float texel_size_meters = height_field_extent * constants.inv_render_target_size;
+	
+	u32 step_count = 128;
+	for (u32 i = 0; i < step_count; i += 1) {
+		float2 sample_position = position;
+		float2 sample_uv = WorldSpacePositionToUv(sample_position);
+		s32x2  sample_id = UvToTexelPosition(sample_uv);
+		
+		if (any(sample_id < 0) || any(sample_id >= (s32)constants.render_target_size)) break;
+		
+		float2 gradient = SampleHeightFieldGradient(sample_uv);
+		
+		velocity = lerp(gradient, velocity, pow(settings.thermal_debris_inertia, texel_size_meters));
+		float velocity_length = length(velocity);
+		
+		if (velocity_length < texel_size_meters * (1.0 / 1024.0)) break;
+		float2 direction = velocity / velocity_length;
+		
+		position += direction * texel_size_meters;
+		float new_height   = height_field_0.SampleLevel(sampler_linear_clamp, WorldSpacePositionToUv(position), 0.0);
+		float delta_height = new_height - height;
+		
+		float slope = max(-delta_height, 0.0) / texel_size_meters;
+		float sediment_capacity = max(slope - settings.thermal_repose_slope, 0.0) * texel_size_meters * settings.thermal_sediment_capacity;
+		
+		s32 erosion_delta = 0;
+		if (sediment > sediment_capacity || delta_height > 0.0) {
+			float deposition_rate = settings.thermal_deposition_rate;
+			float amount_to_deposit = delta_height > 0.0 ? min(delta_height, sediment) * deposition_rate : clamp((sediment - sediment_capacity) * deposition_rate, 0.0, sediment);
+			sediment -= amount_to_deposit;
+			
+			erosion_delta = (s32)(amount_to_deposit * fixed_point_scale);
+		} else {
+			float erosion_rate = settings.thermal_erosion_rate;
+			float amount_to_erode = min((sediment_capacity - sediment) * erosion_rate, -delta_height);
+			sediment += amount_to_erode;
+			
+			erosion_delta = (s32)(-amount_to_erode * fixed_point_scale);
+		}
+		
+		if (erosion_delta != 0) {
+			InterlockedAdd(erosion_field_1[sample_id], erosion_delta);
+		}
+		
+		height = new_height;
+	}
+	
+	if (sediment > 0.0) {
+		float2 sample_uv = WorldSpacePositionToUv(position);
+		s32x2  sample_id = UvToTexelPosition(sample_uv);
+		if (all(sample_id >= 0) && all(sample_id < constants.render_target_size)) {
+			InterlockedAdd(erosion_field_1[sample_id], (s32)(sediment * fixed_point_scale));
+		}
+	}
+}
+
 [ThreadGroupSize(thread_group_size * thread_group_size, 1, 1)]
 void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	uint2  thread_id = group_id * thread_group_size + MortonDecode(thread_index);
@@ -308,7 +375,8 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 		TerrainHeightLayerErosionClear(thread_id);
 		break;
 	} case TerrainEditorCommandType::TerrainHeightLayerErosionSimulate: {
-		TerrainHeightLayerErosionSimulate(thread_id);
+		TerrainHeightLayerErosionSimulateFluvial(thread_id);
+		TerrainHeightLayerErosionSimulateThermal(thread_id);
 		break;
 	} case TerrainEditorCommandType::TerrainHeightLayerErosionApply: {
 		TerrainHeightLayerErosionApply(thread_id);

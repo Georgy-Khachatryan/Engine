@@ -451,6 +451,22 @@ struct TerrainHeightLayerErosionCpuSettings {
 		fluvial_evaporation_rate float32 0;
 		fluvial_initial_water float32 0;
 	}
+	/*Version*/ 6 {
+		random_seed u32 0;
+		amount TerrainEditorEqualizer 0;
+		fluvial_iteration_count u32 0;
+		fluvial_inertia float32 0;
+		fluvial_viscosity float32 0;
+		fluvial_erosion_rate float32 0;
+		fluvial_deposition_rate float32 0;
+		fluvial_evaporation_rate float32 0;
+		fluvial_initial_water float32 0;
+		thermal_debris_inertia float32 0;
+		thermal_repose_angle float32 0;
+		thermal_sediment_capacity float32 0;
+		thermal_erosion_rate float32 0;
+		thermal_deposition_rate float32 0;
+	}
 }
 
 struct TerrainHeightLayerNoiseCpuSettings {

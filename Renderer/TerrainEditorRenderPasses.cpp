@@ -195,15 +195,20 @@ static void TranslateCommandTerrainHeightLayerErosionCpuSettings(TerrainCommandL
 	
 	for (u32 i = 0; i < fluvial_iteration_count; i += 1) {
 		auto& gpu_settings = *NewFromAlloc(command_list.alloc, TerrainHeightLayerErosionGpuSettings);
-		gpu_settings.random_seed              = (u32)ComputeHash64(((u64)cpu_settings.random_seed << 32) | i);
-		gpu_settings.iteration_index          = i;
-		gpu_settings.iteration_count          = fluvial_iteration_count;
-		gpu_settings.fluvial_inertia          = cpu_settings.fluvial_inertia;
-		gpu_settings.fluvial_viscosity        = cpu_settings.fluvial_viscosity;
-		gpu_settings.fluvial_erosion_rate     = cpu_settings.fluvial_erosion_rate;
-		gpu_settings.fluvial_deposition_rate  = cpu_settings.fluvial_deposition_rate;
-		gpu_settings.fluvial_evaporation_rate = cpu_settings.fluvial_evaporation_rate;
-		gpu_settings.fluvial_initial_water    = cpu_settings.fluvial_initial_water;
+		gpu_settings.random_seed               = (u32)ComputeHash64(((u64)cpu_settings.random_seed << 32) | i);
+		gpu_settings.iteration_index           = i;
+		gpu_settings.iteration_count           = fluvial_iteration_count;
+		gpu_settings.fluvial_inertia           = cpu_settings.fluvial_inertia;
+		gpu_settings.fluvial_viscosity         = cpu_settings.fluvial_viscosity;
+		gpu_settings.fluvial_erosion_rate      = cpu_settings.fluvial_erosion_rate;
+		gpu_settings.fluvial_deposition_rate   = cpu_settings.fluvial_deposition_rate;
+		gpu_settings.fluvial_evaporation_rate  = cpu_settings.fluvial_evaporation_rate;
+		gpu_settings.fluvial_initial_water     = cpu_settings.fluvial_initial_water;
+		gpu_settings.thermal_debris_inertia    = cpu_settings.thermal_debris_inertia;
+		gpu_settings.thermal_repose_slope      = tanf(cpu_settings.thermal_repose_angle * Math::degrees_to_radians);
+		gpu_settings.thermal_sediment_capacity = cpu_settings.thermal_sediment_capacity;
+		gpu_settings.thermal_erosion_rate      = cpu_settings.thermal_erosion_rate;
+		gpu_settings.thermal_deposition_rate   = cpu_settings.thermal_deposition_rate;
 		
 		{
 			TerrainCommand command;

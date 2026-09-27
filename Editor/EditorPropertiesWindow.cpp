@@ -407,21 +407,34 @@ static void WorldComponentEntityView(StackAllocator* alloc, WorldEntitySystem& w
 		
 		TableTerrainEditorEqualizerWidget("Strength", settings.amount);
 		
-		if (ImGui::TableCollapsingHeader("Fluvial", ImGuiTreeNodeFlags_DefaultOpen)) {
-			ImGuiScopeID("Fluvial");
-			
+		if (ImGui::TableCollapsingHeader("Erosion", ImGuiTreeNodeFlags_DefaultOpen)) {
 			if (ImGui::BeginTableItem("Seed")) {
 				ImGui::InputInt("", (s32*)&settings.random_seed);
 				ImGui::EndTableItem();
 			}
 			
 			ImGui::TableSliderU32("Iteration Count", &settings.fluvial_iteration_count, 0, 256);
+		}
+		
+		if (ImGui::TableCollapsingHeader("Fluvial", ImGuiTreeNodeFlags_DefaultOpen)) {
+			ImGuiScopeID("Fluvial");
+			
 			ImGui::TableSliderFloat("Droplet Inertia", &settings.fluvial_inertia, 0.f, 1.f);
 			ImGui::TableSliderFloat("Fluid Viscosity", &settings.fluvial_viscosity, 0.f, 1.f);
 			ImGui::TableSliderFloat("Erosion Rate", &settings.fluvial_erosion_rate, 0.f, 1.f);
 			ImGui::TableSliderFloat("Deposition Rate", &settings.fluvial_deposition_rate, 0.f, 1.f);
 			ImGui::TableSliderFloat("Evaporation Rate", &settings.fluvial_evaporation_rate, 0.f, 1.f);
 			ImGui::TableSliderFloat("Initial Water", &settings.fluvial_initial_water, 0.f, 2.f);
+		}
+		
+		if (ImGui::TableCollapsingHeader("Thermal", ImGuiTreeNodeFlags_DefaultOpen)) {
+			ImGuiScopeID("Thermal");
+			
+			ImGui::TableSliderFloat("Debris Inertia", &settings.thermal_debris_inertia, 0.f, 1.f);
+			ImGui::TableSliderFloat("Repose Angle", &settings.thermal_repose_angle, 0.f, 85.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+			ImGui::TableSliderFloat("Sediment Capacity", &settings.thermal_sediment_capacity, 0.f, 2.f);
+			ImGui::TableSliderFloat("Erosion Rate", &settings.thermal_erosion_rate, 0.f, 1.f);
+			ImGui::TableSliderFloat("Deposition Rate", &settings.thermal_deposition_rate, 0.f, 1.f);
 		}
 	}
 }

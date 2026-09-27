@@ -234,27 +234,40 @@ struct TerrainHeightLayerErosionCpuSettings {
 	u32   random_seed = 0;
 	
 	TerrainEditorEqualizer amount = TerrainEditorEqualizer::MakePreset(TerrainEditorEqualizerPreset::Neutral, 0.125f);
+	u32 fluvial_iteration_count  = 16;
 	
-	u32   fluvial_iteration_count  = 16;
 	float fluvial_inertia          = 0.98f;
 	float fluvial_viscosity        = 0.02f;
 	float fluvial_erosion_rate     = 0.05f;
 	float fluvial_deposition_rate  = 0.1f;
 	float fluvial_evaporation_rate = 0.02f;
 	float fluvial_initial_water    = 1.f;
+	
+	float thermal_debris_inertia    = 1.f;
+	float thermal_repose_angle      = 35.f;
+	float thermal_sediment_capacity = 1.f;
+	float thermal_erosion_rate      = 0.1f;
+	float thermal_deposition_rate   = 0.1f;
 };
 
 NOTES(Meta::HlslFile{ terrain_editor_data_filename })
 struct TerrainHeightLayerErosionGpuSettings {
-	u32   random_seed = 0;
-	u32   iteration_index          = 0;
-	u32   iteration_count          = 0;
+	u32 random_seed     = 0;
+	u32 iteration_index = 0;
+	u32 iteration_count = 0;
+	
 	float fluvial_inertia          = 0.f;
 	float fluvial_viscosity        = 0.f;
 	float fluvial_erosion_rate     = 0.f;
 	float fluvial_deposition_rate  = 0.f;
 	float fluvial_evaporation_rate = 0.f;
 	float fluvial_initial_water    = 0.f;
+	
+	float thermal_debris_inertia    = 0.f;
+	float thermal_repose_slope      = 0.f;
+	float thermal_sediment_capacity = 0.f;
+	float thermal_erosion_rate      = 0.f;
+	float thermal_deposition_rate   = 0.f;
 };
 
 NOTES(Meta::EntityType{ 16 }, Meta::ComponentQuery{})
