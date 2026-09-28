@@ -100,4 +100,10 @@ struct AssetCpuStreamingRequestQuery {
 	TextureRuntimeCpuStreamingRequest* texture_cpu_streaming_requests = nullptr;
 };
 
+NOTES(Meta::ComponentQuery{})
+struct WorldEntityReferenceComponentsQuery {
+	CameraEntityGUID* camera_entity       = nullptr;
+	LightEntityGUID*  global_light_entity = nullptr;
+};
+
 void UpdateEditorAssetComponents(StackAllocator* alloc, AssetEntitySystem& asset_system);

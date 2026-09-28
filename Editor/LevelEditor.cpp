@@ -78,31 +78,88 @@ void ReleaseLevelEditor(LevelEditor* level_editor, GraphicsContext* graphics_con
 }
 
 
+static void DeselectChildrenOfSelectedEntities(WorldEntitySystem& world_system, HashTable<u64, void>& selected_entities_hash_table) {
+	for (auto& [guid] : selected_entities_hash_table) {
+		auto entity = QueryEntityByGUID<GuidHierarchyQuery>(world_system, guid);
+		while (entity.hierarchy != nullptr && entity.hierarchy->parent.guid != 0) {
+			if (HashTableFind(selected_entities_hash_table, entity.hierarchy->parent.guid) != nullptr) {
+				HashTableRemove(selected_entities_hash_table, guid);
+				break;
+			} else {
+				entity = QueryEntityByGUID<GuidHierarchyQuery>(world_system, entity.hierarchy->parent.guid);
+			}
+		}
+	}
+}
+
+static void SaveLoadEntityAndChildrenForTooling(SaveLoadBuffer& buffer, WorldEntitySystem& world_system, u64 guid) {
+	auto typed_entity_id = FindEntityByGUID(world_system, guid);
+	auto* entity_array = QueryEntityTypeArray(world_system, typed_entity_id.entity_type_id);
+	SaveLoadEntityForTooling(buffer, entity_array, typed_entity_id.entity_id);
+	
+	auto entity = ExtractComponentStreams<GuidHierarchyQuery>(entity_array, typed_entity_id.entity_id);
+	if (entity.hierarchy != nullptr) {
+		for (auto [child_guid] : entity.hierarchy->children) {
+			SaveLoadEntityAndChildrenForTooling(buffer, world_system, child_guid);
+		}
+	}
+}
+
+static u64 DuplicateEntityAndChildren(SaveLoadBuffer& buffer, WorldEntitySystem& world_system, UndoRedoSystem& undo_redo_system, u64 guid, Array<u64>& new_entity_guids, u64 new_parent_guid) {
+	auto src_typed_entity_id = FindEntityByGUID(world_system, guid);
+	auto* entity_array = QueryEntityTypeArray(world_system, src_typed_entity_id.entity_type_id);
+	
+	auto entity_id = CreateEntity(world_system, src_typed_entity_id.entity_type_id);
+	SaveLoadEntityForTooling(buffer, entity_array, entity_id);
+	
+	auto entity = ExtractComponentStreams<GuidHierarchyQuery>(entity_array, entity_id);
+	u64 new_guid = entity.guid->guid;
+	
+	ArrayAppend(new_entity_guids, buffer.alloc, new_guid);
+	
+	if (entity.hierarchy != nullptr) {
+		auto& hierarchy = *entity.hierarchy;
+		
+		if (new_parent_guid != 0) { // The new parent will handle adding the child to it's array.
+			hierarchy.parent.guid = new_parent_guid;
+		} else if (hierarchy.parent.guid != 0) { // Append the new entity to an existing parent.
+			auto parent = QueryEntityByGUID<GuidHierarchyQuery>(world_system, hierarchy.parent.guid);
+			u64 index = ArrayFind<GuidComponent>(parent.hierarchy->children, GuidComponent{ guid });
+			DebugAssert(index != u64_max, "Parent doesn't have it's child in the children array.");
+			
+			BeginUndoRedoCommand("Create Child"_sl, undo_redo_system, world_system, hierarchy.parent.guid);
+			ArrayInsert(parent.hierarchy->children, &world_system.heap, index, *entity.guid);
+			EndUndoRedoCommand(undo_redo_system);
+		}
+		
+		for (auto& [child_guid] : hierarchy.children) {
+			child_guid = DuplicateEntityAndChildren(buffer, world_system, undo_redo_system, child_guid, new_entity_guids, new_guid);
+		}
+	}
+	
+	UndoRedoCreateEntity(undo_redo_system, world_system, new_guid);
+	
+	return new_guid;
+}
+
 static void DuplicateSelectedEntities(StackAllocator* alloc, WorldEntitySystem& world_system, UndoRedoSystem& undo_redo_system, EditorSelectionStateEntity selection_state_entity) {
 	TempAllocationScope(alloc);
+	auto& selected_entities_hash_table = selection_state_entity.selection_state->selected_entities_hash_table;
 	
 	SaveLoadBuffer buffer;
 	buffer.alloc = alloc;
 	buffer.heap  = &world_system.heap;
 	buffer.direction = SaveLoadDirection::Saving;
 	
-	auto& selected_entities_hash_table = selection_state_entity.selection_state->selected_entities_hash_table;
-	for (auto [guid] : selected_entities_hash_table) {
-		auto entity = QueryEntityByGUID<GuidHierarchyQuery>(world_system, guid);
-		if (entity.hierarchy != nullptr) {
-			auto& hierarchy = *entity.hierarchy;
-			
-			// TODO: Figure out what to do with the children. Duplicate them as well?
-			if (hierarchy.children.count != 0) {
-				HashTableRemove(selected_entities_hash_table, guid);
-			}
-		}
-	}
+	BeginUndoRedoGroup(undo_redo_system);
+	
+	// Don't directly duplicate entities whose parents are duplicated. Parents will depth first duplicate their children.
+	BeginUndoRedoCommand("Deselect Entities Before Duplicating"_sl, undo_redo_system, world_system, selection_state_entity.guid->guid);
+	DeselectChildrenOfSelectedEntities(world_system, selected_entities_hash_table);
+	EndUndoRedoCommand(undo_redo_system);
 	
 	for (auto [guid] : selected_entities_hash_table) {
-		auto typed_entity_id = FindEntityByGUID(world_system, guid);
-		auto* entity_array = QueryEntityTypeArray(world_system, typed_entity_id.entity_type_id);
-		SaveLoadEntityForTooling(buffer, entity_array, typed_entity_id.entity_id);
+		SaveLoadEntityAndChildrenForTooling(buffer, world_system, guid);
 	}
 	
 	buffer.data.count = 0;
@@ -111,34 +168,9 @@ static void DuplicateSelectedEntities(StackAllocator* alloc, WorldEntitySystem& 
 	Array<u64> new_entity_guids;
 	ArrayReserve(new_entity_guids, alloc, selected_entities_hash_table.count);
 	
-	BeginUndoRedoGroup(undo_redo_system);
 	for (auto [guid] : selected_entities_hash_table) {
-		auto src_typed_entity_id = FindEntityByGUID(world_system, guid);
-		auto* entity_array = QueryEntityTypeArray(world_system, src_typed_entity_id.entity_type_id);
-		
-		auto entity_id = CreateEntity(world_system, src_typed_entity_id.entity_type_id);
-		SaveLoadEntityForTooling(buffer, entity_array, entity_id);
-		
-		auto entity = ExtractComponentStreams<GuidHierarchyQuery>(entity_array, entity_id);
-		ArrayAppend(new_entity_guids, entity.guid->guid);
-		
-		if (entity.hierarchy != nullptr) {
-			auto& hierarchy = *entity.hierarchy;
-			
-			if (hierarchy.parent.guid != 0) {
-				auto parent = QueryEntityByGUID<GuidHierarchyQuery>(world_system, hierarchy.parent.guid);
-				u64 index = ArrayFind<GuidComponent>(parent.hierarchy->children, GuidComponent{ guid });
-				DebugAssert(index != u64_max, "Parent doesn't have it's child in the children array.");
-				
-				BeginUndoRedoCommand("Create Child"_sl, undo_redo_system, world_system, hierarchy.parent.guid);
-				ArrayInsert(parent.hierarchy->children, &world_system.heap, index, *entity.guid);
-				EndUndoRedoCommand(undo_redo_system);
-			}
-		}
-		
-		UndoRedoCreateEntity(undo_redo_system, world_system, entity.guid->guid);
+		DuplicateEntityAndChildren(buffer, world_system, undo_redo_system, guid, new_entity_guids, 0);
 	}
-	
 	
 	BeginUndoRedoCommand("Select Duplicated Entities"_sl, undo_redo_system, world_system, selection_state_entity.guid->guid);
 	HashTableClear(selected_entities_hash_table);
@@ -150,33 +182,48 @@ static void DuplicateSelectedEntities(StackAllocator* alloc, WorldEntitySystem& 
 	EndUndoRedoGroup(undo_redo_system);
 }
 
-static void RemoveSelectedEntities(WorldEntitySystem& world_system, UndoRedoSystem& undo_redo_system, EditorSelectionStateEntity selection_state_entity, u64 camera_entity_guid) {
+static void RemoveEntityAndChildren(WorldEntitySystem& world_system, UndoRedoSystem& undo_redo_system, u64 guid, bool is_parent_getting_removed) {
+	auto entity = QueryEntityByGUID<GuidHierarchyQuery>(world_system, guid);
+	if (entity.hierarchy != nullptr) {
+		auto& hierarchy = *entity.hierarchy;
+		
+		for (auto [child_guid] : hierarchy.children) {
+			RemoveEntityAndChildren(world_system, undo_redo_system, child_guid, true);
+		}
+		
+		// Don't patch child array of the parent if it's also getting removed. It's not necessary, and we're actually iterating over it right now.
+		if (is_parent_getting_removed == false && hierarchy.parent.guid != 0) {
+			auto parent = QueryEntityByGUID<GuidHierarchyQuery>(world_system, hierarchy.parent.guid);
+			u64 index = ArrayFind<GuidComponent>(parent.hierarchy->children, GuidComponent{ guid });
+			DebugAssert(index != u64_max, "Parent doesn't have it's child in the children array.");
+			
+			BeginUndoRedoCommand("Remove Child"_sl, undo_redo_system, world_system, hierarchy.parent.guid);
+			ArrayErase(parent.hierarchy->children, index);
+			EndUndoRedoCommand(undo_redo_system);
+		}
+	}
+	
+	UndoRedoRemoveEntity(undo_redo_system, world_system, guid);
+	RemoveEntityByGUID(world_system, guid);
+}
+
+static void RemoveSelectedEntities(WorldEntitySystem& world_system, UndoRedoSystem& undo_redo_system, EditorSelectionStateEntity selection_state_entity, u64 world_entity_guid) {
 	auto& selected_entities_hash_table = selection_state_entity.selection_state->selected_entities_hash_table;
 	
 	BeginUndoRedoGroup(undo_redo_system);
-	HashTableRemove(selected_entities_hash_table, camera_entity_guid); // Don't remove the active camera.
+	BeginUndoRedoCommand("Deselect Entities Before Removing"_sl, undo_redo_system, world_system, selection_state_entity.guid->guid);
+	
+	// Don't remove entities referenced by the world. Would be nice to have a more generic way to express this (maybe via hierarchy?).
+	auto world_entity = QueryEntityByGUID<WorldEntityReferenceComponentsQuery>(world_system, world_entity_guid);
+	HashTableRemove(selected_entities_hash_table, world_entity.camera_entity->guid);
+	HashTableRemove(selected_entities_hash_table, world_entity.global_light_entity->guid);
+	
+	// Don't directly remove entities whose parents are removed. Parents will depth first remove their children.
+	DeselectChildrenOfSelectedEntities(world_system, selected_entities_hash_table);
+	EndUndoRedoCommand(undo_redo_system);
 	
 	for (auto& [guid] : selected_entities_hash_table) {
-		auto entity = QueryEntityByGUID<GuidHierarchyQuery>(world_system, guid);
-		if (entity.hierarchy != nullptr) {
-			auto& hierarchy = *entity.hierarchy;
-			
-			// TODO: Figure out what to do with the children. Delete them? Attach to parent?
-			if (hierarchy.children.count != 0) continue;
-			
-			if (hierarchy.parent.guid != 0) {
-				auto parent = QueryEntityByGUID<GuidHierarchyQuery>(world_system, hierarchy.parent.guid);
-				u64 index = ArrayFind<GuidComponent>(parent.hierarchy->children, GuidComponent{ guid });
-				DebugAssert(index != u64_max, "Parent doesn't have it's child in the children array.");
-				
-				BeginUndoRedoCommand("Remove Child"_sl, undo_redo_system, world_system, hierarchy.parent.guid);
-				ArrayErase(parent.hierarchy->children, index);
-				EndUndoRedoCommand(undo_redo_system);
-			}
-		}
-		
-		UndoRedoRemoveEntity(undo_redo_system, world_system, guid);
-		RemoveEntityByGUID(world_system, guid);
+		RemoveEntityAndChildren(world_system, undo_redo_system, guid, false);
 	}
 	
 	BeginUndoRedoCommand("Deselect Removed Entities"_sl, undo_redo_system, world_system, selection_state_entity.guid->guid);
@@ -231,8 +278,7 @@ static void LevelEditorSaveLoadShortcuts(StackAllocator* alloc, UndoRedoSystem& 
 static void LevelEditorShortcuts(StackAllocator* alloc, UndoRedoSystem& undo_redo_system, WorldEntitySystem& world_system, AssetEntitySystem& asset_system, EditorSelectionStateEntity world_selection_state_entity, EditorSelectionStateEntity asset_selection_state_entity, u64 world_entity_guid) {
 	
 	if (ImGui::Shortcut(ImGuiKey_Delete, ImGuiInputFlags_RouteGlobal)) {
-		auto world_entity = QueryEntityByGUID<WorldEntityType>(world_system, world_entity_guid);
-		RemoveSelectedEntities(world_system, undo_redo_system, world_selection_state_entity, world_entity.camera_entity->guid);
+		RemoveSelectedEntities(world_system, undo_redo_system, world_selection_state_entity, world_entity_guid);
 	}
 	
 	if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_D, ImGuiInputFlags_RouteGlobal)) {
