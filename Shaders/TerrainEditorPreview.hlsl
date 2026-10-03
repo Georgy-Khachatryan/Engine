@@ -72,9 +72,7 @@ float TraceRay(RayDesc ray_desc) {
 	return result_is_hit ? ray_t * terrain_world_space_size : -1.0;
 }
 
-float3 SampleHeightFieldNormal(float3 position) {
-	float2 uv = (position.xy - terrain_world_space_position.xy) * inv_terrain_world_space_size;
-	
+float3 SampleHeightFieldNormal(float2 uv) {
 	float delta_uv     = 1.0 / (2048u >> constants.min_mip_level);
 	float delta_meters = delta_uv * terrain_world_space_size;
 	
@@ -88,6 +86,11 @@ float3 SampleHeightFieldNormal(float3 position) {
 	
 	return normalize(float3(dx, dy, 2.0 * delta_meters));
 }
+
+float2 WorldSpacePositionToUv(float2 world_space_position) {
+	return world_space_position * inv_terrain_world_space_size + 0.5;
+}
+
 
 [ThreadGroupSize(thread_group_size * thread_group_size, 1, 1)]
 void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
@@ -113,11 +116,18 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	}
 	
 	if (result_t > 0.0) {
-		float3 normal = SampleHeightFieldNormal(ray_desc.Origin + ray_desc.Direction * result_t);
+		float3 hit_position = ray_desc.Origin + ray_desc.Direction * result_t;
+		float2 hit_uv       = WorldSpacePositionToUv(hit_position.xy);
+		
+		float3 normal = SampleHeightFieldNormal(hit_uv);
 		
 		float3 result = 0.0;
-		result = normal * 0.5 + 0.5;
-		// result = PlasmaHeatMap(sin(log2(result_t) * TAU) * 0.5 + 0.5);
+		if (constants.visualize_mask) {
+			float mask = preview_mask.SampleLevel(sampler_linear_clamp, hit_uv, 0.0);
+			result = PlasmaHeatMap(mask) * Pow2(normal.z);
+		} else {
+			result = normal * 0.5 + 0.5;
+		}
 		
 		scene_radiance[thread_id] = float4(result, 1.0);
 	}

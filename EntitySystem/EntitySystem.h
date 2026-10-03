@@ -9,10 +9,10 @@
 struct SaveLoadBuffer;
 enum struct VirtualResourceID : u32;
 
-struct EntityTypeID      { u32 index = 0; };
-struct EntityQueryTypeID { u32 index = 0; };
-struct ComponentTypeID   { u32 index = 0; };
-struct EntityID          { u32 index = 0; };
+struct EntityTypeID      { u32 index = 0; bool operator== (EntityTypeID      other_id) const { return index == other_id.index; } };
+struct EntityQueryTypeID { u32 index = 0; bool operator== (EntityQueryTypeID other_id) const { return index == other_id.index; } };
+struct ComponentTypeID   { u32 index = 0; bool operator== (ComponentTypeID   other_id) const { return index == other_id.index; } };
+struct EntityID          { u32 index = 0; bool operator== (EntityID          other_id) const { return index == other_id.index; } };
 struct TypedEntityID     { EntityID entity_id; EntityTypeID entity_type_id; };
 
 NOTES()

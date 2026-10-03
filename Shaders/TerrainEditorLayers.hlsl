@@ -18,17 +18,34 @@ s32x2 UvToTexelPosition(float2 uv) {
 	return uv * constants.render_target_size;
 }
 
-void TerrainEditorCommandTypeClear(uint2 thread_id) {
-	height_field_1[thread_id] = 0.0;
+float LoadMask(uint2 thread_id) {
+	return constants.has_mask ? mask_0[thread_id] : 1.0;
 }
 
-void TerrainEditorCommandTypeCopy(uint2 thread_id) {
-	height_field_1[thread_id] = height_field_0[thread_id];
+float ApplyTerrainMaskLayerBlendMode(float old_value, float new_value, TerrainMaskLayerBlendMode blend_mode) {
+	switch (blend_mode) {
+	case TerrainMaskLayerBlendMode::Add:      return old_value + new_value;
+	case TerrainMaskLayerBlendMode::Subtract: return old_value - new_value;
+	case TerrainMaskLayerBlendMode::Multiply: return old_value * new_value;
+	case TerrainMaskLayerBlendMode::Min:      return min(old_value, new_value);
+	case TerrainMaskLayerBlendMode::Max:      return max(old_value, new_value);
+	case TerrainMaskLayerBlendMode::Override: return new_value;
+	default:                                  return 0.0;
+	}
+}
+
+void TerrainEditorCommandTypeClear(uint2 thread_id) {
+	height_field_1[thread_id] = 0.0;
 }
 
 void TerrainEditorCommandTypeUpscale(uint2 thread_id, float2 thread_uv) {
 	height_field_1[thread_id] = SampleTextureCatmullRom(height_field_0, sampler_linear_clamp, thread_uv, 1.0, constants.render_target_size * 0.5, constants.inv_render_target_size * 2.0);
 }
+
+void TerrainEditorCommandTypeCopyMask(uint2 thread_id) {
+	mask_1[thread_id] = mask_0[thread_id];
+}
+
 
 float2x2 CreateRotationMatrix(float2 cos_sin) {
 	float2x2 rotation;
@@ -38,7 +55,7 @@ float2x2 CreateRotationMatrix(float2 cos_sin) {
 }
 
 template<u32 component_count, typename SettingsT>
-vector<float, component_count> EvalueateTerrainNoise(SettingsT settings, float2 world_space_position) {
+vector<float, component_count> EvaluateTerrainNoise(SettingsT settings, float2 world_space_position) {
 	float2x2 rotation = CreateRotationMatrix(settings.rotation);
 	
 	float2 scale = float2(1.0 + settings.anisotropy, 1.0 - settings.anisotropy) * settings.inv_scale;
@@ -77,9 +94,8 @@ vector<float, component_count> EvalueateTerrainNoise(SettingsT settings, float2 
 	return noise_value;
 }
 
-void TerrainHeightLayerNoise(uint2 thread_id, float2 world_space_position) {
-	TerrainHeightLayerNoiseGpuSettings settings = layer_constants.Load<TerrainHeightLayerNoiseGpuSettings>(constants.layer_constants_offset);
-	
+template<typename SettingsT>
+float2 EvaluateTerrainDistortionNoise(SettingsT settings, float2 world_space_position) {
 	float2 distortion_coordinates = world_space_position * settings.inv_distortion_scale;
 	
 	float2 distortion_value = 0.0;
@@ -96,17 +112,25 @@ void TerrainHeightLayerNoise(uint2 thread_id, float2 world_space_position) {
 	}
 	}
 	
-	float noise_value = EvalueateTerrainNoise<1>(settings, world_space_position + distortion_value * settings.distortion_amplitude);
+	return distortion_value;
+}
+
+void TerrainHeightLayerNoise(uint2 thread_id, float2 world_space_position) {
+	TerrainHeightLayerNoiseGpuSettings settings = layer_constants.Load<TerrainHeightLayerNoiseGpuSettings>(constants.layer_constants_offset);
 	
-	height_field_1[thread_id] = height_field_0[thread_id] + noise_value * settings.amplitude;
+	float2 distortion_value = EvaluateTerrainDistortionNoise(settings, world_space_position);
+	
+	float noise_value = EvaluateTerrainNoise<1>(settings, world_space_position + distortion_value * settings.distortion_amplitude);
+	height_field_1[thread_id] = height_field_0[thread_id] + noise_value * settings.amplitude * LoadMask(thread_id);
 }
 
 void TerrainHeightLayerDistortion(uint2 thread_id, float2 world_space_position) {
 	TerrainHeightLayerDistortionGpuSettings settings = layer_constants.Load<TerrainHeightLayerDistortionGpuSettings>(constants.layer_constants_offset);
 	
-	float2 noise_value = EvalueateTerrainNoise<2>(settings, world_space_position);
+	float2 noise_value = EvaluateTerrainNoise<2>(settings, world_space_position);
 	
-	height_field_1[thread_id] = height_field_0.SampleLevel(sampler_linear_clamp, WorldSpacePositionToUv(world_space_position + noise_value * settings.amplitude), 0.0);
+	float2 offset = noise_value * settings.amplitude * LoadMask(thread_id);
+	height_field_1[thread_id] = height_field_0.SampleLevel(sampler_linear_clamp, WorldSpacePositionToUv(world_space_position + offset), 0.0);
 }
 
 
@@ -162,7 +186,7 @@ void TerrainHeightLayerStrata(uint2 thread_id, float2 world_space_position) {
 	position.xz = mul(transpose(tilt),     position.xz);
 	position.xy = mul(transpose(rotation), position.xy);
 	
-	height_field_1[thread_id] = lerp(height, position.z, settings.amount);
+	height_field_1[thread_id] = lerp(height, position.z, settings.amount * LoadMask(thread_id));
 }
 
 void TerrainHeightLayerErosionClear(uint2 thread_id) {
@@ -200,7 +224,7 @@ void TerrainHeightLayerErosionApply(uint2 thread_id) {
 	float erosion = clamp((float)erosion_field_1[thread_id] * inv_fixed_point_scale, -texel_size_meters, +texel_size_meters);
 	erosion_field_1[thread_id] = 0;
 	
-	height_field_1[thread_id] = height_field_0[thread_id] + erosion;
+	height_field_1[thread_id] = height_field_0[thread_id] + erosion * LoadMask(thread_id);
 }
 
 void TerrainHeightLayerErosionSimulateFluvial(uint2 thread_id) {
@@ -345,6 +369,16 @@ void TerrainHeightLayerErosionSimulateThermal(uint2 thread_id) {
 	}
 }
 
+void TerrainMaskLayerNoise(uint2 thread_id, float2 world_space_position) {
+	TerrainMaskLayerNoiseGpuSettings settings = layer_constants.Load<TerrainMaskLayerNoiseGpuSettings>(constants.layer_constants_offset);
+	
+	float2 distortion_value = EvaluateTerrainDistortionNoise(settings, world_space_position);
+	
+	float noise_value = EvaluateTerrainNoise<1>(settings, world_space_position + distortion_value * settings.distortion_amplitude);
+	mask_1[thread_id] = ApplyTerrainMaskLayerBlendMode(mask_0[thread_id], noise_value * settings.amplitude, settings.blend_mode);
+}
+
+
 [ThreadGroupSize(thread_group_size * thread_group_size, 1, 1)]
 void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	uint2  thread_id = group_id * thread_group_size + MortonDecode(thread_index);
@@ -352,15 +386,15 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	
 	float2 world_space_position = UvToWorldSpacePosition(thread_uv);
 	
-	switch (constants.command_type) {
+	switch ((TerrainEditorCommandType)constants.command_type) {
 	case TerrainEditorCommandType::Clear: {
 		TerrainEditorCommandTypeClear(thread_id);
 		break;
-	} case TerrainEditorCommandType::Copy: {
-		TerrainEditorCommandTypeCopy(thread_id);
-		break;
 	} case TerrainEditorCommandType::Upscale: {
 		TerrainEditorCommandTypeUpscale(thread_id, thread_uv);
+		break;
+	} case TerrainEditorCommandType::CopyMask: {
+		TerrainEditorCommandTypeCopyMask(thread_id);
 		break;
 	} case TerrainEditorCommandType::TerrainHeightLayerNoise: {
 		TerrainHeightLayerNoise(thread_id, world_space_position);
@@ -380,6 +414,9 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 		break;
 	} case TerrainEditorCommandType::TerrainHeightLayerErosionApply: {
 		TerrainHeightLayerErosionApply(thread_id);
+		break;
+	} case TerrainEditorCommandType::TerrainMaskLayerNoise: {
+		TerrainMaskLayerNoise(thread_id, world_space_position);
 		break;
 	} default: {
 		

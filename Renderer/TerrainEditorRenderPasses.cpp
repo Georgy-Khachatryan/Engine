@@ -23,16 +23,18 @@ void TerrainEditorBuildPreviewRenderPass::RecordPass(RecordContext* record_conte
 	constants.inv_render_target_size  = 1.f / constants.render_target_size;
 	constants.last_thread_group_index = thread_group_count.x * thread_group_count.y - 1;
 	
+	auto height_field_resource_id = build_state.epochs.height & 0x1 ? VirtualResourceID::TerrainHeightField0 : VirtualResourceID::TerrainHeightField1;
+	
 	auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
 	for (u32 mip_index = 0; mip_index < (u32)render_target_size.mips - build_state.min_ready_mip_level - 1; mip_index += 1) {
-		descriptor_table.height_field_mips[mip_index].Bind(VirtualResourceID::TerrainHeightField0, mip_index + build_state.min_ready_mip_level + 1);
+		descriptor_table.height_field_mips[mip_index].Bind(height_field_resource_id, mip_index + build_state.min_ready_mip_level + 1);
 	}
-	descriptor_table.height_field.Bind(VirtualResourceID::TerrainHeightField0, build_state.min_ready_mip_level, 1);
+	descriptor_table.height_field.Bind(height_field_resource_id, build_state.min_ready_mip_level, 1);
 	
 	CmdSetRootSignature(record_context, root_signature);
 	CmdSetPipelineState(record_context, pipeline_id);
-	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
 	CmdSetRootArgument(record_context, root_signature.constants, constants);
+	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
 	
 	CmdDispatch(record_context, thread_group_count);
 }
@@ -48,11 +50,19 @@ void TerrainEditorTracePreviewRenderPass::RecordPass(RecordContext* record_conte
 	auto layer_stack_entity = QueryFirstEntityByType<TerrainEditorLayerStackEntityType>(*world_system);
 	auto& build_state = *layer_stack_entity.build_state;
 	
+	auto height_field_resource_id = build_state.epochs.height & 0x1 ? VirtualResourceID::TerrainHeightField0 : VirtualResourceID::TerrainHeightField1;
+	
 	auto& descriptor_table = AllocateDescriptorTable(record_context, root_signature.descriptor_table);
+	descriptor_table.height_field.Bind(height_field_resource_id);
+	descriptor_table.preview_mask.Bind(VirtualResourceID::TerrainPreviewMask, Math::Max(build_state.min_ready_mip_level, (u32)(build_state.min_frequency_band - TerrainEditorEqualizer::min_frequency_band)));
+	
+	RootSignature::PushConstants constants;
+	constants.min_mip_level  = build_state.min_ready_mip_level;
+	constants.visualize_mask = build_state.visualize_mask ? 1u : 0u;
 	
 	CmdSetRootSignature(record_context, root_signature);
 	CmdSetPipelineState(record_context, pipeline_id);
-	CmdSetRootArgument(record_context, root_signature.constants, { build_state.min_ready_mip_level });
+	CmdSetRootArgument(record_context, root_signature.constants, constants);
 	CmdSetRootArgument(record_context, root_signature.descriptor_table, descriptor_table);
 	CmdSetRootArgument(record_context, root_signature.scene, VirtualResourceID::SceneConstants);
 	
@@ -61,15 +71,18 @@ void TerrainEditorTracePreviewRenderPass::RecordPass(RecordContext* record_conte
 }
 
 enum struct TerrainCommandBindings : u32 {
-	None         = 0,
-	SrcHeight    = 1u << 0,
-	SrcFlow      = 1u << 1,
-	DstHeight    = 1u << 2,
-	DstFlow      = 1u << 3, 
-	DstFlowX     = 1u << 4, 
-	DstFlowY     = 1u << 5, 
-	DstFlowW     = 1u << 6, 
-	DstErosion   = 1u << 7,
+	None           = 0,
+	SrcHeight      = 1u << 0,
+	SrcMask        = 1u << 1,
+	SrcFlow        = 1u << 2,
+	DstHeight      = 1u << 3,
+	DstMask        = 1u << 4,
+	DstFlow        = 1u << 5,
+	DstFlowX       = 1u << 6,
+	DstFlowY       = 1u << 7,
+	DstFlowW       = 1u << 8,
+	DstErosion     = 1u << 9,
+	DstPreviewMask = 1u << 10,
 };
 ENUM_FLAGS_OPERATORS(TerrainCommandBindings);
 
@@ -87,12 +100,27 @@ struct TerrainCommandList {
 	StackAllocator* alloc = nullptr;
 	
 	u64 hash = 0;
-	u32 height_field_epoch = 0;
 	s32 frequency_band = 0;
+	TerrainCommandBindings common_bindings = TerrainCommandBindings::None;
+	
+	TerrainEditorBuildStateEpoch epochs;
 };
 
+static void IncrementEpoch(TerrainEditorBuildStateEpoch& epochs, TerrainCommandBindings bindings) {
+	if (HasAnyFlags(bindings, TerrainCommandBindings::DstHeight)) {
+		epochs.height += 1;
+	}
+	
+	if (HasAnyFlags(bindings, TerrainCommandBindings::DstMask)) {
+		epochs.mask += 1;
+	}
+}
+
 static void AppendTerrainCommand(TerrainCommandList& command_list, TerrainCommand command, u8* gpu_settings = nullptr, u32 gpu_settings_size = 0) {
+	if (command.bindings == TerrainCommandBindings::None) return;
+	
 	command.frequency_band = command_list.frequency_band;
+	command.bindings      |= command_list.common_bindings;
 	
 	u64 command_hash = ComputeHash((u8*)&command, sizeof(TerrainCommand));
 	
@@ -106,13 +134,8 @@ static void AppendTerrainCommand(TerrainCommandList& command_list, TerrainComman
 		command.gpu_settings_offset = gpu_address.offset;
 	}
 	
-	if (command.bindings != TerrainCommandBindings::None) {
-		ArrayAppend(command_list.commands, command_list.alloc, command);
-	}
-	
-	if (HasAnyFlags(command.bindings, TerrainCommandBindings::DstHeight)) {
-		command_list.height_field_epoch += 1;
-	}
+	ArrayAppend(command_list.commands, command_list.alloc, command);
+	IncrementEpoch(command_list.epochs, command.bindings);
 	
 	command_list.hash = ComputeHash64(command_list.hash, command_hash);
 }
@@ -226,7 +249,35 @@ static void TranslateCommandTerrainHeightLayerErosionCpuSettings(TerrainCommandL
 	}
 }
 
-static void TranslateCommands(TerrainCommandList& command_list, WorldEntitySystem* world_system, ArrayView<GuidComponent> layer_entity_guids, s32 min_frequency_band, s32 mip_level_count) {
+
+static void TranslateCommandTerrainMaskLayerNoiseCpuSettings(TerrainCommandList& command_list, TerrainMaskLayerNoiseCpuSettings& cpu_settings, bool is_first_mask_layer) {
+	auto& gpu_settings = *NewFromAlloc(command_list.alloc, TerrainMaskLayerNoiseGpuSettings);
+	gpu_settings.blend_mode              = is_first_mask_layer ? TerrainMaskLayerBlendMode::Override : cpu_settings.blend_mode;
+	gpu_settings.type                    = cpu_settings.type;
+	gpu_settings.random_seed             = cpu_settings.random_seed;
+	gpu_settings.inv_scale               = cpu_settings.scale == 0.f ? 1.f : 1.f / cpu_settings.scale;
+	gpu_settings.anisotropy              = cpu_settings.anisotropy;
+	gpu_settings.rotation                = Math::CosSin(cpu_settings.rotation * Math::degrees_to_radians);
+	gpu_settings.amplitude               = cpu_settings.amplitude;
+	gpu_settings.octave_count            = cpu_settings.octave_count;
+	gpu_settings.lacunarity              = cpu_settings.lacunarity;
+	gpu_settings.gain                    = cpu_settings.gain;
+	gpu_settings.distortion_type         = cpu_settings.distortion_type;
+	gpu_settings.inv_distortion_scale    = 1.f / cpu_settings.distortion_scale;
+	gpu_settings.distortion_amplitude    = cpu_settings.distortion_amplitude;
+	gpu_settings.distortion_octave_count = cpu_settings.distortion_octave_count;
+	
+	TerrainCommand command;
+	command.type     = TerrainEditorCommandType::TerrainMaskLayerNoise;
+	command.bindings = TerrainCommandBindings::DstMask | TerrainCommandBindings::SrcMask;
+	AppendTerrainCommand(command_list, command, gpu_settings);
+}
+
+
+static void TranslateCommands(TerrainCommandList& command_list, WorldEntitySystem* world_system, TerrainEditorLayerStackEntityType layer_stack_entity, s32 mip_level_count) {
+	auto layer_entity_guids = layer_stack_entity.hierarchy->children;
+	auto& build_state = *layer_stack_entity.build_state;
+	
 	ArrayReserve(command_list.commands, command_list.alloc, layer_entity_guids.count * 8);
 	
 	s32 last_mip_index = mip_level_count - 1;
@@ -245,29 +296,50 @@ static void TranslateCommands(TerrainCommandList& command_list, WorldEntitySyste
 			AppendTerrainCommand(command_list, command);
 		}
 		
-		if (command_list.frequency_band >= min_frequency_band) {
-			for (auto [layer_entity_guid] : layer_entity_guids) {
-				auto layer = QueryEntityByGUID<TerrainEditorLayerSettingsQuery>(*world_system, layer_entity_guid);
+		if (command_list.frequency_band >= build_state.min_frequency_band) {
+			for (auto [height_layer_entity_guid] : layer_entity_guids) {
+				auto height_layer = QueryEntityByGUID<TerrainHeightLayerCpuSettingsQuery>(*world_system, height_layer_entity_guid);
 				
-				if (layer.noise_cpu_settings != nullptr) {
-					TranslateCommandTerrainHeightLayerNoiseCpuSettings(command_list, *layer.noise_cpu_settings);
-				} else if (layer.distortion_cpu_settings != nullptr) {
-					TranslateCommandTerrainHeightLayerDistortionCpuSettings(command_list, *layer.distortion_cpu_settings);
-				} else if (layer.strata_cpu_settings != nullptr) {
-					TranslateCommandTerrainHeightLayerStrataCpuSettings(command_list, *layer.strata_cpu_settings);
-				} else if (layer.erosion_cpu_settings != nullptr) {
-					TranslateCommandTerrainHeightLayerErosionCpuSettings(command_list, *layer.erosion_cpu_settings);
+				u64 command_cound_before_masks = command_list.commands.count;
+				for (auto [mask_layer_entity_guid] : height_layer.hierarchy->children) {
+					auto mask_layer = QueryEntityByGUID<TerrainMaskLayerCpuSettingsQuery>(*world_system, mask_layer_entity_guid);
+					
+					bool is_first_mask_layer = (command_cound_before_masks == command_list.commands.count);
+					
+					if (mask_layer.noise_cpu_settings != nullptr) {
+						TranslateCommandTerrainMaskLayerNoiseCpuSettings(command_list, *mask_layer.noise_cpu_settings, is_first_mask_layer);
+					}
+					
+					if (mask_layer_entity_guid == build_state.visualize_mask_guid) {
+						TerrainCommand command;
+						command.type     = TerrainEditorCommandType::CopyMask;
+						command.bindings = TerrainCommandBindings::SrcMask | TerrainCommandBindings::DstPreviewMask;
+						AppendTerrainCommand(command_list, command);
+					}
 				}
+				bool has_mask_layers = (command_cound_before_masks != command_list.commands.count);
+				
+				command_list.common_bindings = has_mask_layers ? TerrainCommandBindings::SrcMask : TerrainCommandBindings::None;
+				if (height_layer.noise_cpu_settings != nullptr) {
+					TranslateCommandTerrainHeightLayerNoiseCpuSettings(command_list, *height_layer.noise_cpu_settings);
+				} else if (height_layer.distortion_cpu_settings != nullptr) {
+					TranslateCommandTerrainHeightLayerDistortionCpuSettings(command_list, *height_layer.distortion_cpu_settings);
+				} else if (height_layer.strata_cpu_settings != nullptr) {
+					TranslateCommandTerrainHeightLayerStrataCpuSettings(command_list, *height_layer.strata_cpu_settings);
+				} else if (height_layer.erosion_cpu_settings != nullptr) {
+					TranslateCommandTerrainHeightLayerErosionCpuSettings(command_list, *height_layer.erosion_cpu_settings);
+				}
+				command_list.common_bindings = TerrainCommandBindings::None;
 			}
 		}
-		
-		// Copy over to the TerrainHeightField0 so we can preview it.
-		if ((command_list.height_field_epoch & 0x1) == 0) {
-			TerrainCommand command;
-			command.type     = TerrainEditorCommandType::Copy;
-			command.bindings = TerrainCommandBindings::DstHeight | TerrainCommandBindings::SrcHeight;
-			AppendTerrainCommand(command_list, command);
-		}
+	}
+}
+
+void TerrainEditorLayersRenderPass::InvalidateBuildStates(WorldEntitySystem* world_system) {
+	auto* layer_stack_entity_array = QueryEntityTypeArray<TerrainEditorLayerStackEntityType>(*world_system);
+	auto entities = ExtractComponentStreams<TerrainEditorLayerStackEntityType>(layer_stack_entity_array);
+	for (u64 i : BitArrayIt(layer_stack_entity_array->alive_mask)) {
+		entities.build_state[i].hash = 0;
 	}
 }
 
@@ -280,7 +352,6 @@ void TerrainEditorLayersRenderPass::RecordPass(RecordContext* record_context) {
 	if (layer_stack_entity_array->count == 0) return;
 	
 	auto layer_stack_entity = QueryFirstEntityByType<TerrainEditorLayerStackEntityType>(*world_system);
-	auto& layer_entity_guids = layer_stack_entity.hierarchy->children;
 	auto& build_state = *layer_stack_entity.build_state;
 	
 	CmdSetRootSignature(record_context, root_signature);
@@ -293,13 +364,13 @@ void TerrainEditorLayersRenderPass::RecordPass(RecordContext* record_context) {
 	TerrainCommandList command_list;
 	command_list.record_context = record_context;
 	command_list.alloc          = record_context->alloc;
-	TranslateCommands(command_list, world_system, layer_entity_guids, build_state.min_frequency_band, render_target_size.mips);
+	TranslateCommands(command_list, world_system, layer_stack_entity, render_target_size.mips);
 	
 	
 	if (build_state.hash != command_list.hash) {
 		build_state.hash = command_list.hash;
-		build_state.end_command_index  = 0;
-		build_state.height_field_epoch = 0;
+		build_state.end_command_index = 0;
+		build_state.epochs = {};
 	}
 	
 	compile_const u64 per_frame_build_pixel_budget = 1024 * 1024 * 128;
@@ -326,12 +397,15 @@ void TerrainEditorLayersRenderPass::RecordPass(RecordContext* record_context) {
 	HashTable<u64, Descriptors*> descriptor_table_cache;
 	HashTableReserve(descriptor_table_cache, alloc, 128);
 	
-	u32 height_field_epoch = build_state.height_field_epoch;
+	auto epochs = build_state.epochs;
+	defer{ build_state.epochs = epochs; };
+	
 	for (auto& command : ArrayViewCreate(command_list.commands, begin_command_index, end_command_index)) {
 		u32 mip_index = command.frequency_band - TerrainEditorEqualizer::min_frequency_band;
 		
 		RootSignature::PushConstants constants;
-		constants.command_type           = command.type;
+		constants.command_type           = (u16)command.type;
+		constants.has_mask               = HasAnyFlags(command.bindings, TerrainCommandBindings::SrcMask) ? 1 : 0;
 		constants.layer_constants_offset = command.gpu_settings_offset;
 		constants.render_target_size     = render_target_size.x >> (u32)mip_index;
 		constants.inv_render_target_size = 1.f / constants.render_target_size;
@@ -342,7 +416,11 @@ void TerrainEditorLayersRenderPass::RecordPass(RecordContext* record_context) {
 		descriptor_table_key |= (u64)mip_index << 32;
 		
 		if (HasAnyFlags(command.bindings, TerrainCommandBindings::SrcHeight | TerrainCommandBindings::DstHeight)) {
-			descriptor_table_key |= (u64)(height_field_epoch & 0x1) << 38;
+			descriptor_table_key |= (u64)(epochs.height & 0x1) << 38;
+		}
+		
+		if (HasAnyFlags(command.bindings, TerrainCommandBindings::SrcMask | TerrainCommandBindings::DstMask)) {
+			descriptor_table_key |= (u64)(epochs.mask & 0x1) << 39;
 		}
 		
 		auto [descriptor_cache_entry, is_added] = HashTableAddOrFind(descriptor_table_cache, alloc, descriptor_table_key, (Descriptors*)nullptr);
@@ -351,13 +429,25 @@ void TerrainEditorLayersRenderPass::RecordPass(RecordContext* record_context) {
 			descriptor_cache_entry->value = &descriptor_table;
 			
 			if (HasAnyFlags(command.bindings, TerrainCommandBindings::SrcHeight)) {
-				auto resource_id = height_field_epoch & 0x1 ? VirtualResourceID::TerrainHeightField0 : VirtualResourceID::TerrainHeightField1;
+				auto resource_id = epochs.height & 0x1 ? VirtualResourceID::TerrainHeightField0 : VirtualResourceID::TerrainHeightField1;
 				descriptor_table.height_field_0.Bind(resource_id, mip_index);
 			}
 			
 			if (HasAnyFlags(command.bindings, TerrainCommandBindings::DstHeight)) {
-				auto resource_id = height_field_epoch & 0x1 ? VirtualResourceID::TerrainHeightField1 : VirtualResourceID::TerrainHeightField0;
+				auto resource_id = epochs.height & 0x1 ? VirtualResourceID::TerrainHeightField1 : VirtualResourceID::TerrainHeightField0;
 				descriptor_table.height_field_1.Bind(resource_id, mip_index);
+			}
+			
+			if (HasAnyFlags(command.bindings, TerrainCommandBindings::SrcMask)) {
+				auto resource_id = epochs.mask & 0x1 ? VirtualResourceID::TerrainMask0 : VirtualResourceID::TerrainMask1;
+				descriptor_table.mask_0.Bind(resource_id, mip_index);
+			}
+			
+			if (HasAnyFlags(command.bindings, TerrainCommandBindings::DstMask)) {
+				auto resource_id = epochs.mask & 0x1 ? VirtualResourceID::TerrainMask1 : VirtualResourceID::TerrainMask0;
+				descriptor_table.mask_1.Bind(resource_id, mip_index);
+			} else if (HasAnyFlags(command.bindings, TerrainCommandBindings::DstPreviewMask)) {
+				descriptor_table.mask_1.Bind(VirtualResourceID::TerrainPreviewMask, mip_index);
 			}
 			
 			if (HasAnyFlags(command.bindings, TerrainCommandBindings::SrcFlow)) {
@@ -393,10 +483,7 @@ void TerrainEditorLayersRenderPass::RecordPass(RecordContext* record_context) {
 			CmdDispatch(record_context, DivideAndRoundUp(uint2(render_target_size) >> mip_index, 16u));
 		}
 		
-		if (HasAnyFlags(command.bindings, TerrainCommandBindings::DstHeight)) {
-			height_field_epoch += 1;
-		}
+		IncrementEpoch(epochs, command.bindings);
 	}
-	build_state.height_field_epoch = height_field_epoch;
 }
 

@@ -198,7 +198,7 @@ ArrayView<typename ArrayT::ValueType> ArrayViewCreate(ArrayT& array, u64 begin, 
 
 
 template<typename T, typename Equals = typename bool(*)(const T&, const T&)>
-u64 ArrayFind(ArrayView<T> array, const T& value, Equals&& equals = [](const T& lh, const T& rh)-> bool { return lh == rh; }) {
+u64 ArrayFind(ArrayView<T> array, const typename ArrayView<T>::ValueType& value, Equals&& equals = [](const T& lh, const T& rh)-> bool { return lh == rh; }) {
 	u64 index = u64_max;
 	
 	for (u64 i = 0; i < array.count; i += 1) {

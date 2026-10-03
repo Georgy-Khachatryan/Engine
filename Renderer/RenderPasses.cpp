@@ -120,15 +120,19 @@ static void BuildResourceTable(RecordContext* record_context, WorldEntitySystem*
 	table.SwapHistory(ID::DenoiserAccumulatedFrameCount0, ID::DenoiserAccumulatedFrameCount1);
 	table.SwapHistory(ID::DenoiserVariance0,              ID::DenoiserVariance1);
 	
+	// TODO: Do we want to allocate these resources externally so we don't allocate/deallocate them all the time?
 	u32 height_field_size      = 2048;
 	u32 height_field_mip_count = Math::Min(FirstBitHigh32(height_field_size) + 1, ParallelReductionSettings::max_mip_count + 1);
-	table.Set(ID::TerrainHeightField0,   TextureSize(TextureFormat::R32_FLOAT,    uint2(height_field_size, height_field_size), 1, height_field_mip_count));
-	table.Set(ID::TerrainHeightField1,   TextureSize(TextureFormat::R32_FLOAT,    uint2(height_field_size, height_field_size), 1, height_field_mip_count));
-	table.Set(ID::TerrainFlowField,      TextureSize(TextureFormat::R16G16_FLOAT, uint2(height_field_size, height_field_size), 1, height_field_mip_count));
-	table.Set(ID::TerrainFlowFieldX,     TextureSize(TextureFormat::R32_SINT,     uint2(height_field_size, height_field_size), 1, height_field_mip_count));
-	table.Set(ID::TerrainFlowFieldY,     TextureSize(TextureFormat::R32_SINT,     uint2(height_field_size, height_field_size), 1, height_field_mip_count));
-	table.Set(ID::TerrainFlowFieldW,     TextureSize(TextureFormat::R32_SINT,     uint2(height_field_size, height_field_size), 1, height_field_mip_count));
-	table.Set(ID::TerrainErosionField,   TextureSize(TextureFormat::R32_SINT,     uint2(height_field_size, height_field_size), 1, height_field_mip_count));
+	table.Set(ID::TerrainHeightField0, TextureSize(TextureFormat::R32_FLOAT,    uint2(height_field_size, height_field_size), 1, height_field_mip_count));
+	table.Set(ID::TerrainHeightField1, TextureSize(TextureFormat::R32_FLOAT,    uint2(height_field_size, height_field_size), 1, height_field_mip_count));
+	table.Set(ID::TerrainMask0,        TextureSize(TextureFormat::R16_UNORM,    uint2(height_field_size, height_field_size), 1, height_field_mip_count));
+	table.Set(ID::TerrainMask1,        TextureSize(TextureFormat::R16_UNORM,    uint2(height_field_size, height_field_size), 1, height_field_mip_count));
+	table.Set(ID::TerrainPreviewMask,  TextureSize(TextureFormat::R8_UNORM,     uint2(height_field_size, height_field_size), 1, height_field_mip_count));
+	table.Set(ID::TerrainFlowField,    TextureSize(TextureFormat::R16G16_FLOAT, uint2(height_field_size, height_field_size), 1, height_field_mip_count));
+	table.Set(ID::TerrainFlowFieldX,   TextureSize(TextureFormat::R32_SINT,     uint2(height_field_size, height_field_size), 1, height_field_mip_count));
+	table.Set(ID::TerrainFlowFieldY,   TextureSize(TextureFormat::R32_SINT,     uint2(height_field_size, height_field_size), 1, height_field_mip_count));
+	table.Set(ID::TerrainFlowFieldW,   TextureSize(TextureFormat::R32_SINT,     uint2(height_field_size, height_field_size), 1, height_field_mip_count));
+	table.Set(ID::TerrainErosionField, TextureSize(TextureFormat::R32_SINT,     uint2(height_field_size, height_field_size), 1, height_field_mip_count));
 	
 	auto& output_settings = renderer_world->output_settings;
 	if (output_settings.mode == SceneOutputMode::ExternalRenderTarget) {
@@ -601,6 +605,8 @@ void BuildRenderPassesForFrame(RendererContext* renderer_context, RecordContext*
 		render_passes.Add<TerrainEditorLayersRenderPass>().world_system = world_system;
 		render_passes.Add<TerrainEditorBuildPreviewRenderPass>().world_system = world_system;
 		render_passes.Add<TerrainEditorTracePreviewRenderPass>().world_system = world_system;
+	} else {
+		TerrainEditorLayersRenderPass::InvalidateBuildStates(world_system);
 	}
 	
 	auto& debug_geometry = render_passes.Add<DebugGeometryRenderPass>();

@@ -7,21 +7,32 @@
 
 #include <SDK/imgui/imgui_internal.h>
 
-static void TerrainLayerCreationComboBox(UndoRedoSystem& undo_redo_system, WorldEntitySystem& world_system, EditorSelectionStateEntity selection_state_entity, TerrainEditorLayerQuery layer_stack_entity) {
-	static const EntityTypeID creatable_entity_type_ids[] = {
-		ECS::GetEntityTypeID<TerrainHeightLayerNoiseEntityType>::id,
-		ECS::GetEntityTypeID<TerrainHeightLayerDistortionEntityType>::id,
-		ECS::GetEntityTypeID<TerrainHeightLayerStrataEntityType>::id,
-		ECS::GetEntityTypeID<TerrainHeightLayerErosionEntityType>::id,
-	};
-	
+static const EntityTypeID terrain_height_layer_entity_type_ids[] = {
+	ECS::GetEntityTypeID<TerrainHeightLayerNoiseEntityType>::id,
+	ECS::GetEntityTypeID<TerrainHeightLayerDistortionEntityType>::id,
+	ECS::GetEntityTypeID<TerrainHeightLayerStrataEntityType>::id,
+	ECS::GetEntityTypeID<TerrainHeightLayerErosionEntityType>::id,
+};
+
+static const EntityTypeID terrain_mask_layer_entity_type_ids[] = {
+	ECS::GetEntityTypeID<TerrainMaskLayerNoiseEntityType>::id,
+};
+
+static void TerrainLayerCreationComboBox(UndoRedoSystem& undo_redo_system, WorldEntitySystem& world_system, EditorSelectionStateEntity selection_state_entity, TerrainEditorLayerQuery layer_stack_entity, TerrainEditorLayerDomain domain) {
 	auto& style = ImGui::GetStyle();
 	float combo_box_width = ImGui::CalcTextSize("Create Layer").x + ImGui::GetFrameHeight() + style.FramePadding.x * 2.f;
 	
 	ImGui::SameLine(ImGui::GetWindowWidth() - style.WindowPadding.x - combo_box_width); // TODO: Nicer UI for layer creation.
 	
+	ArrayView<const EntityTypeID> entity_type_ids;
+	if (domain == TerrainEditorLayerDomain::Height) {
+		entity_type_ids = ArrayViewCreate(terrain_height_layer_entity_type_ids);
+	} else if (domain == TerrainEditorLayerDomain::Mask) {
+		entity_type_ids = ArrayViewCreate(terrain_mask_layer_entity_type_ids);
+	}
+	
 	BeginUndoRedoGroup(undo_redo_system);
-	u64 new_terrain_layer_guid = EntityCreationComboBox("##CreateTerrainEntity", "Create Layer", world_system, undo_redo_system, selection_state_entity, ArrayViewCreate(creatable_entity_type_ids));
+	u64 new_terrain_layer_guid = EntityCreationComboBox("##CreateTerrainEntity", "Create Layer", world_system, undo_redo_system, selection_state_entity, entity_type_ids);
 	if (new_terrain_layer_guid != 0) {
 		auto* storage = ImGui::GetStateStorage();
 		storage->SetBool((ImGuiID)layer_stack_entity.guid->guid, true);
@@ -102,7 +113,7 @@ void TerrainEditorWindow(StackAllocator* alloc, UndoRedoSystem& undo_redo_system
 	
 	ImGui::SetNextItemWidth(-FLT_MIN);
 	ImGui::SliderInt("##MinFrequencyBand", &layer_stack_entity.build_state->min_frequency_band, TerrainEditorEqualizer::min_frequency_band, TerrainEditorEqualizer::max_frequency_band, "Frequency Cutoff: %d", ImGuiSliderFlags_AlwaysClamp);
-	
+	ImGui::Checkbox("Visualize Mask", &layer_stack_entity.build_state->allow_visualize_mask);
 	
 	Array<TerrainEditorLayerEntry> layers;
 	ArrayReserve(layers, alloc, 128);
@@ -185,7 +196,8 @@ void TerrainEditorWindow(StackAllocator* alloc, UndoRedoSystem& undo_redo_system
 			ImGui::EndDragDropTarget();
 		}
 		
-		TerrainLayerCreationComboBox(undo_redo_system, world_system, selection_state_entity, layer);
+		auto domain = layer_entry.parent_index == u32_max ? TerrainEditorLayerDomain::Height : TerrainEditorLayerDomain::Mask;
+		TerrainLayerCreationComboBox(undo_redo_system, world_system, selection_state_entity, layer, domain);
 		
 		ImGui::Indent();
 		ArrayAppend(parent_stack, alloc, index);
@@ -203,6 +215,22 @@ void TerrainEditorWindow(StackAllocator* alloc, UndoRedoSystem& undo_redo_system
 	
 	ms_io = ImGui::EndMultiSelect();
 	ApplyEntitySelectionRequests(ms_io, layers, world_system, undo_redo_system, selection_state_entity);
+	
+	
+	// Don't change the GUID if we go into from visualizing the mask to not visualizing it to prevent triggering a rebuild.
+	layer_stack_entity.build_state->visualize_mask = false;
+	if (selected_entities_hash_table.count == 1) {
+		u64 selected_entity_guid = (*selected_entities_hash_table.begin()).key;
+		auto typed_entity_id = FindEntityByGUID(world_system, selected_entity_guid);
+		
+		auto entity_type_ids = ArrayViewCreate(terrain_mask_layer_entity_type_ids);
+		bool visualize_mask  = ArrayFind(entity_type_ids, typed_entity_id.entity_type_id) != u64_max;
+		
+		if (visualize_mask) {
+			layer_stack_entity.build_state->visualize_mask_guid = selected_entity_guid;
+		}
+		layer_stack_entity.build_state->visualize_mask = visualize_mask && layer_stack_entity.build_state->allow_visualize_mask;
+	}
 	
 	
 	if (add_to_index != u32_max) {

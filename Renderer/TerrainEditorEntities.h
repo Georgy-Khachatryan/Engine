@@ -12,8 +12,8 @@ enum struct TerrainEditorCommandType : u32 {
 	None = 0,
 	
 	Clear,
-	Copy,
 	Upscale,
+	CopyMask,
 	
 	TerrainHeightLayerNoise,
 	TerrainHeightLayerDistortion,
@@ -22,6 +22,27 @@ enum struct TerrainEditorCommandType : u32 {
 	TerrainHeightLayerErosionClear,
 	TerrainHeightLayerErosionSimulate,
 	TerrainHeightLayerErosionApply,
+	
+	TerrainMaskLayerNoise,
+	
+	Count
+};
+
+NOTES(Meta::HlslFile{ terrain_editor_data_filename })
+enum struct TerrainMaskLayerBlendMode : u32 {
+	Add      = 0,
+	Subtract = 1,
+	Multiply = 2,
+	Min      = 3,
+	Max      = 4,
+	Override = 5,
+	
+	Count
+};
+
+enum struct TerrainEditorLayerDomain : u32 {
+	Height = 0,
+	Mask   = 1,
 	
 	Count
 };
@@ -279,14 +300,78 @@ struct TerrainHeightLayerErosionEntityType {
 	ECS::Component<TerrainHeightLayerErosionCpuSettings> settings;
 };
 
+
+NOTES()
+struct TerrainMaskLayerNoiseCpuSettings {
+	TerrainMaskLayerBlendMode blend_mode = TerrainMaskLayerBlendMode::Add;
+	
+	TerrainEditorNoiseType type = TerrainEditorNoiseType::Gradient;
+	u32 random_seed = 0;
+	
+	float scale      = 256.f; // XY scale.
+	float anisotropy = 0.f;   // XY scale anisotropy.
+	float rotation   = 0.f;   // XY rotation.
+	float amplitude  = 0.75f; // Z  scale relative to XY scale.
+	
+	u32 octave_count = 8;
+	float lacunarity = 2.0f; // XY scale for each subsequent octave.
+	float gain       = 0.5f; // Z  scale for each subsequent octave.
+	
+	TerrainEditorDistortionType distortion_type = TerrainEditorDistortionType::None;
+	float distortion_scale      = 32.f;
+	float distortion_amplitude  = 32.f;
+	u32 distortion_octave_count = 6;
+};
+
+NOTES(Meta::HlslFile{ terrain_editor_data_filename })
+struct TerrainMaskLayerNoiseGpuSettings {
+	TerrainMaskLayerBlendMode blend_mode = TerrainMaskLayerBlendMode::Add;
+	
+	TerrainEditorNoiseType type = TerrainEditorNoiseType::Gradient;
+	u32 random_seed = 0;
+	
+	float inv_scale  = 0.f;
+	float anisotropy = 0.f;
+	float2 rotation  = 0.f;
+	float amplitude  = 0.f;
+	
+	u32 octave_count = 0;
+	float lacunarity = 0.f;
+	float gain       = 0.f;
+	
+	TerrainEditorDistortionType distortion_type = TerrainEditorDistortionType::None;
+	float inv_distortion_scale  = 0.f;
+	float distortion_amplitude  = 0.f;
+	u32 distortion_octave_count = 0;
+};
+
+NOTES(Meta::EntityType{ 16 }, Meta::ComponentQuery{})
+struct TerrainMaskLayerNoiseEntityType {
+	ECS::Component<GuidComponent> guid;
+	ECS::Component<NameComponent> name;
+	ECS::Component<HierarchyComponent> hierarchy;
+	
+	ECS::Component<TerrainMaskLayerNoiseCpuSettings> settings;
+};
+
+
+struct TerrainEditorBuildStateEpoch {
+	u32 height = 0;
+	u32 mask   = 0;
+};
+
 NOTES(Meta::SaveLoadOptions{ SaveLoadFlags::None })
 struct TerrainEditorLayerStackBuildState {
 	u64 hash                = 0;
 	u64 end_command_index   = 0;
-	u32 height_field_epoch  = 0;
 	u32 min_ready_mip_level = 0;
+	s32 min_frequency_band  = TerrainEditorEqualizer::min_frequency_band;
 	
-	s32 min_frequency_band = TerrainEditorEqualizer::min_frequency_band;
+	u64 visualize_mask_guid   = 0;
+	bool visualize_mask       = false;
+	bool allow_visualize_mask = false;
+	
+	TerrainEditorBuildStateEpoch epochs;
 };
 
 NOTES(Meta::EntityType{ 4 }, Meta::ComponentQuery{})
@@ -307,12 +392,25 @@ struct TerrainEditorLayerQuery {
 };
 
 NOTES(Meta::ComponentQuery{})
-struct TerrainEditorLayerSettingsQuery {
+struct TerrainHeightLayerCpuSettingsQuery {
 	ECS::Component<GuidComponent> guid;
-	ECS::Component<NameComponent> name;
+	ECS::Component<NameComponent> nme;
+	
+	ECS::Component<HierarchyComponent> hierarchy;
 	
 	TerrainHeightLayerNoiseCpuSettings*      noise_cpu_settings      = nullptr;
 	TerrainHeightLayerDistortionCpuSettings* distortion_cpu_settings = nullptr;
 	TerrainHeightLayerStrataCpuSettings*     strata_cpu_settings     = nullptr;
 	TerrainHeightLayerErosionCpuSettings*    erosion_cpu_settings    = nullptr;
+	
+	TerrainMaskLayerNoiseCpuSettings*        mask_noise_cpu_settings = nullptr;
+};
+
+
+NOTES(Meta::ComponentQuery{})
+struct TerrainMaskLayerCpuSettingsQuery {
+	ECS::Component<GuidComponent> guid;
+	ECS::Component<NameComponent> name;
+	
+	TerrainMaskLayerNoiseCpuSettings* noise_cpu_settings = nullptr;
 };

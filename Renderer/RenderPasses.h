@@ -144,6 +144,9 @@ enum struct VirtualResourceID : u32 {
 	// Terrain Editor:
 	TerrainHeightField0,
 	TerrainHeightField1,
+	TerrainMask0,
+	TerrainMask1,
+	TerrainPreviewMask,
 	TerrainFlowField,
 	TerrainFlowFieldX,
 	TerrainFlowFieldY,
@@ -1959,21 +1962,23 @@ enum struct TerrainEditorLayersShaders : u32 {
 };
 SHADER_DEFINITION_GENERATED_CODE(TerrainEditorLayersShaders);
 
-enum struct TerrainEditorCommandType : u32;
-
 NOTES(Meta::RenderPass{})
 struct TerrainEditorLayersRenderPass {
 	RENDER_PASS_GENERATED_CODE();
 	
 	WorldEntitySystem* world_system = nullptr;
 	
+	static void InvalidateBuildStates(WorldEntitySystem* world_system);
+	
 	struct Descriptors : HLSL::BaseDescriptorTable {
 		HLSL::ByteBuffer layer_constants = VirtualResourceID::TransientUploadBuffer;
 		
 		HLSL::Texture2D<float>  height_field_0;
+		HLSL::Texture2D<float>  mask_0;
 		HLSL::Texture2D<float2> flow_field_0;
 		
 		HLSL::RWTexture2D<float>  height_field_1;
+		HLSL::RWTexture2D<float>  mask_1;
 		HLSL::RWTexture2D<float2> flow_field_1;
 		HLSL::RWTexture2D<s32>    flow_field_x_1;
 		HLSL::RWTexture2D<s32>    flow_field_y_1;
@@ -1983,7 +1988,8 @@ struct TerrainEditorLayersRenderPass {
 	
 	struct RootSignature : HLSL::BaseRootSignature {
 		struct PushConstants {
-			TerrainEditorCommandType command_type = (TerrainEditorCommandType)0;
+			u16   command_type           = 0;
+			u16   has_mask               = 0;
 			u32   layer_constants_offset = 0;
 			u32   render_target_size     = 0;
 			float inv_render_target_size = 0;
@@ -2039,13 +2045,15 @@ struct TerrainEditorTracePreviewRenderPass {
 	
 	struct Descriptors : HLSL::BaseDescriptorTable {
 		HLSL::Texture2D<float>    depth_stencil  = VirtualResourceID::DepthStencil;
-		HLSL::Texture2D<float>    height_field   = VirtualResourceID::TerrainHeightField0;
+		HLSL::Texture2D<float>    height_field;
+		HLSL::Texture2D<float>    preview_mask;
 		HLSL::RWTexture2D<float4> scene_radiance = VirtualResourceID::SceneRadiance;
 	};
 	
 	struct RootSignature : HLSL::BaseRootSignature {
 		struct PushConstants {
-			u32 min_mip_level = 0;
+			u32 min_mip_level  = 0;
+			u32 visualize_mask = 0;
 		};
 		
 		HLSL::PushConstantBuffer<PushConstants> constants;
