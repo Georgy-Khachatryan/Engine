@@ -7,6 +7,8 @@ struct TerrainHeightLayerDistortionCpuSettings;
 struct TerrainHeightLayerStrataCpuSettings;
 struct TerrainHeightLayerErosionCpuSettings;
 struct TerrainMaskLayerNoiseCpuSettings;
+struct TerrainMaskLayerSlopeRangeCpuSettings;
+struct TerrainMaskLayerHeightRangeCpuSettings;
 
 NOTES(Meta::SaveLoadOptions{ SaveLoadFlags::Default | SaveLoadFlags::CustomSaveLoadCallback })
 struct EditorSelectionStateComponent {
@@ -74,7 +76,9 @@ struct WorldEntityEditorQuery {
 	TerrainHeightLayerStrataCpuSettings*     terrain_height_layer_strata_cpu_settings     = nullptr;
 	TerrainHeightLayerErosionCpuSettings*    terrain_height_layer_erosion_cpu_settings    = nullptr;
 	
-	TerrainMaskLayerNoiseCpuSettings* terrain_mask_layer_noise_cpu_settings = nullptr;
+	TerrainMaskLayerNoiseCpuSettings*       terrain_mask_layer_noise_cpu_settings        = nullptr;
+	TerrainMaskLayerSlopeRangeCpuSettings*  terrain_mask_layer_slope_range_cpu_settings  = nullptr;
+	TerrainMaskLayerHeightRangeCpuSettings* terrain_mask_layer_height_range_cpu_settings = nullptr;
 };
 
 NOTES(Meta::ComponentQuery{})

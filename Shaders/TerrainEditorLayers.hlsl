@@ -34,6 +34,30 @@ float ApplyTerrainMaskLayerBlendMode(float old_value, float new_value, TerrainMa
 	}
 }
 
+float2 SampleHeightFieldGradient(float2 uv) {
+	float dx =
+		height_field_0.SampleLevel(sampler_linear_clamp, uv, 0.0, s32x2(-1, 0)) -
+		height_field_0.SampleLevel(sampler_linear_clamp, uv, 0.0, s32x2(+1, 0));
+	
+	float dy =
+		height_field_0.SampleLevel(sampler_linear_clamp, uv, 0.0, s32x2(0, -1)) -
+		height_field_0.SampleLevel(sampler_linear_clamp, uv, 0.0, s32x2(0, +1));
+	
+	return float2(dx, dy) / (2.0 * height_field_extent * constants.inv_render_target_size);
+}
+
+float2 LoadHeightFieldGradient(uint2 thread_id) {
+	float dx =
+		height_field_0[clamp(thread_id + s32x2(-1, 0), 0, constants.render_target_size - 1)] -
+		height_field_0[clamp(thread_id + s32x2(+1, 0), 0, constants.render_target_size - 1)];
+	
+	float dy =
+		height_field_0[clamp(thread_id + s32x2(0, -1), 0, constants.render_target_size - 1)] -
+		height_field_0[clamp(thread_id + s32x2(0, +1), 0, constants.render_target_size - 1)];
+	
+	return float2(dx, dy) / (2.0 * height_field_extent * constants.inv_render_target_size);
+}
+
 void TerrainEditorCommandTypeClear(uint2 thread_id) {
 	height_field_1[thread_id] = 0.0;
 }
@@ -195,18 +219,6 @@ void TerrainHeightLayerErosionClear(uint2 thread_id) {
 	flow_field_y_1[thread_id] = 0;
 	flow_field_w_1[thread_id] = 0;
 	erosion_field_1[thread_id] = 0;
-}
-
-float2 SampleHeightFieldGradient(float2 uv, float mip_index = 0.0) {
-	float dx =
-		height_field_0.SampleLevel(sampler_linear_clamp, uv, mip_index, s32x2(-1, 0)) -
-		height_field_0.SampleLevel(sampler_linear_clamp, uv, mip_index, s32x2(+1, 0));
-	
-	float dy =
-		height_field_0.SampleLevel(sampler_linear_clamp, uv, mip_index, s32x2(0, -1)) -
-		height_field_0.SampleLevel(sampler_linear_clamp, uv, mip_index, s32x2(0, +1));
-	
-	return float2(dx, dy) / (2.0 * height_field_extent * constants.inv_render_target_size);
 }
 
 compile_const float fixed_point_scale     = 16.0 * 1024.0;
@@ -378,6 +390,27 @@ void TerrainMaskLayerNoise(uint2 thread_id, float2 world_space_position) {
 	mask_1[thread_id] = ApplyTerrainMaskLayerBlendMode(mask_0[thread_id], noise_value * settings.amplitude, settings.blend_mode);
 }
 
+void TerrainMaskLayerSlopeRange(uint2 thread_id) {
+	TerrainMaskLayerSlopeRangeGpuSettings settings = layer_constants.Load<TerrainMaskLayerSlopeRangeGpuSettings>(constants.layer_constants_offset);
+	
+	float2 gradient = LoadHeightFieldGradient(thread_id);
+	float slope = length(gradient);
+	float angle = atan(slope);
+	
+	float value = smoothstep(settings.min_edge.x, settings.min_edge.y, angle);
+	mask_1[thread_id] = ApplyTerrainMaskLayerBlendMode(mask_0[thread_id], value, settings.blend_mode);
+}
+
+void TerrainMaskLayerHeightRange(uint2 thread_id) {
+	TerrainMaskLayerHeightRangeGpuSettings settings = layer_constants.Load<TerrainMaskLayerHeightRangeGpuSettings>(constants.layer_constants_offset);
+	
+	float height = height_field_0[thread_id];
+	
+	// Can't replace 1.0 - smoothstep by a smoothstep with reversed argument order because it would flip the result when edge.x == edge.y.
+	float value = smoothstep(settings.min_edge.x, settings.min_edge.y, height) * (1.0 - smoothstep(settings.max_edge.x, settings.max_edge.y, height));
+	mask_1[thread_id] = ApplyTerrainMaskLayerBlendMode(mask_0[thread_id], value, settings.blend_mode);
+}
+
 
 [ThreadGroupSize(thread_group_size * thread_group_size, 1, 1)]
 void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
@@ -417,6 +450,12 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 		break;
 	} case TerrainEditorCommandType::TerrainMaskLayerNoise: {
 		TerrainMaskLayerNoise(thread_id, world_space_position);
+		break;
+	} case TerrainEditorCommandType::TerrainMaskLayerSlopeRange: {
+		TerrainMaskLayerSlopeRange(thread_id);
+		break;
+	} case TerrainEditorCommandType::TerrainMaskLayerHeightRange: {
+		TerrainMaskLayerHeightRange(thread_id);
 		break;
 	} default: {
 		

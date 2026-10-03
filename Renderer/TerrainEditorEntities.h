@@ -24,6 +24,8 @@ enum struct TerrainEditorCommandType : u32 {
 	TerrainHeightLayerErosionApply,
 	
 	TerrainMaskLayerNoise,
+	TerrainMaskLayerSlopeRange,
+	TerrainMaskLayerHeightRange,
 	
 	Count
 };
@@ -355,6 +357,58 @@ struct TerrainMaskLayerNoiseEntityType {
 };
 
 
+NOTES()
+struct TerrainMaskLayerSlopeRangeCpuSettings {
+	TerrainMaskLayerBlendMode blend_mode = TerrainMaskLayerBlendMode::Add;
+	
+	float angle   = 10.f;
+	float falloff = 15.f;
+};
+
+NOTES(Meta::HlslFile{ terrain_editor_data_filename })
+struct TerrainMaskLayerSlopeRangeGpuSettings {
+	TerrainMaskLayerBlendMode blend_mode = TerrainMaskLayerBlendMode::Add;
+	
+	float2 min_edge;
+};
+
+NOTES(Meta::EntityType{ 16 }, Meta::ComponentQuery{})
+struct TerrainMaskLayerSlopeRangeEntityType {
+	ECS::Component<GuidComponent> guid;
+	ECS::Component<NameComponent> name;
+	ECS::Component<HierarchyComponent> hierarchy;
+	
+	ECS::Component<TerrainMaskLayerSlopeRangeCpuSettings> settings;
+};
+
+
+NOTES()
+struct TerrainMaskLayerHeightRangeCpuSettings {
+	TerrainMaskLayerBlendMode blend_mode = TerrainMaskLayerBlendMode::Add;
+	
+	float height  = 10.f;
+	float range   = 20.f;
+	float falloff = 10.f;
+};
+
+NOTES(Meta::HlslFile{ terrain_editor_data_filename })
+struct TerrainMaskLayerHeightRangeGpuSettings {
+	TerrainMaskLayerBlendMode blend_mode = TerrainMaskLayerBlendMode::Add;
+	
+	float2 min_edge;
+	float2 max_edge;
+};
+
+NOTES(Meta::EntityType{ 16 }, Meta::ComponentQuery{})
+struct TerrainMaskLayerHeightRangeEntityType {
+	ECS::Component<GuidComponent> guid;
+	ECS::Component<NameComponent> name;
+	ECS::Component<HierarchyComponent> hierarchy;
+	
+	ECS::Component<TerrainMaskLayerHeightRangeCpuSettings> settings;
+};
+
+
 struct TerrainEditorBuildStateEpoch {
 	u32 height = 0;
 	u32 mask   = 0;
@@ -412,5 +466,7 @@ struct TerrainMaskLayerCpuSettingsQuery {
 	ECS::Component<GuidComponent> guid;
 	ECS::Component<NameComponent> name;
 	
-	TerrainMaskLayerNoiseCpuSettings* noise_cpu_settings = nullptr;
+	TerrainMaskLayerNoiseCpuSettings*       noise_cpu_settings        = nullptr;
+	TerrainMaskLayerSlopeRangeCpuSettings*  slope_range_cpu_settings  = nullptr;
+	TerrainMaskLayerHeightRangeCpuSettings* height_range_cpu_settings = nullptr;
 };

@@ -544,6 +544,15 @@ enum TerrainMaskLayerBlendMode {
 	}
 }
 
+struct TerrainMaskLayerHeightRangeCpuSettings {
+	/*Version*/ 1 {
+		blend_mode TerrainMaskLayerBlendMode 1;
+		height float32 0;
+		range float32 0;
+		falloff float32 0;
+	}
+}
+
 struct TerrainMaskLayerNoiseCpuSettings {
 	/*Version*/ 2 {
 		blend_mode TerrainMaskLayerBlendMode 1;
@@ -560,6 +569,14 @@ struct TerrainMaskLayerNoiseCpuSettings {
 		distortion_scale float32 0;
 		distortion_amplitude float32 0;
 		distortion_octave_count u32 0;
+	}
+}
+
+struct TerrainMaskLayerSlopeRangeCpuSettings {
+	/*Version*/ 2 {
+		blend_mode TerrainMaskLayerBlendMode 1;
+		angle float32 0;
+		falloff float32 0;
 	}
 }
 

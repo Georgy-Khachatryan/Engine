@@ -273,6 +273,39 @@ static void TranslateCommandTerrainMaskLayerNoiseCpuSettings(TerrainCommandList&
 	AppendTerrainCommand(command_list, command, gpu_settings);
 }
 
+static void TranslateCommandTerrainMaskLayerSlopeRangeCpuSettings(TerrainCommandList& command_list, TerrainMaskLayerSlopeRangeCpuSettings& cpu_settings, bool is_first_mask_layer) {
+	auto& gpu_settings = *NewFromAlloc(command_list.alloc, TerrainMaskLayerSlopeRangeGpuSettings);
+	gpu_settings.blend_mode = is_first_mask_layer ? TerrainMaskLayerBlendMode::Override : cpu_settings.blend_mode;
+	gpu_settings.min_edge.x = cpu_settings.angle * Math::degrees_to_radians;
+	
+	float falloff_angle_offset = Math::Min(cpu_settings.falloff * Math::degrees_to_radians, Math::HALF_PI - gpu_settings.min_edge.x);
+	
+	gpu_settings.min_edge.y = gpu_settings.min_edge.x + falloff_angle_offset;
+	
+	TerrainCommand command;
+	command.type     = TerrainEditorCommandType::TerrainMaskLayerSlopeRange;
+	command.bindings = TerrainCommandBindings::DstMask | TerrainCommandBindings::SrcMask | TerrainCommandBindings::SrcHeight;
+	AppendTerrainCommand(command_list, command, gpu_settings);
+}
+
+static void TranslateCommandTerrainMaskLayerHeightRangeCpuSettings(TerrainCommandList& command_list, TerrainMaskLayerHeightRangeCpuSettings& cpu_settings, bool is_first_mask_layer) {
+	auto& gpu_settings = *NewFromAlloc(command_list.alloc, TerrainMaskLayerHeightRangeGpuSettings);
+	gpu_settings.blend_mode = is_first_mask_layer ? TerrainMaskLayerBlendMode::Override : cpu_settings.blend_mode;
+	gpu_settings.min_edge.x = cpu_settings.height - cpu_settings.range;
+	gpu_settings.max_edge.y = cpu_settings.height + cpu_settings.range;
+	
+	float half_height_delta     = (gpu_settings.max_edge.y - gpu_settings.min_edge.x) * 0.5f;
+	float falloff_height_offset = Math::Min(cpu_settings.falloff, half_height_delta);
+	
+	gpu_settings.min_edge.y = gpu_settings.min_edge.x + falloff_height_offset;
+	gpu_settings.max_edge.x = gpu_settings.max_edge.y - falloff_height_offset;
+	
+	TerrainCommand command;
+	command.type     = TerrainEditorCommandType::TerrainMaskLayerHeightRange;
+	command.bindings = TerrainCommandBindings::DstMask | TerrainCommandBindings::SrcMask | TerrainCommandBindings::SrcHeight;
+	AppendTerrainCommand(command_list, command, gpu_settings);
+}
+
 
 static void TranslateCommands(TerrainCommandList& command_list, WorldEntitySystem* world_system, TerrainEditorLayerStackEntityType layer_stack_entity, s32 mip_level_count) {
 	auto layer_entity_guids = layer_stack_entity.hierarchy->children;
@@ -308,6 +341,10 @@ static void TranslateCommands(TerrainCommandList& command_list, WorldEntitySyste
 					
 					if (mask_layer.noise_cpu_settings != nullptr) {
 						TranslateCommandTerrainMaskLayerNoiseCpuSettings(command_list, *mask_layer.noise_cpu_settings, is_first_mask_layer);
+					} else if (mask_layer.slope_range_cpu_settings != nullptr) {
+						TranslateCommandTerrainMaskLayerSlopeRangeCpuSettings(command_list, *mask_layer.slope_range_cpu_settings, is_first_mask_layer);
+					} else if (mask_layer.height_range_cpu_settings != nullptr) {
+						TranslateCommandTerrainMaskLayerHeightRangeCpuSettings(command_list, *mask_layer.height_range_cpu_settings, is_first_mask_layer);
 					}
 					
 					if (mask_layer_entity_guid == build_state.visualize_mask_guid) {

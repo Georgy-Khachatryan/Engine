@@ -489,6 +489,41 @@ static void WorldComponentEntityView(StackAllocator* alloc, WorldEntitySystem& w
 			ImGui::TableSliderU32("Octave Count", &settings.distortion_octave_count, 1, 6, "%u", ImGuiSliderFlags_AlwaysClamp);
 		}
 	}
+	
+	if (entity.terrain_mask_layer_slope_range_cpu_settings) {
+		auto& settings = *entity.terrain_mask_layer_slope_range_cpu_settings;
+		
+		if (ImGui::TableCollapsingHeader("Mask", ImGuiTreeNodeFlags_DefaultOpen)) {
+			ImGuiScopeID("Mask");
+			
+			ImGui::TableCombo("Blend Mode", (s32*)&settings.blend_mode, terrain_mask_layer_blend_mode_names, (s32)TerrainMaskLayerBlendMode::Count, (s32)TerrainMaskLayerBlendMode::Count);
+		}
+		
+		if (ImGui::TableCollapsingHeader("Slope Range", ImGuiTreeNodeFlags_DefaultOpen)) {
+			ImGuiScopeID("Slope Range");
+			
+			ImGui::TableSliderFloat("Angle", &settings.angle, 0.f, 90.f);
+			ImGui::TableSliderFloat("Falloff", &settings.falloff, 0.f, 90.f);
+		}
+	}
+	
+	if (entity.terrain_mask_layer_height_range_cpu_settings) {
+		auto& settings = *entity.terrain_mask_layer_height_range_cpu_settings;
+		
+		if (ImGui::TableCollapsingHeader("Mask", ImGuiTreeNodeFlags_DefaultOpen)) {
+			ImGuiScopeID("Mask");
+			
+			ImGui::TableCombo("Blend Mode", (s32*)&settings.blend_mode, terrain_mask_layer_blend_mode_names, (s32)TerrainMaskLayerBlendMode::Count, (s32)TerrainMaskLayerBlendMode::Count);
+		}
+		
+		if (ImGui::TableCollapsingHeader("Height Range", ImGuiTreeNodeFlags_DefaultOpen)) {
+			ImGuiScopeID("Height Range");
+			
+			ImGui::TableDragFloat("Height", &settings.height, 0.5f);
+			ImGui::TableDragFloat("Range", &settings.range, 0.5f, 0.f, FLT_MAX);
+			ImGui::TableDragFloat("Falloff", &settings.falloff, 0.5f, 0.f, FLT_MAX);
+		}
+	}
 }
 
 static bool AssetComponentEntityView(StackAllocator* alloc, AssetEntitySystem& asset_system, AssetEntityEditorQuery entity) {

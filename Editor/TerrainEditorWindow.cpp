@@ -16,6 +16,8 @@ static const EntityTypeID terrain_height_layer_entity_type_ids[] = {
 
 static const EntityTypeID terrain_mask_layer_entity_type_ids[] = {
 	ECS::GetEntityTypeID<TerrainMaskLayerNoiseEntityType>::id,
+	ECS::GetEntityTypeID<TerrainMaskLayerSlopeRangeEntityType>::id,
+	ECS::GetEntityTypeID<TerrainMaskLayerHeightRangeEntityType>::id,
 };
 
 static void TerrainLayerCreationComboBox(UndoRedoSystem& undo_redo_system, WorldEntitySystem& world_system, EditorSelectionStateEntity selection_state_entity, TerrainEditorLayerQuery layer_stack_entity, TerrainEditorLayerDomain domain) {
