@@ -342,7 +342,7 @@ static void WorldComponentEntityView(StackAllocator* alloc, WorldEntitySystem& w
 			ImGui::TableCombo("Type", (s32*)&settings.distortion_type, "None\0Gradient\0", (s32)TerrainEditorDistortionType::Count);
 			
 			ImGui::TableDragFloat("Scale", &settings.distortion_scale, 0.25f);
-			ImGui::TableDragFloat("Amplitude", &settings.distortion_amplitude);
+			ImGui::TableDragFloat("Amplitude", &settings.distortion_amplitude, 0.01f, 0.f, FLT_MAX);
 			ImGui::TableSliderU32("Octave Count", &settings.distortion_octave_count, 1, 6, "%u", ImGuiSliderFlags_AlwaysClamp);
 		}
 	}
@@ -364,7 +364,7 @@ static void WorldComponentEntityView(StackAllocator* alloc, WorldEntitySystem& w
 			ImGui::TableDragFloat("Scale", &settings.scale);
 			ImGui::TableSliderFloat("Anisotropy", &settings.anisotropy, -1.f, 1.f);
 			ImGui::TableSliderFloat("Rotation", &settings.rotation, -180.f, 180.f);
-			ImGui::TableDragFloat("Amplitude", &settings.amplitude, 0.1f);
+			ImGui::TableDragFloat("Amplitude", &settings.amplitude, 0.01f, 0.f, FLT_MAX);
 		}
 		
 		if (ImGui::TableCollapsingHeader("Octaves", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -485,8 +485,41 @@ static void WorldComponentEntityView(StackAllocator* alloc, WorldEntitySystem& w
 			ImGui::TableCombo("Type", (s32*)&settings.distortion_type, "None\0Gradient\0", (s32)TerrainEditorDistortionType::Count);
 			
 			ImGui::TableDragFloat("Scale", &settings.distortion_scale, 0.25f);
-			ImGui::TableDragFloat("Amplitude", &settings.distortion_amplitude);
+			ImGui::TableDragFloat("Amplitude", &settings.distortion_amplitude, 0.01f, 0.f, FLT_MAX);
 			ImGui::TableSliderU32("Octave Count", &settings.distortion_octave_count, 1, 6, "%u", ImGuiSliderFlags_AlwaysClamp);
+		}
+	}
+	
+	if (entity.terrain_mask_layer_distortion_cpu_settings) {
+		auto& settings = *entity.terrain_mask_layer_distortion_cpu_settings;
+		
+		if (ImGui::TableCollapsingHeader("Mask", ImGuiTreeNodeFlags_DefaultOpen)) {
+			ImGuiScopeID("Mask");
+			
+			ImGui::TableCombo("Blend Mode", (s32*)&settings.blend_mode, terrain_mask_layer_blend_mode_names, (s32)TerrainMaskLayerBlendMode::Count, (s32)TerrainMaskLayerBlendMode::Count);
+		}
+		
+		if (ImGui::TableCollapsingHeader("Noise", ImGuiTreeNodeFlags_DefaultOpen)) {
+			ImGuiScopeID("Noise");
+			
+			ImGui::TableCombo("Type", (s32*)&settings.type, terrain_editor_noise_type_names, (s32)TerrainEditorNoiseType::Count, (s32)TerrainEditorNoiseType::Count);
+			if (ImGui::BeginTableItem("Seed")) {
+				ImGui::InputInt("", (s32*)&settings.random_seed);
+				ImGui::EndTableItem();
+			}
+			
+			ImGui::TableDragFloat("Scale", &settings.scale);
+			ImGui::TableSliderFloat("Anisotropy", &settings.anisotropy, -1.f, 1.f);
+			ImGui::TableSliderFloat("Rotation", &settings.rotation, -180.f, 180.f);
+			ImGui::TableDragFloat("Amplitude", &settings.amplitude, 0.01f, 0.f, FLT_MAX);
+		}
+		
+		if (ImGui::TableCollapsingHeader("Octaves", ImGuiTreeNodeFlags_DefaultOpen)) {
+			ImGuiScopeID("Octaves");
+			
+			ImGui::TableSliderU32("Octave Count", &settings.octave_count, 1, 10, "%u", ImGuiSliderFlags_AlwaysClamp);
+			ImGui::TableDragFloat("Lacunarity", &settings.lacunarity, 0.01f);
+			ImGui::TableDragFloat("Gain", &settings.gain, 0.01f);
 		}
 	}
 	
@@ -522,6 +555,59 @@ static void WorldComponentEntityView(StackAllocator* alloc, WorldEntitySystem& w
 			ImGui::TableDragFloat("Height", &settings.height, 0.5f);
 			ImGui::TableDragFloat("Range", &settings.range, 0.5f, 0.f, FLT_MAX);
 			ImGui::TableDragFloat("Falloff", &settings.falloff, 0.5f, 0.f, FLT_MAX);
+		}
+	}
+	
+	if (entity.terrain_mask_layer_flow_lines_cpu_settings) {
+		auto& settings = *entity.terrain_mask_layer_flow_lines_cpu_settings;
+		
+		if (ImGui::TableCollapsingHeader("Mask", ImGuiTreeNodeFlags_DefaultOpen)) {
+			ImGuiScopeID("Mask");
+			
+			ImGui::TableCombo("Blend Mode", (s32*)&settings.blend_mode, terrain_mask_layer_blend_mode_names, (s32)TerrainMaskLayerBlendMode::Count, (s32)TerrainMaskLayerBlendMode::Count);
+		}
+		
+		if (ImGui::TableCollapsingHeader("Flow Lines", ImGuiTreeNodeFlags_DefaultOpen)) {
+			ImGuiScopeID("Flow Lines");
+			
+			ImGui::TableSliderFloat("Scale", &settings.scale, 0.f, 4.f);
+			ImGui::TableSliderFloat("Droplet Inertia", &settings.fluvial_inertia, 0.f, 1.f);
+			ImGui::TableDragFloat("Flow Length", &settings.fluvial_flow_length, 0.1f, 0.1f, 256.f);
+			ImGui::TableCheckbox("Use Initial Water Mask", &settings.use_initial_water_mask);
+		}
+	}
+	
+	if (entity.terrain_mask_layer_flow_erosion_cpu_settings) {
+		auto& settings = *entity.terrain_mask_layer_flow_erosion_cpu_settings;
+		
+		if (ImGui::TableCollapsingHeader("Mask", ImGuiTreeNodeFlags_DefaultOpen)) {
+			ImGuiScopeID("Mask");
+			
+			ImGui::TableCombo("Blend Mode", (s32*)&settings.blend_mode, terrain_mask_layer_blend_mode_names, (s32)TerrainMaskLayerBlendMode::Count, (s32)TerrainMaskLayerBlendMode::Count);
+		}
+		
+		if (ImGui::TableCollapsingHeader("Flow Erosion", ImGuiTreeNodeFlags_DefaultOpen)) {
+			ImGuiScopeID("Flow Erosion");
+			
+			ImGui::TableSliderFloat("Scale", &settings.scale, 0.f, 4.f);
+			ImGui::TableSliderFloat("Droplet Inertia", &settings.fluvial_inertia, 0.f, 1.f);
+			ImGui::TableDragFloat("Flow Length", &settings.fluvial_flow_length, 0.1f, 0.1f, 256.f);
+		}
+	}
+	
+	if (entity.terrain_mask_layer_blur_cpu_settings) {
+		auto& settings = *entity.terrain_mask_layer_blur_cpu_settings;
+		
+		if (ImGui::TableCollapsingHeader("Mask", ImGuiTreeNodeFlags_DefaultOpen)) {
+			ImGuiScopeID("Mask");
+			
+			ImGui::TableCombo("Blend Mode", (s32*)&settings.blend_mode, terrain_mask_layer_blend_mode_names, (s32)TerrainMaskLayerBlendMode::Count, (s32)TerrainMaskLayerBlendMode::Count);
+		}
+		
+		if (ImGui::TableCollapsingHeader("Blur", ImGuiTreeNodeFlags_DefaultOpen)) {
+			ImGuiScopeID("Blur");
+			
+			ImGui::TableSliderFloat("Radius", &settings.radius, 0.f, 8.f);
 		}
 	}
 }

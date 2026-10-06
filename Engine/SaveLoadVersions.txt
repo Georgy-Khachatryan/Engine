@@ -544,6 +544,49 @@ enum TerrainMaskLayerBlendMode {
 	}
 }
 
+struct TerrainMaskLayerBlurCpuSettings {
+	/*Version*/ 0 {
+		blend_mode TerrainMaskLayerBlendMode 1;
+		radius float32 0;
+	}
+}
+
+struct TerrainMaskLayerDistortionCpuSettings {
+	/*Version*/ 0 {
+		blend_mode TerrainMaskLayerBlendMode 1;
+		type TerrainEditorNoiseType 1;
+		random_seed u32 0;
+		scale float32 0;
+		anisotropy float32 0;
+		rotation float32 0;
+		amplitude float32 0;
+		octave_count u32 0;
+		lacunarity float32 0;
+		gain float32 0;
+	}
+}
+
+struct TerrainMaskLayerFlowErosionCpuSettings {
+	/*Version*/ 1 {
+		blend_mode TerrainMaskLayerBlendMode 1;
+		random_seed u32 0;
+		scale float32 0;
+		fluvial_inertia float32 0;
+		fluvial_flow_length float32 0;
+	}
+}
+
+struct TerrainMaskLayerFlowLinesCpuSettings {
+	/*Version*/ 3 {
+		blend_mode TerrainMaskLayerBlendMode 1;
+		random_seed u32 0;
+		scale float32 0;
+		fluvial_inertia float32 0;
+		fluvial_flow_length float32 0;
+		use_initial_water_mask bool 0;
+	}
+}
+
 struct TerrainMaskLayerHeightRangeCpuSettings {
 	/*Version*/ 1 {
 		blend_mode TerrainMaskLayerBlendMode 1;

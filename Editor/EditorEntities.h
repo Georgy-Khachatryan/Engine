@@ -7,8 +7,12 @@ struct TerrainHeightLayerDistortionCpuSettings;
 struct TerrainHeightLayerStrataCpuSettings;
 struct TerrainHeightLayerErosionCpuSettings;
 struct TerrainMaskLayerNoiseCpuSettings;
+struct TerrainMaskLayerDistortionCpuSettings;
 struct TerrainMaskLayerSlopeRangeCpuSettings;
 struct TerrainMaskLayerHeightRangeCpuSettings;
+struct TerrainMaskLayerFlowLinesCpuSettings;
+struct TerrainMaskLayerFlowErosionCpuSettings;
+struct TerrainMaskLayerBlurCpuSettings;
 
 NOTES(Meta::SaveLoadOptions{ SaveLoadFlags::Default | SaveLoadFlags::CustomSaveLoadCallback })
 struct EditorSelectionStateComponent {
@@ -77,21 +81,25 @@ struct WorldEntityEditorQuery {
 	TerrainHeightLayerErosionCpuSettings*    terrain_height_layer_erosion_cpu_settings    = nullptr;
 	
 	TerrainMaskLayerNoiseCpuSettings*       terrain_mask_layer_noise_cpu_settings        = nullptr;
+	TerrainMaskLayerDistortionCpuSettings*  terrain_mask_layer_distortion_cpu_settings   = nullptr;
 	TerrainMaskLayerSlopeRangeCpuSettings*  terrain_mask_layer_slope_range_cpu_settings  = nullptr;
 	TerrainMaskLayerHeightRangeCpuSettings* terrain_mask_layer_height_range_cpu_settings = nullptr;
+	TerrainMaskLayerFlowLinesCpuSettings*   terrain_mask_layer_flow_lines_cpu_settings   = nullptr;
+	TerrainMaskLayerFlowErosionCpuSettings* terrain_mask_layer_flow_erosion_cpu_settings = nullptr;
+	TerrainMaskLayerBlurCpuSettings*        terrain_mask_layer_blur_cpu_settings         = nullptr;
 };
 
 NOTES(Meta::ComponentQuery{})
 struct AssetEntityEditorQuery {
 	MeshAssetMaterialTable* mesh_asset_material_table = nullptr;
 	
-	MeshSourceData* mesh_source_data = nullptr;
+	MeshSourceData*        mesh_source_data         = nullptr;
 	MeshRuntimeDataLayout* mesh_runtime_data_layout = nullptr;
 	MeshRuntimeAllocation* mesh_runtime_allocation  = nullptr;
 	
-	TextureSourceData* texture_source_data = nullptr;
-	TextureRuntimeDataLayout* texture_runtime_data_layout = nullptr;
-	TextureDescriptorAllocation* texture_descriptor_allocation = nullptr;
+	TextureSourceData*                 texture_source_data            = nullptr;
+	TextureRuntimeDataLayout*          texture_runtime_data_layout    = nullptr;
+	TextureDescriptorAllocation*       texture_descriptor_allocation  = nullptr;
 	TextureRuntimeCpuStreamingRequest* texture_cpu_streaming_requests = nullptr;
 	
 	MaterialTextureData* material_texture_data = nullptr;

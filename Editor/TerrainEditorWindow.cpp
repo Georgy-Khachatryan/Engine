@@ -16,8 +16,12 @@ static const EntityTypeID terrain_height_layer_entity_type_ids[] = {
 
 static const EntityTypeID terrain_mask_layer_entity_type_ids[] = {
 	ECS::GetEntityTypeID<TerrainMaskLayerNoiseEntityType>::id,
+	ECS::GetEntityTypeID<TerrainMaskLayerDistortionEntityType>::id,
 	ECS::GetEntityTypeID<TerrainMaskLayerSlopeRangeEntityType>::id,
 	ECS::GetEntityTypeID<TerrainMaskLayerHeightRangeEntityType>::id,
+	ECS::GetEntityTypeID<TerrainMaskLayerFlowLinesEntityType>::id,
+	ECS::GetEntityTypeID<TerrainMaskLayerFlowErosionEntityType>::id,
+	ECS::GetEntityTypeID<TerrainMaskLayerBlurEntityType>::id,
 };
 
 static void TerrainLayerCreationComboBox(UndoRedoSystem& undo_redo_system, WorldEntitySystem& world_system, EditorSelectionStateEntity selection_state_entity, TerrainEditorLayerQuery layer_stack_entity, TerrainEditorLayerDomain domain) {
@@ -168,12 +172,19 @@ void TerrainEditorWindow(StackAllocator* alloc, UndoRedoSystem& undo_redo_system
 		auto layer_name = layer.name->name;
 		auto display_name = layer_name.count ? layer_name : entity_type_name;
 		
+		ImGui::Separator();
+		
 		ImGui::SetNextItemSelectionUserData(index);
 		ImGui::SetNextItemStorageID((ImGuiID)layer_entry.guid);
 		
 		auto cursor_position_before = ImGui::GetCursorScreenPos();
 		bool is_open = ImGui::TreeNodeEx(display_name.data, tree_node_flags);
 		auto cursor_position_after  = ImGui::GetCursorScreenPos();
+
+		if (parent_stack.count == 2 && ImGui::IsItemClicked(ImGuiMouseButton_Left) && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+			layer_stack_entity.build_state->visualize_mask_guid  = layer_entry.guid;
+			layer_stack_entity.build_state->allow_visualize_mask = true;
+		}
 		
 		compile_const char* payload_type_name = "TerrainLayer";
 		if (ImGui::BeginDragDropSource()) {
@@ -198,8 +209,16 @@ void TerrainEditorWindow(StackAllocator* alloc, UndoRedoSystem& undo_redo_system
 			ImGui::EndDragDropTarget();
 		}
 		
-		auto domain = layer_entry.parent_index == u32_max ? TerrainEditorLayerDomain::Height : TerrainEditorLayerDomain::Mask;
-		TerrainLayerCreationComboBox(undo_redo_system, world_system, selection_state_entity, layer, domain);
+		
+		auto domain = TerrainEditorLayerDomain::None;
+		switch (parent_stack.count) {
+		case 0: domain = TerrainEditorLayerDomain::Height; break;
+		case 1: domain = TerrainEditorLayerDomain::Mask;   break;
+		}
+		
+		if (domain != TerrainEditorLayerDomain::None) {
+			TerrainLayerCreationComboBox(undo_redo_system, world_system, selection_state_entity, layer, domain);
+		}
 		
 		ImGui::Indent();
 		ArrayAppend(parent_stack, alloc, index);
@@ -219,19 +238,9 @@ void TerrainEditorWindow(StackAllocator* alloc, UndoRedoSystem& undo_redo_system
 	ApplyEntitySelectionRequests(ms_io, layers, world_system, undo_redo_system, selection_state_entity);
 	
 	
-	// Don't change the GUID if we go into from visualizing the mask to not visualizing it to prevent triggering a rebuild.
 	layer_stack_entity.build_state->visualize_mask = false;
-	if (selected_entities_hash_table.count == 1) {
-		u64 selected_entity_guid = (*selected_entities_hash_table.begin()).key;
-		auto typed_entity_id = FindEntityByGUID(world_system, selected_entity_guid);
-		
-		auto entity_type_ids = ArrayViewCreate(terrain_mask_layer_entity_type_ids);
-		bool visualize_mask  = ArrayFind(entity_type_ids, typed_entity_id.entity_type_id) != u64_max;
-		
-		if (visualize_mask) {
-			layer_stack_entity.build_state->visualize_mask_guid = selected_entity_guid;
-		}
-		layer_stack_entity.build_state->visualize_mask = visualize_mask && layer_stack_entity.build_state->allow_visualize_mask;
+	if (layer_stack_entity.build_state->visualize_mask_guid != 0) {
+		layer_stack_entity.build_state->visualize_mask = layer_stack_entity.build_state->allow_visualize_mask && HashTableFind(world_system.entity_guid_to_entity_id, layer_stack_entity.build_state->visualize_mask_guid) != nullptr;
 	}
 	
 	

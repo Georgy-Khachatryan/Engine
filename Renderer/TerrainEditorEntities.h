@@ -24,8 +24,15 @@ enum struct TerrainEditorCommandType : u32 {
 	TerrainHeightLayerErosionApply,
 	
 	TerrainMaskLayerNoise,
+	TerrainMaskLayerDistortion,
 	TerrainMaskLayerSlopeRange,
 	TerrainMaskLayerHeightRange,
+	TerrainMaskLayerFlowLinesSimulate,
+	TerrainMaskLayerFlowLinesApply,
+	TerrainMaskLayerFlowErosionSimulate,
+	TerrainMaskLayerFlowErosionApply,
+	TerrainMaskLayerBlurVertical,
+	TerrainMaskLayerBlurHorizontal,
 	
 	Count
 };
@@ -43,8 +50,9 @@ enum struct TerrainMaskLayerBlendMode : u32 {
 };
 
 enum struct TerrainEditorLayerDomain : u32 {
-	Height = 0,
-	Mask   = 1,
+	None   = 0,
+	Height = 1,
+	Mask   = 2,
 	
 	Count
 };
@@ -129,7 +137,7 @@ struct TerrainHeightLayerNoiseCpuSettings {
 	
 	TerrainEditorDistortionType distortion_type = TerrainEditorDistortionType::None;
 	float distortion_scale      = 32.f;
-	float distortion_amplitude  = 32.f;
+	float distortion_amplitude  = 1.f;
 	u32 distortion_octave_count = 6;
 };
 
@@ -153,7 +161,7 @@ struct TerrainHeightLayerNoiseGpuSettings {
 	u32 distortion_octave_count = 0;
 };
 
-NOTES(Meta::EntityType{ 16 }, Meta::ComponentQuery{})
+NOTES(Meta::EntityType{ 16 })
 struct TerrainHeightLayerNoiseEntityType {
 	ECS::Component<GuidComponent> guid;
 	ECS::Component<NameComponent> name;
@@ -195,7 +203,7 @@ struct TerrainHeightLayerDistortionGpuSettings {
 	float gain       = 0.f;
 };
 
-NOTES(Meta::EntityType{ 16 }, Meta::ComponentQuery{})
+NOTES(Meta::EntityType{ 16 })
 struct TerrainHeightLayerDistortionEntityType {
 	ECS::Component<GuidComponent> guid;
 	ECS::Component<NameComponent> name;
@@ -242,7 +250,7 @@ struct TerrainHeightLayerStrataGpuSettings {
 	float gain       = 0.f;
 };
 
-NOTES(Meta::EntityType{ 16 }, Meta::ComponentQuery{})
+NOTES(Meta::EntityType{ 16 })
 struct TerrainHeightLayerStrataEntityType {
 	ECS::Component<GuidComponent> guid;
 	ECS::Component<NameComponent> name;
@@ -293,7 +301,7 @@ struct TerrainHeightLayerErosionGpuSettings {
 	float thermal_deposition_rate   = 0.f;
 };
 
-NOTES(Meta::EntityType{ 16 }, Meta::ComponentQuery{})
+NOTES(Meta::EntityType{ 16 })
 struct TerrainHeightLayerErosionEntityType {
 	ECS::Component<GuidComponent> guid;
 	ECS::Component<NameComponent> name;
@@ -321,7 +329,7 @@ struct TerrainMaskLayerNoiseCpuSettings {
 	
 	TerrainEditorDistortionType distortion_type = TerrainEditorDistortionType::None;
 	float distortion_scale      = 32.f;
-	float distortion_amplitude  = 32.f;
+	float distortion_amplitude  = 1.f;
 	u32 distortion_octave_count = 6;
 };
 
@@ -347,13 +355,55 @@ struct TerrainMaskLayerNoiseGpuSettings {
 	u32 distortion_octave_count = 0;
 };
 
-NOTES(Meta::EntityType{ 16 }, Meta::ComponentQuery{})
+NOTES(Meta::EntityType{ 16 })
 struct TerrainMaskLayerNoiseEntityType {
 	ECS::Component<GuidComponent> guid;
 	ECS::Component<NameComponent> name;
 	ECS::Component<HierarchyComponent> hierarchy;
 	
 	ECS::Component<TerrainMaskLayerNoiseCpuSettings> settings;
+};
+
+
+NOTES()
+struct TerrainMaskLayerDistortionCpuSettings {
+	TerrainMaskLayerBlendMode blend_mode = TerrainMaskLayerBlendMode::Override;
+	TerrainEditorNoiseType type = TerrainEditorNoiseType::Gradient;
+	u32 random_seed = 0;
+	
+	float scale      = 128.f; // XY scale.
+	float anisotropy = 0.f;   // XY scale anisotropy.
+	float rotation   = 0.f;   // Rotation around Z.
+	float amplitude  = 0.5f;  // XY distortion scale relative the the scale.
+	
+	u32 octave_count = 8;
+	float lacunarity = 2.0f; // XY scale for each subsequent octave.
+	float gain       = 0.5f; // Z  scale for each subsequent octave.
+};
+
+NOTES(Meta::HlslFile{ terrain_editor_data_filename })
+struct TerrainMaskLayerDistortionGpuSettings {
+	TerrainMaskLayerBlendMode blend_mode = TerrainMaskLayerBlendMode::Override;
+	TerrainEditorNoiseType type = TerrainEditorNoiseType::Gradient;
+	u32 random_seed = 0;
+	
+	float inv_scale  = 0.f;
+	float anisotropy = 0.f;
+	float2 rotation  = 0.f;
+	float amplitude  = 0.f;
+	
+	u32 octave_count = 0;
+	float lacunarity = 0.f;
+	float gain       = 0.f;
+};
+
+NOTES(Meta::EntityType{ 16 })
+struct TerrainMaskLayerDistortionEntityType {
+	ECS::Component<GuidComponent> guid;
+	ECS::Component<NameComponent> name;
+	ECS::Component<HierarchyComponent> hierarchy;
+	
+	ECS::Component<TerrainMaskLayerDistortionCpuSettings> settings;
 };
 
 
@@ -372,7 +422,7 @@ struct TerrainMaskLayerSlopeRangeGpuSettings {
 	float2 min_edge;
 };
 
-NOTES(Meta::EntityType{ 16 }, Meta::ComponentQuery{})
+NOTES(Meta::EntityType{ 16 })
 struct TerrainMaskLayerSlopeRangeEntityType {
 	ECS::Component<GuidComponent> guid;
 	ECS::Component<NameComponent> name;
@@ -399,13 +449,100 @@ struct TerrainMaskLayerHeightRangeGpuSettings {
 	float2 max_edge;
 };
 
-NOTES(Meta::EntityType{ 16 }, Meta::ComponentQuery{})
+NOTES(Meta::EntityType{ 16 })
 struct TerrainMaskLayerHeightRangeEntityType {
 	ECS::Component<GuidComponent> guid;
 	ECS::Component<NameComponent> name;
 	ECS::Component<HierarchyComponent> hierarchy;
 	
 	ECS::Component<TerrainMaskLayerHeightRangeCpuSettings> settings;
+};
+
+
+NOTES()
+struct TerrainMaskLayerFlowLinesCpuSettings {
+	TerrainMaskLayerBlendMode blend_mode = TerrainMaskLayerBlendMode::Add;
+	u32 random_seed = 0;
+	
+	float scale                  = 1.f;
+	float fluvial_inertia        = 0.9f;
+	float fluvial_flow_length    = 256.f;
+	bool  use_initial_water_mask = false;
+};
+
+NOTES(Meta::HlslFile{ terrain_editor_data_filename })
+struct TerrainMaskLayerFlowLinesGpuSettings {
+	TerrainMaskLayerBlendMode blend_mode = TerrainMaskLayerBlendMode::Add;
+	u32 random_seed = 0;
+	
+	u32   use_initial_water_mask   = 0;
+	float scale                    = 0.f;
+	float fluvial_inertia          = 0.f;
+	u32   fluvial_step_count       = 0;
+	float fluvial_evaporation_rate = 0.f;
+};
+
+NOTES(Meta::EntityType{ 16 })
+struct TerrainMaskLayerFlowLinesEntityType {
+	ECS::Component<GuidComponent> guid;
+	ECS::Component<NameComponent> name;
+	ECS::Component<HierarchyComponent> hierarchy;
+	
+	ECS::Component<TerrainMaskLayerFlowLinesCpuSettings> settings;
+};
+
+
+NOTES()
+struct TerrainMaskLayerFlowErosionCpuSettings {
+	TerrainMaskLayerBlendMode blend_mode = TerrainMaskLayerBlendMode::Override;
+	u32 random_seed = 0;
+	
+	float scale               = 1.f;
+	float fluvial_inertia     = 0.9f;
+	float fluvial_flow_length = 256.f;
+};
+
+NOTES(Meta::HlslFile{ terrain_editor_data_filename })
+struct TerrainMaskLayerFlowErosionGpuSettings {
+	TerrainMaskLayerBlendMode blend_mode = TerrainMaskLayerBlendMode::Override;
+	u32 random_seed = 0;
+	
+	float scale              = 0.f;
+	float fluvial_inertia    = 0.f;
+	u32   fluvial_step_count = 0;
+};
+
+NOTES(Meta::EntityType{ 16 })
+struct TerrainMaskLayerFlowErosionEntityType {
+	ECS::Component<GuidComponent> guid;
+	ECS::Component<NameComponent> name;
+	ECS::Component<HierarchyComponent> hierarchy;
+	
+	ECS::Component<TerrainMaskLayerFlowErosionCpuSettings> settings;
+};
+
+
+NOTES()
+struct TerrainMaskLayerBlurCpuSettings {
+	TerrainMaskLayerBlendMode blend_mode = TerrainMaskLayerBlendMode::Override;
+	
+	float radius = 5.f;
+};
+
+NOTES(Meta::HlslFile{ terrain_editor_data_filename })
+struct TerrainMaskLayerBlurGpuSettings {
+	TerrainMaskLayerBlendMode blend_mode = TerrainMaskLayerBlendMode::Override;
+	
+	s32 radius_texels = 0;
+};
+
+NOTES(Meta::EntityType{ 16 })
+struct TerrainMaskLayerBlurEntityType {
+	ECS::Component<GuidComponent> guid;
+	ECS::Component<NameComponent> name;
+	ECS::Component<HierarchyComponent> hierarchy;
+	
+	ECS::Component<TerrainMaskLayerBlurCpuSettings> settings;
 };
 
 
@@ -467,6 +604,10 @@ struct TerrainMaskLayerCpuSettingsQuery {
 	ECS::Component<NameComponent> name;
 	
 	TerrainMaskLayerNoiseCpuSettings*       noise_cpu_settings        = nullptr;
+	TerrainMaskLayerDistortionCpuSettings*  distortion_cpu_settings   = nullptr;
 	TerrainMaskLayerSlopeRangeCpuSettings*  slope_range_cpu_settings  = nullptr;
 	TerrainMaskLayerHeightRangeCpuSettings* height_range_cpu_settings = nullptr;
+	TerrainMaskLayerFlowLinesCpuSettings*   flow_lines_cpu_settings   = nullptr;
+	TerrainMaskLayerFlowErosionCpuSettings* flow_erosion_cpu_settings = nullptr;
+	TerrainMaskLayerBlurCpuSettings*        blur_cpu_settings         = nullptr;
 };

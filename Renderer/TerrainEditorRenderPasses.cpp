@@ -99,6 +99,7 @@ struct TerrainCommandList {
 	RecordContext* record_context = nullptr;
 	StackAllocator* alloc = nullptr;
 	
+	u32 render_target_size = 0;
 	u64 hash = 0;
 	s32 frequency_band = 0;
 	TerrainCommandBindings common_bindings = TerrainCommandBindings::None;
@@ -158,7 +159,7 @@ static void TranslateCommandTerrainHeightLayerNoiseCpuSettings(TerrainCommandLis
 	gpu_settings.gain                    = cpu_settings.gain;
 	gpu_settings.distortion_type         = cpu_settings.distortion_type;
 	gpu_settings.inv_distortion_scale    = 1.f / cpu_settings.distortion_scale;
-	gpu_settings.distortion_amplitude    = cpu_settings.distortion_amplitude;
+	gpu_settings.distortion_amplitude    = cpu_settings.distortion_amplitude * cpu_settings.distortion_scale;
 	gpu_settings.distortion_octave_count = cpu_settings.distortion_octave_count;
 	
 	TerrainCommand command;
@@ -174,7 +175,7 @@ static void TranslateCommandTerrainHeightLayerDistortionCpuSettings(TerrainComma
 	gpu_settings.inv_scale    = cpu_settings.scale == 0.f ? 1.f : 1.f / cpu_settings.scale;
 	gpu_settings.anisotropy   = cpu_settings.anisotropy;
 	gpu_settings.rotation     = Math::CosSin(cpu_settings.rotation * Math::degrees_to_radians);
-	gpu_settings.amplitude    = cpu_settings.amplitude * cpu_settings.scale * cpu_settings.amount.NormalizedBandScale(command_list.frequency_band);;
+	gpu_settings.amplitude    = cpu_settings.amplitude * cpu_settings.scale * cpu_settings.amount.NormalizedBandScale(command_list.frequency_band);
 	gpu_settings.octave_count = cpu_settings.octave_count;
 	gpu_settings.lacunarity   = cpu_settings.lacunarity;
 	gpu_settings.gain         = cpu_settings.gain;
@@ -194,7 +195,7 @@ static void TranslateCommandTerrainHeightLayerStrataCpuSettings(TerrainCommandLi
 	gpu_settings.randomness           = cpu_settings.randomness;
 	gpu_settings.amount               = cpu_settings.amount.NormalizedBandScale(command_list.frequency_band);
 	gpu_settings.inv_distortion_scale = 1.f / cpu_settings.distortion_scale;
-	gpu_settings.distortion_amount    = cpu_settings.distortion_amount;
+	gpu_settings.distortion_amount    = cpu_settings.distortion_amount; // Not scaled by distortion_scale because the amount is internally scaled by period of the current octave.
 	gpu_settings.octave_count         = cpu_settings.octave_count;
 	gpu_settings.lacunarity           = cpu_settings.lacunarity;
 	gpu_settings.gain                 = cpu_settings.gain;
@@ -264,11 +265,32 @@ static void TranslateCommandTerrainMaskLayerNoiseCpuSettings(TerrainCommandList&
 	gpu_settings.gain                    = cpu_settings.gain;
 	gpu_settings.distortion_type         = cpu_settings.distortion_type;
 	gpu_settings.inv_distortion_scale    = 1.f / cpu_settings.distortion_scale;
-	gpu_settings.distortion_amplitude    = cpu_settings.distortion_amplitude;
+	gpu_settings.distortion_amplitude    = cpu_settings.distortion_amplitude * cpu_settings.distortion_scale;
 	gpu_settings.distortion_octave_count = cpu_settings.distortion_octave_count;
 	
 	TerrainCommand command;
 	command.type     = TerrainEditorCommandType::TerrainMaskLayerNoise;
+	command.bindings = TerrainCommandBindings::DstMask | TerrainCommandBindings::SrcMask;
+	AppendTerrainCommand(command_list, command, gpu_settings);
+}
+
+static void TranslateCommandTerrainMaskLayerDistortionCpuSettings(TerrainCommandList& command_list, TerrainMaskLayerDistortionCpuSettings& cpu_settings, bool is_first_mask_layer) {
+	if (is_first_mask_layer) return;
+	
+	auto& gpu_settings = *NewFromAlloc(command_list.alloc, TerrainMaskLayerDistortionGpuSettings);
+	gpu_settings.blend_mode   = cpu_settings.blend_mode;
+	gpu_settings.type         = cpu_settings.type;
+	gpu_settings.random_seed  = cpu_settings.random_seed;
+	gpu_settings.inv_scale    = cpu_settings.scale == 0.f ? 1.f : 1.f / cpu_settings.scale;
+	gpu_settings.anisotropy   = cpu_settings.anisotropy;
+	gpu_settings.rotation     = Math::CosSin(cpu_settings.rotation * Math::degrees_to_radians);
+	gpu_settings.amplitude    = cpu_settings.amplitude * cpu_settings.scale;
+	gpu_settings.octave_count = cpu_settings.octave_count;
+	gpu_settings.lacunarity   = cpu_settings.lacunarity;
+	gpu_settings.gain         = cpu_settings.gain;
+	
+	TerrainCommand command;
+	command.type     = TerrainEditorCommandType::TerrainMaskLayerDistortion;
 	command.bindings = TerrainCommandBindings::DstMask | TerrainCommandBindings::SrcMask;
 	AppendTerrainCommand(command_list, command, gpu_settings);
 }
@@ -306,16 +328,102 @@ static void TranslateCommandTerrainMaskLayerHeightRangeCpuSettings(TerrainComman
 	AppendTerrainCommand(command_list, command, gpu_settings);
 }
 
+static void TranslateCommandTerrainMaskLayerFlowLinesCpuSettings(TerrainCommandList& command_list, TerrainMaskLayerFlowLinesCpuSettings& cpu_settings, bool is_first_mask_layer) {
+	if (is_first_mask_layer && cpu_settings.use_initial_water_mask) return;
+	
+	compile_const float height_field_extent = 512.f;
+	compile_const float water_eps = 1.f / 1024.f;
+	compile_const s32   max_steps = 1024;
+	
+	auto& gpu_settings = *NewFromAlloc(command_list.alloc, TerrainMaskLayerFlowLinesGpuSettings);
+	gpu_settings.blend_mode               = is_first_mask_layer ? TerrainMaskLayerBlendMode::Override : cpu_settings.blend_mode;
+	gpu_settings.random_seed              = cpu_settings.random_seed;
+	gpu_settings.use_initial_water_mask   = cpu_settings.use_initial_water_mask ? 1u : 0u;
+	gpu_settings.scale                    = cpu_settings.scale;
+	gpu_settings.fluvial_inertia          = cpu_settings.fluvial_inertia;
+	gpu_settings.fluvial_step_count       = (u32)Math::Clamp((s32)ceilf((float)command_list.render_target_size * (cpu_settings.fluvial_flow_length / height_field_extent)), 0, max_steps);
+	gpu_settings.fluvial_evaporation_rate = 1.f - powf(water_eps, 1.f / Math::Max((float)gpu_settings.fluvial_step_count, 1.f));
+	
+	{
+		TerrainCommand command;
+		command.type     = TerrainEditorCommandType::TerrainMaskLayerFlowLinesSimulate;
+		command.bindings = TerrainCommandBindings::DstErosion | TerrainCommandBindings::SrcHeight | (cpu_settings.use_initial_water_mask ? TerrainCommandBindings::SrcMask : TerrainCommandBindings::None);
+		AppendTerrainCommand(command_list, command, gpu_settings);
+	}
+	
+	{
+		TerrainCommand command;
+		command.type     = TerrainEditorCommandType::TerrainMaskLayerFlowLinesApply;
+		command.bindings = TerrainCommandBindings::DstErosion | TerrainCommandBindings::DstMask | TerrainCommandBindings::SrcMask;
+		AppendTerrainCommand(command_list, command, gpu_settings);
+	}
+}
 
-static void TranslateCommands(TerrainCommandList& command_list, WorldEntitySystem* world_system, TerrainEditorLayerStackEntityType layer_stack_entity, s32 mip_level_count) {
+static void TranslateCommandTerrainMaskLayerFlowErosionCpuSettings(TerrainCommandList& command_list, TerrainMaskLayerFlowErosionCpuSettings& cpu_settings, bool is_first_mask_layer) {
+	if (is_first_mask_layer) return;
+	
+	compile_const float height_field_extent = 512.f;
+	compile_const float water_eps = 1.f / 1024.f;
+	compile_const s32   max_steps = 1024;
+	
+	auto& gpu_settings = *NewFromAlloc(command_list.alloc, TerrainMaskLayerFlowErosionGpuSettings);
+	gpu_settings.blend_mode         = cpu_settings.blend_mode;
+	gpu_settings.random_seed        = cpu_settings.random_seed;
+	gpu_settings.scale              = cpu_settings.scale;
+	gpu_settings.fluvial_inertia    = cpu_settings.fluvial_inertia;
+	gpu_settings.fluvial_step_count = (u32)Math::Clamp((s32)ceilf((float)command_list.render_target_size * (cpu_settings.fluvial_flow_length / height_field_extent)), 0, max_steps);
+	
+	{
+		TerrainCommand command;
+		command.type     = TerrainEditorCommandType::TerrainMaskLayerFlowErosionSimulate;
+		command.bindings = TerrainCommandBindings::DstErosion | TerrainCommandBindings::SrcHeight | TerrainCommandBindings::SrcMask;
+		AppendTerrainCommand(command_list, command, gpu_settings);
+	}
+	
+	{
+		TerrainCommand command;
+		command.type     = TerrainEditorCommandType::TerrainMaskLayerFlowErosionApply;
+		command.bindings = TerrainCommandBindings::DstErosion | TerrainCommandBindings::DstMask | TerrainCommandBindings::SrcMask;
+		AppendTerrainCommand(command_list, command, gpu_settings);
+	}
+}
+
+static void TranslateCommandTerrainMaskLayerBlurCpuSettings(TerrainCommandList& command_list, TerrainMaskLayerBlurCpuSettings& cpu_settings, bool is_first_mask_layer) {
+	if (is_first_mask_layer) return;
+	
+	compile_const float height_field_extent = 512.f;
+	compile_const s32   max_radius = 8;
+	
+	auto& gpu_settings = *NewFromAlloc(command_list.alloc, TerrainMaskLayerBlurGpuSettings);
+	gpu_settings.blend_mode    = cpu_settings.blend_mode;
+	gpu_settings.radius_texels = Math::Clamp((s32)ceilf((float)command_list.render_target_size * (cpu_settings.radius / height_field_extent)), 0, max_radius);
+	
+	{
+		TerrainCommand command;
+		command.type     = TerrainEditorCommandType::TerrainMaskLayerBlurVertical;
+		command.bindings = TerrainCommandBindings::DstMask | TerrainCommandBindings::SrcMask;
+		AppendTerrainCommand(command_list, command, gpu_settings);
+	}
+	
+	{
+		TerrainCommand command;
+		command.type     = TerrainEditorCommandType::TerrainMaskLayerBlurHorizontal;
+		command.bindings = TerrainCommandBindings::DstMask | TerrainCommandBindings::SrcMask;
+		AppendTerrainCommand(command_list, command, gpu_settings);
+	}
+}
+
+
+static void TranslateCommands(TerrainCommandList& command_list, WorldEntitySystem* world_system, TerrainEditorLayerStackEntityType layer_stack_entity, TextureSize render_target_size) {
 	auto layer_entity_guids = layer_stack_entity.hierarchy->children;
 	auto& build_state = *layer_stack_entity.build_state;
 	
 	ArrayReserve(command_list.commands, command_list.alloc, layer_entity_guids.count * 8);
 	
-	s32 last_mip_index = mip_level_count - 1;
+	s32 last_mip_index = (s32)render_target_size.mips - 1;
 	for (s32 mip_index = last_mip_index; mip_index >= 0; mip_index -= 1) {
-		command_list.frequency_band = mip_index + TerrainEditorEqualizer::min_frequency_band;
+		command_list.frequency_band     = mip_index + TerrainEditorEqualizer::min_frequency_band;
+		command_list.render_target_size = (u32)render_target_size.x >> (u32)mip_index;
 		
 		if (mip_index == last_mip_index) {
 			TerrainCommand command;
@@ -341,10 +449,18 @@ static void TranslateCommands(TerrainCommandList& command_list, WorldEntitySyste
 					
 					if (mask_layer.noise_cpu_settings != nullptr) {
 						TranslateCommandTerrainMaskLayerNoiseCpuSettings(command_list, *mask_layer.noise_cpu_settings, is_first_mask_layer);
+					} else if (mask_layer.distortion_cpu_settings != nullptr) {
+						TranslateCommandTerrainMaskLayerDistortionCpuSettings(command_list, *mask_layer.distortion_cpu_settings, is_first_mask_layer);
 					} else if (mask_layer.slope_range_cpu_settings != nullptr) {
 						TranslateCommandTerrainMaskLayerSlopeRangeCpuSettings(command_list, *mask_layer.slope_range_cpu_settings, is_first_mask_layer);
 					} else if (mask_layer.height_range_cpu_settings != nullptr) {
 						TranslateCommandTerrainMaskLayerHeightRangeCpuSettings(command_list, *mask_layer.height_range_cpu_settings, is_first_mask_layer);
+					} else if (mask_layer.flow_lines_cpu_settings != nullptr) {
+						TranslateCommandTerrainMaskLayerFlowLinesCpuSettings(command_list, *mask_layer.flow_lines_cpu_settings, is_first_mask_layer);
+					} else if (mask_layer.flow_erosion_cpu_settings != nullptr) {
+						TranslateCommandTerrainMaskLayerFlowErosionCpuSettings(command_list, *mask_layer.flow_erosion_cpu_settings, is_first_mask_layer);
+					} else if (mask_layer.blur_cpu_settings != nullptr) {
+						TranslateCommandTerrainMaskLayerBlurCpuSettings(command_list, *mask_layer.blur_cpu_settings, is_first_mask_layer);
 					}
 					
 					if (mask_layer_entity_guid == build_state.visualize_mask_guid) {
@@ -399,9 +515,9 @@ void TerrainEditorLayersRenderPass::RecordPass(RecordContext* record_context) {
 	auto* alloc = record_context->alloc;
 	
 	TerrainCommandList command_list;
-	command_list.record_context = record_context;
-	command_list.alloc          = record_context->alloc;
-	TranslateCommands(command_list, world_system, layer_stack_entity, render_target_size.mips);
+	command_list.record_context     = record_context;
+	command_list.alloc              = record_context->alloc;
+	TranslateCommands(command_list, world_system, layer_stack_entity, render_target_size);
 	
 	
 	if (build_state.hash != command_list.hash) {
@@ -428,7 +544,7 @@ void TerrainEditorLayersRenderPass::RecordPass(RecordContext* record_context) {
 		pixel_count += command_render_target_size * command_render_target_size * command_type_multiplier;
 	}
 	build_state.end_command_index = end_command_index;
-	build_state.min_ready_mip_level = end_command_index >= command_list.commands.count ? 0 : (command_list.commands[end_command_index].frequency_band - TerrainEditorEqualizer::min_frequency_band);
+	build_state.min_ready_mip_level = end_command_index >= command_list.commands.count ? 0 : (command_list.commands[end_command_index - 1].frequency_band + 1 - TerrainEditorEqualizer::min_frequency_band);
 	
 	
 	HashTable<u64, Descriptors*> descriptor_table_cache;

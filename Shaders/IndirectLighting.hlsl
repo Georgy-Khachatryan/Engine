@@ -337,7 +337,7 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 #endif // defined(INDIRECT_DIFFUSE)
 	
 }
-#endif // defined(INDIRECT_DIFFUSE)
+#endif // defined(INDIRECT_DIFFUSE) || defined(INDIRECT_SPECULAR)
 
 
 #if defined(UPDATE_RADIANCE_HASH_TABLE)

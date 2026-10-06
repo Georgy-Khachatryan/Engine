@@ -381,6 +381,7 @@ void TerrainHeightLayerErosionSimulateThermal(uint2 thread_id) {
 	}
 }
 
+
 void TerrainMaskLayerNoise(uint2 thread_id, float2 world_space_position) {
 	TerrainMaskLayerNoiseGpuSettings settings = layer_constants.Load<TerrainMaskLayerNoiseGpuSettings>(constants.layer_constants_offset);
 	
@@ -388,6 +389,17 @@ void TerrainMaskLayerNoise(uint2 thread_id, float2 world_space_position) {
 	
 	float noise_value = EvaluateTerrainNoise<1>(settings, world_space_position + distortion_value * settings.distortion_amplitude);
 	mask_1[thread_id] = ApplyTerrainMaskLayerBlendMode(mask_0[thread_id], noise_value * settings.amplitude, settings.blend_mode);
+}
+
+void TerrainMaskLayerDistortion(uint2 thread_id, float2 world_space_position) {
+	TerrainMaskLayerDistortionGpuSettings settings = layer_constants.Load<TerrainMaskLayerDistortionGpuSettings>(constants.layer_constants_offset);
+	
+	float2 noise_value = EvaluateTerrainNoise<2>(settings, world_space_position);
+	
+	float2 offset = noise_value * settings.amplitude;
+	float value = mask_0.SampleLevel(sampler_linear_clamp, WorldSpacePositionToUv(world_space_position + offset), 0.0);
+	
+	mask_1[thread_id] = ApplyTerrainMaskLayerBlendMode(mask_0[thread_id], value, settings.blend_mode);
 }
 
 void TerrainMaskLayerSlopeRange(uint2 thread_id) {
@@ -408,6 +420,119 @@ void TerrainMaskLayerHeightRange(uint2 thread_id) {
 	
 	// Can't replace 1.0 - smoothstep by a smoothstep with reversed argument order because it would flip the result when edge.x == edge.y.
 	float value = smoothstep(settings.min_edge.x, settings.min_edge.y, height) * (1.0 - smoothstep(settings.max_edge.x, settings.max_edge.y, height));
+	mask_1[thread_id] = ApplyTerrainMaskLayerBlendMode(mask_0[thread_id], value, settings.blend_mode);
+}
+
+void TerrainMaskLayerFlowLinesSimulate(uint2 thread_id) {
+	TerrainMaskLayerFlowLinesGpuSettings settings = layer_constants.Load<TerrainMaskLayerFlowLinesGpuSettings>(constants.layer_constants_offset);
+	
+	uint hash = WyHash32(thread_id.x | (thread_id.y << 16), settings.random_seed);
+	
+	float2 thread_uv = (thread_id + ComputeRandomUnorm16x2(hash)) * constants.inv_render_target_size;
+	float2 position  = UvToWorldSpacePosition(thread_uv);
+	
+	float  water    = settings.use_initial_water_mask ? mask_0[thread_id] : 1.0;
+	float2 velocity = SampleHeightFieldGradient(thread_uv);
+	
+	float texel_size_meters = height_field_extent * constants.inv_render_target_size;
+	
+	u32 step_count = settings.fluvial_step_count;
+	for (u32 i = 0; i < step_count && water > (1.0 / 1024.0); i += 1) {
+		float2 sample_position = position;
+		float2 sample_uv = WorldSpacePositionToUv(sample_position);
+		s32x2  sample_id = UvToTexelPosition(sample_uv);
+		
+		if (any(sample_id < 0) || any(sample_id >= (s32)constants.render_target_size)) break;
+		
+		float2 gradient = SampleHeightFieldGradient(sample_uv);
+		
+		velocity = lerp(gradient, velocity, pow(settings.fluvial_inertia, texel_size_meters));
+		float velocity_length = length(velocity);
+		
+		if (velocity_length < texel_size_meters * (1.0 / 1024.0)) break;
+		float2 direction = velocity / velocity_length;
+		
+		position += direction * texel_size_meters;
+		
+		InterlockedAdd(erosion_field_1[sample_id], (s32)(water * fixed_point_scale));
+		
+		water *= saturate(1.0 - settings.fluvial_evaporation_rate);
+	}
+}
+
+void TerrainMaskLayerFlowLinesApply(uint2 thread_id) {
+	TerrainMaskLayerFlowLinesGpuSettings settings = layer_constants.Load<TerrainMaskLayerFlowLinesGpuSettings>(constants.layer_constants_offset);
+	
+	float value = saturate((float)erosion_field_1[thread_id] * inv_fixed_point_scale * settings.scale * (1.0 / settings.fluvial_step_count));
+	erosion_field_1[thread_id] = 0;
+	
+	mask_1[thread_id] = ApplyTerrainMaskLayerBlendMode(mask_0[thread_id], value, settings.blend_mode);
+}
+
+
+void TerrainMaskLayerFlowErosionSimulate(uint2 thread_id) {
+	TerrainMaskLayerFlowErosionGpuSettings settings = layer_constants.Load<TerrainMaskLayerFlowErosionGpuSettings>(constants.layer_constants_offset);
+	
+	uint hash = WyHash32(thread_id.x | (thread_id.y << 16), settings.random_seed);
+	
+	float2 thread_uv = (thread_id + ComputeRandomUnorm16x2(hash)) * constants.inv_render_target_size;
+	float2 position  = UvToWorldSpacePosition(thread_uv);
+	
+	float  water    = mask_0[thread_id];
+	float2 velocity = SampleHeightFieldGradient(thread_uv);
+	
+	float texel_size_meters = height_field_extent * constants.inv_render_target_size;
+	
+	u32 step_count = settings.fluvial_step_count*2;
+	for (u32 i = 0; i < step_count && water > (1.0 / 1024.0); i += 1) {
+		float2 sample_position = position;
+		float2 sample_uv = WorldSpacePositionToUv(sample_position);
+		s32x2  sample_id = UvToTexelPosition(sample_uv);
+		
+		if (any(sample_id < 0) || any(sample_id >= (s32)constants.render_target_size)) break;
+		
+		float2 gradient = SampleHeightFieldGradient(sample_uv);
+		
+		velocity = lerp(gradient, velocity, pow(settings.fluvial_inertia, texel_size_meters));
+		float velocity_length = length(velocity);
+		
+		if (velocity_length < texel_size_meters * (1.0 / 1024.0)) break;
+		float2 direction = velocity / velocity_length;
+		
+		position += direction * texel_size_meters;
+		
+		InterlockedMax(erosion_field_1[sample_id], (s32)(water * fixed_point_scale));
+	}
+}
+
+void TerrainMaskLayerFlowErosionApply(uint2 thread_id) {
+	TerrainMaskLayerFlowErosionGpuSettings settings = layer_constants.Load<TerrainMaskLayerFlowErosionGpuSettings>(constants.layer_constants_offset);
+	
+	float value = saturate((float)erosion_field_1[thread_id] * inv_fixed_point_scale * settings.scale);
+	erosion_field_1[thread_id] = 0;
+	
+	mask_1[thread_id] = ApplyTerrainMaskLayerBlendMode(mask_0[thread_id], value, settings.blend_mode);
+}
+
+void TerrainMaskLayerBlur(uint2 thread_id, bool is_vertical) {
+	TerrainMaskLayerBlurGpuSettings settings = layer_constants.Load<TerrainMaskLayerBlurGpuSettings>(constants.layer_constants_offset);
+	
+	float sum = 0.0;
+	float weight_sum = 0.0;
+	for (s32 i = -settings.radius_texels; i <= settings.radius_texels; i += 1) {
+		s32 x = is_vertical ? 0 : i;
+		s32 y = is_vertical ? i : 0;
+		
+		s32x2 sample_id = (s32x2)thread_id +  s32x2(x, y);
+		
+		if (all(sample_id >= 0) && all(sample_id < constants.render_target_size - 1)) {
+			float gaussian_weight = ComputeGaussianWeight(x, y, settings.radius_texels);
+			sum += mask_0[sample_id] * gaussian_weight;
+			weight_sum += gaussian_weight;
+		}
+	}
+	
+	float value = sum * rcp(weight_sum);
 	mask_1[thread_id] = ApplyTerrainMaskLayerBlendMode(mask_0[thread_id], value, settings.blend_mode);
 }
 
@@ -451,11 +576,32 @@ void MainCS(uint2 group_id : SV_GroupID, uint thread_index : SV_GroupIndex) {
 	} case TerrainEditorCommandType::TerrainMaskLayerNoise: {
 		TerrainMaskLayerNoise(thread_id, world_space_position);
 		break;
+	} case TerrainEditorCommandType::TerrainMaskLayerDistortion: {
+		TerrainMaskLayerDistortion(thread_id, world_space_position);
+		break;
 	} case TerrainEditorCommandType::TerrainMaskLayerSlopeRange: {
 		TerrainMaskLayerSlopeRange(thread_id);
 		break;
 	} case TerrainEditorCommandType::TerrainMaskLayerHeightRange: {
 		TerrainMaskLayerHeightRange(thread_id);
+		break;
+	} case TerrainEditorCommandType::TerrainMaskLayerFlowLinesSimulate: {
+		TerrainMaskLayerFlowLinesSimulate(thread_id);
+		break;
+	} case TerrainEditorCommandType::TerrainMaskLayerFlowLinesApply: {
+		TerrainMaskLayerFlowLinesApply(thread_id);
+		break;
+	} case TerrainEditorCommandType::TerrainMaskLayerFlowErosionSimulate: {
+		TerrainMaskLayerFlowErosionSimulate(thread_id);
+		break;
+	} case TerrainEditorCommandType::TerrainMaskLayerFlowErosionApply: {
+		TerrainMaskLayerFlowErosionApply(thread_id);
+		break;
+	} case TerrainEditorCommandType::TerrainMaskLayerBlurVertical: {
+		TerrainMaskLayerBlur(thread_id, true);
+		break;
+	} case TerrainEditorCommandType::TerrainMaskLayerBlurHorizontal: {
+		TerrainMaskLayerBlur(thread_id, false);
 		break;
 	} default: {
 		
