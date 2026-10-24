@@ -22,9 +22,9 @@ struct MeshletVertex {
 
 NOTES(Meta::HlslFile{ "MeshData.hlsl"_sl })
 struct MeshletErrorMetric {
-	float3 center = 0.f;
-	float  radius = 0.f;
-	float  error  = 0.f;
+	float3 aabb_min = 0.f;
+	float3 aabb_max = 0.f;
+	float  error    = 0.f;
 };
 
 NOTES(Meta::HlslFile{ "MeshData.hlsl"_sl })
@@ -84,7 +84,7 @@ struct MeshletGroup {
 	u32 page_index     = 0;
 	u32 page_count     = 0;
 	
-	compile_const u32 offset_of_residency_mask = 50;
+	compile_const u32 offset_of_residency_mask = 58;
 };
 
 NOTES(Meta::HlslFile{ "MeshData.hlsl"_sl })
@@ -108,7 +108,7 @@ struct MeshSourceData {
 // No SaveLoad for tooling, MeshRuntimeDataLayout is part of the mesh file and should be kept in sync with it (and not go through Undo/Redo).
 NOTES(Meta::SaveLoadOptions{ SaveLoadFlags::SaveLoadToDisk })
 struct MeshRuntimeDataLayout {
-	compile_const u64 sequential_version = 47;
+	compile_const u64 sequential_version = 48;
 	
 	compile_const u64 options_version = MESH_ASSET_OPTION_USE_FLOAT3_VERTEX_POSITION;
 	compile_const u64 current_version = (sequential_version << 1u) | options_version;

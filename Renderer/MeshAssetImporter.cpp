@@ -28,9 +28,9 @@ static float3x3 LoadUfbxMatrix3x3(const ufbx_matrix& m) {
 
 static MeshletErrorMetric LoadMdtErrorMetric(const MdtErrorMetric& metric) {
 	MeshletErrorMetric result;
-	result.center = float3(metric.bounds.center);
-	result.radius = metric.bounds.radius;
-	result.error  = metric.error;
+	result.aabb_min = float3(metric.aabb_min);
+	result.aabb_max = float3(metric.aabb_max);
+	result.error    = metric.error;
 	return result;
 }
 
@@ -355,6 +355,7 @@ MeshImportResult ImportMeshFile(StackAllocator* alloc, ThreadPool* thread_pool, 
 		
 		dst_group.page_count = ((u32)page_meshlet_prefix_sum.count + 1 - dst_group.page_index);
 	}
+	static_assert(MeshletGroup::offset_of_residency_mask == OffsetOf(MeshletGroup, residency_mask));
 	
 	if (page_meshlet_count != 0) {
 		ArrayAppend(page_meshlet_prefix_sum, alloc, (u32)page_meshlet_indices.count);

@@ -629,6 +629,14 @@ float4 TransformModelToClipSpaceDirection(float3 model_space_direction, GpuTrans
 	
 	return clip_space_direction;
 }
+
+float3 TransformWorldToModelSpace(float3 world_space_position, GpuTransform model_to_world) {
+	return QuatMul(Conjugate(model_to_world.rotation), (world_space_position - model_to_world.position)) / model_to_world.scale;
+}
+
+float3 TransformWorldToModelSpaceDirection(float3 world_space_direction, GpuTransform model_to_world) {
+	return QuatMul(Conjugate(model_to_world.rotation), world_space_direction) / model_to_world.scale;
+}
 #endif // defined(GENERATED_MESHDATA_HLSL)
 
 

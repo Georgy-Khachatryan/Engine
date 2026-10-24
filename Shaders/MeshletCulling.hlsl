@@ -151,10 +151,10 @@ float2 EvaluateMeshletErrorMetric(MeshletErrorMetric error_metric, GpuTransform 
 	result.x = model_to_world.scale * error_metric.error * scene.meshlet_world_to_pixel_scale;
 	
 	if (IsPerspectiveMatrix(scene.culling_view_to_clip_coef)) {
-		float3 center_world_space = TransformModelToWorldSpace(error_metric.center, model_to_world);
-		float  radius_world_space = error_metric.radius * model_to_world.scale;
+		float3 model_space_camera_position    = TransformWorldToModelSpace(scene.world_space_camera_position, model_to_world);
+		float  model_space_distance_to_camera = length(clamp(model_space_camera_position, error_metric.aabb_min, error_metric.aabb_max) - model_space_camera_position);
 		
-		result.y = max(length(center_world_space - scene.world_space_camera_position) - radius_world_space, 0.0);
+		result.y = model_space_distance_to_camera * model_to_world.scale;
 	} else {
 		result.y = 1.0;
 	}
