@@ -117,12 +117,20 @@ void SaveLoad(SaveLoadBuffer& buffer, Array<T>& array, u64 version = 0) {
 			ArrayResize(array, buffer.alloc, count);
 		}
 		
-		for (auto& value : array) {
-			SaveLoad(buffer, value, version);
+		if constexpr (SaveLoadAsBytes<T>::value) {
+			buffer.LoadBytes(array.data, count * sizeof(T));
+		} else {
+			for (auto& value : array) {
+				SaveLoad(buffer, value, version);
+			}
 		}
 	} else if (buffer.direction == SaveLoadDirection::Saving) {
-		for (auto& value : array) {
-			SaveLoad(buffer, value, version);
+		if constexpr (SaveLoadAsBytes<T>::value) {
+			buffer.SaveBytes(array.data, count * sizeof(T));
+		} else {
+			for (auto& value : array) {
+				SaveLoad(buffer, value, version);
+			}
 		}
 	}
 }
@@ -131,12 +139,21 @@ template<typename T, u64 fixed_count>
 void SaveLoad(SaveLoadBuffer& buffer, FixedCountArray<T, fixed_count>& array, u64 version = 0) {
 	if (buffer.direction == SaveLoadDirection::Loading) {
 		array = {};
-		for (auto& value : array) {
-			SaveLoad(buffer, value, version);
+		
+		if constexpr (SaveLoadAsBytes<T>::value) {
+			buffer.LoadBytes(array.data, fixed_count * sizeof(T));
+		} else {
+			for (auto& value : array) {
+				SaveLoad(buffer, value, version);
+			}
 		}
 	} else if (buffer.direction == SaveLoadDirection::Saving) {
-		for (auto& value : array) {
-			SaveLoad(buffer, value, version);
+		if constexpr (SaveLoadAsBytes<T>::value) {
+			buffer.SaveBytes(array.data, fixed_count * sizeof(T));
+		} else {
+			for (auto& value : array) {
+				SaveLoad(buffer, value, version);
+			}
 		}
 	}
 }
@@ -152,12 +169,20 @@ void SaveLoad(SaveLoadBuffer& buffer, FixedCapacityArray<T, fixed_capacity>& arr
 		array = {};
 		array.count = count;
 		
-		for (auto& value : array) {
-			SaveLoad(buffer, value, version);
+		if constexpr (SaveLoadAsBytes<T>::value) {
+			buffer.LoadBytes(array.data, count * sizeof(T));
+		} else {
+			for (auto& value : array) {
+				SaveLoad(buffer, value, version);
+			}
 		}
 	} else if (buffer.direction == SaveLoadDirection::Saving) {
-		for (auto& value : array) {
-			SaveLoad(buffer, value, version);
+		if constexpr (SaveLoadAsBytes<T>::value) {
+			buffer.SaveBytes(array.data, count * sizeof(T));
+		} else {
+			for (auto& value : array) {
+				SaveLoad(buffer, value, version);
+			}
 		}
 	}
 }
@@ -179,12 +204,20 @@ void SaveLoad(SaveLoadBuffer& buffer, ArrayView<T>& array, u64 version = 0) {
 			array = ArrayViewAllocate<T>(buffer.alloc, count);
 		}
 		
-		for (auto& value : array) {
-			SaveLoad(buffer, value, version);
+		if constexpr (SaveLoadAsBytes<T>::value) {
+			buffer.LoadBytes(array.data, count * sizeof(T));
+		} else {
+			for (auto& value : array) {
+				SaveLoad(buffer, value, version);
+			}
 		}
 	} else if (buffer.direction == SaveLoadDirection::Saving) {
-		for (auto& value : array) {
-			SaveLoad(buffer, value, version);
+		if constexpr (SaveLoadAsBytes<T>::value) {
+			buffer.SaveBytes(array.data, count * sizeof(T));
+		} else {
+			for (auto& value : array) {
+				SaveLoad(buffer, value, version);
+			}
 		}
 	}
 }
